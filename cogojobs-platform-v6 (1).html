@@ -2332,7 +2332,7 @@ function submitJobPost() {
   const title = document.getElementById('jTitle')?.value?.trim();
   const desc = document.getElementById('jDesc')?.value?.trim();
   const location = document.getElementById('jLocation')?.value?.trim();
-  if (!title || !desc || !location) { showToast('Please fill all required fields'); return; }
+  if (!title || !desc || !location) { showToast('TEST: Job form missing required fields'); return; }
   if (detectContactInfo(desc)) { showAlert(); return; }
   const job = {
     id: uid(),
