@@ -508,7 +508,7 @@ function renderNav() {
         ? '<button class="btn btn-outline btn-sm" onclick="dashSection=\'profile\';navigate(\'#/dashboard\')">✏️ Edit Profile</button>'
         : '<button class="btn btn-green btn-sm" onclick="openStudentWizard()">+ Create Profile</button>')
       : (currentUser.role === 'employer'
-        ? '<button class="btn btn-green btn-sm" style="font-weight:700" onclick="setDash(\'posttofeed\');navigate(\'#/dashboard\')">+ Post a Job</button>'
+        ? '<button class="btn btn-green btn-sm" style="font-weight:700" onclick="navigate(\'#/community\');setTimeout(function(){ showPostForm(); },150)">+ Post a Job</button>'
         : '');
     const msgBadge = unreadMsgs > 0 ? '<span style="position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:50%;width:16px;height:16px;font-size:.65rem;display:flex;align-items:center;justify-content:center;font-weight:700">'+unreadMsgs+'</span>' : '';
     const notifList = ls('cogo_notifs_' + currentUser.id) || [];
@@ -2018,7 +2018,7 @@ function renderDashboard() {
       '<a href="#" class="' + (dashSection==='myposts'?'active':'') + '" onclick="setDash(\'myposts\');return false">📢 My Posts</a>' +
       '<a href="#" class="' + (dashSection==='settings'?'active':'') + '" onclick="setDash(\'settings\');return false">⚙️ Settings</a>';
   } else if (currentUser.role === 'employer') {
-    sidebarLinks = '<a href="#" class="' + (dashSection==='posttofeed'?'active':'') + '" onclick="setDash(\'posttofeed\');return false">📢 Community &amp; Jobs</a>' +
+    sidebarLinks = '<a href="#" class="' + (dashSection==='posttofeed'?'active':'') + '" onclick="navigate(\'#/community\');setTimeout(function(){ showPostForm(); },150);return false">📢 Community &amp; Jobs</a>' +
       '<a href="#" class="' + (dashSection==='myjobs'?'active':'') + '" onclick="setDash(\'myjobs\');return false">💼 My Jobs</a>' +
       '<a href="#" class="' + (dashSection==='appsbookings'?'active':'') + '" onclick="setDash(\'appsbookings\');return false">📋 Applicants &amp; Bookings</a>' +
       '<a href="#" class="' + (dashSection==='messages'?'active':'') + '" onclick="setDash(\'messages\');return false">💬 Messages</a>' +
