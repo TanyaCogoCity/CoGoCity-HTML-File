@@ -425,7 +425,12 @@ function seedData() {
   ls('cogo_students', SEED_STUDENTS);
   ls('cogo_jobs', SEED_JOBS);
   ls('cogo_posts', SEED_POSTS);
-  ls('cogo_users', [{ id:'admin', email:'admin@cogocity.com', password:'admin123', name:'Admin', role:'admin', createdAt: new Date().toISOString() }]);
+  ls('cogo_users', [
+    { id:'admin', email:'admin@cogocity.com', password:'admin123', name:'Admin', role:'admin', createdAt: new Date().toISOString() },
+    { id:'test-student', email:'student.test@cogocity.com', password:'student123', name:'Test Student', role:'student', emoji:'🎓', createdAt: new Date().toISOString() },
+    { id:'test-employer', email:'employer.test@cogocity.com', password:'employer123', name:'Test Employer', role:'employer', type:'business', createdAt: new Date().toISOString() },
+    { id:'test-neighbor', email:'neighbor.test@cogocity.com', password:'neighbor123', name:'Test Neighbor', role:'employer', type:'neighbor', createdAt: new Date().toISOString() }
+  ]);
   ls('cogo_bookings', []);
   ls('cogo_messages', []);
   ls('cogo_seeded', true);
