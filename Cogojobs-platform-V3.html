@@ -1077,7 +1077,7 @@ function submitFeedApplication(postId) {
   if (post && post.authorId) {
     pushNotification(post.authorId, currentUser.name + ' applied to your job: ' + jobTitle.slice(0,40), "dashSection='appsbookings';navigate('#/dashboard')");
   }
-  showToast('Application sent! Check your dashboard. ✅');
+  showToast('Your request has been sent to the employer. Go to your Dashboard → Jobs & Bookings to see and manage jobs you applied to.');
   closeModal();
 }
 
