@@ -1135,7 +1135,7 @@ function renderJobsList() {
         <div class="job-card-desc">${escHtml(j.description.slice(0,120))}${j.description.length>120?'...':''}</div>
       </div>
       <div class="job-card-actions">
-        <button id="job-apply-${escHtml(j.id)}" class="btn btn-blue btn-sm" onclick="applyToJob('${escHtml(j.id)}')">Apply Now</button>
+        <button class="btn btn-blue btn-sm" onclick="applyToJob('${escHtml(j.id)}')">Apply Now</button>
       </div>
     </div>
   `).join('');
