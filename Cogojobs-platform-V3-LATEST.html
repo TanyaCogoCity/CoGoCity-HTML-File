@@ -1,0 +1,2124 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CoGo City Test Flow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --navy:#1B3A6B;
+      --blue:#2563EB;
+      --green:#059669;
+      --orange:#F59E0B;
+      --light:#F0F6FF;
+      --gray:#6B7280;
+      --dark:#111827;
+      --bg:#f8fafc;
+      --border:#e5e7eb;
+      --shadow:0 8px 24px rgba(0,0,0,.08);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,sans-serif;background:var(--bg);color:var(--dark)}
+    a{color:inherit}
+    button,input,textarea,select{font:inherit}
+    nav{
+      position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;gap:20px;padding:0 20px;height:64px
+    }
+    .logo{font-size:1.35rem;font-weight:800;color:var(--navy);text-decoration:none}
+    .logo span{color:var(--blue)}
+    .nav-links{display:flex;gap:18px;flex:1}
+    .nav-links a{text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem}
+    .nav-links a.active,.nav-links a:hover{color:var(--navy)}
+    .nav-actions{display:flex;gap:10px;align-items:center}
+    .btn{
+      border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;text-decoration:none;
+      display:inline-flex;align-items:center;justify-content:center;gap:6px
+    }
+    .btn-sm{padding:8px 12px;font-size:.88rem}
+    .btn-blue{background:var(--blue);color:#fff}
+    .btn-blue:hover{filter:brightness(.95)}
+    .btn-navy{background:var(--navy);color:#fff}
+    .btn-green{background:var(--green);color:#fff}
+    .btn-outline{background:#fff;border:1.5px solid var(--navy);color:var(--navy)}
+    .btn-danger{background:#fff;border:1.5px solid #dc2626;color:#dc2626}
+    main{min-height:calc(100vh - 64px)}
+    .hero{
+      background:linear-gradient(135deg,var(--navy),var(--blue));
+      color:#fff;padding:64px 20px 56px;text-align:center
+    }
+    .hero h1{margin:0 0 10px;font-size:2.6rem}
+    .hero p{max-width:680px;margin:0 auto 24px;opacity:.92}
+    .container{max-width:1120px;margin:0 auto;padding:28px 20px}
+    .card{
+      background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)
+    }
+    .section-title{font-size:1.4rem;font-weight:800;margin:0 0 18px}
+    .grid{display:grid;gap:18px}
+    .profiles-grid{grid-template-columns:repeat(3,1fr)}
+    .profile-card{overflow:hidden}
+    .profile-top{background:linear-gradient(135deg,var(--navy),var(--blue));padding:18px;color:#fff;display:flex;gap:12px}
+    .avatar{
+      width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.18);
+      display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0
+    }
+    .profile-body{padding:16px}
+    .tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+    .tag{background:var(--light);color:var(--navy);padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:700}
+    .muted{color:var(--gray)}
+    .rate{font-weight:800;color:var(--navy);font-size:1.05rem}
+    .profile-actions{display:flex;gap:8px;padding:0 16px 16px}
+    .feed-wrap{max-width:760px;margin:0 auto}
+    .post-card{padding:18px;margin-bottom:14px}
+    .post-header{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    .post-avatar{
+      width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--navy),var(--blue));
+      color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800
+    }
+    .post-job-badge,.badge{
+      display:inline-block;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:800
+    }
+    .post-job-badge{background:#FEF3C7;color:#92400E}
+    .badge-open{background:#DCFCE7;color:#166534}
+    .badge-pending{background:#FEF3C7;color:#92400E}
+ .badge-offer_sent{background:#DBEAFE;color:#1D4ED8}
+ .badge-accepted{background:#DCFCE7;color:#166534}
+ .badge-active{background:#DCFCE7;color:#166534}
+ .badge-project_started{background:#DCFCE7;color:#166534}
+ .badge-funded{background:#E0E7FF;color:#3730A3}
+    .badge-in_progress{background:#E0E7FF;color:#3730A3}
+    .badge-pending_approval,.badge-awaiting_employer_approval{background:#FCE7F3;color:#9D174D}
+    .badge-completed{background:#DCFCE7;color:#166534}
+    .badge-declined{background:#FEE2E2;color:#991B1B}
+    .badge-closed{background:#F3F4F6;color:#4B5563}
+    .meta-row{display:flex;gap:12px;flex-wrap:wrap;color:var(--gray);font-size:.85rem}
+    .post-footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .form-card{padding:18px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:.85rem;font-weight:700;margin-bottom:6px}
+    .field input,.field textarea,.field select{
+      width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;outline:none;background:#fff
+    }
+    .field textarea{min-height:88px;resize:vertical}
+    .hidden{display:none!important}
+    .dashboard{display:flex;min-height:calc(100vh - 64px)}
+    .sidebar{
+      width:240px;background:#fff;border-right:1px solid var(--border);padding:18px 0;flex-shrink:0
+    }
+    .sidebar a{
+      display:block;padding:10px 18px;text-decoration:none;color:var(--gray);font-weight:600
+    }
+    .sidebar a.active,.sidebar a:hover{background:var(--light);color:var(--navy)}
+    .dash-main{flex:1;padding:24px}
+    .subtabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .pill{padding:8px 14px;border:none;border-radius:999px;background:#E5E7EB;font-weight:700;cursor:pointer}
+    .pill.active{background:var(--navy);color:#fff}
+    .item-card{padding:16px;margin-bottom:12px}
+    .split{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+    .modal-bg{
+      position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;
+      padding:20px;z-index:50
+    }
+    .modal{
+      width:100%;max-width:760px;max-height:90vh;overflow:auto;background:#fff;border-radius:20px;box-shadow:0 24px 64px rgba(0,0,0,.22)
+    }
+    .modal-header{padding:20px 22px 0;display:flex;justify-content:space-between;align-items:center}
+    .modal-body{padding:18px 22px 22px}
+    .close-btn{border:none;background:none;font-size:1.25rem;cursor:pointer}
+    .toast{
+      position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:#111827;color:#fff;padding:12px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100
+    }
+    .toast.show{opacity:1}
+    .msg-shell{display:grid;grid-template-columns:280px 1fr;gap:14px}
+    .thread-list,.thread-view{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
+    .thread{padding:14px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer}
+    .thread:hover{background:var(--light)}
+    .thread.unread{background:#EFF6FF;border-left:3px solid #ef4444}
+    .thread-view{display:flex;flex-direction:column;min-height:480px}
+    .messages{padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:420px}
+    .bubble{max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.4}
+    .bubble.mine{background:var(--blue);color:#fff;align-self:flex-end}
+    .bubble.theirs{background:#F3F4F6;color:var(--dark);align-self:flex-start}
+    .msg-compose{display:flex;gap:10px;padding:12px;border-top:1px solid var(--border)}
+    .msg-compose input{flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px}
+    .warning{
+      background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;padding:12px 14px;border-radius:12px;font-size:.88rem
+    }
+    .contract-box{
+      background:#F8FAFC;border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:12px
+    }
+    .small{font-size:.84rem}
+    @media (max-width: 900px){
+      .profiles-grid{grid-template-columns:repeat(2,1fr)}
+      .dashboard{flex-direction:column}
+      .sidebar{width:100%;display:flex;overflow:auto;padding:10px}
+      .sidebar a{white-space:nowrap}
+      .msg-shell{grid-template-columns:1fr}
+    }
+    @media (max-width: 640px){
+      .profiles-grid{grid-template-columns:1fr}
+      .row{grid-template-columns:1fr}
+      .nav-links{display:none}
+      .hero h1{font-size:1.9rem}
+    }
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast"></div>
+  <nav>
+    <a class="logo" href="#/">CoGo<span>City</span></a>
+    <div class="nav-links">
+      <a href="#/" id="nav-home">Browse Students</a>
+      <a href="#/community" id="nav-community">Community</a>
+      <a href="#/dashboard" id="nav-dashboard">Dashboard</a>
+    </div>
+    <div class="nav-actions" id="nav-actions"></div>
+  </nav>
+  <main id="app"></main>
+  <div id="modal-root"></div>
+
+<script>
+const TEST_USERS = {
+  student: { email: 'student@cogocity.com', password: 'student123' },
+  employer: { email: 'ilya@cogocity.com', password: 'Ilya123' },
+  neighbor: { email: 'tanya@cogocity.com', password: 'tanya123' }
+};
+
+let currentUser = null;
+let dashSection = 'profile';
+let studentJobsTab = 'all';
+let employerTab = 'all';
+let myPostsTab = 'all';
+let activeThreadUserId = null;
+const PLATFORM_FEE_RATE = 0.15;
+const STRIPE_ENABLED = false;
+const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
+
+// ---------- Storage ----------
+function ls(key, value){
+  if (value === undefined) {
+    try { return JSON.parse(localStorage.getItem(key)); } catch(e){ return null; }
+  }
+  localStorage.setItem(key, JSON.stringify(value));
+}
+function uid(prefix='id'){
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+}
+function getUsers(){ return ls('cogo_users') || []; }
+function saveUsers(v){ ls('cogo_users', v); }
+function getStudents(){ return ls('cogo_students') || []; }
+function saveStudents(v){ ls('cogo_students', v); }
+function getPosts(){ return ls('cogo_posts') || []; }
+function savePosts(v){ ls('cogo_posts', v); }
+function getApplications(){ return ls('cogo_applications') || []; }
+function saveApplications(v){ ls('cogo_applications', v); }
+function getBookings(){ return ls('cogo_bookings') || []; }
+function saveBookings(v){ ls('cogo_bookings', v); }
+function getProjects(){ return ls('cogo_projects') || []; }
+function saveProjects(v){ ls('cogo_projects', v); }
+function getMessages(){ return ls('cogo_messages') || []; }
+function saveMessages(v){ ls('cogo_messages', v); }
+function getNotifications(id){ return ls('cogo_notifs_' + id) || []; }
+function saveNotifications(id, data){ ls('cogo_notifs_' + id, data); }
+function getPaymentLogs(){ return ls('cogo_payment_logs') || []; }
+function savePaymentLogs(v){ ls('cogo_payment_logs', v); }
+function getFinance(){ return ls('cogo_finance') || { cogoCommission: 0, completedProjects: 0 }; }
+function saveFinance(v){ ls('cogo_finance', v); }
+
+// ---------- Seed ----------
+function seedData(){
+  if (ls('cogo_seeded_v2')) return;
+
+  const users = [
+    { id:'u_student_test', email:'student@cogocity.com', password:'student123', name:'Test Student', role:'student', emoji:'🎓' },
+    { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', name:'Test Employer', role:'employer', type:'business', emoji:'🏢', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
+    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', name:'Test Neighbor', role:'employer', type:'neighbor', emoji:'🏠', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true }
+  ];
+
+  const students = [
+    {
+      id:'s_test_main',
+      userId:'u_student_test',
+      name:'Test Student',
+      age:17,
+      school:'San Ramon Valley High',
+      location:'Danville, CA',
+      emoji:'🎓',
+      title:'Reliable Student Helper | Tutoring • Tech Help • Events',
+      tags:['tutoring','admin','events'],
+      services:['Math tutoring','Homework help','Basic website help','Event support'],
+      about:[
+        'I am a motivated student who enjoys helping local families and businesses.',
+        'I am dependable, easy to work with, and excited to build experience through real projects.'
+      ],
+      whyHire:['Responsible and on time','Friendly and professional','Fast learner','Local and flexible'],
+      highlights:['Helps with school projects','Comfortable with basic tech tasks','Available weekends and afternoons'],
+      rate:20,
+      reviews:[],
+      balance:0,
+      availability:'Weekday afternoons · Weekends',
+      status:'live',
+      createdAt:new Date().toISOString()
+    },
+    {
+      id:'s2',
+      userId:'seed_2',
+      name:'Niki N.',
+      age:17,
+      school:'Monte Vista High School',
+      location:'Danville, CA',
+      emoji:'🏊',
+      title:'Tech Help • Tutoring • Creative Projects',
+      tags:['tutoring','admin'],
+      services:['Tech help','Tutoring','Creative design'],
+      about:['Motivated student with strong problem-solving and tech skills.'],
+      whyHire:['Dependable','Fast learner'],
+      highlights:['Built school tech projects','Helps peers with homework'],
+      rate:25,
+      reviews:[],
+      balance:0,
+      availability:'Weekday evenings · Weekends',
+      status:'live',
+      createdAt:new Date().toISOString()
+    }
+  ];
+
+  const posts = [
+    {
+      id:'p_seed_1',
+      authorId:'u_neighbor_test',
+      authorName:'Test Neighbor',
+      authorEmoji:'🏠',
+      content:'Need help setting up for a small birthday party this Saturday.',
+      isJob:true,
+      jobTitle:'Birthday Party Setup Help',
+      rate:22,
+      location:'Danville, CA',
+      hoursNeeded:5,
+      description:'Help with setup, serving, and cleanup for a family birthday party.',
+      status:'open',
+      createdAt:new Date(Date.now()-3600*1000).toISOString(),
+      likes:[]
+    },
+    {
+      id:'p_seed_2',
+      authorId:'u_employer_test',
+      authorName:'Test Employer',
+      authorEmoji:'🏢',
+      content:'Looking for a student to help with simple website updates for a few hours.',
+      isJob:true,
+      jobTitle:'Basic Website Help',
+      rate:25,
+      location:'Remote / Danville',
+      hoursNeeded:4,
+      description:'Update text and images on a simple website.',
+      status:'open',
+      createdAt:new Date(Date.now()-7200*1000).toISOString(),
+      likes:[]
+    },
+    {
+      id:'p_seed_social',
+      authorId:'s_test_main',
+      authorName:'Test Student',
+      authorEmoji:'🎓',
+      content:'Excited to be on CoGo City and ready to help with tutoring and local projects.',
+      isJob:false,
+      createdAt:new Date(Date.now()-10800*1000).toISOString(),
+      likes:[]
+    }
+  ];
+
+  saveUsers(users);
+  saveStudents(students);
+  savePosts(posts);
+  saveApplications([]);
+  saveBookings([]);
+  saveProjects([]);
+  saveMessages([]);
+  ls('cogo_seeded_v2', true);
+}
+
+// ---------- Utilities ----------
+function esc(s){
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;');
+}
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+function detectContactInfo(text=''){
+  const emailRe = /[\w.+-]+@[\w.-]+\.\w+/i;
+  const phoneRe = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+  return emailRe.test(text) || phoneRe.test(text);
+}
+function moderateContent(text=''){
+  const bad = ['porn','nude','explicit','kill','violence','hate'];
+  const low = text.toLowerCase();
+  return !bad.some(w => low.includes(w));
+}
+function blockTextCheck(text){
+  if (detectContactInfo(text)) { toast('Contact info is blocked until a job is confirmed.'); return false; }
+  if (!moderateContent(text)) { toast('Please keep content appropriate for minors.'); return false; }
+  return true;
+}
+function timeAgo(iso){
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+  return `${Math.floor(diff/86400000)}d ago`;
+}
+function firstName(name){ return (name||'').split(' ')[0]; }
+function tagLabel(t){
+  const map = {
+    tutoring:'📚 Tutoring',
+    admin:'💼 Admin',
+    events:'🎉 Events',
+    babysitting:'👶 Babysitting',
+    'dog-walking':'🐕 Dog Walking',
+    bikes:'🚲 Bikes',
+    'social-media':'📱 Social Media'
+  };
+  return map[t] || t;
+}
+function badge(status){
+  return `<span class="badge badge-${esc(status)}">${esc(String(status).replaceAll('_',' '))}</span>`;
+}
+function currentStudentProfile(){
+  return currentUser && currentUser.role === 'student'
+    ? getStudents().find(s => s.userId === currentUser.id)
+    : null;
+}
+function getUserById(id){ return getUsers().find(u => u.id === id); }
+function getStudentByUserId(userId){ return getStudents().find(s => s.userId === userId); }
+function pushNotif(userId, title, action=''){
+  const items = getNotifications(userId);
+  items.unshift({ id: uid('n'), title, action, read:false, createdAt:new Date().toISOString() });
+  saveNotifications(userId, items.slice(0, 50));
+}
+function money(n){
+  return Number(n || 0).toFixed(2);
+}
+function getEmployerPaymentMethod(userId){
+  const user = getUserById(userId);
+  return user && user.paymentMethod ? user.paymentMethod : null;
+}
+function hasValidPaymentMethod(userId){
+  const paymentMethod = getEmployerPaymentMethod(userId);
+  return !!(paymentMethod && paymentMethod.status === 'valid');
+}
+function logPaymentEvent(event){
+  const logs = getPaymentLogs();
+  logs.unshift(Object.assign({ id: uid('paylog'), createdAt: new Date().toISOString() }, event));
+  savePaymentLogs(logs.slice(0, 100));
+}
+function attemptEscrowAuthorization(application, escrowAmount){
+  const employer = getUserById(application.employerId);
+  if (!employer) {
+    const reason = 'employer_not_found';
+    logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'failed', reason });
+    return { success:false, reason };
+  }
+  if (!hasValidPaymentMethod(application.employerId)) {
+    if (!TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS) {
+      const reason = 'missing_or_invalid_payment_method';
+      logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'failed', reason });
+      return { success:false, reason };
+    }
+    const users = getUsers();
+    const user = users.find(x => x.id === employer.id);
+    if (user) {
+      user.paymentMethod = user.paymentMethod || { status:'valid', brand:'Visa', last4:'4242' };
+      user.paymentMethod.status = 'valid';
+      user.paymentSetupComplete = true;
+      saveUsers(users);
+      if (currentUser && currentUser.id === user.id) setCurrentUser(user);
+    }
+  }
+  const provider = STRIPE_ENABLED ? 'stripe' : 'placeholder';
+  const mode = STRIPE_ENABLED ? 'stripe_manual_capture' : (TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS ? 'placeholder_test_success' : 'placeholder_success');
+  logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'held', mode, provider });
+  return { success:true, escrowStatus:'held', provider };
+}
+function getProjectForUsers(userIdA, userIdB){
+  return getProjects().find(p => [p.employerId, p.studentUserId].includes(userIdA) && [p.employerId, p.studentUserId].includes(userIdB) && p.status !== 'completed') || null;
+}
+function attachMessagesToProject(projectId, employerId, studentUserId){
+  const messages = getMessages();
+  let changed = false;
+  messages.forEach(m => {
+    const betweenUsers = (m.fromId === employerId && m.toId === studentUserId) || (m.fromId === studentUserId && m.toId === employerId);
+    if (betweenUsers && !m.projectId) {
+      m.projectId = projectId;
+      changed = true;
+    }
+  });
+  if (changed) saveMessages(messages);
+}
+function openPaymentMethodModal(retryAppId=''){
+  const paymentMethod = getEmployerPaymentMethod(currentUser.id) || {};
+  openModal('Update Payment Method', `
+    <div class="warning" style="margin-bottom:14px">Employers sign up with a payment method on file. Update the saved test card here if needed.</div>
+    <div class="field"><label>Card Brand</label><input id="pmBrand" value="${esc(paymentMethod.brand || 'Visa')}"></div>
+    <div class="field"><label>Card Last 4</label><input id="pmLast4" maxlength="4" value="${esc(paymentMethod.last4 || '4242')}"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="savePaymentMethod('${esc(retryAppId)}')">Save Payment Method</button>
+      ${retryAppId ? `<button class="btn btn-outline" onclick="closeModal();startProject('${esc(retryAppId)}')">Retry Start Project</button>` : ''}
+    </div>
+  `, '620px');
+}
+function savePaymentMethod(retryAppId=''){
+  const users = getUsers();
+  const user = users.find(x => x.id === currentUser.id);
+  if (!user) return;
+  const brand = (document.getElementById('pmBrand').value || '').trim();
+  const last4 = (document.getElementById('pmLast4').value || '').trim();
+  if (!brand || last4.length !== 4) return toast('Please enter a valid card.');
+  user.paymentMethod = { status:'valid', brand, last4 };
+  user.paymentSetupComplete = true;
+  saveUsers(users);
+  setCurrentUser(user);
+  closeModal();
+  toast('Payment method updated.');
+  if (retryAppId) startProject(retryAppId);
+}
+function openPaymentFailureModal(appId, reason){
+  openModal('Payment Authorization Failed', `
+    <div class="warning" style="margin-bottom:14px">Payment authorization failed. Please update your payment method.</div>
+    <div class="small muted" style="margin-bottom:14px">Reason: ${esc(reason || 'provider_error')}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="openPaymentMethodModal('${esc(appId)}')">Update Payment Method</button>
+      <button class="btn btn-outline" onclick="closeModal();startProject('${esc(appId)}')">Retry Start Project</button>
+    </div>
+  `, '620px');
+}
+function pushAdminCommissionNotification(project){
+  const commission = Number(project.platformFee || 0);
+  const items = getNotifications('cogo_admin');
+  items.unshift({
+    id: uid('n'),
+    title: `You received $${money(commission)} commission from project ${project.jobTitle}`,
+    action: { type:'dashboard', section:'applicants_projects', projectId: project.id },
+    read:false,
+    createdAt:new Date().toISOString()
+  });
+  saveNotifications('cogo_admin', items.slice(0, 50));
+}
+function setCurrentUser(u){
+  currentUser = u;
+  ls('cogo_current_user', u);
+  renderNav();
+}
+function loadCurrentUser(){
+  currentUser = ls('cogo_current_user');
+}
+
+// ---------- Modal ----------
+function openModal(title, bodyHtml, width='760px'){
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this) closeModal()">
+      <div class="modal" style="max-width:${width}">
+        <div class="modal-header">
+          <h2 style="margin:0">${esc(title)}</h2>
+          <button class="close-btn" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">${bodyHtml}</div>
+      </div>
+    </div>
+  `;
+}
+function closeModal(){
+  document.getElementById('modal-root').innerHTML = '';
+}
+
+// ---------- Nav ----------
+function renderNav(){
+  const nav = document.getElementById('nav-actions');
+  const route = getRoute();
+  document.getElementById('nav-home').classList.toggle('active', route === '#/' || route === '');
+  document.getElementById('nav-community').classList.toggle('active', route === '#/community');
+  document.getElementById('nav-dashboard').classList.toggle('active', route === '#/dashboard');
+
+  if (!currentUser){
+    nav.innerHTML = `
+      <button class="btn btn-navy btn-sm" onclick="openLoginModal()">Sign In / Sign Up</button>
+    `;
+    return;
+  }
+
+  const unreadMsgs = getMessages().filter(m => m.toId === currentUser.id && !m.read).length;
+  const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read).length;
+  nav.innerHTML = `
+    <button class="btn btn-outline btn-sm" onclick="goDashboard()">Dashboard</button>
+    <button class="btn btn-outline btn-sm" onclick="openNotifications()">
+      🔔${unreadNotifs ? ` (${unreadNotifs})` : ''}
+    </button>
+    <button class="btn btn-outline btn-sm" onclick="dashSection='messages';goDashboard()">
+      ✉️${unreadMsgs ? ` (${unreadMsgs})` : ''}
+    </button>
+    <button class="btn btn-navy btn-sm" onclick="signOut()">Sign Out</button>
+  `;
+}
+function openNotifications(){
+  const items = getNotifications(currentUser.id);
+  const html = items.length ? items.map(n => `
+    <div class="item-card card">
+      <div class="split">
+        <div>
+          <div style="font-weight:700">${esc(n.title)}</div>
+          <div class="muted small">${timeAgo(n.createdAt)}</div>
+        </div>
+        ${n.action ? `<button class="btn btn-blue btn-sm" onclick="runNotifAction('${esc(n.id)}')">Open</button>` : ''}
+      </div>
+    </div>
+  `).join('') : `<div class="muted">No notifications yet.</div>`;
+  openModal('Notifications', html, '620px');
+  items.forEach(n => n.read = true);
+  saveNotifications(currentUser.id, items);
+  renderNav();
+}
+function runNotifAction(id){
+  const items = getNotifications(currentUser.id);
+  const item = items.find(n => n.id === id);
+  if (!item || !item.action) return;
+  closeModal();
+  const action = item.action;
+  if (action.type === 'dashboard') {
+    dashSection = action.section || 'profile';
+    goDashboard();
+  } else if (action.type === 'thread') {
+    dashSection = 'messages';
+    activeThreadUserId = action.userId;
+    goDashboard();
+  }
+}
+
+// ---------- Auth ----------
+function openLoginModal(tab='signin'){
+  const authTab = tab || 'signin';
+  let content = '';
+
+  if (authTab === 'signin') {
+    content = `
+      <div class="warning" style="margin-bottom:16px">
+        AI helper is intentionally disabled for now. All text fields are manual test fields.
+      </div>
+      <div class="card form-card">
+        <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="email"></div>
+        <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="password"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
+          <button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>
+        </div>
+        <div class="small muted" style="margin-top:10px">Reset restores the seeded test users, passwords, and sample data for this browser.</div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="card form-card">
+        <div style="font-weight:800;margin-bottom:10px">Quick test logins</div>
+        <div class="small muted" style="margin-bottom:12px">One tap signs you in instantly.</div>
+        <div class="grid" style="grid-template-columns:1fr;gap:10px">
+          <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student — student@cogocity.com</button>
+          <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer — ilya@cogocity.com</button>
+          <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor — tanya@cogocity.com</button>
+        </div>
+      </div>
+    `;
+  } else if (authTab === 'student') {
+    content = `
+      <div class="card form-card">
+        <div class="field"><label>Full Name</label><input id="studentSignupName" placeholder="Your name"></div>
+        <div class="row">
+          <div class="field"><label>Age</label><input id="studentSignupAge" type="number" min="13" max="25" placeholder="17"></div>
+          <div class="field"><label>School</label><input id="studentSignupSchool" placeholder="School name"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>City</label><input id="studentSignupCity" placeholder="Danville"></div>
+          <div class="field"><label>Hourly Rate</label><input id="studentSignupRate" type="number" min="1" value="20"></div>
+        </div>
+        <div class="field"><label>Headline</label><input id="studentSignupTitle" placeholder="Reliable student helper"></div>
+        <div class="field"><label>Availability</label><input id="studentSignupAvailability" placeholder="Weekday afternoons · Weekends"></div>
+        <div class="field"><label>Email</label><input id="studentSignupEmail" type="email" placeholder="your@email.com"></div>
+        <div class="field"><label>Password</label><input id="studentSignupPassword" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-blue" style="width:100%" onclick="submitStudentSignup()">Create Student Account</button>
+      </div>
+    `;
+  } else {
+    const type = authTab === 'neighbor' ? 'neighbor' : 'business';
+    const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
+    const emoji = type === 'neighbor' ? '🏠' : '🏢';
+    content = `
+      <div class="card form-card">
+        <div class="warning" style="margin-bottom:14px">${label} signup requires a payment method so projects can start immediately in the test flow.</div>
+        <div class="field"><label>${label} Name</label><input id="${type}SignupName" placeholder="Your name"></div>
+        ${type === 'business' ? `<div class="field"><label>Business Name</label><input id="businessSignupCompany" placeholder="Business name"></div>` : ''}
+        <div class="row">
+          <div class="field"><label>City</label><input id="${type}SignupCity" placeholder="Danville"></div>
+          <div class="field"><label>Emoji</label><input id="${type}SignupEmoji" value="${emoji}"></div>
+        </div>
+        <div class="field"><label>Email</label><input id="${type}SignupEmail" type="email" placeholder="your@email.com"></div>
+        <div class="field"><label>Password</label><input id="${type}SignupPassword" type="password" placeholder="••••••••"></div>
+        <div class="row">
+          <div class="field"><label>Card Brand</label><input id="${type}SignupCardBrand" value="Visa"></div>
+          <div class="field"><label>Card Last 4</label><input id="${type}SignupCardLast4" maxlength="4" value="4242"></div>
+        </div>
+        <button class="btn btn-blue" style="width:100%" onclick="submitEmployerSignup('${type}')">Create ${label} Account</button>
+      </div>
+    `;
+  }
+
+  openModal('Welcome to CoGo City', `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="pill ${authTab==='signin'?'active':''}" onclick="openLoginModal('signin')">Sign In</button>
+      <button class="pill ${authTab==='student'?'active':''}" onclick="openLoginModal('student')">Join as Student</button>
+      <button class="pill ${authTab==='employer'?'active':''}" onclick="openLoginModal('employer')">Join as Employer</button>
+      <button class="pill ${authTab==='neighbor'?'active':''}" onclick="openLoginModal('neighbor')">Join as Neighbor</button>
+    </div>
+    ${content}
+  `, '760px');
+}
+function fillLogin(email, password){
+  document.getElementById('loginEmail').value = email;
+  document.getElementById('loginPassword').value = password;
+}
+function quickLogin(email, password){
+  fillLogin(email, password);
+  doLogin();
+}
+function resetDemoData(){
+  Object.keys(localStorage)
+    .filter(key => key.startsWith('cogo_'))
+    .forEach(key => localStorage.removeItem(key));
+  currentUser = null;
+  activeThreadUserId = null;
+  closeModal();
+  seedData();
+  renderNav();
+  renderPage();
+  toast('Demo data reset.');
+  openLoginModal();
+}
+function doLogin(){
+  const email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value || '';
+  const user = getUsers().find(u => u.email.toLowerCase() === email && u.password === password);
+  if (!user) { toast('Invalid email or password'); return; }
+  setCurrentUser(user);
+  closeModal();
+  toast(`Welcome back, ${firstName(user.name)}!`);
+  location.hash = '#/';
+  renderPage();
+}
+function submitStudentSignup(){
+  const name = (document.getElementById('studentSignupName').value || '').trim();
+  const email = (document.getElementById('studentSignupEmail').value || '').trim().toLowerCase();
+  const password = document.getElementById('studentSignupPassword').value || '';
+  const city = (document.getElementById('studentSignupCity').value || '').trim();
+  const school = (document.getElementById('studentSignupSchool').value || '').trim();
+  const title = (document.getElementById('studentSignupTitle').value || '').trim();
+  const age = Number(document.getElementById('studentSignupAge').value || 0);
+  const rate = Number(document.getElementById('studentSignupRate').value || 20);
+  const availability = (document.getElementById('studentSignupAvailability').value || '').trim();
+  if (!name || !email || !password || !city) return toast('Please complete the required student signup fields.');
+  if (age && (age < 13 || age > 25)) return toast('Student signup is for ages 13 to 25.');
+  const users = getUsers();
+  if (users.some(u => (u.email || '').toLowerCase() === email)) return toast('Email already registered. Please sign in.');
+  const students = getStudents();
+  const userId = uid('u');
+  const studentId = uid('s');
+  const newUser = { id:userId, email, password, name, role:'student', emoji:'🎓', createdAt:new Date().toISOString() };
+  const newStudent = {
+    id:studentId,
+    userId,
+    name,
+    age: age || 17,
+    school,
+    location: city.includes(',') ? city : `${city}, CA`,
+    emoji:'🎓',
+    title: title || 'Reliable Student Helper',
+    tags:['tutoring'],
+    services:[],
+    about:[`Hi, I'm ${name} and excited to help with local projects.`],
+    whyHire:['Friendly','Reliable','Motivated'],
+    highlights:[],
+    rate: rate || 20,
+    reviews:[],
+    balance:0,
+    availability: availability || 'Weekday afternoons · Weekends',
+    status:'live',
+    createdAt:new Date().toISOString()
+  };
+  users.push(newUser);
+  students.unshift(newStudent);
+  saveUsers(users);
+  saveStudents(students);
+  setCurrentUser(newUser);
+  closeModal();
+  toast('Student account created.');
+  location.hash = '#/';
+  renderPage();
+}
+function submitEmployerSignup(type){
+  const prefix = type === 'neighbor' ? 'neighbor' : 'business';
+  const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
+  const name = (document.getElementById(`${prefix}SignupName`).value || '').trim();
+  const city = (document.getElementById(`${prefix}SignupCity`).value || '').trim();
+  const emoji = (document.getElementById(`${prefix}SignupEmoji`).value || (type === 'neighbor' ? '🏠' : '🏢')).trim() || (type === 'neighbor' ? '🏠' : '🏢');
+  const email = (document.getElementById(`${prefix}SignupEmail`).value || '').trim().toLowerCase();
+  const password = document.getElementById(`${prefix}SignupPassword`).value || '';
+  const brand = (document.getElementById(`${prefix}SignupCardBrand`).value || '').trim();
+  const last4 = (document.getElementById(`${prefix}SignupCardLast4`).value || '').trim();
+  const company = type === 'business' ? (document.getElementById('businessSignupCompany').value || '').trim() : '';
+  if (!name || !email || !password || !city || !brand || last4.length !== 4) return toast(`Please complete the required ${label.toLowerCase()} signup fields.`);
+  const users = getUsers();
+  if (users.some(u => (u.email || '').toLowerCase() === email)) return toast('Email already registered. Please sign in.');
+  const newUser = {
+    id:uid('u'),
+    email,
+    password,
+    name,
+    role:'employer',
+    type,
+    emoji,
+    city,
+    company,
+    paymentMethod:{ status:'valid', brand, last4 },
+    paymentSetupComplete:true,
+    createdAt:new Date().toISOString()
+  };
+  users.push(newUser);
+  saveUsers(users);
+  setCurrentUser(newUser);
+  closeModal();
+  toast(`${label} account created.`);
+  location.hash = '#/';
+  renderPage();
+}
+function signOut(){
+  currentUser = null;
+  localStorage.removeItem('cogo_current_user');
+  activeThreadUserId = null;
+  renderNav();
+  location.hash = '#/';
+  renderPage();
+}
+
+// ---------- Routes ----------
+function getRoute(){ return location.hash || '#/'; }
+function goDashboard(){ location.hash = '#/dashboard'; renderPage(); }
+window.addEventListener('hashchange', renderPage);
+
+// ---------- Pages ----------
+function renderPage(){
+  renderNav();
+  const route = getRoute();
+  if (route === '#/community') return renderCommunity();
+  if (route === '#/dashboard') return renderDashboard();
+  return renderHome();
+}
+
+function renderHome(){
+  const students = getStudents().filter(s => s.status === 'live');
+  document.getElementById('app').innerHTML = `
+    <section class="hero">
+      <h1>Find Trusted Local Student Help</h1>
+ <p>Test the full CoGo City student, employer, and neighbor flow in one file: profiles, community feed, applications, offers, projects, hours, invoices, messages, and approvals.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>
+        <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Feed</button>
+      </div>
+    </section>
+    <div class="container">
+      <div class="section-title">Student Profiles</div>
+      <div class="grid profiles-grid">
+        ${students.map(renderProfileCard).join('')}
+      </div>
+    </div>
+  `;
+}
+function renderProfileCard(s){
+  const isSelf = currentUser && s.userId === currentUser.id;
+  return `
+    <div class="card profile-card">
+      <div class="profile-top">
+        <div class="avatar">${esc(s.emoji || '👤')}</div>
+        <div>
+          <div style="font-weight:800">${esc(s.name)}, ${esc(s.age)}</div>
+          <div style="font-size:.83rem;opacity:.9">${esc(s.title || '')}</div>
+          <div style="font-size:.8rem;opacity:.82">📍 ${esc(s.location || '')}</div>
+        </div>
+      </div>
+      <div class="profile-body">
+        <div class="tags">${(s.tags||[]).map(t => `<span class="tag">${esc(tagLabel(t))}</span>`).join('')}</div>
+        <div class="muted small">${esc((s.about||[])[0] || '')}</div>
+        <div style="margin-top:12px" class="split">
+          <div class="rate">$${esc(s.rate)}/hr</div>
+          <div class="muted small">${esc(s.availability || '')}</div>
+        </div>
+      </div>
+      <div class="profile-actions">
+        <button class="btn btn-outline btn-sm" onclick="openProfile('${esc(s.id)}')">View Profile</button>
+        ${isSelf
+          ? `<button class="btn btn-blue btn-sm" onclick="dashSection='profile';goDashboard()">Your Profile</button>`
+          : `<button class="btn btn-blue btn-sm" onclick="openBookDirect('${esc(s.id)}')">Book / Offer Job</button>`}
+      </div>
+    </div>
+  `;
+}
+function openProfile(studentId){
+  const s = getStudents().find(x => x.id === studentId);
+  if (!s) return;
+  const reviews = s.reviews || [];
+  openModal(`${s.name}'s Profile`, `
+    <div class="split" style="align-items:center">
+      <div style="display:flex;gap:14px;align-items:center">
+        <div class="avatar" style="width:72px;height:72px;font-size:2rem;background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff">${esc(s.emoji||'👤')}</div>
+        <div>
+          <div style="font-size:1.25rem;font-weight:800">${esc(s.name)}</div>
+          <div class="muted">${esc(s.title || '')}</div>
+          <div class="muted small">📍 ${esc(s.location || '')} · 🏫 ${esc(s.school || '')}</div>
+        </div>
+      </div>
+      <div class="rate">$${esc(s.rate)}/hr</div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:8px">About</div>
+      ${(s.about||[]).map(p => `<p class="small">${esc(p)}</p>`).join('')}
+      <div style="font-weight:800;margin:14px 0 8px">Why hire me</div>
+      ${(s.whyHire||[]).map(p => `<div class="small">• ${esc(p)}</div>`).join('')}
+      <div style="font-weight:800;margin:14px 0 8px">Experience</div>
+      ${(s.highlights||[]).map(p => `<div class="small">• ${esc(p)}</div>`).join('')}
+      <div style="font-weight:800;margin:14px 0 8px">Reviews</div>
+      ${reviews.length ? reviews.map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${esc(r.comment || '')}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
+    </div>
+    <div style="height:16px"></div>
+    ${currentUser && currentUser.id !== s.userId
+      ? `<button class="btn btn-blue" onclick="closeModal();openBookDirect('${esc(s.id)}')">Book / Offer Job</button>`
+      : ''}
+  `);
+}
+
+// ---------- Community ----------
+function renderCommunity(){
+  const posts = getPosts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  document.getElementById('app').innerHTML = `
+    <div class="container feed-wrap">
+      <div class="split" style="margin-bottom:18px">
+        <div class="section-title" style="margin:0">Community Feed</div>
+        ${currentUser ? `<button class="btn btn-blue btn-sm" onclick="togglePostComposer()">+ Create Post</button>` : `<button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In to Post</button>`}
+      </div>
+      <div id="post-composer-wrap"></div>
+      ${posts.map(renderPost).join('')}
+    </div>
+  `;
+}
+function togglePostComposer(){
+  const wrap = document.getElementById('post-composer-wrap');
+  if (wrap.innerHTML.trim()){
+    wrap.innerHTML = '';
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="card form-card" style="margin-bottom:16px">
+      <div class="field">
+        <label>Your post</label>
+        <textarea id="postContent" placeholder="Share something with the community..."></textarea>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
+      </div>
+      <div id="jobFields" class="hidden">
+        <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="e.g. Event Helper This Saturday"></div>
+        <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..."></textarea></div>
+        <div class="row">
+          <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20"></div>
+          <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5"></div>
+        </div>
+        <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA"></div>
+      </div>
+      <div class="warning" style="margin:10px 0">Phone numbers and email addresses are blocked until work is confirmed.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-outline btn-sm" onclick="togglePostComposer()">Cancel</button>
+        <button class="btn btn-blue btn-sm" onclick="submitPost()">Post to Feed</button>
+      </div>
+    </div>
+  `;
+}
+function toggleJobFields(){
+  document.getElementById('jobFields').classList.toggle('hidden', !document.getElementById('postIsJob').checked);
+}
+function submitPost(){
+  if (!currentUser) return openLoginModal();
+  const content = (document.getElementById('postContent').value || '').trim();
+  const isJob = document.getElementById('postIsJob').checked;
+  if (!content) return toast('Please write a post.');
+  if (!blockTextCheck(content)) return;
+  const post = {
+    id: uid('p'),
+    authorId: currentUser.id,
+    authorName: currentUser.name,
+    authorEmoji: currentUser.emoji || '👤',
+    content,
+    isJob,
+    createdAt: new Date().toISOString(),
+    likes: [],
+    status: isJob ? 'open' : undefined
+  };
+  if (isJob){
+    post.jobTitle = (document.getElementById('jobTitle').value || '').trim();
+    post.description = (document.getElementById('jobDescription').value || '').trim();
+    post.rate = Number(document.getElementById('jobRate').value || 0);
+    post.hoursNeeded = Number(document.getElementById('jobHours').value || 0);
+    post.location = (document.getElementById('jobLocation').value || '').trim();
+    if (!post.jobTitle || !post.description || !post.rate || !post.hoursNeeded || !post.location){
+      return toast('Please complete all job fields.');
+    }
+    if (!blockTextCheck(post.description)) return;
+  }
+  const posts = getPosts();
+  posts.unshift(post);
+  savePosts(posts);
+  toast('Posted successfully.');
+  renderCommunity();
+}
+function renderPost(p){
+  const appsCount = getApplications().filter(a => a.postId === p.id).length;
+  const canApply = currentUser && currentUser.role === 'student' && p.isJob;
+  const canManage = currentUser && currentUser.id === p.authorId;
+  const liked = currentUser && (p.likes || []).includes(currentUser.id);
+  return `
+    <div class="card post-card" id="post-${esc(p.id)}" style="${p.isJob ? 'border-left:4px solid var(--orange)' : ''}">
+      <div class="post-header">
+        <div class="post-avatar">${esc(p.authorEmoji || '👤')}</div>
+        <div>
+          <div style="font-weight:800">${esc(p.authorName)} ${p.isJob ? `<span class="post-job-badge">JOB</span>` : ''}</div>
+          <div class="muted small">${timeAgo(p.createdAt)}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">${esc(p.content)}</div>
+      ${p.isJob ? `
+        <div class="card" style="padding:14px;background:#FCFCFF;border-color:#E5E7EB">
+          <div style="font-weight:800;font-size:1.05rem">${esc(p.jobTitle)}</div>
+          <div class="meta-row" style="margin:8px 0">
+            <span>💰 $${esc(p.rate)}/hr</span>
+            <span>⏱️ ${esc(p.hoursNeeded)} hours</span>
+            <span>📍 ${esc(p.location)}</span>
+            <span>${badge(p.status || 'open')}</span>
+          </div>
+          <div class="small">${esc(p.description)}</div>
+          ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
+        </div>
+      ` : ''}
+      <div class="post-footer">
+        <button class="btn btn-outline btn-sm" onclick="toggleLike('${esc(p.id)}')">${liked ? '❤️ Liked' : '🤍 Like'} (${(p.likes||[]).length})</button>
+        ${canApply ? `<button class="btn btn-blue btn-sm" onclick="applyToPost('${esc(p.id)}')">Apply</button>` : ''}
+        ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
+        ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+function toggleLike(postId){
+  if (!currentUser) return openLoginModal();
+  const posts = getPosts();
+  const p = posts.find(x => x.id === postId);
+  if (!p) return;
+  p.likes = p.likes || [];
+  const idx = p.likes.indexOf(currentUser.id);
+  if (idx >= 0) p.likes.splice(idx, 1); else p.likes.push(currentUser.id);
+  savePosts(posts);
+  renderCommunity();
+}
+function editPost(postId){
+  const p = getPosts().find(x => x.id === postId);
+  if (!p) return;
+  openModal('Edit Post', `
+    <div class="field"><label>Post</label><textarea id="editPostContent">${esc(p.content)}</textarea></div>
+    ${p.isJob ? `
+      <div class="field"><label>Job Title</label><input id="editJobTitle" value="${esc(p.jobTitle || '')}"></div>
+      <div class="field"><label>Description</label><textarea id="editJobDescription">${esc(p.description || '')}</textarea></div>
+      <div class="row">
+        <div class="field"><label>Rate</label><input id="editJobRate" type="number" value="${esc(p.rate || '')}"></div>
+        <div class="field"><label>Hours needed</label><input id="editJobHours" type="number" value="${esc(p.hoursNeeded || '')}"></div>
+      </div>
+      <div class="field"><label>Location</label><input id="editJobLocation" value="${esc(p.location || '')}"></div>
+    ` : ''}
+    <button class="btn btn-blue" onclick="savePostEdit('${esc(postId)}')">Save Changes</button>
+  `);
+}
+function savePostEdit(postId){
+  const posts = getPosts();
+  const p = posts.find(x => x.id === postId);
+  if (!p) return;
+  const content = (document.getElementById('editPostContent').value || '').trim();
+  if (!content || !blockTextCheck(content)) return;
+  p.content = content;
+  if (p.isJob){
+    const jobTitle = (document.getElementById('editJobTitle').value || '').trim();
+    const description = (document.getElementById('editJobDescription').value || '').trim();
+    const rate = Number(document.getElementById('editJobRate').value || 0);
+    const hoursNeeded = Number(document.getElementById('editJobHours').value || 0);
+    const location = (document.getElementById('editJobLocation').value || '').trim();
+    if (!jobTitle || !description || !rate || !hoursNeeded || !location) return toast('Please complete all job fields.');
+    if (!blockTextCheck(description)) return;
+    Object.assign(p, { jobTitle, description, rate, hoursNeeded, location });
+  }
+  savePosts(posts);
+  closeModal();
+  toast('Post updated.');
+  if (dashSection === 'myposts') renderDashboard();
+  else renderCommunity();
+}
+function deletePost(postId){
+  if (!confirm('Delete this post?')) return;
+  savePosts(getPosts().filter(p => p.id !== postId));
+  toast('Post deleted.');
+  if (dashSection === 'myposts') renderDashboard();
+  else renderCommunity();
+}
+function applyToPost(postId){
+  if (!currentUser) return openLoginModal();
+  if (currentUser.role !== 'student') return toast('Only students can apply.');
+  const p = getPosts().find(x => x.id === postId);
+  if (!p) return;
+  openModal('Apply to Job', `
+    <div class="warning" style="margin-bottom:14px">Your application will appear in your dashboard under Jobs & Bookings.</div>
+    <div class="field">
+      <label>Your message</label>
+      <textarea id="applyMessage" placeholder="Tell the employer why you are a good fit..."></textarea>
+    </div>
+    <button class="btn btn-blue" onclick="submitApplication('${esc(postId)}')">Submit Application</button>
+  `, '620px');
+}
+function submitApplication(postId){
+  const msg = (document.getElementById('applyMessage').value || '').trim();
+  if (!msg) return toast('Please write a message.');
+  if (!blockTextCheck(msg)) return;
+  const p = getPosts().find(x => x.id === postId);
+  const student = currentStudentProfile();
+  if (!p || !student) return toast('Student profile required.');
+  const apps = getApplications();
+  if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
+    return toast('You already applied to this job.');
+  }
+  apps.push({
+    id: uid('app'),
+    postId,
+    jobTitle: p.jobTitle,
+    employerId: p.authorId,
+    employerName: p.authorName,
+    studentUserId: currentUser.id,
+    studentProfileId: student.id,
+    studentName: currentUser.name,
+    message: msg,
+    rate: p.rate,
+    estimatedHours: p.hoursNeeded,
+    location: p.location,
+    source: 'community_feed',
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  });
+  saveApplications(apps);
+  pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
+  closeModal();
+  toast('Application submitted. Check Dashboard → Jobs & Bookings.');
+}
+
+// ---------- Direct book / offer from profile ----------
+function openBookDirect(studentId){
+  if (!currentUser) return openLoginModal();
+  if (currentUser.role !== 'employer') return toast('Only employers and neighbors can book students.');
+  const s = getStudents().find(x => x.id === studentId);
+  if (!s) return;
+  openModal(`Book / Offer Job to ${s.name}`, `
+    <div class="warning" style="margin-bottom:14px">This creates a direct employer-to-student offer flow similar to Fiverr/Upwork.</div>
+    <div class="field"><label>Job Title</label><input id="directJobTitle" placeholder="e.g. Website updates" /></div>
+    <div class="field"><label>Scope of Work</label><textarea id="directJobScope" placeholder="Describe the work clearly..."></textarea></div>
+    <div class="row">
+      <div class="field"><label>Hourly Rate ($/hr)</label><input id="directJobRate" type="number" min="1" value="${esc(s.rate)}" /></div>
+      <div class="field"><label>Estimated Hours</label><input id="directJobHours" type="number" min="1" placeholder="5" /></div>
+    </div>
+    <div class="field"><label>Location</label><input id="directJobLocation" placeholder="Danville, CA or Remote" /></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-outline" onclick="openDirectMessage('${esc(s.userId)}','${esc(s.name)}')">Message First</button>
+      <button class="btn btn-blue" onclick="sendDirectOffer('${esc(studentId)}')">Offer Job</button>
+    </div>
+  `, '720px');
+}
+function openDirectMessage(userId, name){
+  closeModal();
+  dashSection = 'messages';
+  activeThreadUserId = userId;
+  goDashboard();
+  setTimeout(() => {
+    const input = document.getElementById('msgInput');
+    if (input) input.focus();
+  }, 100);
+}
+function sendDirectOffer(studentId){
+  const title = (document.getElementById('directJobTitle').value || '').trim();
+  const scope = (document.getElementById('directJobScope').value || '').trim();
+  const rate = Number(document.getElementById('directJobRate').value || 0);
+  const hours = Number(document.getElementById('directJobHours').value || 0);
+  const location = (document.getElementById('directJobLocation').value || '').trim();
+  if (!title || !scope || !rate || !hours || !location) return toast('Please complete all fields.');
+  if (!blockTextCheck(scope)) return;
+
+  const s = getStudents().find(x => x.id === studentId);
+  const apps = getApplications();
+  apps.push({
+    id: uid('app'),
+    postId: null,
+    jobTitle: title,
+    employerId: currentUser.id,
+    employerName: currentUser.name,
+    studentUserId: s.userId,
+    studentProfileId: s.id,
+    studentName: s.name,
+    message: scope,
+    rate,
+    estimatedHours: hours,
+    location,
+    source: 'direct_offer',
+    status: 'offer_sent',
+    createdAt: new Date().toISOString()
+  });
+  saveApplications(apps);
+  pushNotif(s.userId, `You received an offer from ${currentUser.name}: "${title}"`, { type:'dashboard', section:'jobs_bookings' });
+  closeModal();
+  toast('Offer sent to student.');
+}
+
+// ---------- Dashboard ----------
+function renderDashboard(){
+  if (!currentUser) return openLoginModal();
+
+  if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','settings'].includes(dashSection)) {
+    dashSection = 'profile';
+  }
+  if (currentUser.role === 'employer' && !['myposts','applicants_projects','messages','settings'].includes(dashSection)) {
+    dashSection = 'myposts';
+  }
+
+  document.getElementById('app').innerHTML = `
+    <div class="dashboard">
+      <div class="sidebar">
+        ${currentUser.role === 'student' ? `
+          <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">👤 My Profile</a>
+          <a href="#" class="${dashSection==='jobs_bookings'?'active':''}" onclick="dashSection='jobs_bookings';renderDashboard();return false;">📋 Jobs & Bookings</a>
+          <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
+          <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
+          <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
+        ` : `
+          <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
+          <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">📋 Applicants & Projects</a>
+          <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
+          <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
+        `}
+      </div>
+      <div class="dash-main" id="dash-main"></div>
+    </div>
+  `;
+
+  const el = document.getElementById('dash-main');
+  if (currentUser.role === 'student'){
+    if (dashSection === 'profile') return renderStudentProfile(el);
+    if (dashSection === 'jobs_bookings') return renderStudentJobsBookings(el);
+    if (dashSection === 'messages') return renderMessages(el);
+    if (dashSection === 'myposts') return renderMyPosts(el);
+    if (dashSection === 'settings') return renderSettings(el);
+  } else {
+    if (dashSection === 'myposts') return renderMyPosts(el);
+    if (dashSection === 'applicants_projects') return renderEmployerApplicantsBookings(el);
+    if (dashSection === 'messages') return renderMessages(el);
+    if (dashSection === 'settings') return renderSettings(el);
+  }
+}
+
+function renderStudentProfile(el){
+  const s = currentStudentProfile();
+  if (!s){
+    el.innerHTML = `<div class="card form-card"><h2 style="margin-top:0">My Profile</h2><div class="muted">No profile found for this test student.</div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="section-title">My Profile</div>
+    <div style="max-width:420px">${renderProfileCard(s)}</div>
+  `;
+}
+
+function renderStudentJobsBookings(el){
+ const projectAppIds = new Set(getProjects().map(p => p.applicationId));
+ const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
+ .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  const projects = getProjects().filter(p => p.studentUserId === currentUser.id)
+    .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+
+  el.innerHTML = `
+    <div class="section-title">Jobs & Bookings</div>
+    <div class="subtabs">
+      <button class="pill ${studentJobsTab==='all'?'active':''}" onclick="studentJobsTab='all';renderDashboard()">All</button>
+      <button class="pill ${studentJobsTab==='jobs'?'active':''}" onclick="studentJobsTab='jobs';renderDashboard()">Jobs</button>
+      <button class="pill ${studentJobsTab==='projects'?'active':''}" onclick="studentJobsTab='projects';renderDashboard()">Projects</button>
+    </div>
+    <div id="student-jobs-body"></div>
+  `;
+
+  const body = document.getElementById('student-jobs-body');
+  let html = '';
+
+  if (studentJobsTab === 'all' || studentJobsTab === 'jobs'){
+    html += `<div style="font-weight:800;margin-bottom:10px">Applications / Offers</div>`;
+    html += apps.length ? apps.map(a => renderStudentAppCard(a)).join('') : `<div class="card form-card muted">No applications or offers yet.</div>`;
+  }
+
+  if (studentJobsTab === 'all' || studentJobsTab === 'projects'){
+    html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Projects</div>`;
+    html += projects.length ? projects.map(p => renderStudentProjectCard(p)).join('') : `<div class="card form-card muted">No active projects yet.</div>`;
+  }
+
+  body.innerHTML = html;
+}
+function renderStudentAppCard(a){
+  const actions = [];
+  if (a.status === 'offer_sent'){
+    actions.push(`<button class="btn btn-green btn-sm" onclick="acceptOffer('${esc(a.id)}')">Accept</button>`);
+    actions.push(`<button class="btn btn-danger btn-sm" onclick="declineOffer('${esc(a.id)}')">Decline</button>`);
+  }
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.employerId)}')">Message</button>`);
+  return `
+    <div class="card item-card">
+      <div class="split">
+        <div>
+          <div style="font-weight:800">${esc(a.jobTitle)}</div>
+          <div class="muted small">Employer: ${esc(a.employerName)} · ${timeAgo(a.createdAt)}</div>
+          ${a.rate ? `<div class="muted small">Rate: $${esc(a.rate)}/hr · Estimated hours: ${esc(a.estimatedHours || '')}</div>` : ''}
+          <div class="small" style="margin-top:8px">${esc(a.message || '')}</div>
+        ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, the employer can start the project right away.</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          ${badge(a.status)}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function acceptOffer(appId){
+  const apps = getApplications();
+  const a = apps.find(x => x.id === appId);
+  if (!a) return;
+  a.status = 'accepted';
+  saveApplications(apps);
+  pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
+  toast('Offer accepted.');
+  renderDashboard();
+}
+function declineOffer(appId){
+  const apps = getApplications();
+  const a = apps.find(x => x.id === appId);
+  if (!a) return;
+  a.status = 'declined';
+  saveApplications(apps);
+  pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
+  toast('Offer declined.');
+  renderDashboard();
+}
+function renderStudentProjectCard(p){
+ const actions = [];
+ if (p.status === 'in_progress'){
+    actions.push(`<button class="btn btn-blue btn-sm" onclick="openSubmitCompletion('${esc(p.id)}')">Project Completed</button>`);
+ }
+ const agreedPrice = Number(p.agreedPrice || p.estimatedTotal || ((p.rate || 0) * (p.estimatedHours || 0))).toFixed(2);
+ const finalInvoiceSummary = p.actualHours
+   ? `<div class="small">Submitted final hours: ${esc(p.actualHours)} hrs · Subtotal: $${esc(Number(p.finalSubtotal || p.studentPayout || 0).toFixed(2))} · Total due: $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
+   : '';
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.employerId)}')">Message</button>`);
+  return `
+  <div class="card item-card">
+      <div class="split">
+      <div>
+        <div style="font-weight:800">${esc(p.jobTitle)}</div>
+        <div class="muted small">Employer: ${esc(p.employerName)}</div>
+        <div class="small" style="margin-top:8px">Agreed: ${esc(p.estimatedHours)} hrs at $${esc(p.rate)}/hr · Total: $${esc(agreedPrice)}</div>
+        ${p.changeRequestNote ? `<div class="warning" style="margin-top:10px">Employer requested changes: ${esc(p.changeRequestNote)}</div>` : ''}
+        ${finalInvoiceSummary}
+        ${p.contractHtml ? `<div class="contract-box small">${p.contractHtml}</div>` : ''}
+      </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          ${badge(p.status)}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function openSubmitCompletion(projectId){
+  const p = getProjects().find(x => x.id === projectId);
+  if (!p) return;
+  const snapshot = p.projectSnapshot || {
+    title: p.jobTitle,
+    description: p.scope || p.description || '',
+    rate: p.rate,
+    location: p.location || '',
+    estimatedHours: p.estimatedHours
+  };
+  openModal('Project Completion Form', `
+    <div class="warning" style="margin-bottom:14px">
+      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and the final total will update automatically before employer approval.
+    </div>
+    <div class="field"><label>Job Title</label><input value="${esc(snapshot.title || '')}" readonly></div>
+    <div class="field"><label>Job Description</label><textarea readonly>${esc(snapshot.description || '')}</textarea></div>
+    <div class="row">
+      <div class="field"><label>Hourly Rate</label><input value="$${esc(snapshot.rate || 0)}/hr" readonly></div>
+      <div class="field"><label>Location</label><input value="${esc(snapshot.location || '')}" readonly></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Hours Worked</label><input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')"></div>
+      <div class="field"><label>Total</label><input id="finalInvoiceTotal" value="$${esc(money((p.estimatedHours || 0) * (p.rate || 0)))}" readonly></div>
+    </div>
+    <button class="btn btn-blue" onclick="submitFinalInvoice('${esc(projectId)}')">Complete Project</button>
+  `, '620px');
+}
+function updateCompletionPreview(projectId){
+  const p = getProjects().find(x => x.id === projectId);
+  if (!p) return;
+  const hours = Number(document.getElementById('finalHours').value || 0);
+  const totalInput = document.getElementById('finalInvoiceTotal');
+  if (totalInput) totalInput.value = `$${money(hours * (p.rate || 0))}`;
+}
+function submitFinalInvoice(projectId){
+  const pList = getProjects();
+  const p = pList.find(x => x.id === projectId);
+  if (!p) return;
+  const actualHours = Number(document.getElementById('finalHours').value || 0);
+  if (!actualHours) return toast('Please enter actual hours.');
+  const subtotal = Number((actualHours * p.rate).toFixed(2));
+  const platformFee = Number((subtotal * PLATFORM_FEE_RATE).toFixed(2));
+  const totalDue = Number((subtotal + platformFee).toFixed(2));
+  const studentPayout = subtotal;
+  const snapshot = p.projectSnapshot || {
+    title: p.jobTitle,
+    description: p.scope || p.description || '',
+    rate: p.rate,
+    location: p.location || '',
+    estimatedHours: p.estimatedHours
+  };
+  p.actualHours = actualHours;
+  p.finalSubtotal = subtotal;
+  p.studentPayout = studentPayout;
+  p.platformFee = platformFee;
+  p.cogoFee = platformFee;
+  p.finalTotal = totalDue;
+  p.employerTotal = totalDue;
+  p.finalInvoice = {
+    title: snapshot.title,
+    description: snapshot.description,
+    rate: snapshot.rate,
+    location: snapshot.location,
+    actualHours,
+    subtotal,
+    studentPayout,
+    platformFee,
+    totalDue
+  };
+  p.status = 'awaiting_employer_approval';
+  saveProjects(pList);
+  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
+  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": subtotal $${subtotal.toFixed(2)}, commission $${platformFee.toFixed(2)}, total due $${totalDue.toFixed(2)}.`, p.id);
+  closeModal();
+  toast('Final invoice submitted for employer approval.');
+  renderDashboard();
+}
+
+function renderEmployerCommunityJobs(el){
+  el.innerHTML = `
+    <div class="section-title">Community & Jobs</div>
+    <div class="card form-card">
+      <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..."></textarea></div>
+      <div class="field">
+        <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
+      </div>
+      <div id="empJobFields" class="hidden">
+        <div class="field"><label>Job Title</label><input id="empJobTitle"></div>
+        <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
+        <div class="row">
+          <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
+          <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"></div>
+        </div>
+        <div class="field"><label>Location</label><input id="empJobLocation"></div>
+      </div>
+      <div class="warning" style="margin:10px 0">Contact info is blocked until work is confirmed.</div>
+      <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post to Feed</button>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:10px">How this flow works</div>
+      <div class="small">Post a social update or mark it as a job opportunity. Students apply from the community feed. You review applicants, send an offer, start the project, then confirm final hours and approve the final invoice.</div>
+    </div>
+  `;
+}
+function toggleEmpJobFields(){
+  const fields = document.getElementById('empJobFields');
+  const toggle = document.getElementById('empIsJob');
+  if (!fields || !toggle) return;
+  fields.classList.toggle('hidden', !toggle.checked);
+}
+function submitEmployerDashboardPost(){
+  const content = (document.getElementById('empPostContent').value || '').trim();
+  const isJobToggle = document.getElementById('empIsJob');
+  const isJob = currentUser.role === 'employer' && !!(isJobToggle && isJobToggle.checked);
+  if (!content) return toast('Please write a post.');
+  if (!blockTextCheck(content)) return;
+  const post = {
+    id: uid('p'),
+    authorId: currentUser.id,
+    authorName: currentUser.name,
+    authorEmoji: currentUser.emoji || '🏢',
+    content,
+    isJob,
+    createdAt: new Date().toISOString(),
+    likes: [],
+    status: isJob ? 'open' : undefined
+  };
+  if (isJob){
+    post.jobTitle = (document.getElementById('empJobTitle').value || '').trim();
+    post.description = (document.getElementById('empJobDescription').value || '').trim();
+    post.rate = Number(document.getElementById('empJobRate').value || 0);
+    post.hoursNeeded = Number(document.getElementById('empJobHours').value || 0);
+    post.location = (document.getElementById('empJobLocation').value || '').trim();
+    if (!post.jobTitle || !post.description || !post.rate || !post.hoursNeeded || !post.location) {
+      return toast('Please complete all job fields.');
+    }
+    if (!blockTextCheck(post.description)) return;
+  }
+  const posts = getPosts();
+  posts.unshift(post);
+  savePosts(posts);
+  myPostsTab = 'all';
+  toast('Post saved.');
+  dashSection = 'myposts';
+  renderDashboard();
+}
+
+function renderEmployerMyJobs(el){
+  const posts = getPosts().filter(p => p.authorId === currentUser.id && p.isJob)
+    .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  el.innerHTML = `
+    <div class="section-title">My Jobs</div>
+    ${posts.length ? posts.map(p => {
+      const appsCount = getApplications().filter(a => a.postId === p.id).length;
+      return `
+        <div class="card item-card">
+          <div class="split">
+            <div>
+              <div style="font-weight:800">${esc(p.jobTitle)}</div>
+              <div class="meta-row" style="margin-top:8px">
+                <span>💰 $${esc(p.rate)}/hr</span>
+                <span>⏱️ ${esc(p.hoursNeeded)} hours</span>
+                <span>📍 ${esc(p.location)}</span>
+                <span>${badge(p.status || 'open')}</span>
+              </div>
+              <div class="small" style="margin-top:8px">${esc(p.description)}</div>
+              <div class="small muted" style="margin-top:8px">Applicants: <strong>${appsCount}</strong></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>
+              <button class="btn btn-outline btn-sm" onclick="toggleJobStatus('${esc(p.id)}')">${p.status === 'closed' ? 'Reopen' : 'Close'}</button>
+              <button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('') : `<div class="card form-card muted">No jobs posted yet.</div>`}
+  `;
+}
+function toggleJobStatus(postId){
+  const posts = getPosts();
+  const p = posts.find(x => x.id === postId);
+  if (!p) return;
+  p.status = p.status === 'closed' ? 'open' : 'closed';
+  savePosts(posts);
+  toast('Job status updated.');
+  renderDashboard();
+}
+
+function renderEmployerApplicantsBookings(el){
+ const projectAppIds = new Set(getProjects().map(p => p.applicationId));
+ const myApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
+ .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  const myProjects = getProjects().filter(p => p.employerId === currentUser.id)
+    .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+
+  el.innerHTML = `
+    <div class="section-title">Applicants & Projects</div>
+    <div class="subtabs">
+      <button class="pill ${employerTab==='all'?'active':''}" onclick="employerTab='all';renderDashboard()">All</button>
+      <button class="pill ${employerTab==='applicants'?'active':''}" onclick="employerTab='applicants';renderDashboard()">Applicants</button>
+      <button class="pill ${employerTab==='projects'?'active':''}" onclick="employerTab='projects';renderDashboard()">Projects</button>
+    </div>
+    <div id="employer-body"></div>
+  `;
+
+  let html = '';
+  if (employerTab === 'all' || employerTab === 'applicants'){
+    html += `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers</div>`;
+    html += myApplications.length ? myApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No applicants or offers yet.</div>`;
+  }
+  if (employerTab === 'all' || employerTab === 'projects'){
+    html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Projects</div>`;
+    html += myProjects.length ? myProjects.map(p => renderEmployerProjectCard(p)).join('') : `<div class="card form-card muted">No projects yet.</div>`;
+  }
+  document.getElementById('employer-body').innerHTML = html;
+}
+function renderEmployerAppCard(a){
+  const student = getStudents().find(s => s.userId === a.studentUserId);
+  const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community feed application';
+  const actions = [];
+  if (student) actions.push(`<button class="btn btn-blue btn-sm" onclick="openProfile('${esc(student.id)}')">View Profile</button>`);
+  if (a.postId) actions.push(`<button class="btn btn-outline btn-sm" onclick="openPostFromDashboard('${esc(a.postId)}')">Open Job Post</button>`);
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.studentUserId)}')">Message</button>`);
+  if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
+  if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}')">Start Project</button>`);
+
+  return `
+    <div class="card item-card">
+      <div class="split">
+        <div>
+          <div style="font-weight:800">${esc(a.studentName)} → ${esc(a.jobTitle)}</div>
+          <div class="muted small">${timeAgo(a.createdAt)} · ${a.location ? esc(a.location) : ''}</div>
+          <div class="small muted" style="margin-top:6px">Source: ${esc(sourceLabel)}</div>
+          <div class="small" style="margin-top:8px">${esc(a.message || '')}</div>
+          ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr · ${esc(a.estimatedHours||'')} hours</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          ${badge(a.status)}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function openPostFromDashboard(postId){
+  location.hash = '#/community';
+  renderPage();
+  setTimeout(() => {
+    const el = document.getElementById(`post-${postId}`);
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 100);
+}
+function sendOfferFromApplication(appId){
+  const apps = getApplications();
+  const a = apps.find(x => x.id === appId);
+  if (!a) return;
+  openModal('Send Offer', `
+    <div class="warning" style="margin-bottom:14px">
+      Define the terms clearly. Estimated hours set the initial agreed project value.
+    </div>
+    <div class="field"><label>Job Title</label><input id="offerTitle" value="${esc(a.jobTitle || '')}"></div>
+    <div class="field"><label>Scope / Description</label><textarea id="offerScope">${esc(a.message || '')}</textarea></div>
+    <div class="row">
+      <div class="field"><label>Hourly Rate ($/hr)</label><input id="offerRate" type="number" min="1" value="${esc(a.rate || '')}"></div>
+      <div class="field"><label>Estimated Hours</label><input id="offerHours" type="number" min="1" value="${esc(a.estimatedHours || '')}"></div>
+    </div>
+    <div class="field"><label>Location</label><input id="offerLocation" value="${esc(a.location || '')}"></div>
+    <button class="btn btn-blue" onclick="confirmSendOffer('${esc(appId)}')">Send Offer</button>
+  `, '720px');
+}
+function confirmSendOffer(appId){
+  const apps = getApplications();
+  const a = apps.find(x => x.id === appId);
+  if (!a) return;
+  const title = (document.getElementById('offerTitle').value || '').trim();
+  const scope = (document.getElementById('offerScope').value || '').trim();
+  const rate = Number(document.getElementById('offerRate').value || 0);
+  const hours = Number(document.getElementById('offerHours').value || 0);
+  const location = (document.getElementById('offerLocation').value || '').trim();
+  if (!title || !scope || !rate || !hours || !location) return toast('Please complete all offer fields.');
+  if (!blockTextCheck(scope)) return;
+  Object.assign(a, {
+    jobTitle:title,
+    message:scope,
+    rate,
+    estimatedHours:hours,
+    location,
+    status:'offer_sent'
+  });
+  saveApplications(apps);
+  pushNotif(a.studentUserId, `You have an offer for "${title}"`, { type:'dashboard', section:'jobs_bookings' });
+  closeModal();
+  toast('Offer sent.');
+  renderDashboard();
+}
+function startProject(appId){
+  const apps = getApplications();
+  const a = apps.find(x => x.id === appId);
+  if (!a || a.status !== 'accepted') return toast('Student must accept first.');
+  const projects = getProjects();
+  if (projects.some(p => p.applicationId === appId)) {
+    employerTab = 'projects';
+    toast('Project already started.');
+    return renderDashboard();
+  }
+
+  const estimatedTotal = Number((a.rate * a.estimatedHours).toFixed(2));
+  const paymentAttempt = attemptEscrowAuthorization(a, estimatedTotal);
+  if (!paymentAttempt.success) {
+    openPaymentFailureModal(appId, paymentAttempt.reason);
+    return;
+  }
+  const projectSnapshot = {
+    title: a.jobTitle,
+    description: a.message,
+    rate: a.rate,
+    location: a.location,
+    estimatedHours: a.estimatedHours
+  };
+  const contractHtml = `
+    <div><strong>Work Agreement</strong></div>
+    <div>Title: ${esc(projectSnapshot.title)}</div>
+    <div>Description: ${esc(projectSnapshot.description)}</div>
+    <div>Rate: $${esc(projectSnapshot.rate)}/hr</div>
+    <div>Location: ${esc(projectSnapshot.location)}</div>
+    <div>Estimated hours: ${esc(projectSnapshot.estimatedHours)}</div>
+    <div>Escrow charged on start: $${esc(money(estimatedTotal))}</div>
+    <div>Status: In Progress</div>
+    <div>Final hours may be adjusted and confirmed before payment release.</div>
+  `;
+
+  const projectId = uid('proj');
+  projects.push({
+    id: projectId,
+    project_id: projectId,
+    applicationId: a.id,
+    job_id: a.postId || null,
+    postId: a.postId || null,
+    jobTitle: a.jobTitle,
+    scope: a.message,
+    employer_id: a.employerId,
+    employerId: a.employerId,
+    employerName: a.employerName,
+    student_id: a.studentUserId,
+    studentUserId: a.studentUserId,
+    studentName: a.studentName,
+    rate: a.rate,
+    agreedPrice: estimatedTotal,
+    duration: a.estimatedHours || null,
+    estimatedHours: a.estimatedHours,
+    estimatedTotal,
+    location: a.location,
+    projectSnapshot,
+    escrowAmount: estimatedTotal,
+    escrowStatus: paymentAttempt.escrowStatus || 'held',
+    escrowProvider: paymentAttempt.provider || 'placeholder',
+    status: 'in_progress',
+    contractHtml,
+    createdAt: new Date().toISOString()
+  });
+  a.status = 'project_started';
+  saveApplications(apps);
+  saveProjects(projects);
+  attachMessagesToProject(projectId, a.employerId, a.studentUserId);
+  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Escrow of $${money(estimatedTotal)} is held.`, { type:'dashboard', section:'jobs_bookings' });
+  sendSystemMessage(a.studentUserId, a.studentName, `Project started: escrow of $${money(estimatedTotal)} is held and work is now in progress.`, projectId);
+  employerTab = 'projects';
+  toast('Project started successfully');
+  renderDashboard();
+}
+function renderEmployerProjectCard(p){
+  const actions = [];
+  if (p.status === 'accepted' || p.status === 'funded') actions.push(`<button class="btn btn-blue btn-sm" onclick="activateProject('${esc(p.id)}')">Start Project</button>`);
+  if (p.status === 'awaiting_employer_approval') actions.push(`<button class="btn btn-blue btn-sm" onclick="openEmployerApproval('${esc(p.id)}')">Review Final Invoice</button>`);
+  if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message</button>`);
+  const invoiceSummary = p.actualHours
+    ? `<div class="small">Final invoice: Work subtotal $${esc(Number(p.finalSubtotal || p.studentPayout || 0).toFixed(2))} · CoGo commission $${esc(Number(p.platformFee || 0).toFixed(2))} · Total due $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
+    : '';
+
+  return `
+    <div class="card item-card">
+      <div class="split">
+      <div>
+        <div style="font-weight:800">${esc(p.jobTitle)}</div>
+        <div class="muted small">Student: ${esc(p.studentName)} · Rate: $${esc(p.rate)}/hr</div>
+        <div class="small" style="margin-top:8px">Escrow held: $${esc(money(p.escrowAmount || p.estimatedTotal || 0))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
+        ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
+        ${invoiceSummary}
+        <div class="contract-box small">${p.contractHtml}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          ${badge(p.status)}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function activateProject(projectId){
+  const projects = getProjects();
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  p.status = 'in_progress';
+  p.escrowStatus = 'held';
+  saveProjects(projects);
+
+  const apps = getApplications();
+  const a = apps.find(x => x.id === p.applicationId);
+  if (a) {
+    a.status = 'project_started';
+    saveApplications(apps);
+  }
+
+  pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings' });
+  employerTab = 'projects';
+  toast('Project started successfully');
+  renderDashboard();
+}
+function fundEscrow(projectId){
+  activateProject(projectId);
+}
+function markInProgress(projectId){
+  activateProject(projectId);
+}
+function openEmployerApproval(projectId){
+  const p = getProjects().find(x => x.id === projectId);
+  if (!p) return;
+  const snapshot = p.finalInvoice || p.projectSnapshot || {
+    title: p.jobTitle,
+    description: p.scope || p.description || '',
+    rate: p.rate,
+    location: p.location || ''
+  };
+  const subtotal = Number(p.finalSubtotal || p.studentPayout || ((p.actualHours || 0) * (p.rate || 0))).toFixed(2);
+  const platformFee = Number(p.platformFee || (Number(subtotal) * PLATFORM_FEE_RATE)).toFixed(2);
+  const totalDue = Number(p.finalTotal || (Number(subtotal) + Number(platformFee))).toFixed(2);
+  const escrowHeld = Number(p.escrowAmount || p.estimatedTotal || 0).toFixed(2);
+
+  openModal('Review Final Invoice', `
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:8px">${esc(snapshot.title || p.jobTitle)}</div>
+      <div class="contract-box small" style="margin-bottom:12px">
+        <div><strong>Title:</strong> ${esc(snapshot.title || p.jobTitle)}</div>
+        <div><strong>Description:</strong> ${esc(snapshot.description || p.scope || '')}</div>
+        <div><strong>Rate:</strong> $${esc(snapshot.rate || p.rate)}/hr</div>
+        <div><strong>Location:</strong> ${esc(snapshot.location || p.location || '')}</div>
+        <div><strong>Actual Hours Worked:</strong> ${esc(p.actualHours || 0)}</div>
+      </div>
+      <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
+      <div class="small"><strong>Project subtotal:</strong> $${esc(subtotal)}</div>
+      <div class="small"><strong>CoGo Commission (15%):</strong> $${esc(platformFee)}</div>
+      <div class="small"><strong>Total Due:</strong> $${esc(totalDue)}</div>
+      <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Test mode is active, so approval will always release payment successfully.`}</div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
+        <button class="btn btn-outline" onclick="openRequestChangesModal('${esc(projectId)}')">Request Changes</button>
+      </div>
+    </div>
+  `, '620px');
+}
+function approveFinalInvoice(projectId){
+  const projects = getProjects();
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  p.status = 'completed';
+  p.completedAt = new Date().toISOString();
+  p.escrowStatus = 'released';
+  p.paid = true;
+  p.paymentReleasedAt = new Date().toISOString();
+
+  const agreedLabor = Number(p.agreedPrice || p.estimatedTotal || 0);
+  const baseline = Number((agreedLabor + (agreedLabor * PLATFORM_FEE_RATE)).toFixed(2));
+  const diff = Number((p.finalTotal - baseline).toFixed(2));
+  p.reconciliation = diff === 0
+    ? `Final invoice approved at $${p.finalTotal}.`
+    : diff < 0
+      ? `Final invoice approved at $${p.finalTotal}, which is $${Math.abs(diff).toFixed(2)} below the agreed amount.`
+      : `Final invoice approved at $${p.finalTotal}, which is $${diff.toFixed(2)} above the agreed amount.`;
+
+  const students = getStudents();
+  const student = students.find(s => s.userId === p.studentUserId);
+  if (student) {
+    student.balance = Number((Number(student.balance || 0) + Number(p.studentPayout || 0)).toFixed(2));
+    saveStudents(students);
+  }
+  const finance = getFinance();
+  finance.cogoCommission = Number((Number(finance.cogoCommission || 0) + Number(p.platformFee || 0)).toFixed(2));
+  finance.completedProjects = Number(finance.completedProjects || 0) + 1;
+  saveFinance(finance);
+
+  saveProjects(projects);
+  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project`, { type:'dashboard', section:'applicants_projects' });
+  pushNotif(p.studentUserId, `You received $${money(p.studentPayout || 0)} from ${p.employerName}`, { type:'dashboard', section:'jobs_bookings' });
+  pushAdminCommissionNotification(p);
+  pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects' });
+  closeModal();
+  toast('Payment released and project completed.');
+  renderDashboard();
+}
+function openRequestChangesModal(projectId){
+  openModal('Request Changes', `
+    <div class="field"><label>What should change?</label><textarea id="requestChangesNote" placeholder="Explain what needs to be updated..."></textarea></div>
+    <button class="btn btn-outline" onclick="submitProjectChangeRequest('${esc(projectId)}')">Send Request</button>
+  `, '620px');
+}
+function submitProjectChangeRequest(projectId){
+  const projects = getProjects();
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  const note = (document.getElementById('requestChangesNote').value || '').trim();
+  p.status = 'in_progress';
+  p.changeRequestNote = note;
+  saveProjects(projects);
+  pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings' });
+  sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`, p.id);
+  closeModal();
+  toast('Change request sent to student.');
+  renderDashboard();
+}
+function openReviewModal(projectId){
+  openModal('Leave a Review', `
+    <div class="field"><label>Rating</label><select id="reviewRating"><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></div>
+    <div class="field"><label>Review</label><textarea id="reviewComment" placeholder="Share your feedback..."></textarea></div>
+    <button class="btn btn-blue" onclick="submitReview('${esc(projectId)}')">Submit Review</button>
+  `, '620px');
+}
+function submitReview(projectId){
+  const projects = getProjects();
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+  const students = getStudents();
+  const student = students.find(s => s.userId === p.studentUserId);
+  if (!student) return toast('Student profile not found.');
+  const rating = Number(document.getElementById('reviewRating').value || 5);
+  const comment = (document.getElementById('reviewComment').value || '').trim();
+  student.reviews = student.reviews || [];
+  student.reviews.unshift({ id: uid('review'), reviewerId: currentUser.id, reviewerName: currentUser.name, rating, comment, projectId, createdAt: new Date().toISOString() });
+  p.reviewSubmitted = true;
+  saveStudents(students);
+  saveProjects(projects);
+  pushNotif(p.studentUserId, `${currentUser.name} left you a review`, { type:'dashboard', section:'profile' });
+  closeModal();
+  toast('Review submitted.');
+  renderDashboard();
+}
+
+// ---------- My Posts ----------
+function renderMyPosts(el){
+  const allPosts = getPosts().filter(p => p.authorId === currentUser.id)
+    .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  const posts = myPostsTab === 'social'
+    ? allPosts.filter(p => !p.isJob)
+    : myPostsTab === 'jobs'
+      ? allPosts.filter(p => p.isJob)
+      : allPosts;
+  const canCreateJobs = currentUser.role === 'employer';
+
+  el.innerHTML = `
+    <div class="section-title">My Posts</div>
+    <div class="card form-card">
+      <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..."></textarea></div>
+      ${canCreateJobs ? `
+        <div class="field">
+          <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
+        </div>
+        <div id="empJobFields" class="hidden">
+          <div class="field"><label>Job Title</label><input id="empJobTitle"></div>
+          <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
+          <div class="row">
+            <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
+            <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"></div>
+          </div>
+          <div class="field"><label>Location</label><input id="empJobLocation"></div>
+        </div>
+      ` : ''}
+      <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post</button>
+    </div>
+    <div style="height:16px"></div>
+    <div class="subtabs">
+      <button class="pill ${myPostsTab==='all'?'active':''}" onclick="myPostsTab='all';renderDashboard()">All</button>
+      <button class="pill ${myPostsTab==='social'?'active':''}" onclick="myPostsTab='social';renderDashboard()">Social</button>
+      <button class="pill ${myPostsTab==='jobs'?'active':''}" onclick="myPostsTab='jobs';renderDashboard()">Jobs</button>
+    </div>
+    ${posts.length ? posts.map(renderPost).join('') : `<div class="card form-card muted">No posts in this tab yet.</div>`}
+  `;
+}
+
+// ---------- Messages ----------
+function openThread(userId){
+  dashSection = 'messages';
+  activeThreadUserId = userId;
+  renderDashboard();
+}
+function renderMessages(el){
+  const all = getMessages();
+  const me = currentUser.id;
+  const threads = {};
+
+  all.forEach(m => {
+    const partnerId = m.fromId === me ? m.toId : (m.toId === me ? m.fromId : null);
+    if (!partnerId) return;
+    if (!threads[partnerId] || new Date(m.createdAt) > new Date(threads[partnerId].createdAt)) {
+      threads[partnerId] = {
+        partnerId,
+        partnerName: m.fromId === me ? m.toName : m.fromName,
+        preview: m.content,
+        createdAt: m.createdAt,
+        unread: 0
+      };
+    }
+    if (m.toId === me && !m.read) threads[partnerId].unread++;
+  });
+
+  const threadList = Object.values(threads).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+
+  if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].partnerId;
+
+  el.innerHTML = `
+    <div class="section-title">Messages</div>
+    <div class="msg-shell">
+      <div class="thread-list">
+        ${threadList.length ? threadList.map(t => `
+          <div class="thread ${t.unread ? 'unread' : ''}" onclick="activeThreadUserId='${esc(t.partnerId)}';renderDashboard()">
+            <div style="font-weight:800">${esc(t.partnerName)} ${t.unread ? `<span style="color:#ef4444">•</span>` : ''}</div>
+            <div class="muted small">${esc(t.preview.slice(0,60))}</div>
+          </div>
+        `).join('') : `<div class="form-card muted">No messages yet.</div>`}
+      </div>
+      <div class="thread-view">
+        ${activeThreadUserId ? renderThreadView(activeThreadUserId) : `<div class="form-card muted">Select a conversation.</div>`}
+      </div>
+    </div>
+  `;
+}
+function renderThreadView(userId){
+  const partner = getUserById(userId) || { id:userId, name:'User' };
+  const activeProject = getProjectForUsers(currentUser.id, userId);
+  const all = getMessages();
+  let changed = false;
+  all.forEach(m => {
+    if (m.toId === currentUser.id && m.fromId === userId && !m.read){
+      m.read = true;
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveMessages(all);
+    renderNav();
+  }
+
+  const partnerMsgs = all
+    .filter(m => (m.fromId === currentUser.id && m.toId === userId) || (m.fromId === userId && m.toId === currentUser.id));
+  const msgs = (activeProject
+    ? partnerMsgs.filter(m => m.projectId === activeProject.id)
+    : partnerMsgs)
+    .sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
+
+  return `
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${esc(partner.name)}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Project thread: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
+    <div class="messages" id="messages-box">
+      ${msgs.length ? msgs.map(m => `
+        <div class="bubble ${m.fromId === currentUser.id ? 'mine' : 'theirs'}">
+          ${esc(m.content)}
+          <div style="font-size:.7rem;opacity:.7;margin-top:6px">${timeAgo(m.createdAt)}</div>
+        </div>
+      `).join('') : `<div class="muted small">No messages yet. Say hello.</div>`}
+    </div>
+    <div class="warning" style="margin:0 12px 8px">${activeProject ? 'This conversation is now locked to the active project thread.' : 'Phone numbers and email addresses are blocked until work is confirmed.'}</div>
+    <div class="msg-compose">
+      <input id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}">
+      <button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button>
+    </div>
+  `;
+}
+function sendMessageToActive(){
+  if (!activeThreadUserId) return;
+  const input = document.getElementById('msgInput');
+  const content = (input.value || '').trim();
+  if (!content) return;
+  if (!blockTextCheck(content)) return;
+  const partner = getUserById(activeThreadUserId) || { id:activeThreadUserId, name:'User' };
+  const activeProject = getProjectForUsers(currentUser.id, partner.id);
+  const msgs = getMessages();
+  msgs.push({
+    id: uid('m'),
+    fromId: currentUser.id,
+    fromName: currentUser.name,
+    toId: partner.id,
+    toName: partner.name,
+    content,
+    projectId: activeProject ? activeProject.id : null,
+    createdAt: new Date().toISOString(),
+    read: false
+  });
+  saveMessages(msgs);
+  pushNotif(partner.id, `${currentUser.name} sent you a message`, { type:'thread', userId: currentUser.id });
+  input.value = '';
+  renderDashboard();
+}
+function sendSystemMessage(toId, toName, content, projectId=null){
+  const msgs = getMessages();
+  msgs.push({
+    id: uid('m'),
+    fromId: currentUser.id,
+    fromName: currentUser.name,
+    toId,
+    toName,
+    content,
+    projectId,
+    createdAt: new Date().toISOString(),
+    read: false
+  });
+  saveMessages(msgs);
+}
+
+// ---------- Settings ----------
+function renderSettings(el){
+  const paymentMethod = getEmployerPaymentMethod(currentUser.id);
+  el.innerHTML = `
+    <div class="section-title">Settings</div>
+    <div class="card form-card" style="max-width:620px">
+      <div class="field"><label>Email</label><input id="setEmail" value="${esc(currentUser.email || '')}"></div>
+      <div class="field"><label>Password</label><input id="setPassword" type="password" placeholder="Leave blank to keep current"></div>
+      ${currentUser.role === 'employer' ? `
+        <div class="warning" style="margin-bottom:14px">Employer accounts in this test flow always keep a card on file before a project can start.</div>
+        <div class="field"><label>Payment Method</label><input value="${paymentMethod ? esc(paymentMethod.brand + ' •••• ' + paymentMethod.last4) : 'Visa •••• 4242'}" readonly></div>
+        <button class="btn btn-outline" style="margin-bottom:12px" onclick="openPaymentMethodModal()">Update Payment Method</button>
+      ` : ''}
+      <button class="btn btn-blue" onclick="saveSettings()">Save Changes</button>
+    </div>
+  `;
+}
+function saveSettings(){
+  const users = getUsers();
+  const u = users.find(x => x.id === currentUser.id);
+  if (!u) return;
+  const email = (document.getElementById('setEmail').value || '').trim();
+  const pwd = document.getElementById('setPassword').value || '';
+  if (!email.includes('@')) return toast('Please enter a valid email.');
+  u.email = email;
+  if (pwd) u.password = pwd;
+  saveUsers(users);
+  setCurrentUser(u);
+  toast('Settings saved.');
+}
+
+// ---------- Init ----------
+seedData();
+loadCurrentUser();
+renderPage();
+</script>
+</body>
+</html>
