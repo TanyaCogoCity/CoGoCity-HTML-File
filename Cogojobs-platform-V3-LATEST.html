@@ -1584,7 +1584,10 @@ function openSubmitCompletion(projectId){
       <div class="field"><label>Location</label><input value="${esc(snapshot.location || '')}" readonly></div>
     </div>
     <div class="row">
-      <div class="field"><label>Hours Worked</label><input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#eef6ff;border-color:#bfdbfe"></div>
+      <div class="field">
+        <label>Hours Worked <span class="small" style="color:#2563eb;font-weight:700">(editable)</span></label>
+        <input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#e0f2fe;border:2px solid #60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.12)">
+      </div>
       <div class="field"><label>Total</label><input id="finalInvoiceTotal" value="$${esc(money((p.estimatedHours || 0) * (p.rate || 0)))}" readonly></div>
     </div>
     <button class="btn btn-blue" onclick="submitFinalInvoice('${esc(projectId)}')">Complete Project</button>
