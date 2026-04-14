@@ -196,6 +196,7 @@ let studentJobsTab = 'all';
 let employerTab = 'all';
 let myPostsTab = 'all';
 let activeThreadUserId = null;
+let avatarMenuOpen = false;
 const PLATFORM_FEE_RATE = 0.15;
 const STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
@@ -236,16 +237,16 @@ function seedData(){
   if (ls('cogo_seeded_v2')) return;
 
   const users = [
-    { id:'u_student_test', email:'student@cogocity.com', password:'student123', name:'Test Student', role:'student', emoji:'🎓' },
-    { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', name:'Test Employer', role:'employer', type:'business', emoji:'🏢', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
-    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', name:'Test Neighbor', role:'employer', type:'neighbor', emoji:'🏠', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true }
+    { id:'u_student_test', email:'student@cogocity.com', password:'student123', name:'Daniel', role:'student', emoji:'🎓' },
+    { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', name:'Ilya', role:'employer', type:'business', emoji:'🏢', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
+    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', name:'Tanya', role:'employer', type:'neighbor', emoji:'🏠', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true }
   ];
 
   const students = [
     {
       id:'s_test_main',
       userId:'u_student_test',
-      name:'Test Student',
+      name:'Daniel',
       age:17,
       school:'San Ramon Valley High',
       location:'Danville, CA',
@@ -293,7 +294,7 @@ function seedData(){
     {
       id:'p_seed_1',
       authorId:'u_neighbor_test',
-      authorName:'Test Neighbor',
+      authorName:'Tanya',
       authorEmoji:'🏠',
       content:'Need help setting up for a small birthday party this Saturday.',
       isJob:true,
@@ -309,7 +310,7 @@ function seedData(){
     {
       id:'p_seed_2',
       authorId:'u_employer_test',
-      authorName:'Test Employer',
+      authorName:'Ilya',
       authorEmoji:'🏢',
       content:'Looking for a student to help with simple website updates for a few hours.',
       isJob:true,
@@ -325,7 +326,7 @@ function seedData(){
     {
       id:'p_seed_social',
       authorId:'s_test_main',
-      authorName:'Test Student',
+      authorName:'Daniel',
       authorEmoji:'🎓',
       content:'Excited to be on CoGo City and ready to help with tutoring and local projects.',
       isJob:false,
@@ -397,13 +398,58 @@ function tagLabel(t){
 function badge(status){
   return `<span class="badge badge-${esc(status)}">${esc(String(status).replaceAll('_',' '))}</span>`;
 }
+function currentStudentProfiles(includeArchived=false){
+  if (!currentUser || currentUser.role !== 'student') return [];
+  const profiles = getStudents().filter(s => s.userId === currentUser.id);
+  return includeArchived ? profiles : profiles.filter(s => s.status !== 'archived');
+}
 function currentStudentProfile(){
-  return currentUser && currentUser.role === 'student'
-    ? getStudents().find(s => s.userId === currentUser.id)
-    : null;
+  if (!currentUser || currentUser.role !== 'student') return null;
+  const profiles = currentStudentProfiles();
+  const activeId = ls('cogo_active_student_profile');
+  const active = profiles.find(s => s.id === activeId);
+  const fallback = active || profiles.find(s => s.status === 'live') || profiles[0] || null;
+  if (fallback && fallback.id !== activeId) ls('cogo_active_student_profile', fallback.id);
+  return fallback;
 }
 function getUserById(id){ return getUsers().find(u => u.id === id); }
-function getStudentByUserId(userId){ return getStudents().find(s => s.userId === userId); }
+function getStudentByUserId(userId){ return getStudents().find(s => s.userId === userId && s.status !== 'archived'); }
+function setActiveStudentProfile(profileId){
+  ls('cogo_active_student_profile', profileId);
+  toast('Active profile updated.');
+  renderDashboard();
+}
+function goToAddProfile(){
+  dashSection = 'profile';
+  goDashboard();
+  setTimeout(() => openStudentProfileForm(), 80);
+}
+function toggleAvatarMenu(){
+  avatarMenuOpen = !avatarMenuOpen;
+  renderNav();
+}
+function openDashboardFromMenu(){
+  avatarMenuOpen = false;
+  goDashboard();
+}
+function signOutFromMenu(){
+  avatarMenuOpen = false;
+  signOut();
+}
+function goToPostJob(){
+  dashSection = 'myposts';
+  goDashboard();
+  setTimeout(() => {
+    const input = document.getElementById('empPostContent');
+    if (input) input.focus();
+    const toggle = document.getElementById('empIsJob');
+    if (toggle && !toggle.checked) {
+      toggle.checked = true;
+      toggleEmpJobFields();
+      syncJobDescriptionFromPost();
+    }
+  }, 80);
+}
 function pushNotif(userId, title, action=''){
   const items = getNotifications(userId);
   items.unshift({ id: uid('n'), title, action, read:false, createdAt:new Date().toISOString() });
@@ -519,6 +565,7 @@ function pushAdminCommissionNotification(project){
 }
 function setCurrentUser(u){
   currentUser = u;
+  avatarMenuOpen = false;
   ls('cogo_current_user', u);
   renderNav();
 }
@@ -561,15 +608,31 @@ function renderNav(){
 
   const unreadMsgs = getMessages().filter(m => m.toId === currentUser.id && !m.read).length;
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read).length;
+  const primaryButton = currentUser.role === 'student'
+    ? `<button class="btn btn-blue btn-sm" onclick="goToAddProfile()">Add Profile</button>`
+    : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">Post a Job</button>`;
+  const avatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '👤';
   nav.innerHTML = `
-    <button class="btn btn-outline btn-sm" onclick="goDashboard()">Dashboard</button>
+    ${primaryButton}
     <button class="btn btn-outline btn-sm" onclick="openNotifications()">
       🔔${unreadNotifs ? ` (${unreadNotifs})` : ''}
     </button>
     <button class="btn btn-outline btn-sm" onclick="dashSection='messages';goDashboard()">
       ✉️${unreadMsgs ? ` (${unreadMsgs})` : ''}
     </button>
-    <button class="btn btn-navy btn-sm" onclick="signOut()">Sign Out</button>
+    <div style="position:relative">
+      <button class="btn btn-outline btn-sm" onclick="toggleAvatarMenu()" style="gap:10px">
+        <span style="width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--light);font-weight:800">${esc(avatarLabel)}</span>
+        <span>${esc(firstName(currentUser.name))}</span>
+      </button>
+      ${avatarMenuOpen ? `
+        <div class="card" style="position:absolute;right:0;top:44px;min-width:170px;padding:10px;z-index:30">
+          <div class="small muted" style="padding:4px 8px 8px">Signed in as ${esc(firstName(currentUser.name))}</div>
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
+          <button class="btn btn-outline btn-sm" style="width:100%" onclick="signOutFromMenu()">Sign Out</button>
+        </div>
+      ` : ''}
+    </div>
   `;
 }
 function openNotifications(){
@@ -764,6 +827,7 @@ function submitStudentSignup(){
   students.unshift(newStudent);
   saveUsers(users);
   saveStudents(students);
+  ls('cogo_active_student_profile', studentId);
   setCurrentUser(newUser);
   closeModal();
   toast('Student account created.');
@@ -808,6 +872,7 @@ function submitEmployerSignup(type){
 }
 function signOut(){
   currentUser = null;
+  avatarMenuOpen = false;
   localStorage.removeItem('cogo_current_user');
   activeThreadUserId = null;
   renderNav();
@@ -1094,6 +1159,7 @@ function applyToPost(postId){
   if (currentUser.role !== 'student') return toast('Only students can apply.');
   const p = getPosts().find(x => x.id === postId);
   if (!p) return;
+  if (!currentStudentProfile()) return goToAddProfile();
   openModal('Apply to Job', `
     <div class="warning" style="margin-bottom:14px">Your application will appear in your dashboard under Jobs & Bookings.</div>
     <div class="field">
@@ -1124,6 +1190,7 @@ function submitApplication(postId){
     studentProfileId: student.id,
     studentName: currentUser.name,
     message: msg,
+    jobDescription: p.description,
     rate: p.rate,
     estimatedHours: p.hoursNeeded,
     location: p.location,
@@ -1249,15 +1316,119 @@ function renderDashboard(){
 }
 
 function renderStudentProfile(el){
-  const s = currentStudentProfile();
-  if (!s){
-    el.innerHTML = `<div class="card form-card"><h2 style="margin-top:0">My Profile</h2><div class="muted">No profile found for this test student.</div></div>`;
-    return;
-  }
+  const profiles = currentStudentProfiles(true).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const liveProfiles = profiles.filter(p => p.status !== 'archived');
+  const activeProfile = currentStudentProfile();
   el.innerHTML = `
-    <div class="section-title">My Profile</div>
-    <div style="max-width:420px">${renderProfileCard(s)}</div>
+    <div class="split" style="margin-bottom:16px">
+      <div class="section-title" style="margin:0">My Profiles</div>
+      <button class="btn btn-blue btn-sm" onclick="openStudentProfileForm()">Add New Profile</button>
+    </div>
+    ${liveProfiles.length ? liveProfiles.map(p => renderStudentProfileManagerCard(p, activeProfile && activeProfile.id === p.id)).join('') : `<div class="card form-card muted">No live profiles yet. Add one to appear in Browse Students.</div>`}
+    ${profiles.some(p => p.status === 'archived') ? `<div class="small muted" style="margin-top:12px">Deleted profiles are hidden from the public feed and kept in storage for admin access.</div>` : ''}
   `;
+}
+function renderStudentProfileManagerCard(profile, isActive){
+  return `
+    <div class="card item-card">
+      <div class="split">
+        <div style="max-width:720px">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="font-weight:800">${esc(profile.name)}</div>
+            ${isActive ? `<span class="badge badge-active">active profile</span>` : ''}
+          </div>
+          <div class="muted small">${esc(profile.title || '')}</div>
+          <div class="small" style="margin-top:8px">${esc((profile.about || [])[0] || '')}</div>
+          <div class="small muted" style="margin-top:8px">$${esc(profile.rate || 0)}/hr · ${esc(profile.location || '')}</div>
+          <div class="small muted" style="margin-top:8px">Reviews: ${esc((profile.reviews || []).length)}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+          ${!isActive ? `<button class="btn btn-outline btn-sm" onclick="setActiveStudentProfile('${esc(profile.id)}')">Use This Profile</button>` : ''}
+          <button class="btn btn-outline btn-sm" onclick="openStudentProfileForm('${esc(profile.id)}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteStudentProfile('${esc(profile.id)}')">Delete</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function openStudentProfileForm(profileId=''){
+  const profile = profileId ? getStudents().find(s => s.id === profileId) : null;
+  openModal(profile ? 'Edit Profile' : 'Add New Profile', `
+    <div class="field"><label>Profile Name</label><input id="studentProfileName" value="${esc(profile?.name || currentUser?.name || '')}"></div>
+    <div class="row">
+      <div class="field"><label>Age</label><input id="studentProfileAge" type="number" min="13" max="25" value="${esc(profile?.age || '')}"></div>
+      <div class="field"><label>School</label><input id="studentProfileSchool" value="${esc(profile?.school || '')}"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>City</label><input id="studentProfileCity" value="${esc((profile?.location || '').replace(', CA',''))}"></div>
+      <div class="field"><label>Hourly Rate</label><input id="studentProfileRate" type="number" min="1" value="${esc(profile?.rate || 20)}"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Emoji</label><input id="studentProfileEmoji" value="${esc(profile?.emoji || '🎓')}"></div>
+      <div class="field"><label>Tags (comma separated)</label><input id="studentProfileTags" value="${esc((profile?.tags || []).join(', '))}"></div>
+    </div>
+    <div class="field"><label>Headline</label><input id="studentProfileTitle" value="${esc(profile?.title || '')}"></div>
+    <div class="field"><label>Services (comma separated)</label><textarea id="studentProfileServices">${esc((profile?.services || []).join(', '))}</textarea></div>
+    <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc((profile?.about || []).join('\n'))}</textarea></div>
+    <div class="field"><label>Why Hire Me</label><textarea id="studentProfileWhyHire">${esc((profile?.whyHire || []).join('\n'))}</textarea></div>
+    <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc((profile?.highlights || []).join('\n'))}</textarea></div>
+    <div class="field"><label>Availability</label><input id="studentProfileAvailability" value="${esc(profile?.availability || '')}"></div>
+    <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profileId)}')">Save Profile</button>
+  `, '720px');
+}
+function saveStudentProfileForm(profileId=''){
+  const students = getStudents();
+  const existing = profileId ? students.find(s => s.id === profileId) : null;
+  const name = (document.getElementById('studentProfileName').value || '').trim();
+  const city = (document.getElementById('studentProfileCity').value || '').trim();
+  const title = (document.getElementById('studentProfileTitle').value || '').trim();
+  if (!name || !city || !title) return toast('Name, city, and headline are required.');
+  const payload = {
+    id: existing?.id || uid('s'),
+    userId: currentUser.id,
+    name,
+    age: Number(document.getElementById('studentProfileAge').value || 0) || (existing?.age || 17),
+    school: (document.getElementById('studentProfileSchool').value || '').trim(),
+    location: city.includes(',') ? city : `${city}, CA`,
+    emoji: (document.getElementById('studentProfileEmoji').value || '').trim() || existing?.emoji || '🎓',
+    title,
+    tags: (document.getElementById('studentProfileTags').value || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+    services: (document.getElementById('studentProfileServices').value || '').split(',').map(s => s.trim()).filter(Boolean),
+    about: (document.getElementById('studentProfileAbout').value || '').split('\n').map(s => s.trim()).filter(Boolean),
+    whyHire: (document.getElementById('studentProfileWhyHire').value || '').split('\n').map(s => s.trim()).filter(Boolean),
+    highlights: (document.getElementById('studentProfileHighlights').value || '').split('\n').map(s => s.trim()).filter(Boolean),
+    rate: Number(document.getElementById('studentProfileRate').value || 0) || (existing?.rate || 20),
+    reviews: existing?.reviews || [],
+    balance: existing?.balance || 0,
+    availability: (document.getElementById('studentProfileAvailability').value || '').trim() || existing?.availability || 'Weekday afternoons · Weekends',
+    status: 'live',
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const next = existing ? students.map(s => s.id === profileId ? Object.assign({}, s, payload) : s) : [payload, ...students];
+  saveStudents(next);
+  ls('cogo_active_student_profile', payload.id);
+  closeModal();
+  toast(existing ? 'Profile updated.' : 'Profile created.');
+  renderDashboard();
+}
+function deleteStudentProfile(profileId){
+  const students = getStudents();
+  const target = students.find(s => s.id === profileId);
+  if (!target) return;
+  const liveCount = students.filter(s => s.userId === currentUser.id && s.status !== 'archived').length;
+  if (liveCount <= 1) return toast('Keep at least one live profile on the account.');
+  if (!confirm('Remove this profile from the public feed?')) return;
+  target.status = 'archived';
+  target.archivedAt = new Date().toISOString();
+  saveStudents(students);
+  const activeProfile = currentStudentProfile();
+  if (activeProfile && activeProfile.id === profileId) {
+    const fallback = students.find(s => s.userId === currentUser.id && s.status !== 'archived' && s.id !== profileId);
+    if (fallback) ls('cogo_active_student_profile', fallback.id);
+  }
+  toast('Profile removed from public view.');
+  renderDashboard();
 }
 
 function renderStudentJobsBookings(el){
@@ -1294,6 +1465,7 @@ function renderStudentJobsBookings(el){
 }
 function renderStudentAppCard(a){
   const actions = [];
+  const displayDescription = a.source === 'community_feed' ? (a.jobDescription || a.message || '') : (a.message || '');
   if (a.status === 'offer_sent'){
     actions.push(`<button class="btn btn-green btn-sm" onclick="acceptOffer('${esc(a.id)}')">Accept</button>`);
     actions.push(`<button class="btn btn-danger btn-sm" onclick="declineOffer('${esc(a.id)}')">Decline</button>`);
@@ -1306,7 +1478,7 @@ function renderStudentAppCard(a){
           <div style="font-weight:800">${esc(a.jobTitle)}</div>
           <div class="muted small">Employer: ${esc(a.employerName)} · ${timeAgo(a.createdAt)}</div>
           ${a.rate ? `<div class="muted small">Rate: $${esc(a.rate)}/hr · Estimated hours: ${esc(a.estimatedHours || '')}</div>` : ''}
-          <div class="small" style="margin-top:8px">${esc(a.message || '')}</div>
+          <div class="small" style="margin-top:8px">${esc(displayDescription)}</div>
         ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, the employer can start the project right away.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -1476,6 +1648,14 @@ function toggleEmpJobFields(){
   const toggle = document.getElementById('empIsJob');
   if (!fields || !toggle) return;
   fields.classList.toggle('hidden', !toggle.checked);
+  if (toggle.checked) syncJobDescriptionFromPost(true);
+}
+function syncJobDescriptionFromPost(force=false){
+  const postInput = document.getElementById('empPostContent');
+  const jobToggle = document.getElementById('empIsJob');
+  const jobDescription = document.getElementById('empJobDescription');
+  if (!postInput || !jobDescription || !jobToggle || !jobToggle.checked) return;
+  if (force || !jobDescription.value.trim()) jobDescription.value = postInput.value || '';
 }
 function submitEmployerDashboardPost(){
   const content = (document.getElementById('empPostContent').value || '').trim();
@@ -1629,7 +1809,7 @@ function sendOfferFromApplication(appId){
       Define the terms clearly. Estimated hours set the initial agreed project value.
     </div>
     <div class="field"><label>Job Title</label><input id="offerTitle" value="${esc(a.jobTitle || '')}"></div>
-    <div class="field"><label>Scope / Description</label><textarea id="offerScope">${esc(a.message || '')}</textarea></div>
+    <div class="field"><label>Scope / Description</label><textarea id="offerScope">${esc(a.jobDescription || a.message || '')}</textarea></div>
     <div class="row">
       <div class="field"><label>Hourly Rate ($/hr)</label><input id="offerRate" type="number" min="1" value="${esc(a.rate || '')}"></div>
       <div class="field"><label>Estimated Hours</label><input id="offerHours" type="number" min="1" value="${esc(a.estimatedHours || '')}"></div>
@@ -1713,6 +1893,7 @@ function startProject(appId){
     employerName: a.employerName,
     student_id: a.studentUserId,
     studentUserId: a.studentUserId,
+    studentProfileId: a.studentProfileId || null,
     studentName: a.studentName,
     rate: a.rate,
     agreedPrice: estimatedTotal,
@@ -1900,7 +2081,7 @@ function submitReview(projectId){
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   const students = getStudents();
-  const student = students.find(s => s.userId === p.studentUserId);
+  const student = students.find(s => s.id === p.studentProfileId) || students.find(s => s.userId === p.studentUserId && s.status !== 'archived');
   if (!student) return toast('Student profile not found.');
   const rating = Number(document.getElementById('reviewRating').value || 5);
   const comment = (document.getElementById('reviewComment').value || '').trim();
@@ -1909,7 +2090,7 @@ function submitReview(projectId){
   p.reviewSubmitted = true;
   saveStudents(students);
   saveProjects(projects);
-  pushNotif(p.studentUserId, `${currentUser.name} left you a review`, { type:'dashboard', section:'profile' });
+  pushNotif(p.studentUserId, `${currentUser.name} left a review on your ${student.title || 'student'} profile`, { type:'dashboard', section:'profile' });
   closeModal();
   toast('Review submitted.');
   renderDashboard();
@@ -1929,7 +2110,7 @@ function renderMyPosts(el){
   el.innerHTML = `
     <div class="section-title">My Posts</div>
     <div class="card form-card">
-      <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..."></textarea></div>
+      <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..." oninput="syncJobDescriptionFromPost()"></textarea></div>
       ${canCreateJobs ? `
         <div class="field">
           <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
