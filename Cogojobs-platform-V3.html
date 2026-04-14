@@ -194,6 +194,7 @@ let currentUser = null;
 let dashSection = 'profile';
 let studentJobsTab = 'all';
 let employerTab = 'all';
+let myPostsTab = 'all';
 let activeThreadUserId = null;
 const PLATFORM_FEE_RATE = 0.15;
 const STRIPE_ENABLED = false;
@@ -510,7 +511,7 @@ function pushAdminCommissionNotification(project){
   items.unshift({
     id: uid('n'),
     title: `You received $${money(commission)} commission from project ${project.jobTitle}`,
-    action: { type:'dashboard', section:'applicants_bookings', projectId: project.id },
+    action: { type:'dashboard', section:'applicants_projects', projectId: project.id },
     read:false,
     createdAt:new Date().toISOString()
   });
@@ -553,8 +554,7 @@ function renderNav(){
 
   if (!currentUser){
     nav.innerHTML = `
-      <button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In</button>
-      <button class="btn btn-navy btn-sm" onclick="openLoginModal()">Use Test Users</button>
+      <button class="btn btn-navy btn-sm" onclick="openLoginModal()">Sign In / Sign Up</button>
     `;
     return;
   }
@@ -607,31 +607,87 @@ function runNotifAction(id){
 }
 
 // ---------- Auth ----------
-function openLoginModal(){
-  openModal('Sign In with Test Users', `
-    <div class="warning" style="margin-bottom:16px">
-      AI helper is intentionally disabled for now. All text fields are manual test fields.
-    </div>
-    <div class="card form-card">
-      <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="email"></div>
-      <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="password"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
-        <button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>
+function openLoginModal(tab='signin'){
+  const authTab = tab || 'signin';
+  let content = '';
+
+  if (authTab === 'signin') {
+    content = `
+      <div class="warning" style="margin-bottom:16px">
+        AI helper is intentionally disabled for now. All text fields are manual test fields.
       </div>
-      <div class="small muted" style="margin-top:10px">Reset restores the seeded test users, passwords, and sample data for this browser.</div>
-    </div>
-    <div style="height:14px"></div>
-    <div class="card form-card">
-      <div style="font-weight:800;margin-bottom:10px">Quick test logins</div>
-      <div class="small muted" style="margin-bottom:12px">One tap signs you in instantly.</div>
-      <div class="grid" style="grid-template-columns:1fr;gap:10px">
-        <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student — student@cogocity.com</button>
-        <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer — ilya@cogocity.com</button>
-        <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor — tanya@cogocity.com</button>
+      <div class="card form-card">
+        <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="email"></div>
+        <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="password"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
+          <button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>
+        </div>
+        <div class="small muted" style="margin-top:10px">Reset restores the seeded test users, passwords, and sample data for this browser.</div>
       </div>
+      <div style="height:14px"></div>
+      <div class="card form-card">
+        <div style="font-weight:800;margin-bottom:10px">Quick test logins</div>
+        <div class="small muted" style="margin-bottom:12px">One tap signs you in instantly.</div>
+        <div class="grid" style="grid-template-columns:1fr;gap:10px">
+          <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student — student@cogocity.com</button>
+          <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer — ilya@cogocity.com</button>
+          <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor — tanya@cogocity.com</button>
+        </div>
+      </div>
+    `;
+  } else if (authTab === 'student') {
+    content = `
+      <div class="card form-card">
+        <div class="field"><label>Full Name</label><input id="studentSignupName" placeholder="Your name"></div>
+        <div class="row">
+          <div class="field"><label>Age</label><input id="studentSignupAge" type="number" min="13" max="25" placeholder="17"></div>
+          <div class="field"><label>School</label><input id="studentSignupSchool" placeholder="School name"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>City</label><input id="studentSignupCity" placeholder="Danville"></div>
+          <div class="field"><label>Hourly Rate</label><input id="studentSignupRate" type="number" min="1" value="20"></div>
+        </div>
+        <div class="field"><label>Headline</label><input id="studentSignupTitle" placeholder="Reliable student helper"></div>
+        <div class="field"><label>Availability</label><input id="studentSignupAvailability" placeholder="Weekday afternoons · Weekends"></div>
+        <div class="field"><label>Email</label><input id="studentSignupEmail" type="email" placeholder="your@email.com"></div>
+        <div class="field"><label>Password</label><input id="studentSignupPassword" type="password" placeholder="••••••••"></div>
+        <button class="btn btn-blue" style="width:100%" onclick="submitStudentSignup()">Create Student Account</button>
+      </div>
+    `;
+  } else {
+    const type = authTab === 'neighbor' ? 'neighbor' : 'business';
+    const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
+    const emoji = type === 'neighbor' ? '🏠' : '🏢';
+    content = `
+      <div class="card form-card">
+        <div class="warning" style="margin-bottom:14px">${label} signup requires a payment method so projects can start immediately in the test flow.</div>
+        <div class="field"><label>${label} Name</label><input id="${type}SignupName" placeholder="Your name"></div>
+        ${type === 'business' ? `<div class="field"><label>Business Name</label><input id="businessSignupCompany" placeholder="Business name"></div>` : ''}
+        <div class="row">
+          <div class="field"><label>City</label><input id="${type}SignupCity" placeholder="Danville"></div>
+          <div class="field"><label>Emoji</label><input id="${type}SignupEmoji" value="${emoji}"></div>
+        </div>
+        <div class="field"><label>Email</label><input id="${type}SignupEmail" type="email" placeholder="your@email.com"></div>
+        <div class="field"><label>Password</label><input id="${type}SignupPassword" type="password" placeholder="••••••••"></div>
+        <div class="row">
+          <div class="field"><label>Card Brand</label><input id="${type}SignupCardBrand" value="Visa"></div>
+          <div class="field"><label>Card Last 4</label><input id="${type}SignupCardLast4" maxlength="4" value="4242"></div>
+        </div>
+        <button class="btn btn-blue" style="width:100%" onclick="submitEmployerSignup('${type}')">Create ${label} Account</button>
+      </div>
+    `;
+  }
+
+  openModal('Welcome to CoGo City', `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="pill ${authTab==='signin'?'active':''}" onclick="openLoginModal('signin')">Sign In</button>
+      <button class="pill ${authTab==='student'?'active':''}" onclick="openLoginModal('student')">Join as Student</button>
+      <button class="pill ${authTab==='employer'?'active':''}" onclick="openLoginModal('employer')">Join as Employer</button>
+      <button class="pill ${authTab==='neighbor'?'active':''}" onclick="openLoginModal('neighbor')">Join as Neighbor</button>
     </div>
-  `, '680px');
+    ${content}
+  `, '760px');
 }
 function fillLogin(email, password){
   document.getElementById('loginEmail').value = email;
@@ -662,9 +718,93 @@ function doLogin(){
   setCurrentUser(user);
   closeModal();
   toast(`Welcome back, ${firstName(user.name)}!`);
-  if (user.role === 'student') dashSection = 'jobs_bookings';
-  else dashSection = 'community_jobs';
-  goDashboard();
+  location.hash = '#/';
+  renderPage();
+}
+function submitStudentSignup(){
+  const name = (document.getElementById('studentSignupName').value || '').trim();
+  const email = (document.getElementById('studentSignupEmail').value || '').trim().toLowerCase();
+  const password = document.getElementById('studentSignupPassword').value || '';
+  const city = (document.getElementById('studentSignupCity').value || '').trim();
+  const school = (document.getElementById('studentSignupSchool').value || '').trim();
+  const title = (document.getElementById('studentSignupTitle').value || '').trim();
+  const age = Number(document.getElementById('studentSignupAge').value || 0);
+  const rate = Number(document.getElementById('studentSignupRate').value || 20);
+  const availability = (document.getElementById('studentSignupAvailability').value || '').trim();
+  if (!name || !email || !password || !city) return toast('Please complete the required student signup fields.');
+  if (age && (age < 13 || age > 25)) return toast('Student signup is for ages 13 to 25.');
+  const users = getUsers();
+  if (users.some(u => (u.email || '').toLowerCase() === email)) return toast('Email already registered. Please sign in.');
+  const students = getStudents();
+  const userId = uid('u');
+  const studentId = uid('s');
+  const newUser = { id:userId, email, password, name, role:'student', emoji:'🎓', createdAt:new Date().toISOString() };
+  const newStudent = {
+    id:studentId,
+    userId,
+    name,
+    age: age || 17,
+    school,
+    location: city.includes(',') ? city : `${city}, CA`,
+    emoji:'🎓',
+    title: title || 'Reliable Student Helper',
+    tags:['tutoring'],
+    services:[],
+    about:[`Hi, I'm ${name} and excited to help with local projects.`],
+    whyHire:['Friendly','Reliable','Motivated'],
+    highlights:[],
+    rate: rate || 20,
+    reviews:[],
+    balance:0,
+    availability: availability || 'Weekday afternoons · Weekends',
+    status:'live',
+    createdAt:new Date().toISOString()
+  };
+  users.push(newUser);
+  students.unshift(newStudent);
+  saveUsers(users);
+  saveStudents(students);
+  setCurrentUser(newUser);
+  closeModal();
+  toast('Student account created.');
+  location.hash = '#/';
+  renderPage();
+}
+function submitEmployerSignup(type){
+  const prefix = type === 'neighbor' ? 'neighbor' : 'business';
+  const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
+  const name = (document.getElementById(`${prefix}SignupName`).value || '').trim();
+  const city = (document.getElementById(`${prefix}SignupCity`).value || '').trim();
+  const emoji = (document.getElementById(`${prefix}SignupEmoji`).value || (type === 'neighbor' ? '🏠' : '🏢')).trim() || (type === 'neighbor' ? '🏠' : '🏢');
+  const email = (document.getElementById(`${prefix}SignupEmail`).value || '').trim().toLowerCase();
+  const password = document.getElementById(`${prefix}SignupPassword`).value || '';
+  const brand = (document.getElementById(`${prefix}SignupCardBrand`).value || '').trim();
+  const last4 = (document.getElementById(`${prefix}SignupCardLast4`).value || '').trim();
+  const company = type === 'business' ? (document.getElementById('businessSignupCompany').value || '').trim() : '';
+  if (!name || !email || !password || !city || !brand || last4.length !== 4) return toast(`Please complete the required ${label.toLowerCase()} signup fields.`);
+  const users = getUsers();
+  if (users.some(u => (u.email || '').toLowerCase() === email)) return toast('Email already registered. Please sign in.');
+  const newUser = {
+    id:uid('u'),
+    email,
+    password,
+    name,
+    role:'employer',
+    type,
+    emoji,
+    city,
+    company,
+    paymentMethod:{ status:'valid', brand, last4 },
+    paymentSetupComplete:true,
+    createdAt:new Date().toISOString()
+  };
+  users.push(newUser);
+  saveUsers(users);
+  setCurrentUser(newUser);
+  closeModal();
+  toast(`${label} account created.`);
+  location.hash = '#/';
+  renderPage();
 }
 function signOut(){
   currentUser = null;
@@ -696,7 +836,7 @@ function renderHome(){
       <h1>Find Trusted Local Student Help</h1>
  <p>Test the full CoGo City student, employer, and neighbor flow in one file: profiles, community feed, applications, offers, projects, hours, invoices, messages, and approvals.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-blue" onclick="openLoginModal()">Sign In with Test Users</button>
+        <button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>
         <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Feed</button>
       </div>
     </section>
@@ -879,7 +1019,7 @@ function renderPost(p){
             <span>${badge(p.status || 'open')}</span>
           </div>
           <div class="small">${esc(p.description)}</div>
-          ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_bookings';goDashboard()">${appsCount}</strong></div>` : ''}
+          ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
         </div>
       ` : ''}
       <div class="post-footer">
@@ -939,13 +1079,15 @@ function savePostEdit(postId){
   savePosts(posts);
   closeModal();
   toast('Post updated.');
-  renderCommunity();
+  if (dashSection === 'myposts') renderDashboard();
+  else renderCommunity();
 }
 function deletePost(postId){
   if (!confirm('Delete this post?')) return;
   savePosts(getPosts().filter(p => p.id !== postId));
   toast('Post deleted.');
-  renderCommunity();
+  if (dashSection === 'myposts') renderDashboard();
+  else renderCommunity();
 }
 function applyToPost(postId){
   if (!currentUser) return openLoginModal();
@@ -982,11 +1124,15 @@ function submitApplication(postId){
     studentProfileId: student.id,
     studentName: currentUser.name,
     message: msg,
+    rate: p.rate,
+    estimatedHours: p.hoursNeeded,
+    location: p.location,
+    source: 'community_feed',
     status: 'pending',
     createdAt: new Date().toISOString()
   });
   saveApplications(apps);
-  pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_bookings' });
+  pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
   closeModal();
   toast('Application submitted. Check Dashboard → Jobs & Bookings.');
 }
@@ -1061,10 +1207,10 @@ function renderDashboard(){
   if (!currentUser) return openLoginModal();
 
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','settings'].includes(dashSection)) {
-    dashSection = 'jobs_bookings';
+    dashSection = 'profile';
   }
-  if (currentUser.role === 'employer' && !['community_jobs','my_jobs','applicants_bookings','messages','settings'].includes(dashSection)) {
-    dashSection = 'community_jobs';
+  if (currentUser.role === 'employer' && !['myposts','applicants_projects','messages','settings'].includes(dashSection)) {
+    dashSection = 'myposts';
   }
 
   document.getElementById('app').innerHTML = `
@@ -1077,9 +1223,8 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : `
-          <a href="#" class="${dashSection==='community_jobs'?'active':''}" onclick="dashSection='community_jobs';renderDashboard();return false;">📢 Community & Jobs</a>
-          <a href="#" class="${dashSection==='my_jobs'?'active':''}" onclick="dashSection='my_jobs';renderDashboard();return false;">💼 My Jobs</a>
-          <a href="#" class="${dashSection==='applicants_bookings'?'active':''}" onclick="dashSection='applicants_bookings';renderDashboard();return false;">📋 Applicants & Bookings</a>
+          <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
+          <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">📋 Applicants & Projects</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         `}
@@ -1096,9 +1241,8 @@ function renderDashboard(){
     if (dashSection === 'myposts') return renderMyPosts(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else {
-    if (dashSection === 'community_jobs') return renderEmployerCommunityJobs(el);
-    if (dashSection === 'my_jobs') return renderEmployerMyJobs(el);
-    if (dashSection === 'applicants_bookings') return renderEmployerApplicantsBookings(el);
+    if (dashSection === 'myposts') return renderMyPosts(el);
+    if (dashSection === 'applicants_projects') return renderEmployerApplicantsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
     if (dashSection === 'settings') return renderSettings(el);
   }
@@ -1179,7 +1323,7 @@ function acceptOffer(appId){
   if (!a) return;
   a.status = 'accepted';
   saveApplications(apps);
-  pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_bookings' });
+  pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
   toast('Offer accepted.');
   renderDashboard();
 }
@@ -1189,7 +1333,7 @@ function declineOffer(appId){
   if (!a) return;
   a.status = 'declined';
   saveApplications(apps);
-  pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_bookings' });
+  pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
   toast('Offer declined.');
   renderDashboard();
 }
@@ -1200,7 +1344,7 @@ function renderStudentProjectCard(p){
  }
  const agreedPrice = Number(p.agreedPrice || p.estimatedTotal || ((p.rate || 0) * (p.estimatedHours || 0))).toFixed(2);
  const finalInvoiceSummary = p.actualHours
-   ? `<div class="small">Submitted final hours: ${esc(p.actualHours)} hrs · Total payment: $${esc(Number(p.finalTotal || 0).toFixed(2))} · Awaiting employer approval</div>`
+   ? `<div class="small">Submitted final hours: ${esc(p.actualHours)} hrs · Subtotal: $${esc(Number(p.finalSubtotal || p.studentPayout || 0).toFixed(2))} · Total due: $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
    : '';
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.employerId)}')">Message</button>`);
   return `
@@ -1262,9 +1406,10 @@ function submitFinalInvoice(projectId){
   if (!p) return;
   const actualHours = Number(document.getElementById('finalHours').value || 0);
   if (!actualHours) return toast('Please enter actual hours.');
-  const totalPayment = Number((actualHours * p.rate).toFixed(2));
-  const platformFee = Number((totalPayment * PLATFORM_FEE_RATE).toFixed(2));
-  const studentPayout = totalPayment;
+  const subtotal = Number((actualHours * p.rate).toFixed(2));
+  const platformFee = Number((subtotal * PLATFORM_FEE_RATE).toFixed(2));
+  const totalDue = Number((subtotal + platformFee).toFixed(2));
+  const studentPayout = subtotal;
   const snapshot = p.projectSnapshot || {
     title: p.jobTitle,
     description: p.scope || p.description || '',
@@ -1273,26 +1418,27 @@ function submitFinalInvoice(projectId){
     estimatedHours: p.estimatedHours
   };
   p.actualHours = actualHours;
+  p.finalSubtotal = subtotal;
   p.studentPayout = studentPayout;
   p.platformFee = platformFee;
   p.cogoFee = platformFee;
-  p.finalTotal = totalPayment;
-  p.employerTotal = totalPayment;
+  p.finalTotal = totalDue;
+  p.employerTotal = totalDue;
   p.finalInvoice = {
     title: snapshot.title,
     description: snapshot.description,
     rate: snapshot.rate,
     location: snapshot.location,
     actualHours,
-    subtotal: totalPayment,
+    subtotal,
     studentPayout,
     platformFee,
-    totalPayment
+    totalDue
   };
   p.status = 'awaiting_employer_approval';
   saveProjects(pList);
-  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}"`, { type:'dashboard', section:'applicants_bookings' });
-  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": ${actualHours} hrs, total payment $${totalPayment.toFixed(2)}.`, p.id);
+  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
+  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": subtotal $${subtotal.toFixed(2)}, commission $${platformFee.toFixed(2)}, total due $${totalDue.toFixed(2)}.`, p.id);
   closeModal();
   toast('Final invoice submitted for employer approval.');
   renderDashboard();
@@ -1326,11 +1472,15 @@ function renderEmployerCommunityJobs(el){
   `;
 }
 function toggleEmpJobFields(){
-  document.getElementById('empJobFields').classList.toggle('hidden', !document.getElementById('empIsJob').checked);
+  const fields = document.getElementById('empJobFields');
+  const toggle = document.getElementById('empIsJob');
+  if (!fields || !toggle) return;
+  fields.classList.toggle('hidden', !toggle.checked);
 }
 function submitEmployerDashboardPost(){
   const content = (document.getElementById('empPostContent').value || '').trim();
-  const isJob = document.getElementById('empIsJob').checked;
+  const isJobToggle = document.getElementById('empIsJob');
+  const isJob = currentUser.role === 'employer' && !!(isJobToggle && isJobToggle.checked);
   if (!content) return toast('Please write a post.');
   if (!blockTextCheck(content)) return;
   const post = {
@@ -1358,9 +1508,10 @@ function submitEmployerDashboardPost(){
   const posts = getPosts();
   posts.unshift(post);
   savePosts(posts);
-  toast('Posted to feed.');
-  location.hash = '#/community';
-  renderPage();
+  myPostsTab = 'all';
+  toast('Post saved.');
+  dashSection = 'myposts';
+  renderDashboard();
 }
 
 function renderEmployerMyJobs(el){
@@ -1413,7 +1564,7 @@ function renderEmployerApplicantsBookings(el){
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
   el.innerHTML = `
-    <div class="section-title">Applicants & Bookings</div>
+    <div class="section-title">Applicants & Projects</div>
     <div class="subtabs">
       <button class="pill ${employerTab==='all'?'active':''}" onclick="employerTab='all';renderDashboard()">All</button>
       <button class="pill ${employerTab==='applicants'?'active':''}" onclick="employerTab='applicants';renderDashboard()">Applicants</button>
@@ -1424,8 +1575,8 @@ function renderEmployerApplicantsBookings(el){
 
   let html = '';
   if (employerTab === 'all' || employerTab === 'applicants'){
-    html += `<div style="font-weight:800;margin-bottom:10px">Applicants</div>`;
-    html += myApplications.length ? myApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No applicants yet.</div>`;
+    html += `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers</div>`;
+    html += myApplications.length ? myApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No applicants or offers yet.</div>`;
   }
   if (employerTab === 'all' || employerTab === 'projects'){
     html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Projects</div>`;
@@ -1435,8 +1586,10 @@ function renderEmployerApplicantsBookings(el){
 }
 function renderEmployerAppCard(a){
   const student = getStudents().find(s => s.userId === a.studentUserId);
+  const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community feed application';
   const actions = [];
   if (student) actions.push(`<button class="btn btn-blue btn-sm" onclick="openProfile('${esc(student.id)}')">View Profile</button>`);
+  if (a.postId) actions.push(`<button class="btn btn-outline btn-sm" onclick="openPostFromDashboard('${esc(a.postId)}')">Open Job Post</button>`);
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.studentUserId)}')">Message</button>`);
   if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
   if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}')">Start Project</button>`);
@@ -1447,6 +1600,7 @@ function renderEmployerAppCard(a){
         <div>
           <div style="font-weight:800">${esc(a.studentName)} → ${esc(a.jobTitle)}</div>
           <div class="muted small">${timeAgo(a.createdAt)} · ${a.location ? esc(a.location) : ''}</div>
+          <div class="small muted" style="margin-top:6px">Source: ${esc(sourceLabel)}</div>
           <div class="small" style="margin-top:8px">${esc(a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr · ${esc(a.estimatedHours||'')} hours</div>` : ''}
         </div>
@@ -1457,6 +1611,14 @@ function renderEmployerAppCard(a){
       </div>
     </div>
   `;
+}
+function openPostFromDashboard(postId){
+  location.hash = '#/community';
+  renderPage();
+  setTimeout(() => {
+    const el = document.getElementById(`post-${postId}`);
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 100);
 }
 function sendOfferFromApplication(appId){
   const apps = getApplications();
@@ -1583,7 +1745,7 @@ function renderEmployerProjectCard(p){
   if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message</button>`);
   const invoiceSummary = p.actualHours
-    ? `<div class="small">Final invoice: ${esc(p.actualHours)} hrs · Total payment $${esc(Number(p.finalTotal || 0).toFixed(2))} · CoGo commission $${esc(Number(p.platformFee || 0).toFixed(2))}</div>`
+    ? `<div class="small">Final invoice: Work subtotal $${esc(Number(p.finalSubtotal || p.studentPayout || 0).toFixed(2))} · CoGo commission $${esc(Number(p.platformFee || 0).toFixed(2))} · Total due $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
     : '';
 
   return `
@@ -1640,8 +1802,9 @@ function openEmployerApproval(projectId){
     rate: p.rate,
     location: p.location || ''
   };
-  const totalPayment = Number(p.finalTotal || ((p.actualHours || 0) * (p.rate || 0))).toFixed(2);
-  const platformFee = Number(p.platformFee || (Number(totalPayment) * PLATFORM_FEE_RATE)).toFixed(2);
+  const subtotal = Number(p.finalSubtotal || p.studentPayout || ((p.actualHours || 0) * (p.rate || 0))).toFixed(2);
+  const platformFee = Number(p.platformFee || (Number(subtotal) * PLATFORM_FEE_RATE)).toFixed(2);
+  const totalDue = Number(p.finalTotal || (Number(subtotal) + Number(platformFee))).toFixed(2);
   const escrowHeld = Number(p.escrowAmount || p.estimatedTotal || 0).toFixed(2);
 
   openModal('Review Final Invoice', `
@@ -1655,8 +1818,9 @@ function openEmployerApproval(projectId){
         <div><strong>Actual Hours Worked:</strong> ${esc(p.actualHours || 0)}</div>
       </div>
       <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
-      <div class="small"><strong>Total payment:</strong> $${esc(totalPayment)}</div>
-      <div class="small"><strong>CoGo commission (internal):</strong> $${esc(platformFee)}</div>
+      <div class="small"><strong>Project subtotal:</strong> $${esc(subtotal)}</div>
+      <div class="small"><strong>CoGo Commission (15%):</strong> $${esc(platformFee)}</div>
+      <div class="small"><strong>Total Due:</strong> $${esc(totalDue)}</div>
       <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Test mode is active, so approval will always release payment successfully.`}</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
@@ -1676,7 +1840,8 @@ function approveFinalInvoice(projectId){
   p.paymentReleasedAt = new Date().toISOString();
 
   const agreedLabor = Number(p.agreedPrice || p.estimatedTotal || 0);
-  const diff = Number((p.finalTotal - agreedLabor).toFixed(2));
+  const baseline = Number((agreedLabor + (agreedLabor * PLATFORM_FEE_RATE)).toFixed(2));
+  const diff = Number((p.finalTotal - baseline).toFixed(2));
   p.reconciliation = diff === 0
     ? `Final invoice approved at $${p.finalTotal}.`
     : diff < 0
@@ -1695,10 +1860,10 @@ function approveFinalInvoice(projectId){
   saveFinance(finance);
 
   saveProjects(projects);
-  pushNotif(p.employerId, `You paid $${money(p.studentPayout || 0)} to ${p.studentName}`, { type:'dashboard', section:'applicants_bookings' });
+  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project`, { type:'dashboard', section:'applicants_projects' });
   pushNotif(p.studentUserId, `You received $${money(p.studentPayout || 0)} from ${p.employerName}`, { type:'dashboard', section:'jobs_bookings' });
   pushAdminCommissionNotification(p);
-  pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_bookings' });
+  pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects' });
   closeModal();
   toast('Payment released and project completed.');
   renderDashboard();
@@ -1752,11 +1917,42 @@ function submitReview(projectId){
 
 // ---------- My Posts ----------
 function renderMyPosts(el){
-  const posts = getPosts().filter(p => p.authorId === currentUser.id)
+  const allPosts = getPosts().filter(p => p.authorId === currentUser.id)
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  const posts = myPostsTab === 'social'
+    ? allPosts.filter(p => !p.isJob)
+    : myPostsTab === 'jobs'
+      ? allPosts.filter(p => p.isJob)
+      : allPosts;
+  const canCreateJobs = currentUser.role === 'employer';
+
   el.innerHTML = `
     <div class="section-title">My Posts</div>
-    ${posts.length ? posts.map(renderPost).join('') : `<div class="card form-card muted">No posts yet.</div>`}
+    <div class="card form-card">
+      <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..."></textarea></div>
+      ${canCreateJobs ? `
+        <div class="field">
+          <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
+        </div>
+        <div id="empJobFields" class="hidden">
+          <div class="field"><label>Job Title</label><input id="empJobTitle"></div>
+          <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
+          <div class="row">
+            <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
+            <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"></div>
+          </div>
+          <div class="field"><label>Location</label><input id="empJobLocation"></div>
+        </div>
+      ` : ''}
+      <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post</button>
+    </div>
+    <div style="height:16px"></div>
+    <div class="subtabs">
+      <button class="pill ${myPostsTab==='all'?'active':''}" onclick="myPostsTab='all';renderDashboard()">All</button>
+      <button class="pill ${myPostsTab==='social'?'active':''}" onclick="myPostsTab='social';renderDashboard()">Social</button>
+      <button class="pill ${myPostsTab==='jobs'?'active':''}" onclick="myPostsTab='jobs';renderDashboard()">Jobs</button>
+    </div>
+    ${posts.length ? posts.map(renderPost).join('') : `<div class="card form-card muted">No posts in this tab yet.</div>`}
   `;
 }
 
