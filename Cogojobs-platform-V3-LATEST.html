@@ -46,6 +46,8 @@
     .btn-green{background:var(--green);color:#fff}
     .btn-outline{background:#fff;border:1.5px solid var(--navy);color:var(--navy)}
     .btn-danger{background:#fff;border:1.5px solid #dc2626;color:#dc2626}
+    .link-btn{background:none;border:none;padding:0;color:var(--navy);font:inherit;font-weight:800;cursor:pointer;text-decoration:underline}
+    .link-btn:hover{color:var(--blue)}
     main{min-height:calc(100vh - 64px)}
     .hero{
       background:linear-gradient(135deg,var(--navy),var(--blue));
@@ -428,6 +430,11 @@ function toggleAvatarMenu(){
   avatarMenuOpen = !avatarMenuOpen;
   renderNav();
 }
+function closeAvatarMenu(){
+  if (!avatarMenuOpen) return;
+  avatarMenuOpen = false;
+  renderNav();
+}
 function openDashboardFromMenu(){
   avatarMenuOpen = false;
   goDashboard();
@@ -442,12 +449,6 @@ function goToPostJob(){
   setTimeout(() => {
     const input = document.getElementById('empPostContent');
     if (input) input.focus();
-    const toggle = document.getElementById('empIsJob');
-    if (toggle && !toggle.checked) {
-      toggle.checked = true;
-      toggleEmpJobFields();
-      syncJobDescriptionFromPost();
-    }
   }, 80);
 }
 function pushNotif(userId, title, action=''){
@@ -637,13 +638,13 @@ function renderNav(){
     <button class="btn btn-outline btn-sm" onclick="dashSection='messages';goDashboard()">
       ✉️${unreadMsgs ? ` (${unreadMsgs})` : ''}
     </button>
-    <div style="position:relative">
-      <button class="btn btn-outline btn-sm" onclick="toggleAvatarMenu()" style="gap:10px">
+    <div style="position:relative" data-user-menu>
+      <button class="btn btn-outline btn-sm" data-user-menu-toggle onclick="toggleAvatarMenu()" style="gap:10px">
         <span style="width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--light);font-weight:800">${esc(avatarLabel)}</span>
         <span>${esc(firstName(currentUser.name))}</span>
       </button>
       ${avatarMenuOpen ? `
-        <div class="card" style="position:absolute;right:0;top:44px;min-width:170px;padding:10px;z-index:30">
+        <div class="card" style="position:absolute;right:0;top:44px;min-width:170px;padding:10px;z-index:30" onmouseleave="closeAvatarMenu()">
           <div class="small muted" style="padding:4px 8px 8px">Signed in as ${esc(firstName(currentUser.name))}</div>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
           <button class="btn btn-outline btn-sm" style="width:100%" onclick="signOutFromMenu()">Sign Out</button>
@@ -901,6 +902,11 @@ function signOut(){
 function getRoute(){ return location.hash || '#/'; }
 function goDashboard(){ location.hash = '#/dashboard'; renderPage(); }
 window.addEventListener('hashchange', renderPage);
+document.addEventListener('click', (event) => {
+  if (!avatarMenuOpen) return;
+  if (event.target.closest('[data-user-menu]')) return;
+  closeAvatarMenu();
+});
 
 // ---------- Pages ----------
 function renderPage(){
@@ -1575,6 +1581,9 @@ function openSubmitCompletion(projectId){
   };
   openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
+      Once your work is complete, click “Project Completed” to notify the employer. After they review and approve it, you’ll get paid. Do your best, great work leads to great reviews and helps you grow your skills.
+    </div>
+    <div class="small muted" style="margin-bottom:14px">
       The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and the final total will update automatically before employer approval.
     </div>
     <div class="field"><label>Job Title</label><input value="${esc(snapshot.title || '')}" readonly></div>
@@ -1793,11 +1802,9 @@ function renderEmployerApplicantsBookings(el){
   document.getElementById('employer-body').innerHTML = html;
 }
 function renderEmployerAppCard(a){
-  const student = getStudents().find(s => s.userId === a.studentUserId);
+  const student = getStudents().find(s => s.id === a.studentProfileId) || getStudents().find(s => s.userId === a.studentUserId);
   const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community feed application';
   const actions = [];
-  if (student) actions.push(`<button class="btn btn-blue btn-sm" onclick="openProfile('${esc(student.id)}')">View Profile</button>`);
-  if (a.postId) actions.push(`<button class="btn btn-outline btn-sm" onclick="openPostFromDashboard('${esc(a.postId)}')">Open Job Post</button>`);
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.studentUserId)}')">Message</button>`);
   if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
   if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}')">Start Project</button>`);
@@ -1806,10 +1813,14 @@ function renderEmployerAppCard(a){
     <div class="card item-card">
       <div class="split">
         <div>
-          <div style="font-weight:800">${esc(a.studentName)} → ${esc(a.jobTitle)}</div>
-          <div class="muted small">${timeAgo(a.createdAt)} · ${a.location ? esc(a.location) : ''}</div>
+          <div style="font-weight:800;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            ${student ? `<button class="link-btn" onclick="openProfile('${esc(student.id)}')">${esc(a.studentName)}</button>` : `<span>${esc(a.studentName)}</span>`}
+            <span class="muted">→</span>
+            ${a.postId ? `<button class="link-btn" onclick="openPostFromDashboard('${esc(a.postId)}')">${esc(a.jobTitle)}</button>` : `<span>${esc(a.jobTitle)}</span>`}
+          </div>
+          <div class="muted small">${timeAgo(a.createdAt)}${a.location ? ` · ${esc(a.location)}` : ''}</div>
           <div class="small muted" style="margin-top:6px">Source: ${esc(sourceLabel)}</div>
-          <div class="small" style="margin-top:8px">${esc(a.message || '')}</div>
+          <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr · ${esc(a.estimatedHours||'')} hours</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -2099,6 +2110,9 @@ function submitProjectChangeRequest(projectId){
 }
 function openReviewModal(projectId){
   openModal('Leave a Review', `
+    <div class="warning" style="margin-bottom:14px">
+      Please take a moment to leave a review for the student. Your feedback builds their confidence, provides guidance, and is visible to others, helping them grow and build a strong reputation.
+    </div>
     <div class="field"><label>Rating</label><select id="reviewRating"><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></div>
     <div class="field"><label>Review</label><textarea id="reviewComment" placeholder="Share your feedback..."></textarea></div>
     <button class="btn btn-blue" onclick="submitReview('${esc(projectId)}')">Submit Review</button>
