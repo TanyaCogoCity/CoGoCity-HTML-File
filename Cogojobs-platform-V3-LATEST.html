@@ -199,6 +199,9 @@ let employerTab = 'all';
 let myPostsTab = 'all';
 let activeThreadUserId = null;
 let avatarMenuOpen = false;
+let studentSignupStep = 1;
+let studentSignupDraft = null;
+let studentSignupEditingServiceIndex = null;
 const PLATFORM_FEE_RATE = 0.15;
 const STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
@@ -718,24 +721,7 @@ function openLoginModal(tab='signin'){
       </div>
     `;
   } else if (authTab === 'student') {
-    content = `
-      <div class="card form-card">
-        <div class="field"><label>Full Name</label><input id="studentSignupName" placeholder="Your name"></div>
-        <div class="row">
-          <div class="field"><label>Age</label><input id="studentSignupAge" type="number" min="13" max="25" placeholder="17"></div>
-          <div class="field"><label>School</label><input id="studentSignupSchool" placeholder="School name"></div>
-        </div>
-        <div class="row">
-          <div class="field"><label>City</label><input id="studentSignupCity" placeholder="Danville"></div>
-          <div class="field"><label>Hourly Rate</label><input id="studentSignupRate" type="number" min="1" value="20"></div>
-        </div>
-        <div class="field"><label>Headline</label><input id="studentSignupTitle" placeholder="Reliable student helper"></div>
-        <div class="field"><label>Availability</label><input id="studentSignupAvailability" placeholder="Weekday afternoons · Weekends"></div>
-        <div class="field"><label>Email</label><input id="studentSignupEmail" type="email" placeholder="your@email.com"></div>
-        <div class="field"><label>Password</label><input id="studentSignupPassword" type="password" placeholder="••••••••"></div>
-        <button class="btn btn-blue" style="width:100%" onclick="submitStudentSignup()">Create Student Account</button>
-      </div>
-    `;
+    return openStudentSignupWorkflow();
   } else {
     const type = authTab === 'neighbor' ? 'neighbor' : 'business';
     const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
@@ -802,44 +788,438 @@ function doLogin(){
   location.hash = '#/';
   renderPage();
 }
-function submitStudentSignup(){
-  const name = (document.getElementById('studentSignupName').value || '').trim();
-  const email = (document.getElementById('studentSignupEmail').value || '').trim().toLowerCase();
-  const password = document.getElementById('studentSignupPassword').value || '';
-  const city = (document.getElementById('studentSignupCity').value || '').trim();
-  const school = (document.getElementById('studentSignupSchool').value || '').trim();
-  const title = (document.getElementById('studentSignupTitle').value || '').trim();
-  const age = Number(document.getElementById('studentSignupAge').value || 0);
-  const rate = Number(document.getElementById('studentSignupRate').value || 20);
-  const availability = (document.getElementById('studentSignupAvailability').value || '').trim();
-  if (!name || !email || !password || !city) return toast('Please complete the required student signup fields.');
-  if (age && (age < 13 || age > 25)) return toast('Student signup is for ages 13 to 25.');
+function createDefaultStudentSignupDraft(){
+  return {
+    name:'',
+    age:'',
+    school:'',
+    city:'',
+    photo:'',
+    avatar:'',
+    about:'',
+    experience:'',
+    services:[],
+    serviceForm:{ title:'', description:'', rate:'20', location:'', availability:'' },
+    email:'',
+    phone:'',
+    address:'',
+    password:'',
+    confirmPassword:'',
+    verificationMode:'test_skip'
+  };
+}
+function getStudentSignupStrength(){
+  const d = studentSignupDraft || createDefaultStudentSignupDraft();
+  const checks = [
+    !!d.name,
+    !!d.age,
+    !!d.school,
+    !!d.city,
+    !!(d.photo || d.avatar),
+    !!d.about,
+    !!d.experience,
+    (d.services || []).length > 0,
+    !!d.email,
+    !!d.phone,
+    !!d.address
+  ];
+  const pct = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  return Math.max(10, pct);
+}
+function getStudentSignupSuggestions(){
+  const d = studentSignupDraft || createDefaultStudentSignupDraft();
+  const suggestions = [];
+  if (!(d.photo || d.avatar)) suggestions.push('Profiles with photos get 3x more requests.');
+  if ((d.about || '').length < 40) suggestions.push('Add more detail to get hired faster.');
+  if (!(d.services || []).length) suggestions.push('Add at least one service before you publish.');
+  if ((d.experience || '').length < 30) suggestions.push('Share a little experience so employers trust your profile faster.');
+  return suggestions.slice(0, 2);
+}
+function openStudentSignupWorkflow(step=1){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  studentSignupStep = step;
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', rate:'20', location:'', availability:'' };
+  renderStudentSignupModal();
+}
+function renderStudentSignupModal(){
+  const strength = getStudentSignupStrength();
+  const suggestions = getStudentSignupSuggestions();
+  const stepTitles = {
+    1:'Basic Info',
+    2:'Profile Photo',
+    3:'About + Experience',
+    4:'Create First Service',
+    5:'Private Contact Info',
+    6:'Preview Profile',
+    7:'Create Account',
+    8:'Email Verification',
+    9:'Submit & Go Live'
+  };
+  const footer = renderStudentSignupFooter();
+  openModal('Student Signup', `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="pill" onclick="openLoginModal('signin')">Sign In</button>
+      <button class="pill active">Join as Student</button>
+      <button class="pill" onclick="openLoginModal('employer')">Join as Employer</button>
+      <button class="pill" onclick="openLoginModal('neighbor')">Join as Neighbor</button>
+    </div>
+    <div class="card form-card" style="margin-bottom:16px">
+      <div class="split" style="align-items:flex-start">
+        <div>
+          <div class="small muted">Step ${studentSignupStep} of 9</div>
+          <div style="font-weight:800;font-size:1.1rem">${esc(stepTitles[studentSignupStep])}</div>
+        </div>
+        <div style="min-width:180px;text-align:right">
+          <div class="small muted">Profile strength</div>
+          <div style="font-weight:800">${strength}% complete</div>
+          <div style="height:8px;background:#e5e7eb;border-radius:999px;margin-top:8px;overflow:hidden">
+            <div style="height:100%;width:${strength}%;background:linear-gradient(90deg,var(--blue),var(--green))"></div>
+          </div>
+        </div>
+      </div>
+      ${suggestions.length ? `<div class="warning" style="margin-top:12px">${suggestions.map(s => `• ${esc(s)}`).join('<br>')}</div>` : ''}
+    </div>
+    ${renderStudentSignupStepContent()}
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px">${footer}</div>
+  `, '900px');
+}
+function renderStudentSignupStepContent(){
+  const d = studentSignupDraft;
+  if (studentSignupStep === 1) return `
+    <div class="card form-card">
+      <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name"></div>
+      <div class="row">
+        <div class="field"><label>Age</label><input id="studentFlowAge" type="number" min="13" max="25" value="${esc(d.age)}" placeholder="17"></div>
+        <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name"></div>
+      </div>
+      <div class="field"><label>City</label><input id="studentFlowCity" value="${esc(d.city)}" placeholder="Danville"></div>
+    </div>
+  `;
+  if (studentSignupStep === 2) return `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Add a profile photo or choose an avatar. You can’t continue without one.</div>
+      <div class="field"><label>Upload Photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
+      <div class="field"><label>Or choose an avatar</label><input id="studentFlowAvatar" value="${esc(d.avatar || '')}" placeholder="🎓"></div>
+      <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
+        ${d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🎓')}</div>`}
+        <div class="small muted">A photo or avatar is required before you can continue.</div>
+      </div>
+    </div>
+  `;
+  if (studentSignupStep === 3) return `
+    <div class="card form-card">
+      <div class="field"><label>About</label><textarea id="studentFlowAbout" placeholder="Tell employers and neighbors about yourself...">${esc(d.about)}</textarea></div>
+      <div class="field"><label>Experience</label><textarea id="studentFlowExperience" placeholder="Share experience, projects, clubs, volunteer work, or strengths...">${esc(d.experience)}</textarea></div>
+    </div>
+  `;
+  if (studentSignupStep === 4) return `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Create your first service before you continue. You can add more than one.</div>
+      ${(d.services || []).length ? `
+        <div style="margin-bottom:16px">
+          <div style="font-weight:800;margin-bottom:10px">Saved Services</div>
+          ${(d.services || []).map((service, index) => `
+            <div class="card item-card" style="margin-bottom:10px">
+              <div class="split">
+                <div>
+                  <div style="font-weight:800">${esc(service.title)}</div>
+                  <div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location)}</div>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button class="btn btn-outline btn-sm" onclick="editStudentSignupService(${index})">Edit</button>
+                  <button class="btn btn-danger btn-sm" onclick="removeStudentSignupService(${index})">Delete</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      <div style="font-weight:800;margin-bottom:10px">${studentSignupEditingServiceIndex === null ? 'Create Service' : 'Edit Service'}</div>
+      <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper"></div>
+      <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?">${esc((d.serviceForm || {}).description || '')}</textarea></div>
+      <div class="row">
+        <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}"></div>
+        <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA"></div>
+      </div>
+      <div class="field"><label>Availability</label><input id="studentFlowServiceAvailability" value="${esc((d.serviceForm || {}).availability || '')}" placeholder="Weekday afternoons · Weekends"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-blue" onclick="saveStudentSignupService()">${studentSignupEditingServiceIndex === null ? 'Save Service' : 'Update Service'}</button>
+        <button class="btn btn-outline" onclick="startNewStudentSignupService()">Add Another Service</button>
+      </div>
+    </div>
+  `;
+  if (studentSignupStep === 5) return `
+    <div class="card form-card">
+      <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com"></div>
+      <div class="field"><label>Phone</label><input id="studentFlowPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555"></div>
+      <div class="field"><label>Address</label><input id="studentFlowAddress" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA"></div>
+    </div>
+  `;
+  if (studentSignupStep === 6) return `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">You’re almost done. This is how others will see your profile.</div>
+      ${renderStudentSignupPreviewHtml()}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+        <button class="btn btn-outline" onclick="goStudentSignupStep(1)">Edit Profile</button>
+        <button class="btn btn-outline" onclick="editStudentSignupService(0)">Edit Service</button>
+        <button class="btn btn-blue" onclick="startNewStudentSignupService();goStudentSignupStep(4)">Add Another Service</button>
+      </div>
+    </div>
+  `;
+  if (studentSignupStep === 7) return `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Create your password last so you only commit once your profile is ready.</div>
+      <div class="field"><label>Create Password</label><input id="studentFlowPassword" type="password" value="${esc(d.password)}" placeholder="••••••••"></div>
+      <div class="field"><label>Confirm Password</label><input id="studentFlowConfirmPassword" type="password" value="${esc(d.confirmPassword)}" placeholder="••••••••"></div>
+    </div>
+  `;
+  if (studentSignupStep === 8) return `
+    <div class="card form-card">
+      <div class="field"><label>Email Verification</label><input value="${esc(d.email)}" readonly></div>
+      <div class="warning">Verification email would be sent here. Test mode skips confirmation, so you can continue.</div>
+    </div>
+  `;
+  return `
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:10px">Ready to go live</div>
+      <div class="small muted" style="margin-bottom:14px">Your student profile will publish to Browse Students and redirect you back home.</div>
+      <div class="card" style="padding:14px;background:#f8fafc">
+        <div style="font-weight:800">${esc(d.name || 'New Student')}</div>
+        <div class="small muted">${esc(d.city || '')} · ${(d.services || []).length} service${(d.services || []).length === 1 ? '' : 's'}</div>
+      </div>
+    </div>
+  `;
+}
+function renderStudentSignupFooter(){
+  const prev = studentSignupStep > 1 ? `<button class="btn btn-outline" onclick="goStudentSignupStep(${studentSignupStep - 1})">Back</button>` : `<span></span>`;
+  if (studentSignupStep === 9) return `${prev}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Submit & Publish Profile</button>`;
+  const nextLabel = studentSignupStep === 8 ? 'Continue' : 'Next';
+  return `${prev}<button class="btn btn-blue" onclick="goStudentSignupStep(${studentSignupStep + 1})">${nextLabel}</button>`;
+}
+function saveStudentSignupStep(step){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  if (step === 1){
+    const name = (document.getElementById('studentFlowName').value || '').trim();
+    const age = Number(document.getElementById('studentFlowAge').value || 0);
+    const school = (document.getElementById('studentFlowSchool').value || '').trim();
+    const city = (document.getElementById('studentFlowCity').value || '').trim();
+    if (!name || !age || !school || !city) return toast('Please complete name, age, school, and city.'), false;
+    if (age < 13 || age > 25) return toast('Student signup is for ages 13 to 25.'), false;
+    Object.assign(studentSignupDraft, { name, age, school, city });
+    return true;
+  }
+  if (step === 2){
+    const avatar = (document.getElementById('studentFlowAvatar').value || '').trim();
+    studentSignupDraft.avatar = avatar || studentSignupDraft.avatar || '🎓';
+    if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
+    return true;
+  }
+  if (step === 3){
+    const about = (document.getElementById('studentFlowAbout').value || '').trim();
+    const experience = (document.getElementById('studentFlowExperience').value || '').trim();
+    if (!about || !experience) return toast('Please complete About and Experience.'), false;
+    Object.assign(studentSignupDraft, { about, experience });
+    return true;
+  }
+  if (step === 4){
+    if (!(studentSignupDraft.services || []).length) return toast('Please save at least one service before continuing.'), false;
+    return true;
+  }
+  if (step === 5){
+    const email = (document.getElementById('studentFlowEmail').value || '').trim().toLowerCase();
+    const phone = (document.getElementById('studentFlowPhone').value || '').trim();
+    const address = (document.getElementById('studentFlowAddress').value || '').trim();
+    if (!email || !phone || !address) return toast('Please complete email, phone, and address.'), false;
+    Object.assign(studentSignupDraft, { email, phone, address });
+    return true;
+  }
+  if (step === 7){
+    const password = document.getElementById('studentFlowPassword').value || '';
+    const confirmPassword = document.getElementById('studentFlowConfirmPassword').value || '';
+    if (!password || password.length < 6) return toast('Please create a password with at least 6 characters.'), false;
+    if (password !== confirmPassword) return toast('Passwords do not match.'), false;
+    Object.assign(studentSignupDraft, { password, confirmPassword });
+    return true;
+  }
+  return true;
+}
+function goStudentSignupStep(targetStep){
+  if (targetStep > studentSignupStep && !saveStudentSignupStep(studentSignupStep)) return;
+  studentSignupStep = Math.max(1, Math.min(9, targetStep));
+  renderStudentSignupModal();
+}
+function handleStudentSignupPhotoUpload(input){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    studentSignupDraft.photo = reader.result;
+    renderStudentSignupModal();
+  };
+  reader.readAsDataURL(file);
+}
+function startNewStudentSignupService(){
+  studentSignupEditingServiceIndex = null;
+  studentSignupDraft.serviceForm = { title:'', description:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  renderStudentSignupModal();
+}
+function editStudentSignupService(index){
+  const service = (studentSignupDraft.services || [])[index];
+  if (!service) return;
+  studentSignupEditingServiceIndex = index;
+  studentSignupDraft.serviceForm = Object.assign({}, service);
+  studentSignupStep = 4;
+  renderStudentSignupModal();
+}
+function removeStudentSignupService(index){
+  studentSignupDraft.services.splice(index, 1);
+  if (!studentSignupDraft.services.length) startNewStudentSignupService();
+  else renderStudentSignupModal();
+}
+function saveStudentSignupService(){
+  const title = (document.getElementById('studentFlowServiceTitle').value || '').trim();
+  const description = (document.getElementById('studentFlowServiceDescription').value || '').trim();
+  const rate = Number(document.getElementById('studentFlowServiceRate').value || 0);
+  const location = (document.getElementById('studentFlowServiceLocation').value || '').trim();
+  const availability = (document.getElementById('studentFlowServiceAvailability').value || '').trim();
+  if (!title || !description || !rate || !location || !availability) return toast('Please complete all required service fields.');
+  const service = {
+    id: studentSignupEditingServiceIndex !== null && studentSignupDraft.services[studentSignupEditingServiceIndex]
+      ? studentSignupDraft.services[studentSignupEditingServiceIndex].id
+      : uid('service'),
+    title,
+    description,
+    rate,
+    location,
+    availability
+  };
+  if (studentSignupEditingServiceIndex !== null) studentSignupDraft.services[studentSignupEditingServiceIndex] = service;
+  else studentSignupDraft.services.push(service);
+  studentSignupEditingServiceIndex = null;
+  studentSignupDraft.serviceForm = { title:'', description:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  toast('Service saved.');
+  renderStudentSignupModal();
+}
+function buildStudentSignupPreviewStudent(){
+  const d = studentSignupDraft;
+  const primaryService = (d.services || [])[0] || {};
+  return {
+    id:'signup_preview',
+    userId:'signup_preview_user',
+    name:d.name,
+    age:d.age,
+    school:d.school,
+    location:d.city ? (String(d.city).includes(',') ? d.city : `${d.city}, CA`) : '',
+    photo:d.photo || '',
+    emoji:d.avatar || '🎓',
+    title:primaryService.title || 'Student Service',
+    tags:[],
+    services:(d.services || []).map(s => Object.assign({}, s)),
+    about:d.about ? [d.about] : [],
+    whyHire:[],
+    highlights:d.experience ? [d.experience] : [],
+    rate:primaryService.rate || 20,
+    reviews:[],
+    balance:0,
+    availability:primaryService.availability || '',
+    status:'preview'
+  };
+}
+function renderServiceDetailBody(service, backButtonHtml=''){
+  return `
+    <div class="card form-card">
+      <div style="font-weight:800;font-size:1.15rem">${esc(service.title || 'Service')}</div>
+      <div class="small muted" style="margin-top:6px">$${esc(service.rate || 0)}/hr · ${esc(service.location || '')}</div>
+      <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
+      <div style="margin-top:14px">${esc(service.description || '')}</div>
+      <div style="margin-top:16px">${backButtonHtml}</div>
+    </div>
+  `;
+}
+function openStudentSignupServicePreview(index){
+  const service = (studentSignupDraft.services || [])[index];
+  if (!service) return;
+  openModal('Service Preview', renderServiceDetailBody(service, `<button class="btn btn-outline" onclick="renderStudentSignupModal()">Back to Preview</button>`), '680px');
+}
+function renderStudentSignupPreviewHtml(){
+  const student = buildStudentSignupPreviewStudent();
+  const services = student.services || [];
+  return `
+    <div class="split" style="align-items:center">
+      <div style="display:flex;gap:14px;align-items:center">
+        ${renderStudentAvatar(student, 72, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
+        <div>
+          <div style="font-size:1.25rem;font-weight:800">${esc(student.name || 'Your Name')}</div>
+          <div class="muted">${esc(student.location || '')}</div>
+        </div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:8px">About</div>
+      <p class="small">${esc((student.about || [])[0] || '')}</p>
+      <div style="font-weight:800;margin:14px 0 8px">Experience</div>
+      <div class="small">${esc((student.highlights || [])[0] || '')}</div>
+      <div style="font-weight:800;margin:14px 0 8px">Services</div>
+      ${services.length ? services.map((service, index) => `
+        <button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentSignupServicePreview(${index})">
+          <div class="split">
+            <div>
+              <div style="font-weight:800">${esc(service.title)}</div>
+              <div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location)}</div>
+            </div>
+            <div class="small muted">View</div>
+          </div>
+        </button>
+      `).join('') : `<div class="small muted">No services yet.</div>`}
+    </div>
+  `;
+}
+function publishStudentSignupProfile(){
+  if (!saveStudentSignupStep(7)) return;
+  const d = studentSignupDraft;
+  if (!(d.services || []).length) return toast('Please add at least one service.');
   const users = getUsers();
-  if (users.some(u => (u.email || '').toLowerCase() === email)) return toast('Email already registered. Please sign in.');
+  if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
   const students = getStudents();
   const userId = uid('u');
   const studentId = uid('s');
-  const newUser = { id:userId, email, password, name, role:'student', emoji:'🎓', createdAt:new Date().toISOString() };
+  const createdAt = new Date().toISOString();
+  const primaryService = d.services[0];
+  const newUser = {
+    id:userId,
+    email:d.email,
+    password:d.password,
+    name:d.name,
+    role:'student',
+    emoji:d.avatar || '🎓',
+    createdAt,
+    verificationStatus:'skipped_test_mode'
+  };
   const newStudent = {
     id:studentId,
     userId,
-    name,
-    age: age || 17,
-    school,
-    location: city.includes(',') ? city : `${city}, CA`,
-    emoji:'🎓',
-    title: title || 'Reliable Student Helper',
-    tags:['tutoring'],
-    services:[],
-    about:[`Hi, I'm ${name} and excited to help with local projects.`],
+    name:d.name,
+    age:Number(d.age) || 17,
+    school:d.school,
+    location:String(d.city || '').includes(',') ? d.city : `${d.city}, CA`,
+    photo:d.photo || '',
+    emoji:d.avatar || '🎓',
+    title:primaryService.title || 'Student Service',
+    tags:[],
+    services:(d.services || []).map(s => Object.assign({}, s)),
+    about:[d.about],
     whyHire:['Friendly','Reliable','Motivated'],
-    highlights:[],
-    rate: rate || 20,
+    highlights:[d.experience],
+    rate:Number(primaryService.rate || 20),
     reviews:[],
     balance:0,
-    availability: availability || 'Weekday afternoons · Weekends',
+    availability:primaryService.availability || '',
     status:'live',
-    createdAt:new Date().toISOString()
+    phone:d.phone,
+    address:d.address,
+    privateEmail:d.email,
+    createdAt
   };
   users.push(newUser);
   students.unshift(newStudent);
@@ -847,8 +1227,10 @@ function submitStudentSignup(){
   saveStudents(students);
   ls('cogo_active_student_profile', studentId);
   setCurrentUser(newUser);
+  studentSignupDraft = null;
+  studentSignupEditingServiceIndex = null;
   closeModal();
-  toast('Student account created.');
+  toast('Student profile published.');
   location.hash = '#/';
   renderPage();
 }
@@ -937,12 +1319,39 @@ function renderHome(){
     </div>
   `;
 }
+function renderStudentAvatar(student, size=54, extraStyle=''){
+  if (student.photo) return `<img src="${esc(student.photo)}" alt="${esc(student.name || 'Student')}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}">`;
+  return `<div class="avatar" style="width:${size}px;height:${size}px;${extraStyle}">${esc(student.emoji || '👤')}</div>`;
+}
+function getRenderableStudentServices(student){
+  const services = (student.services || []).filter(s => s && (s.title || s.description || s.rate || s.location || s.availability));
+  if (services.length) return services;
+  return [{
+    id:'default_service',
+    title: student.title || 'Student Service',
+    description: ((student.about || [])[0] || ''),
+    rate: student.rate || 20,
+    location: student.location || '',
+    availability: student.availability || ''
+  }];
+}
+function openStudentServiceDetail(studentId, serviceId){
+  const student = studentId === 'signup_preview' ? buildStudentSignupPreviewStudent() : getStudents().find(x => x.id === studentId);
+  if (!student) return;
+  const services = getRenderableStudentServices(student);
+  const service = services.find(s => s.id === serviceId) || services[0];
+  if (!service) return;
+  const backButton = studentId === 'signup_preview'
+    ? `<button class="btn btn-outline" onclick="renderStudentSignupModal()">Back to Preview</button>`
+    : `<button class="btn btn-outline" onclick="openProfile('${esc(student.id)}')">Back to Profile</button>`;
+  openModal(service.title || 'Service', renderServiceDetailBody(service, backButton), '680px');
+}
 function renderProfileCard(s){
   const isSelf = currentUser && s.userId === currentUser.id;
   return `
     <div class="card profile-card">
       <div class="profile-top">
-        <div class="avatar">${esc(s.emoji || '👤')}</div>
+        ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
         <div>
           <div style="font-weight:800">${esc(s.name)}, ${esc(s.age)}</div>
           <div style="font-size:.83rem;opacity:.9">${esc(s.title || '')}</div>
@@ -970,10 +1379,11 @@ function openProfile(studentId){
   const s = getStudents().find(x => x.id === studentId);
   if (!s) return;
   const reviews = s.reviews || [];
+  const services = getRenderableStudentServices(s);
   openModal(`${s.name}'s Profile`, `
     <div class="split" style="align-items:center">
       <div style="display:flex;gap:14px;align-items:center">
-        <div class="avatar" style="width:72px;height:72px;font-size:2rem;background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff">${esc(s.emoji||'👤')}</div>
+        ${renderStudentAvatar(s, 72, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
         <div>
           <div style="font-size:1.25rem;font-weight:800">${esc(s.name)}</div>
           <div class="muted">${esc(s.title || '')}</div>
@@ -986,10 +1396,20 @@ function openProfile(studentId){
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:8px">About</div>
       ${(s.about||[]).map(p => `<p class="small">${esc(p)}</p>`).join('')}
-      <div style="font-weight:800;margin:14px 0 8px">Why hire me</div>
-      ${(s.whyHire||[]).map(p => `<div class="small">• ${esc(p)}</div>`).join('')}
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       ${(s.highlights||[]).map(p => `<div class="small">• ${esc(p)}</div>`).join('')}
+      <div style="font-weight:800;margin:14px 0 8px">Services</div>
+      ${services.map((service, index) => `
+        <button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentServiceDetail('${esc(s.id)}','${esc(service.id || ('service_' + index))}')">
+          <div class="split">
+            <div>
+              <div style="font-weight:800">${esc(service.title)}</div>
+              <div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div>
+            </div>
+            <div class="small muted">View</div>
+          </div>
+        </button>
+      `).join('')}
       <div style="font-weight:800;margin:14px 0 8px">Reviews</div>
       ${reviews.length ? reviews.map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${esc(r.comment || '')}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
     </div>
