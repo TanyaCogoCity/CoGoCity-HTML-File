@@ -455,6 +455,23 @@ function pushNotif(userId, title, action=''){
   items.unshift({ id: uid('n'), title, action, read:false, createdAt:new Date().toISOString() });
   saveNotifications(userId, items.slice(0, 50));
 }
+function currentUserRoleLabel(){
+  if (!currentUser) return '';
+  if (currentUser.role === 'student') return 'Student';
+  if (currentUser.type === 'neighbor') return 'Neighbor';
+  return 'Employer';
+}
+function renderUserIdentityBanner(){
+  if (!currentUser) return '';
+  return `
+    <div class="container" style="padding-top:18px;padding-bottom:0">
+      <div class="card" style="padding:12px 16px;background:#f8fafc;border:1px solid var(--border)">
+        <div class="small muted">Signed in as</div>
+        <div style="font-weight:800">${esc(firstName(currentUser.name))} — ${esc(currentUserRoleLabel())}</div>
+      </div>
+    </div>
+  `;
+}
 function money(n){
   return Number(n || 0).toFixed(2);
 }
@@ -607,7 +624,7 @@ function renderNav(){
   }
 
   const unreadMsgs = getMessages().filter(m => m.toId === currentUser.id && !m.read).length;
-  const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read).length;
+  const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
   const primaryButton = currentUser.role === 'student'
     ? `<button class="btn btn-blue btn-sm" onclick="goToAddProfile()">Add Profile</button>`
     : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">Post a Job</button>`;
@@ -636,7 +653,7 @@ function renderNav(){
   `;
 }
 function openNotifications(){
-  const items = getNotifications(currentUser.id);
+  const items = getNotifications(currentUser.id).filter(n => !n.action || n.action.type !== 'thread');
   const html = items.length ? items.map(n => `
     <div class="item-card card">
       <div class="split">
@@ -654,7 +671,7 @@ function openNotifications(){
   renderNav();
 }
 function runNotifAction(id){
-  const items = getNotifications(currentUser.id);
+  const items = getNotifications(currentUser.id).filter(n => !n.action || n.action.type !== 'thread');
   const item = items.find(n => n.id === id);
   if (!item || !item.action) return;
   closeModal();
@@ -897,6 +914,7 @@ function renderPage(){
 function renderHome(){
   const students = getStudents().filter(s => s.status === 'live');
   document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
     <section class="hero">
       <h1>Find Trusted Local Student Help</h1>
  <p>Test the full CoGo City student, employer, and neighbor flow in one file: profiles, community feed, applications, offers, projects, hours, invoices, messages, and approvals.</p>
@@ -980,6 +998,7 @@ function openProfile(studentId){
 function renderCommunity(){
   const posts = getPosts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
     <div class="container feed-wrap">
       <div class="split" style="margin-bottom:18px">
         <div class="section-title" style="margin:0">Community Feed</div>
@@ -1281,6 +1300,7 @@ function renderDashboard(){
   }
 
   document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
     <div class="dashboard">
       <div class="sidebar">
         ${currentUser.role === 'student' ? `
@@ -1479,7 +1499,8 @@ function renderStudentAppCard(a){
           <div class="muted small">Employer: ${esc(a.employerName)} · ${timeAgo(a.createdAt)}</div>
           ${a.rate ? `<div class="muted small">Rate: $${esc(a.rate)}/hr · Estimated hours: ${esc(a.estimatedHours || '')}</div>` : ''}
           <div class="small" style="margin-top:8px">${esc(displayDescription)}</div>
-        ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, the employer can start the project right away.</div>` : ''}
+        ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, ${esc(a.employerName)} can review it and start the project.</div>` : ''}
+        ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">You can’t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to “In Progress” once confirmed.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(a.status)}
@@ -1496,8 +1517,12 @@ function acceptOffer(appId){
   a.status = 'accepted';
   saveApplications(apps);
   pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
-  toast('Offer accepted.');
-  renderDashboard();
+  openModal('Offer Accepted', `
+    <div class="warning">You can’t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to “In Progress” once confirmed.</div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn btn-blue" onclick="closeModal();renderDashboard()">Got it</button>
+    </div>
+  `, '620px');
 }
 function declineOffer(appId){
   const apps = getApplications();
@@ -1559,7 +1584,7 @@ function openSubmitCompletion(projectId){
       <div class="field"><label>Location</label><input value="${esc(snapshot.location || '')}" readonly></div>
     </div>
     <div class="row">
-      <div class="field"><label>Hours Worked</label><input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')"></div>
+      <div class="field"><label>Hours Worked</label><input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#eef6ff;border-color:#bfdbfe"></div>
       <div class="field"><label>Total</label><input id="finalInvoiceTotal" value="$${esc(money((p.estimatedHours || 0) * (p.rate || 0)))}" readonly></div>
     </div>
     <button class="btn btn-blue" onclick="submitFinalInvoice('${esc(projectId)}')">Complete Project</button>
@@ -2090,7 +2115,12 @@ function submitReview(projectId){
   p.reviewSubmitted = true;
   saveStudents(students);
   saveProjects(projects);
-  pushNotif(p.studentUserId, `${currentUser.name} left a review on your ${student.title || 'student'} profile`, { type:'dashboard', section:'profile' });
+  sendSystemMessage(
+    p.studentUserId,
+    p.studentName,
+    `${currentUser.name} left a ${rating}/5 review on your ${student.title || 'student'} profile${comment ? `: ${comment}` : '.'}`,
+    p.id
+  );
   closeModal();
   toast('Review submitted.');
   renderDashboard();
@@ -2245,7 +2275,6 @@ function sendMessageToActive(){
     read: false
   });
   saveMessages(msgs);
-  pushNotif(partner.id, `${currentUser.name} sent you a message`, { type:'thread', userId: currentUser.id });
   input.value = '';
   renderDashboard();
 }
