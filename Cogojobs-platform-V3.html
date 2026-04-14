@@ -196,6 +196,8 @@ let studentJobsTab = 'all';
 let employerTab = 'all';
 let activeThreadUserId = null;
 const PLATFORM_FEE_RATE = 0.15;
+const STRIPE_ENABLED = false;
+const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
 
 // ---------- Storage ----------
 function ls(key, value){
@@ -424,13 +426,31 @@ function logPaymentEvent(event){
 }
 function attemptEscrowAuthorization(application, escrowAmount){
   const employer = getUserById(application.employerId);
-  if (!employer || !hasValidPaymentMethod(application.employerId)) {
-    const reason = 'missing_or_invalid_payment_method';
+  if (!employer) {
+    const reason = 'employer_not_found';
     logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'failed', reason });
     return { success:false, reason };
   }
-  logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'held', mode: 'placeholder_success' });
-  return { success:true, escrowStatus:'held', provider:'placeholder' };
+  if (!hasValidPaymentMethod(application.employerId)) {
+    if (!TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS) {
+      const reason = 'missing_or_invalid_payment_method';
+      logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'failed', reason });
+      return { success:false, reason };
+    }
+    const users = getUsers();
+    const user = users.find(x => x.id === employer.id);
+    if (user) {
+      user.paymentMethod = user.paymentMethod || { status:'valid', brand:'Visa', last4:'4242' };
+      user.paymentMethod.status = 'valid';
+      user.paymentSetupComplete = true;
+      saveUsers(users);
+      if (currentUser && currentUser.id === user.id) setCurrentUser(user);
+    }
+  }
+  const provider = STRIPE_ENABLED ? 'stripe' : 'placeholder';
+  const mode = STRIPE_ENABLED ? 'stripe_manual_capture' : (TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS ? 'placeholder_test_success' : 'placeholder_success');
+  logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'held', mode, provider });
+  return { success:true, escrowStatus:'held', provider };
 }
 function getProjectForUsers(userIdA, userIdB){
   return getProjects().find(p => [p.employerId, p.studentUserId].includes(userIdA) && [p.employerId, p.studentUserId].includes(userIdB) && p.status !== 'completed') || null;
@@ -450,7 +470,7 @@ function attachMessagesToProject(projectId, employerId, studentUserId){
 function openPaymentMethodModal(retryAppId=''){
   const paymentMethod = getEmployerPaymentMethod(currentUser.id) || {};
   openModal('Update Payment Method', `
-    <div class="warning" style="margin-bottom:14px">A valid payment method is required before an employer can start a project.</div>
+    <div class="warning" style="margin-bottom:14px">Employers sign up with a payment method on file. Update the saved test card here if needed.</div>
     <div class="field"><label>Card Brand</label><input id="pmBrand" value="${esc(paymentMethod.brand || 'Visa')}"></div>
     <div class="field"><label>Card Last 4</label><input id="pmLast4" maxlength="4" value="${esc(paymentMethod.last4 || '4242')}"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1158,7 +1178,7 @@ function renderStudentProjectCard(p){
  }
  const agreedPrice = Number(p.agreedPrice || p.estimatedTotal || ((p.rate || 0) * (p.estimatedHours || 0))).toFixed(2);
  const finalInvoiceSummary = p.actualHours
-   ? `<div class="small">Submitted final hours: ${esc(p.actualHours)} hrs · Student payout: $${esc(Number(p.studentPayout || 0).toFixed(2))} · Platform fee: $${esc(Number(p.platformFee || 0).toFixed(2))} · Employer total: $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
+   ? `<div class="small">Submitted final hours: ${esc(p.actualHours)} hrs · Total payment: $${esc(Number(p.finalTotal || 0).toFixed(2))} · Awaiting employer approval</div>`
    : '';
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.employerId)}')">Message</button>`);
   return `
@@ -1190,9 +1210,9 @@ function openSubmitCompletion(projectId){
     location: p.location || '',
     estimatedHours: p.estimatedHours
   };
-  openModal('Submit Final Hours and Invoice', `
+  openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
-      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked. The employer will confirm the final invoice.
+      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and the final total will update automatically before employer approval.
     </div>
     <div class="field"><label>Job Title</label><input value="${esc(snapshot.title || '')}" readonly></div>
     <div class="field"><label>Job Description</label><textarea readonly>${esc(snapshot.description || '')}</textarea></div>
@@ -1220,9 +1240,9 @@ function submitFinalInvoice(projectId){
   if (!p) return;
   const actualHours = Number(document.getElementById('finalHours').value || 0);
   if (!actualHours) return toast('Please enter actual hours.');
-  const studentPayout = Number((actualHours * p.rate).toFixed(2));
-  const platformFee = Number((studentPayout * PLATFORM_FEE_RATE).toFixed(2));
-  const employerTotal = Number((studentPayout + platformFee).toFixed(2));
+  const totalPayment = Number((actualHours * p.rate).toFixed(2));
+  const platformFee = Number((totalPayment * PLATFORM_FEE_RATE).toFixed(2));
+  const studentPayout = totalPayment;
   const snapshot = p.projectSnapshot || {
     title: p.jobTitle,
     description: p.scope || p.description || '',
@@ -1234,23 +1254,23 @@ function submitFinalInvoice(projectId){
   p.studentPayout = studentPayout;
   p.platformFee = platformFee;
   p.cogoFee = platformFee;
-  p.finalTotal = employerTotal;
-  p.employerTotal = employerTotal;
+  p.finalTotal = totalPayment;
+  p.employerTotal = totalPayment;
   p.finalInvoice = {
     title: snapshot.title,
     description: snapshot.description,
     rate: snapshot.rate,
     location: snapshot.location,
     actualHours,
-    subtotal: studentPayout,
+    subtotal: totalPayment,
     studentPayout,
     platformFee,
-    employerTotal
+    totalPayment
   };
   p.status = 'awaiting_employer_approval';
   saveProjects(pList);
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}"`, { type:'dashboard', section:'applicants_bookings' });
-  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": ${actualHours} hrs, student payout $${studentPayout.toFixed(2)}, platform fee $${platformFee.toFixed(2)}, employer total $${employerTotal.toFixed(2)}.`);
+  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": ${actualHours} hrs, total payment $${totalPayment.toFixed(2)}.`, p.id);
   closeModal();
   toast('Final invoice submitted for employer approval.');
   renderDashboard();
@@ -1490,9 +1510,9 @@ function startProject(appId){
     <div>Rate: $${esc(projectSnapshot.rate)}/hr</div>
     <div>Location: ${esc(projectSnapshot.location)}</div>
     <div>Estimated hours: ${esc(projectSnapshot.estimatedHours)}</div>
-    <div>Escrow held: $${esc(estimatedTotal)}</div>
+    <div>Escrow charged on start: $${esc(money(estimatedTotal))}</div>
     <div>Status: In Progress</div>
-    <div>Final hours may be adjusted and confirmed before final approval.</div>
+    <div>Final hours may be adjusted and confirmed before payment release.</div>
   `;
 
   const projectId = uid('proj');
@@ -1529,7 +1549,7 @@ function startProject(appId){
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Escrow of $${money(estimatedTotal)} is held.`, { type:'dashboard', section:'jobs_bookings' });
-  sendSystemMessage(a.studentUserId, a.studentName, `Project started: escrow of $${money(estimatedTotal)} is held and work is now in progress.`);
+  sendSystemMessage(a.studentUserId, a.studentName, `Project started: escrow of $${money(estimatedTotal)} is held and work is now in progress.`, projectId);
   employerTab = 'projects';
   toast('Project started successfully');
   renderDashboard();
@@ -1541,7 +1561,7 @@ function renderEmployerProjectCard(p){
   if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message</button>`);
   const invoiceSummary = p.actualHours
-    ? `<div class="small">Final invoice: Student payout $${esc(Number(p.studentPayout || 0).toFixed(2))} · Platform fee $${esc(Number(p.platformFee || 0).toFixed(2))} · Employer total $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
+    ? `<div class="small">Final invoice: ${esc(p.actualHours)} hrs · Total payment $${esc(Number(p.finalTotal || 0).toFixed(2))} · CoGo commission $${esc(Number(p.platformFee || 0).toFixed(2))}</div>`
     : '';
 
   return `
@@ -1598,9 +1618,9 @@ function openEmployerApproval(projectId){
     rate: p.rate,
     location: p.location || ''
   };
-  const studentPayout = Number(p.studentPayout || ((p.actualHours || 0) * (p.rate || 0))).toFixed(2);
-  const platformFee = Number(p.platformFee || (Number(studentPayout) * PLATFORM_FEE_RATE)).toFixed(2);
-  const employerTotal = Number(p.finalTotal || (Number(studentPayout) + Number(platformFee))).toFixed(2);
+  const totalPayment = Number(p.finalTotal || ((p.actualHours || 0) * (p.rate || 0))).toFixed(2);
+  const platformFee = Number(p.platformFee || (Number(totalPayment) * PLATFORM_FEE_RATE)).toFixed(2);
+  const escrowHeld = Number(p.escrowAmount || p.estimatedTotal || 0).toFixed(2);
 
   openModal('Review Final Invoice', `
     <div class="card form-card">
@@ -1612,10 +1632,10 @@ function openEmployerApproval(projectId){
         <div><strong>Location:</strong> ${esc(snapshot.location || p.location || '')}</div>
         <div><strong>Actual Hours Worked:</strong> ${esc(p.actualHours || 0)}</div>
       </div>
-      <div class="small"><strong>Student payout:</strong> $${esc(studentPayout)}</div>
-      <div class="small"><strong>Platform fee (15%):</strong> $${esc(platformFee)}</div>
-      <div class="small"><strong>Employer total:</strong> $${esc(employerTotal)}</div>
-      <div class="warning" style="margin-top:12px">When Stripe is connected later, the student will receive $${esc(studentPayout)} and CoGo will keep $${esc(platformFee)}.</div>
+      <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
+      <div class="small"><strong>Total payment:</strong> $${esc(totalPayment)}</div>
+      <div class="small"><strong>CoGo commission (internal):</strong> $${esc(platformFee)}</div>
+      <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Test mode is active, so approval will always release payment successfully.`}</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
         <button class="btn btn-outline" onclick="openRequestChangesModal('${esc(projectId)}')">Request Changes</button>
@@ -1634,8 +1654,7 @@ function approveFinalInvoice(projectId){
   p.paymentReleasedAt = new Date().toISOString();
 
   const agreedLabor = Number(p.agreedPrice || p.estimatedTotal || 0);
-  const baseline = Number((agreedLabor + (agreedLabor * PLATFORM_FEE_RATE)).toFixed(2));
-  const diff = Number((p.finalTotal - baseline).toFixed(2));
+  const diff = Number((p.finalTotal - agreedLabor).toFixed(2));
   p.reconciliation = diff === 0
     ? `Final invoice approved at $${p.finalTotal}.`
     : diff < 0
@@ -1677,7 +1696,7 @@ function submitProjectChangeRequest(projectId){
   p.changeRequestNote = note;
   saveProjects(projects);
   pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings' });
-  sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`);
+  sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`, p.id);
   closeModal();
   toast('Change request sent to student.');
   renderDashboard();
@@ -1785,7 +1804,7 @@ function renderThreadView(userId){
   const partnerMsgs = all
     .filter(m => (m.fromId === currentUser.id && m.toId === userId) || (m.fromId === userId && m.toId === currentUser.id));
   const msgs = (activeProject
-    ? partnerMsgs.filter(m => !m.projectId || m.projectId === activeProject.id)
+    ? partnerMsgs.filter(m => m.projectId === activeProject.id)
     : partnerMsgs)
     .sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
 
@@ -1831,7 +1850,7 @@ function sendMessageToActive(){
   input.value = '';
   renderDashboard();
 }
-function sendSystemMessage(toId, toName, content){
+function sendSystemMessage(toId, toName, content, projectId=null){
   const msgs = getMessages();
   msgs.push({
     id: uid('m'),
@@ -1840,6 +1859,7 @@ function sendSystemMessage(toId, toName, content){
     toId,
     toName,
     content,
+    projectId,
     createdAt: new Date().toISOString(),
     read: false
   });
@@ -1855,8 +1875,8 @@ function renderSettings(el){
       <div class="field"><label>Email</label><input id="setEmail" value="${esc(currentUser.email || '')}"></div>
       <div class="field"><label>Password</label><input id="setPassword" type="password" placeholder="Leave blank to keep current"></div>
       ${currentUser.role === 'employer' ? `
-        <div class="warning" style="margin-bottom:14px">Employers need a valid payment method before they can start projects.</div>
-        <div class="field"><label>Payment Method</label><input value="${paymentMethod ? esc(paymentMethod.brand + ' •••• ' + paymentMethod.last4) : 'No payment method on file'}" readonly></div>
+        <div class="warning" style="margin-bottom:14px">Employer accounts in this test flow always keep a card on file before a project can start.</div>
+        <div class="field"><label>Payment Method</label><input value="${paymentMethod ? esc(paymentMethod.brand + ' •••• ' + paymentMethod.last4) : 'Visa •••• 4242'}" readonly></div>
         <button class="btn btn-outline" style="margin-bottom:12px" onclick="openPaymentMethodModal()">Update Payment Method</button>
       ` : ''}
       <button class="btn btn-blue" onclick="saveSettings()">Save Changes</button>
