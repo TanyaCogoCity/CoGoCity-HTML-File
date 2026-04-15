@@ -90,6 +90,8 @@
  .badge-offer_sent{background:#DBEAFE;color:#1D4ED8}
  .badge-accepted{background:#DCFCE7;color:#166534}
  .badge-active{background:#DCFCE7;color:#166534}
+ .badge-paid{background:#DCFCE7;color:#166534}
+ .badge-processing{background:#DBEAFE;color:#1D4ED8}
  .badge-project_started{background:#DCFCE7;color:#166534}
  .badge-funded{background:#E0E7FF;color:#3730A3}
     .badge-in_progress{background:#E0E7FF;color:#3730A3}
@@ -202,6 +204,7 @@ let avatarMenuOpen = false;
 let studentSignupStep = 1;
 let studentSignupDraft = null;
 let studentSignupEditingServiceIndex = null;
+let settingsTransactionQuery = '';
 const PLATFORM_FEE_RATE = 0.15;
 const STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
@@ -236,6 +239,8 @@ function getPaymentLogs(){ return ls('cogo_payment_logs') || []; }
 function savePaymentLogs(v){ ls('cogo_payment_logs', v); }
 function getFinance(){ return ls('cogo_finance') || { cogoCommission: 0, completedProjects: 0 }; }
 function saveFinance(v){ ls('cogo_finance', v); }
+function getTransactions(){ return ls('cogo_transactions') || []; }
+function saveTransactions(v){ ls('cogo_transactions', v); }
 
 // ---------- Seed ----------
 function seedData(){
@@ -2473,11 +2478,12 @@ function approveFinalInvoice(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
+  const now = new Date().toISOString();
   p.status = 'completed';
-  p.completedAt = new Date().toISOString();
+  p.completedAt = now;
   p.escrowStatus = 'released';
   p.paid = true;
-  p.paymentReleasedAt = new Date().toISOString();
+  p.paymentReleasedAt = now;
 
   const agreedLabor = Number(p.agreedPrice || p.estimatedTotal || 0);
   const baseline = Number((agreedLabor + (agreedLabor * PLATFORM_FEE_RATE)).toFixed(2));
@@ -2499,9 +2505,35 @@ function approveFinalInvoice(projectId){
   finance.completedProjects = Number(finance.completedProjects || 0) + 1;
   saveFinance(finance);
 
+  const transactions = getTransactions();
+  const transactionId = uid('tx');
+  transactions.unshift({
+    id: transactionId,
+    transaction_id: transactionId,
+    student_id: p.studentUserId,
+    studentProfileId: p.studentProfileId || null,
+    job_id: p.id,
+    employer_id: p.employerId,
+    employerName: p.employerName,
+    studentName: p.studentName,
+    job_title: p.jobTitle,
+    hourly_rate: Number(p.rate || 0),
+    hours_worked: Number(p.actualHours || 0),
+    total_amount: Number(p.finalTotal || 0),
+    platform_fee: Number(p.platformFee || 0),
+    payout_amount: Number(p.studentPayout || 0),
+    status: 'paid',
+    status_history: ['processing','paid'],
+    date_started: p.createdAt || now,
+    date_completed: p.completedAt || now,
+    date_paid: now
+  });
+  saveTransactions(transactions);
+
   saveProjects(projects);
   pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project`, { type:'dashboard', section:'applicants_projects' });
-  pushNotif(p.studentUserId, `You received $${money(p.studentPayout || 0)} from ${p.employerName}`, { type:'dashboard', section:'jobs_bookings' });
+  pushNotif(p.studentUserId, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'`, { type:'dashboard', section:'settings' });
+  sendSystemMessage(p.studentUserId, p.studentName, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'.`, p.id);
   pushAdminCommissionNotification(p);
   pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects' });
   closeModal();
@@ -2732,6 +2764,79 @@ function sendSystemMessage(toId, toName, content, projectId=null){
 }
 
 // ---------- Settings ----------
+function formatTransactionDate(value){
+  if (!value) return '—';
+  return new Date(value).toLocaleDateString('en-US', { month:'short', day:'numeric' });
+}
+function getCurrentUserTransactions(){
+  const all = getTransactions();
+  return all.filter(tx => tx.student_id === currentUser.id);
+}
+function renderTransactionsPanel(){
+  const wrap = document.getElementById('transactions-panel');
+  if (!wrap) return;
+  const query = (settingsTransactionQuery || '').trim().toLowerCase();
+  const rows = getCurrentUserTransactions().filter(tx => {
+    const haystack = [
+      tx.job_title,
+      tx.employerName,
+      tx.studentName,
+      tx.payout_amount,
+      tx.total_amount,
+      tx.hourly_rate,
+      tx.hours_worked,
+      formatTransactionDate(tx.date_started),
+      formatTransactionDate(tx.date_completed),
+      formatTransactionDate(tx.date_paid)
+    ].join(' ').toLowerCase();
+    return !query || haystack.includes(query);
+  }).sort((a,b) => new Date(b.date_paid || b.date_completed || 0) - new Date(a.date_paid || a.date_completed || 0));
+
+  wrap.innerHTML = `
+    <div class="card form-card" style="margin-top:18px">
+      <div class="split" style="align-items:flex-start;margin-bottom:14px">
+        <div>
+          <div class="section-title" style="margin:0 0 6px">My Transactions</div>
+          <div class="small muted">Available Balance: $0.00</div>
+          <div class="small muted">Stripe connection and live balance are placeholders for now.</div>
+        </div>
+        <div style="min-width:260px">
+          <input id="transactionsSearch" placeholder="Search by date, amount, job title, or name" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsPanel()">
+        </div>
+      </div>
+      ${rows.length ? `
+        <div style="overflow:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+            <thead>
+              <tr style="text-align:left;border-bottom:1px solid var(--border)">
+                <th style="padding:10px 8px">Date Started</th>
+                <th style="padding:10px 8px">Date Completed</th>
+                <th style="padding:10px 8px">Job Title</th>
+                <th style="padding:10px 8px">Student Rate</th>
+                <th style="padding:10px 8px">Final Hours Worked</th>
+                <th style="padding:10px 8px">Total Earned</th>
+                <th style="padding:10px 8px">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(tx => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:12px 8px">${esc(formatTransactionDate(tx.date_started))}</td>
+                  <td style="padding:12px 8px">${esc(formatTransactionDate(tx.date_completed))}</td>
+                  <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
+                  <td style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
+                  <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
+                  <td style="padding:12px 8px">$${esc(Number(tx.payout_amount || 0).toFixed(2))}</td>
+                  <td style="padding:12px 8px">${badge(tx.status || 'paid')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="muted">No transactions yet.</div>`}
+    </div>
+  `;
+}
 function renderSettings(el){
   const paymentMethod = getEmployerPaymentMethod(currentUser.id);
   el.innerHTML = `
@@ -2746,7 +2851,9 @@ function renderSettings(el){
       ` : ''}
       <button class="btn btn-blue" onclick="saveSettings()">Save Changes</button>
     </div>
+    <div id="transactions-panel"></div>
   `;
+  renderTransactionsPanel();
 }
 function saveSettings(){
   const users = getUsers();
