@@ -249,7 +249,8 @@ function seedData(){
   const users = [
     { id:'u_student_test', email:'student@cogocity.com', password:'student123', name:'Daniel', role:'student', emoji:'🎓' },
     { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', name:'Ilya', role:'employer', type:'business', emoji:'🏢', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
-    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', name:'Tanya', role:'employer', type:'neighbor', emoji:'🏠', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true }
+    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', name:'Tanya', role:'employer', type:'neighbor', emoji:'🏠', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
+    { id:'u_admin_test', email:'Admin@cogocity.com', password:'Admin123', name:'Admin', role:'admin', emoji:'🛡️' }
   ];
 
   const students = [
@@ -434,6 +435,11 @@ function goToAddProfile(){
   goDashboard();
   setTimeout(() => openStudentProfileForm(), 80);
 }
+function goToAddService(){
+  dashSection = 'profile';
+  goDashboard();
+  setTimeout(() => openStudentServiceForm(), 80);
+}
 function toggleAvatarMenu(){
   avatarMenuOpen = !avatarMenuOpen;
   renderNav();
@@ -466,6 +472,7 @@ function pushNotif(userId, title, action=''){
 }
 function currentUserRoleLabel(){
   if (!currentUser) return '';
+  if (currentUser.role === 'admin') return 'Admin';
   if (currentUser.role === 'student') return 'Student';
   if (currentUser.type === 'neighbor') return 'Neighbor';
   return 'Employer';
@@ -634,9 +641,11 @@ function renderNav(){
 
   const unreadMsgs = getMessages().filter(m => m.toId === currentUser.id && !m.read).length;
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
-  const primaryButton = currentUser.role === 'student'
-    ? `<button class="btn btn-blue btn-sm" onclick="goToAddProfile()">Add Profile</button>`
-    : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">Post a Job</button>`;
+  const primaryButton = currentUser.role === 'admin'
+    ? `<button class="btn btn-blue btn-sm" onclick="goDashboard()">Admin Panel</button>`
+    : currentUser.role === 'student'
+      ? `<button class="btn btn-blue btn-sm" onclick="goToAddService()">Add Service</button>`
+      : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">Post a Job</button>`;
   const avatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '👤';
   nav.innerHTML = `
     ${primaryButton}
@@ -722,6 +731,7 @@ function openLoginModal(tab='signin'){
           <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student — student@cogocity.com</button>
           <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer — ilya@cogocity.com</button>
           <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor — tanya@cogocity.com</button>
+          <button class="btn btn-outline" onclick="quickLogin('admin@cogocity.com','Admin123')">Admin — admin@cogocity.com</button>
         </div>
       </div>
     `;
@@ -787,6 +797,7 @@ function doLogin(){
   const password = document.getElementById('loginPassword').value || '';
   const user = getUsers().find(u => u.email.toLowerCase() === email && u.password === password);
   if (!user) { toast('Invalid email or password'); return; }
+  if (user.archived) { toast('This profile is no longer active.'); return; }
   setCurrentUser(user);
   closeModal();
   toast(`Welcome back, ${firstName(user.name)}!`);
@@ -810,7 +821,8 @@ function createDefaultStudentSignupDraft(){
     address:'',
     password:'',
     confirmPassword:'',
-    verificationMode:'test_skip'
+    verificationMode:'test_skip',
+    profileReady:false
   };
 }
 function getStudentSignupStrength(){
@@ -856,9 +868,7 @@ function renderStudentSignupModal(){
     4:'Create First Service',
     5:'Private Contact Info',
     6:'Preview Profile',
-    7:'Create Account',
-    8:'Email Verification',
-    9:'Submit & Go Live'
+    7:'Create Password'
   };
   const footer = renderStudentSignupFooter();
   openModal('Student Signup', `
@@ -871,7 +881,7 @@ function renderStudentSignupModal(){
     <div class="card form-card" style="margin-bottom:16px">
       <div class="split" style="align-items:flex-start">
         <div>
-          <div class="small muted">Step ${studentSignupStep} of 9</div>
+          <div class="small muted">Step ${studentSignupStep} of 7</div>
           <div style="font-weight:800;font-size:1.1rem">${esc(stepTitles[studentSignupStep])}</div>
         </div>
         <div style="min-width:180px;text-align:right">
@@ -973,21 +983,15 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 7) return `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Create your password last so you only commit once your profile is ready.</div>
+      <div class="warning" style="margin-bottom:14px">Create your password last. Your email verification is skipped in test mode for now.</div>
       <div class="field"><label>Create Password</label><input id="studentFlowPassword" type="password" value="${esc(d.password)}" placeholder="••••••••"></div>
       <div class="field"><label>Confirm Password</label><input id="studentFlowConfirmPassword" type="password" value="${esc(d.confirmPassword)}" placeholder="••••••••"></div>
-    </div>
-  `;
-  if (studentSignupStep === 8) return `
-    <div class="card form-card">
-      <div class="field"><label>Email Verification</label><input value="${esc(d.email)}" readonly></div>
-      <div class="warning">Verification email would be sent here. Test mode skips confirmation, so you can continue.</div>
     </div>
   `;
   return `
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:10px">Ready to go live</div>
-      <div class="small muted" style="margin-bottom:14px">Your student profile will publish to Browse Students and redirect you back home.</div>
+      <div class="small muted" style="margin-bottom:14px">Your student profile will publish to Browse Students and your Dashboard → My Profile after password setup.</div>
       <div class="card" style="padding:14px;background:#f8fafc">
         <div style="font-weight:800">${esc(d.name || 'New Student')}</div>
         <div class="small muted">${esc(d.city || '')} · ${(d.services || []).length} service${(d.services || []).length === 1 ? '' : 's'}</div>
@@ -997,9 +1001,9 @@ function renderStudentSignupStepContent(){
 }
 function renderStudentSignupFooter(){
   const prev = studentSignupStep > 1 ? `<button class="btn btn-outline" onclick="goStudentSignupStep(${studentSignupStep - 1})">Back</button>` : `<span></span>`;
-  if (studentSignupStep === 9) return `${prev}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Submit & Publish Profile</button>`;
-  const nextLabel = studentSignupStep === 8 ? 'Continue' : 'Next';
-  return `${prev}<button class="btn btn-blue" onclick="goStudentSignupStep(${studentSignupStep + 1})">${nextLabel}</button>`;
+  if (studentSignupStep === 6) return `${prev}<button class="btn btn-blue" onclick="submitStudentSignupProfile()">Submit and Publish Profile</button>`;
+  if (studentSignupStep === 7) return `${prev}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Create Password</button>`;
+  return `${prev}<button class="btn btn-blue" onclick="goStudentSignupStep(${studentSignupStep + 1})">Next</button>`;
 }
 function saveStudentSignupStep(step){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
@@ -1050,7 +1054,7 @@ function saveStudentSignupStep(step){
 }
 function goStudentSignupStep(targetStep){
   if (targetStep > studentSignupStep && !saveStudentSignupStep(studentSignupStep)) return;
-  studentSignupStep = Math.max(1, Math.min(9, targetStep));
+  studentSignupStep = Math.max(1, Math.min(7, targetStep));
   renderStudentSignupModal();
 }
 function handleStudentSignupPhotoUpload(input){
@@ -1180,7 +1184,15 @@ function renderStudentSignupPreviewHtml(){
     </div>
   `;
 }
+function submitStudentSignupProfile(){
+  if (!saveStudentSignupStep(5)) return;
+  if (!(studentSignupDraft.services || []).length) return toast('Please add at least one service.');
+  studentSignupDraft.profileReady = true;
+  studentSignupStep = 7;
+  renderStudentSignupModal();
+}
 function publishStudentSignupProfile(){
+  if (!studentSignupDraft.profileReady) return toast('Please submit and publish your profile first.');
   if (!saveStudentSignupStep(7)) return;
   const d = studentSignupDraft;
   if (!(d.services || []).length) return toast('Please add at least one service.');
@@ -1236,7 +1248,8 @@ function publishStudentSignupProfile(){
   studentSignupEditingServiceIndex = null;
   closeModal();
   toast('Student profile published.');
-  location.hash = '#/';
+  dashSection = 'profile';
+  location.hash = '#/dashboard';
   renderPage();
 }
 function submitEmployerSignup(type){
@@ -1723,6 +1736,9 @@ function sendDirectOffer(studentId){
 function renderDashboard(){
   if (!currentUser) return openLoginModal();
 
+  if (currentUser.role === 'admin' && !['admin','settings'].includes(dashSection)) {
+    dashSection = 'admin';
+  }
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','settings'].includes(dashSection)) {
     dashSection = 'profile';
   }
@@ -1734,7 +1750,10 @@ function renderDashboard(){
     ${renderUserIdentityBanner()}
     <div class="dashboard">
       <div class="sidebar">
-        ${currentUser.role === 'student' ? `
+        ${currentUser.role === 'admin' ? `
+          <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">🛡️ Admin Panel</a>
+          <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
+        ` : currentUser.role === 'student' ? `
           <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">👤 My Profile</a>
           <a href="#" class="${dashSection==='jobs_bookings'?'active':''}" onclick="dashSection='jobs_bookings';renderDashboard();return false;">📋 Jobs & Bookings</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
@@ -1752,7 +1771,10 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
-  if (currentUser.role === 'student'){
+  if (currentUser.role === 'admin'){
+    if (dashSection === 'admin') return renderAdminPanel(el);
+    if (dashSection === 'settings') return renderSettings(el);
+  } else if (currentUser.role === 'student'){
     if (dashSection === 'profile') return renderStudentProfile(el);
     if (dashSection === 'jobs_bookings') return renderStudentJobsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
@@ -1767,117 +1789,188 @@ function renderDashboard(){
 }
 
 function renderStudentProfile(el){
-  const profiles = currentStudentProfiles(true).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-  const liveProfiles = profiles.filter(p => p.status !== 'archived');
-  const activeProfile = currentStudentProfile();
+  const profile = currentStudentProfile();
+  if (!profile){
+    el.innerHTML = `
+      <div class="card form-card muted">
+        No student profile found yet.
+        <div style="margin-top:12px"><button class="btn btn-blue" onclick="openStudentSignupWorkflow()">Start Student Onboarding</button></div>
+      </div>
+    `;
+    return;
+  }
+  const services = (profile.services || []).filter(Boolean);
   el.innerHTML = `
     <div class="split" style="margin-bottom:16px">
-      <div class="section-title" style="margin:0">My Profiles</div>
-      <button class="btn btn-blue btn-sm" onclick="openStudentProfileForm()">Add New Profile</button>
+      <div class="section-title" style="margin:0">My Profile</div>
+      <button class="btn btn-blue btn-sm" onclick="openStudentServiceForm()">Add Service</button>
     </div>
-    ${liveProfiles.length ? liveProfiles.map(p => renderStudentProfileManagerCard(p, activeProfile && activeProfile.id === p.id)).join('') : `<div class="card form-card muted">No live profiles yet. Add one to appear in Browse Students.</div>`}
-    ${profiles.some(p => p.status === 'archived') ? `<div class="small muted" style="margin-top:12px">Deleted profiles are hidden from the public feed and kept in storage for admin access.</div>` : ''}
+    <div class="grid" style="grid-template-columns:1fr;gap:18px">
+      <div class="card form-card">
+        <div class="split" style="margin-bottom:12px">
+          <div style="font-weight:800;font-size:1.05rem">My Profile</div>
+          <button class="btn btn-outline btn-sm" onclick="openStudentProfileForm('${esc(profile.id)}')">Edit Profile</button>
+        </div>
+        <div class="row">
+          <div><div class="small muted">Name</div><div style="font-weight:700">${esc(profile.name || '')}</div></div>
+          <div><div class="small muted">Age</div><div style="font-weight:700">${esc(profile.age || '')}</div></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div><div class="small muted">Location</div><div style="font-weight:700">${esc(profile.location || '')}</div></div>
+          <div><div class="small muted">School(s)</div><div style="font-weight:700">${esc(profile.school || '')}</div></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div><div class="small muted">Email (private)</div><div style="font-weight:700">${esc(profile.privateEmail || currentUser.email || '')}</div></div>
+          <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(profile.phone || 'Not added yet')}</div></div>
+        </div>
+        <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
+        <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
+      </div>
+      <div class="card form-card">
+        <div class="split" style="margin-bottom:12px">
+          <div style="font-weight:800;font-size:1.05rem">My Services</div>
+          <button class="btn btn-blue btn-sm" onclick="openStudentServiceForm()">Add Service</button>
+        </div>
+        ${services.length ? services.map((service, index) => renderStudentServiceManagerCard(service, index)).join('') : `<div class="muted">No services yet. Add your first service.</div>`}
+      </div>
+    </div>
   `;
 }
-function renderStudentProfileManagerCard(profile, isActive){
+function renderStudentServiceManagerCard(service, index){
   return `
-    <div class="card item-card">
+    <div class="card item-card" style="margin-bottom:12px">
       <div class="split">
         <div style="max-width:720px">
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <div style="font-weight:800">${esc(profile.name)}</div>
-            ${isActive ? `<span class="badge badge-active">active profile</span>` : ''}
-          </div>
-          <div class="muted small">${esc(profile.title || '')}</div>
-          <div class="small" style="margin-top:8px">${esc((profile.about || [])[0] || '')}</div>
-          <div class="small muted" style="margin-top:8px">$${esc(profile.rate || 0)}/hr · ${esc(profile.location || '')}</div>
-          <div class="small muted" style="margin-top:8px">Reviews: ${esc((profile.reviews || []).length)}</div>
+          <div style="font-weight:800">${esc(service.title || '')}</div>
+          <div class="small" style="margin-top:6px">${esc(service.description || '')}</div>
+          <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-          ${!isActive ? `<button class="btn btn-outline btn-sm" onclick="setActiveStudentProfile('${esc(profile.id)}')">Use This Profile</button>` : ''}
-          <button class="btn btn-outline btn-sm" onclick="openStudentProfileForm('${esc(profile.id)}')">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteStudentProfile('${esc(profile.id)}')">Delete</button>
+          <button class="btn btn-outline btn-sm" onclick="openStudentServiceForm(${index})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteStudentService(${index})">Delete</button>
         </div>
       </div>
     </div>
   `;
 }
 function openStudentProfileForm(profileId=''){
-  const profile = profileId ? getStudents().find(s => s.id === profileId) : null;
-  openModal(profile ? 'Edit Profile' : 'Add New Profile', `
-    <div class="field"><label>Profile Name</label><input id="studentProfileName" value="${esc(profile?.name || currentUser?.name || '')}"></div>
+  const profile = profileId ? getStudents().find(s => s.id === profileId) : currentStudentProfile();
+  if (!profile) return toast('Create your student profile first.');
+  openModal('Edit Profile', `
+    <div class="field"><label>Name</label><input id="studentProfileName" value="${esc(profile.name || currentUser?.name || '')}"></div>
     <div class="row">
-      <div class="field"><label>Age</label><input id="studentProfileAge" type="number" min="13" max="25" value="${esc(profile?.age || '')}"></div>
-      <div class="field"><label>School</label><input id="studentProfileSchool" value="${esc(profile?.school || '')}"></div>
+      <div class="field"><label>Age</label><input id="studentProfileAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div>
+      <div class="field"><label>School(s)</label><input id="studentProfileSchool" value="${esc(profile.school || '')}"></div>
     </div>
     <div class="row">
-      <div class="field"><label>City</label><input id="studentProfileCity" value="${esc((profile?.location || '').replace(', CA',''))}"></div>
-      <div class="field"><label>Hourly Rate</label><input id="studentProfileRate" type="number" min="1" value="${esc(profile?.rate || 20)}"></div>
+      <div class="field"><label>Location</label><input id="studentProfileCity" value="${esc((profile.location || '').replace(', CA',''))}"></div>
+      <div class="field"><label>Phone (private)</label><input id="studentProfilePhone" value="${esc(profile.phone || '')}"></div>
     </div>
-    <div class="row">
-      <div class="field"><label>Emoji</label><input id="studentProfileEmoji" value="${esc(profile?.emoji || '🎓')}"></div>
-      <div class="field"><label>Tags (comma separated)</label><input id="studentProfileTags" value="${esc((profile?.tags || []).join(', '))}"></div>
-    </div>
-    <div class="field"><label>Headline</label><input id="studentProfileTitle" value="${esc(profile?.title || '')}"></div>
-    <div class="field"><label>Services (comma separated)</label><textarea id="studentProfileServices">${esc((profile?.services || []).join(', '))}</textarea></div>
-    <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc((profile?.about || []).join('\n'))}</textarea></div>
-    <div class="field"><label>Why Hire Me</label><textarea id="studentProfileWhyHire">${esc((profile?.whyHire || []).join('\n'))}</textarea></div>
-    <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc((profile?.highlights || []).join('\n'))}</textarea></div>
-    <div class="field"><label>Availability</label><input id="studentProfileAvailability" value="${esc(profile?.availability || '')}"></div>
-    <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profileId)}')">Save Profile</button>
+    <div class="field"><label>Email (private)</label><input id="studentProfileEmail" type="email" value="${esc(profile.privateEmail || currentUser?.email || '')}"></div>
+    <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc((profile.about || []).join('\n'))}</textarea></div>
+    <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc((profile.highlights || []).join('\n'))}</textarea></div>
+    <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profile.id)}')">Save Profile</button>
   `, '720px');
 }
 function saveStudentProfileForm(profileId=''){
   const students = getStudents();
-  const existing = profileId ? students.find(s => s.id === profileId) : null;
+  const profile = students.find(s => s.id === profileId) || currentStudentProfile();
+  if (!profile) return;
+  const users = getUsers();
+  const user = users.find(u => u.id === currentUser.id);
   const name = (document.getElementById('studentProfileName').value || '').trim();
   const city = (document.getElementById('studentProfileCity').value || '').trim();
-  const title = (document.getElementById('studentProfileTitle').value || '').trim();
-  if (!name || !city || !title) return toast('Name, city, and headline are required.');
-  const payload = {
-    id: existing?.id || uid('s'),
-    userId: currentUser.id,
-    name,
-    age: Number(document.getElementById('studentProfileAge').value || 0) || (existing?.age || 17),
-    school: (document.getElementById('studentProfileSchool').value || '').trim(),
-    location: city.includes(',') ? city : `${city}, CA`,
-    emoji: (document.getElementById('studentProfileEmoji').value || '').trim() || existing?.emoji || '🎓',
-    title,
-    tags: (document.getElementById('studentProfileTags').value || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
-    services: (document.getElementById('studentProfileServices').value || '').split(',').map(s => s.trim()).filter(Boolean),
-    about: (document.getElementById('studentProfileAbout').value || '').split('\n').map(s => s.trim()).filter(Boolean),
-    whyHire: (document.getElementById('studentProfileWhyHire').value || '').split('\n').map(s => s.trim()).filter(Boolean),
-    highlights: (document.getElementById('studentProfileHighlights').value || '').split('\n').map(s => s.trim()).filter(Boolean),
-    rate: Number(document.getElementById('studentProfileRate').value || 0) || (existing?.rate || 20),
-    reviews: existing?.reviews || [],
-    balance: existing?.balance || 0,
-    availability: (document.getElementById('studentProfileAvailability').value || '').trim() || existing?.availability || 'Weekday afternoons · Weekends',
-    status: 'live',
-    createdAt: existing?.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-  const next = existing ? students.map(s => s.id === profileId ? Object.assign({}, s, payload) : s) : [payload, ...students];
-  saveStudents(next);
-  ls('cogo_active_student_profile', payload.id);
+  const email = (document.getElementById('studentProfileEmail').value || '').trim();
+  if (!name || !city || !email) return toast('Name, location, and email are required.');
+  profile.name = name;
+  profile.age = Number(document.getElementById('studentProfileAge').value || 0) || profile.age || 17;
+  profile.school = (document.getElementById('studentProfileSchool').value || '').trim();
+  profile.location = city.includes(',') ? city : `${city}, CA`;
+  profile.phone = (document.getElementById('studentProfilePhone').value || '').trim();
+  profile.privateEmail = email;
+  profile.about = (document.getElementById('studentProfileAbout').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+  profile.highlights = (document.getElementById('studentProfileHighlights').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+  profile.updatedAt = new Date().toISOString();
+  if (user) {
+    user.name = name;
+    user.email = email;
+    saveUsers(users);
+    setCurrentUser(user);
+  }
+  saveStudents(students);
   closeModal();
-  toast(existing ? 'Profile updated.' : 'Profile created.');
+  toast('Profile updated.');
+  renderDashboard();
+}
+function openStudentServiceForm(serviceIndex=''){
+  const profile = currentStudentProfile();
+  if (!profile) return toast('Create your profile first.');
+  const existing = serviceIndex === '' || serviceIndex === null || serviceIndex === undefined ? null : (profile.services || [])[Number(serviceIndex)];
+  openModal(existing ? 'Edit Service' : 'Add Service', `
+    <div class="field"><label>Title</label><input id="studentServiceTitle" value="${esc(existing?.title || '')}"></div>
+    <div class="field"><label>Description</label><textarea id="studentServiceDescription">${esc(existing?.description || '')}</textarea></div>
+    <div class="row">
+      <div class="field"><label>Rate</label><input id="studentServiceRate" type="number" min="1" value="${esc(existing?.rate || profile.rate || 20)}"></div>
+      <div class="field"><label>Availability</label><input id="studentServiceAvailability" value="${esc(existing?.availability || profile.availability || '')}"></div>
+    </div>
+    <div class="field"><label>Location</label><input id="studentServiceLocation" value="${esc(existing?.location || profile.location || '')}"></div>
+    <button class="btn btn-blue" onclick="saveStudentServiceForm('${esc(serviceIndex)}')">${existing ? 'Save Service' : 'Add Service'}</button>
+  `, '720px');
+}
+function saveStudentServiceForm(serviceIndex=''){
+  const students = getStudents();
+  const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
+  if (!profile) return;
+  profile.services = profile.services || [];
+  const title = (document.getElementById('studentServiceTitle').value || '').trim();
+  const description = (document.getElementById('studentServiceDescription').value || '').trim();
+  const rate = Number(document.getElementById('studentServiceRate').value || 0);
+  const availability = (document.getElementById('studentServiceAvailability').value || '').trim();
+  const location = (document.getElementById('studentServiceLocation').value || '').trim();
+  if (!title || !description || !rate || !availability) return toast('Please complete the required service fields.');
+  const service = {
+    id: serviceIndex === '' || serviceIndex === null || serviceIndex === undefined || !profile.services[Number(serviceIndex)]
+      ? uid('service')
+      : profile.services[Number(serviceIndex)].id,
+    title,
+    description,
+    rate,
+    availability,
+    location: location || profile.location || ''
+  };
+  if (serviceIndex === '' || serviceIndex === null || serviceIndex === undefined || !profile.services[Number(serviceIndex)]) profile.services.push(service);
+  else profile.services[Number(serviceIndex)] = service;
+  profile.title = profile.services[0]?.title || profile.title || 'Student Service';
+  profile.rate = profile.services[0]?.rate || profile.rate || 20;
+  profile.availability = profile.services[0]?.availability || profile.availability || '';
+  saveStudents(students);
+  closeModal();
+  toast('Service saved.');
+  renderDashboard();
+}
+function deleteStudentService(serviceIndex){
+  const students = getStudents();
+  const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
+  if (!profile) return;
+  profile.services = profile.services || [];
+  if (profile.services.length <= 1) return toast('Keep at least one service on your profile.');
+  profile.services.splice(Number(serviceIndex), 1);
+  profile.title = profile.services[0]?.title || profile.title;
+  profile.rate = profile.services[0]?.rate || profile.rate;
+  profile.availability = profile.services[0]?.availability || profile.availability;
+  saveStudents(students);
+  toast('Service deleted.');
   renderDashboard();
 }
 function deleteStudentProfile(profileId){
   const students = getStudents();
   const target = students.find(s => s.id === profileId);
   if (!target) return;
-  const liveCount = students.filter(s => s.userId === currentUser.id && s.status !== 'archived').length;
-  if (liveCount <= 1) return toast('Keep at least one live profile on the account.');
-  if (!confirm('Remove this profile from the public feed?')) return;
   target.status = 'archived';
   target.archivedAt = new Date().toISOString();
+  target.archivedServices = (target.services || []).map(s => Object.assign({}, s));
+  target.services = [];
   saveStudents(students);
-  const activeProfile = currentStudentProfile();
-  if (activeProfile && activeProfile.id === profileId) {
-    const fallback = students.find(s => s.userId === currentUser.id && s.status !== 'archived' && s.id !== profileId);
-    if (fallback) ls('cogo_active_student_profile', fallback.id);
-  }
   toast('Profile removed from public view.');
   renderDashboard();
 }
@@ -2763,6 +2856,31 @@ function sendSystemMessage(toId, toName, content, projectId=null){
   saveMessages(msgs);
 }
 
+function renderAdminPanel(el){
+  const archivedProfiles = getStudents().filter(s => s.status === 'archived');
+  const archivedUsers = getUsers().filter(u => u.archived);
+  const finance = getFinance();
+  el.innerHTML = `
+    <div class="section-title">Admin Panel</div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
+      <div class="card form-card"><div class="small muted">Archived Profiles</div><div style="font-size:1.5rem;font-weight:800">${archivedProfiles.length}</div></div>
+      <div class="card form-card"><div class="small muted">Archived Users</div><div style="font-size:1.5rem;font-weight:800">${archivedUsers.length}</div></div>
+      <div class="card form-card"><div class="small muted">CoGo Commission</div><div style="font-size:1.5rem;font-weight:800">$${money(finance.cogoCommission || 0)}</div></div>
+    </div>
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:12px">Archived Profiles & Services</div>
+      ${archivedProfiles.length ? archivedProfiles.map(profile => `
+        <div class="card item-card" style="margin-bottom:12px">
+          <div style="font-weight:800">${esc(profile.name)}</div>
+          <div class="small muted">Archived ${profile.archivedAt ? timeAgo(profile.archivedAt) : ''}</div>
+          <div class="small muted" style="margin-top:6px">Services kept for admin: ${esc(((profile.archivedServices || []).length || 0))}</div>
+          ${((profile.archivedServices || []).length ? `<div style="margin-top:8px">${(profile.archivedServices || []).map(service => `<div class="small">• ${esc(service.title || 'Service')}</div>`).join('')}</div>` : `<div class="small muted" style="margin-top:8px">No archived services.</div>`) }
+        </div>
+      `).join('') : `<div class="muted">No archived profiles yet.</div>`}
+    </div>
+  `;
+}
+
 // ---------- Settings ----------
 function formatTransactionDate(value){
   if (!value) return '—';
@@ -2780,12 +2898,9 @@ function renderTransactionsPanel(){
     const haystack = [
       tx.job_title,
       tx.employerName,
-      tx.studentName,
       tx.payout_amount,
-      tx.total_amount,
       tx.hourly_rate,
       tx.hours_worked,
-      formatTransactionDate(tx.date_started),
       formatTransactionDate(tx.date_completed),
       formatTransactionDate(tx.date_paid)
     ].join(' ').toLowerCase();
@@ -2801,7 +2916,7 @@ function renderTransactionsPanel(){
           <div class="small muted">Stripe connection and live balance are placeholders for now.</div>
         </div>
         <div style="min-width:260px">
-          <input id="transactionsSearch" placeholder="Search by date, amount, job title, or name" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsPanel()">
+          <input id="transactionsSearch" placeholder="Search by date, amount, job title, or employer name" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsPanel()">
         </div>
       </div>
       ${rows.length ? `
@@ -2809,25 +2924,21 @@ function renderTransactionsPanel(){
           <table style="width:100%;border-collapse:collapse;font-size:.92rem">
             <thead>
               <tr style="text-align:left;border-bottom:1px solid var(--border)">
-                <th style="padding:10px 8px">Date Started</th>
                 <th style="padding:10px 8px">Date Completed</th>
                 <th style="padding:10px 8px">Job Title</th>
                 <th style="padding:10px 8px">Student Rate</th>
                 <th style="padding:10px 8px">Final Hours Worked</th>
-                <th style="padding:10px 8px">Total Earned</th>
-                <th style="padding:10px 8px">Status</th>
+                <th style="padding:10px 8px">Amount Received</th>
               </tr>
             </thead>
             <tbody>
               ${rows.map(tx => `
                 <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:12px 8px">${esc(formatTransactionDate(tx.date_started))}</td>
                   <td style="padding:12px 8px">${esc(formatTransactionDate(tx.date_completed))}</td>
                   <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
                   <td style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
                   <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
                   <td style="padding:12px 8px">$${esc(Number(tx.payout_amount || 0).toFixed(2))}</td>
-                  <td style="padding:12px 8px">${badge(tx.status || 'paid')}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -2841,32 +2952,62 @@ function renderSettings(el){
   const paymentMethod = getEmployerPaymentMethod(currentUser.id);
   el.innerHTML = `
     <div class="section-title">Settings</div>
-    <div class="card form-card" style="max-width:620px">
-      <div class="field"><label>Email</label><input id="setEmail" value="${esc(currentUser.email || '')}"></div>
-      <div class="field"><label>Password</label><input id="setPassword" type="password" placeholder="Leave blank to keep current"></div>
-      ${currentUser.role === 'employer' ? `
-        <div class="warning" style="margin-bottom:14px">Employer accounts in this test flow always keep a card on file before a project can start.</div>
-        <div class="field"><label>Payment Method</label><input value="${paymentMethod ? esc(paymentMethod.brand + ' •••• ' + paymentMethod.last4) : 'Visa •••• 4242'}" readonly></div>
-        <button class="btn btn-outline" style="margin-bottom:12px" onclick="openPaymentMethodModal()">Update Payment Method</button>
-      ` : ''}
-      <button class="btn btn-blue" onclick="saveSettings()">Save Changes</button>
-    </div>
     <div id="transactions-panel"></div>
+    <div class="card form-card" style="margin-top:18px;max-width:720px">
+      <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Password</div>
+      <div class="field"><label>Current Password</label><input id="currentPassword" type="password" placeholder="Current password"></div>
+      <div class="field"><label>New Password</label><input id="newPassword" type="password" placeholder="New password"></div>
+      <div class="field"><label>Confirm New Password</label><input id="confirmNewPassword" type="password" placeholder="Confirm new password"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn btn-blue" onclick="changePassword()">Change Password</button>
+        <button class="btn btn-danger" onclick="deleteCurrentProfile()">Delete Profile</button>
+      </div>
+      <div class="warning" style="margin-bottom:14px">If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.</div>
+      ${currentUser.role === 'employer' ? `
+        <div class="small muted" style="margin-bottom:8px">Payment Method</div>
+        <div class="field"><input value="${paymentMethod ? esc(paymentMethod.brand + ' •••• ' + paymentMethod.last4) : 'Visa •••• 4242'}" readonly></div>
+        <button class="btn btn-outline" onclick="openPaymentMethodModal()">Update Payment Method</button>
+      ` : ''}
+    </div>
   `;
   renderTransactionsPanel();
 }
-function saveSettings(){
+function changePassword(){
   const users = getUsers();
-  const u = users.find(x => x.id === currentUser.id);
-  if (!u) return;
-  const email = (document.getElementById('setEmail').value || '').trim();
-  const pwd = document.getElementById('setPassword').value || '';
-  if (!email.includes('@')) return toast('Please enter a valid email.');
-  u.email = email;
-  if (pwd) u.password = pwd;
+  const user = users.find(x => x.id === currentUser.id);
+  if (!user) return;
+  const currentPassword = document.getElementById('currentPassword').value || '';
+  const newPassword = document.getElementById('newPassword').value || '';
+  const confirmNewPassword = document.getElementById('confirmNewPassword').value || '';
+  if (currentPassword !== user.password) return toast('Current password is incorrect.');
+  if (!newPassword || newPassword.length < 6) return toast('New password must be at least 6 characters.');
+  if (newPassword !== confirmNewPassword) return toast('New passwords do not match.');
+  user.password = newPassword;
   saveUsers(users);
-  setCurrentUser(u);
-  toast('Settings saved.');
+  setCurrentUser(user);
+  toast('Password updated.');
+  renderSettings(document.getElementById('dash-main'));
+}
+function deleteCurrentProfile(){
+  if (!confirm('If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.')) return;
+  const users = getUsers();
+  const user = users.find(x => x.id === currentUser.id);
+  if (!user) return;
+  user.archived = true;
+  user.archivedAt = new Date().toISOString();
+  saveUsers(users);
+  if (currentUser.role === 'student') {
+    const students = getStudents();
+    students.filter(s => s.userId === currentUser.id).forEach(s => {
+      s.status = 'archived';
+      s.archivedAt = new Date().toISOString();
+      s.archivedServices = (s.services || []).map(service => Object.assign({}, service));
+      s.services = [];
+    });
+    saveStudents(students);
+  }
+  signOut();
+  toast('Profile deleted from public view.');
 }
 
 // ---------- Init ----------
