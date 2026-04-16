@@ -1626,6 +1626,10 @@ function applyToPost(postId){
   if (currentUser.role !== 'student') return toast('Only students can apply.');
   const p = getPosts().find(x => x.id === postId);
   if (!p) return;
+  const apps = getApplications();
+  if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
+    return toast("You’ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
+  }
   if (!currentStudentProfile()) return goToAddProfile();
   openModal('Apply to Job', `
     <div class="warning" style="margin-bottom:14px">Your application will appear in your dashboard under Jobs & Bookings.</div>
@@ -1645,7 +1649,7 @@ function submitApplication(postId){
   if (!p || !student) return toast('Student profile required.');
   const apps = getApplications();
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
-    return toast('You already applied to this job.');
+    return toast("You’ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
   }
   apps.push({
     id: uid('app'),
@@ -2344,6 +2348,7 @@ function renderEmployerAppCard(a){
           <div class="small muted" style="margin-top:6px">Source: ${esc(sourceLabel)}</div>
           <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr · ${esc(a.estimatedHours||'')} hours</div>` : ''}
+          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To move forward, please click ‘Start Project’ to confirm and begin the job. This lets the student know you’re ready to proceed.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(a.status)}
