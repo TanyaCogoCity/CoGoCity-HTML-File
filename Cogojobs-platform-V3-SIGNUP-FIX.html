@@ -2172,7 +2172,7 @@ function submitFinalInvoice(projectId){
   };
   p.status = 'awaiting_employer_approval';
   saveProjects(pList);
-  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects' });
+  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". CoGo City commission (15%): $${platformFee.toFixed(2)}. Total due: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": subtotal $${subtotal.toFixed(2)}, commission $${platformFee.toFixed(2)}, total due $${totalDue.toFixed(2)}.`, p.id);
   closeModal();
   toast('Final invoice submitted for employer approval.');
@@ -2420,8 +2420,10 @@ function startProject(appId){
     return renderDashboard();
   }
 
-  const estimatedTotal = Number((a.rate * a.estimatedHours).toFixed(2));
-  const paymentAttempt = attemptEscrowAuthorization(a, estimatedTotal);
+  const estimatedSubtotal = Number((a.rate * a.estimatedHours).toFixed(2));
+  const estimatedPlatformFee = Number((estimatedSubtotal * PLATFORM_FEE_RATE).toFixed(2));
+  const estimatedEmployerTotal = Number((estimatedSubtotal + estimatedPlatformFee).toFixed(2));
+  const paymentAttempt = attemptEscrowAuthorization(a, estimatedEmployerTotal);
   if (!paymentAttempt.success) {
     openPaymentFailureModal(appId, paymentAttempt.reason);
     return;
@@ -2440,7 +2442,9 @@ function startProject(appId){
     <div>Rate: $${esc(projectSnapshot.rate)}/hr</div>
     <div>Location: ${esc(projectSnapshot.location)}</div>
     <div>Estimated hours: ${esc(projectSnapshot.estimatedHours)}</div>
-    <div>Escrow charged on start: $${esc(money(estimatedTotal))}</div>
+    <div>Work subtotal: $${esc(money(estimatedSubtotal))}</div>
+    <div>CoGo City commission (15%): $${esc(money(estimatedPlatformFee))}</div>
+    <div>Total charged on start: $${esc(money(estimatedEmployerTotal))}</div>
     <div>Status: In Progress</div>
     <div>Final hours may be adjusted and confirmed before payment release.</div>
   `;
@@ -2462,13 +2466,15 @@ function startProject(appId){
     studentProfileId: a.studentProfileId || null,
     studentName: a.studentName,
     rate: a.rate,
-    agreedPrice: estimatedTotal,
+    agreedPrice: estimatedSubtotal,
     duration: a.estimatedHours || null,
     estimatedHours: a.estimatedHours,
-    estimatedTotal,
+    estimatedTotal: estimatedSubtotal,
+    estimatedPlatformFee,
+    estimatedEmployerTotal,
     location: a.location,
     projectSnapshot,
-    escrowAmount: estimatedTotal,
+    escrowAmount: estimatedEmployerTotal,
     escrowStatus: paymentAttempt.escrowStatus || 'held',
     escrowProvider: paymentAttempt.provider || 'placeholder',
     status: 'in_progress',
@@ -2479,8 +2485,8 @@ function startProject(appId){
   saveApplications(apps);
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
-  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Escrow of $${money(estimatedTotal)} is held.`, { type:'dashboard', section:'jobs_bookings' });
-  sendSystemMessage(a.studentUserId, a.studentName, `Project started: escrow of $${money(estimatedTotal)} is held and work is now in progress.`, projectId);
+  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Escrow of $${money(estimatedEmployerTotal)} is held.`, { type:'dashboard', section:'jobs_bookings' });
+  sendSystemMessage(a.studentUserId, a.studentName, `Project started: escrow of $${money(estimatedEmployerTotal)} is held and work is now in progress.`, projectId);
   employerTab = 'projects';
   toast('Project started successfully');
   renderDashboard();
@@ -2501,7 +2507,7 @@ function renderEmployerProjectCard(p){
       <div>
         <div style="font-weight:800">${esc(p.jobTitle)}</div>
         <div class="muted small">Student: ${esc(p.studentName)} · Rate: $${esc(p.rate)}/hr</div>
-        <div class="small" style="margin-top:8px">Escrow held: $${esc(money(p.escrowAmount || p.estimatedTotal || 0))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
+        <div class="small" style="margin-top:8px">Work subtotal: $${esc(money(p.estimatedTotal || 0))} · CoGo City commission (15%): $${esc(money(p.estimatedPlatformFee || 0))} · Escrow held: $${esc(money(p.escrowAmount || p.estimatedEmployerTotal || 0))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
         ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
         ${invoiceSummary}
         <div class="contract-box small">${p.contractHtml}</div>
@@ -2633,7 +2639,7 @@ function approveFinalInvoice(projectId){
   saveTransactions(transactions);
 
   saveProjects(projects);
-  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project`, { type:'dashboard', section:'applicants_projects' });
+  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project, including a 15% CoGo City commission of $${money(p.platformFee || 0)}.`, { type:'dashboard', section:'applicants_projects' });
   pushNotif(p.studentUserId, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'`, { type:'dashboard', section:'settings' });
   sendSystemMessage(p.studentUserId, p.studentName, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'.`, p.id);
   pushAdminCommissionNotification(p);
