@@ -1185,8 +1185,12 @@ function renderStudentSignupPreviewHtml(){
   `;
 }
 function submitStudentSignupProfile(){
-  if (!saveStudentSignupStep(5)) return;
-  if (!(studentSignupDraft.services || []).length) return toast('Please add at least one service.');
+  const d = studentSignupDraft || {};
+  if (!d.name || !d.age || !d.school || !d.city) return toast('Please complete the basic profile information first.');
+  if (!(d.photo || d.avatar)) return toast('Please add a photo or avatar first.');
+  if (!d.about || !d.experience) return toast('Please complete About and Experience first.');
+  if (!(d.services || []).length) return toast('Please add at least one service.');
+  if (!d.email || !d.phone || !d.address) return toast('Please complete your contact details first.');
   studentSignupDraft.profileReady = true;
   studentSignupStep = 7;
   renderStudentSignupModal();
