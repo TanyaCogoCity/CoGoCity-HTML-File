@@ -204,12 +204,19 @@ let avatarMenuOpen = false;
 let studentSignupStep = 1;
 let studentSignupDraft = null;
 let studentSignupEditingServiceIndex = null;
+let employerSignupStep = 1;
+let employerSignupMode = 'neighbor';
+let employerSignupDraft = null;
 let settingsTransactionQuery = '';
+let studentProfileTab = 'all';
+let studentProfileQuery = '';
+let employerProfileTab = 'all';
 let studentProfileImagesBuffer = [];
 let studentServiceImagesBuffer = [];
 const PLATFORM_FEE_RATE = 0.15;
 const STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
+const EMPLOYER_AVATAR_OPTIONS = ['🏠','🏢','💼','🛠️','📦','🧰','🪴','☕','🛍️','🍽️','🚚','💻'];
 
 // ---------- Storage ----------
 function ls(key, value){
@@ -223,7 +230,18 @@ function uid(prefix='id'){
 }
 function getUsers(){ return ls('cogo_users') || []; }
 function saveUsers(v){ ls('cogo_users', v); }
-function getStudents(){ return ls('cogo_students') || []; }
+function getStudents(){
+  const students = ls('cogo_students') || [];
+  let changed = false;
+  students.forEach(student => {
+    if (Array.isArray(student.services) && student.services.some(service => typeof service === 'string' || !service || typeof service !== 'object' || (!service.title && !service.description))) {
+      student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
+      changed = true;
+    }
+  });
+  if (changed) ls('cogo_students', students);
+  return students;
+}
 function saveStudents(v){ ls('cogo_students', v); }
 function getPosts(){ return ls('cogo_posts') || []; }
 function savePosts(v){ ls('cogo_posts', v); }
@@ -245,13 +263,58 @@ function getTransactions(){ return ls('cogo_transactions') || []; }
 function saveTransactions(v){ ls('cogo_transactions', v); }
 
 // ---------- Seed ----------
+function migrateLegacyData(){
+  const users = ls('cogo_users') || [];
+  let usersChanged = false;
+  users.forEach(user => {
+    if (user.role === 'employer') {
+      const fullName = String(user.name || '').trim() || 'User';
+      const parts = fullName.split(' ').filter(Boolean);
+      const firstName = user.firstName || parts[0] || 'User';
+      const lastName = user.lastName || (parts[1] || '');
+      const lastInitial = (lastName || 'L').slice(0,1).toUpperCase();
+      if (!user.firstName) { user.firstName = firstName; usersChanged = true; }
+      if (!user.lastName) { user.lastName = lastName; usersChanged = true; }
+      if (!user.publicName) { user.publicName = `${firstName} ${lastInitial}.`; usersChanged = true; }
+      if (!user.city && user.address) { user.city = extractCity(user.address); usersChanged = true; }
+      if (user.type === 'business' && !user.businessProfile) {
+        user.businessProfile = {
+          name: user.company || `${firstName}'s Business`,
+          logo: '',
+          about: user.company ? `${user.company} on CoGo City.` : 'Business profile on CoGo City.',
+          phone: user.phone || '',
+          address: user.address || '',
+          city: user.city || extractCity(user.address || ''),
+          tin: ''
+        };
+        usersChanged = true;
+      }
+    }
+  });
+  if (usersChanged) ls('cogo_users', users);
+
+  const students = ls('cogo_students') || [];
+  let studentsChanged = false;
+  students.forEach(student => {
+    if (Array.isArray(student.services) && student.services.some(service => typeof service === 'string' || !service || typeof service !== 'object' || (!service.title && !service.description))) {
+      student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
+      studentsChanged = true;
+    }
+  });
+  if (studentsChanged) ls('cogo_students', students);
+}
 function seedData(){
-  if (ls('cogo_seeded_v2')) return;
+  if (ls('cogo_seeded_v3')) return;
+  if (ls('cogo_users') || ls('cogo_students')) {
+    migrateLegacyData();
+    ls('cogo_seeded_v3', true);
+    return;
+  }
 
   const users = [
     { id:'u_student_test', email:'student@cogocity.com', password:'student123', name:'Daniel', role:'student', emoji:'🎓' },
-    { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', name:'Ilya', role:'employer', type:'business', emoji:'🏢', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
-    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', name:'Tanya', role:'employer', type:'neighbor', emoji:'🏠', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
+    { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', firstName:'Ilya', lastName:'Ivanov', name:'Ilya I.', publicName:'Ilya I.', role:'employer', type:'business', emoji:'🏢', about:'I hire student help for home, events, and business needs.', phone:'(925) 555-0101', address:'123 Main St, Walnut Creek, CA', city:'Walnut Creek', company:'Reliable Events Co.', businessProfile:{ name:'Reliable Events Co.', logo:'', about:'Local events and operations business hiring dependable student support.', phone:'(925) 555-0101', address:'456 Business Ave, Walnut Creek, CA', city:'Walnut Creek', tin:'12-3456789' }, paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
+    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', firstName:'Tanya', lastName:'Lip', name:'Tanya L.', publicName:'Tanya L.', role:'employer', type:'neighbor', emoji:'🏠', about:'Neighbor account for hiring local student help.', phone:'(925) 555-0110', address:'789 Oak Rd, Danville, CA', city:'Danville', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
     { id:'u_admin_test', email:'Admin@cogocity.com', password:'Admin123', name:'Admin', role:'admin', emoji:'🛡️' }
   ];
 
@@ -266,7 +329,9 @@ function seedData(){
       emoji:'🎓',
       title:'Reliable Student Helper | Tutoring • Tech Help • Events',
       tags:['tutoring','admin','events'],
-      services:['Math tutoring','Homework help','Basic website help','Event support'],
+      services:[
+        { id:'svc_daniel_1', title:'Reliable Student Helper | Tutoring • Tech Help • Events', description:'I can help with tutoring, homework, tech tasks, and event support for local families and businesses.', rate:20, location:'Danville, CA', availability:'Weekday afternoons · Weekends', images:[], videoLink:'', reviews:[] }
+      ],
       about:[
         'I am a motivated student who enjoys helping local families and businesses.',
         'I am dependable, easy to work with, and excited to build experience through real projects.'
@@ -290,7 +355,9 @@ function seedData(){
       emoji:'🏊',
       title:'Tech Help • Tutoring • Creative Projects',
       tags:['tutoring','admin'],
-      services:['Tech help','Tutoring','Creative design'],
+      services:[
+        { id:'svc_niki_1', title:'Tech Help • Tutoring • Creative Projects', description:'Tech help, tutoring, and creative project support for local families and small businesses.', rate:25, location:'Danville, CA', availability:'Weekday evenings · Weekends', images:[], videoLink:'', reviews:[] }
+      ],
       about:['Motivated student with strong problem-solving and tech skills.'],
       whyHire:['Dependable','Fast learner'],
       highlights:['Built school tech projects','Helps peers with homework'],
@@ -355,7 +422,7 @@ function seedData(){
   saveBookings([]);
   saveProjects([]);
   saveMessages([]);
-  ls('cogo_seeded_v2', true);
+  ls('cogo_seeded_v3', true);
 }
 
 // ---------- Utilities ----------
@@ -490,7 +557,7 @@ function renderUserIdentityBanner(){
     <div class="container" style="padding-top:18px;padding-bottom:0">
       <div class="card" style="padding:12px 16px;background:#f8fafc;border:1px solid var(--border)">
         <div class="small muted">Signed in as</div>
-        <div style="font-weight:800">${esc(firstName(currentUser.name))} — ${esc(currentUserRoleLabel())}</div>
+        <div style="font-weight:800">${esc(firstName(currentUser.publicName || currentUser.name))} — ${esc(currentUserRoleLabel())}</div>
       </div>
     </div>
   `;
@@ -747,27 +814,7 @@ function openLoginModal(tab='signin'){
   } else if (authTab === 'student') {
     return openStudentSignupWorkflow();
   } else {
-    const type = authTab === 'neighbor' ? 'neighbor' : 'business';
-    const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
-    const emoji = type === 'neighbor' ? '🏠' : '🏢';
-    content = `
-      <div class="card form-card">
-        <div class="warning" style="margin-bottom:14px">${label} signup requires a payment method so projects can start immediately in the test flow.</div>
-        <div class="field"><label>${label} Name</label><input id="${type}SignupName" placeholder="Your name"></div>
-        ${type === 'business' ? `<div class="field"><label>Business Name</label><input id="businessSignupCompany" placeholder="Business name"></div>` : ''}
-        <div class="row">
-          <div class="field"><label>City</label><input id="${type}SignupCity" placeholder="Danville"></div>
-          <div class="field"><label>Emoji</label><input id="${type}SignupEmoji" value="${emoji}"></div>
-        </div>
-        <div class="field"><label>Email</label><input id="${type}SignupEmail" type="email" placeholder="your@email.com"></div>
-        <div class="field"><label>Password</label><input id="${type}SignupPassword" type="password" placeholder="••••••••"></div>
-        <div class="row">
-          <div class="field"><label>Card Brand</label><input id="${type}SignupCardBrand" value="Visa"></div>
-          <div class="field"><label>Card Last 4</label><input id="${type}SignupCardLast4" maxlength="4" value="4242"></div>
-        </div>
-        <button class="btn btn-blue" style="width:100%" onclick="submitEmployerSignup('${type}')">Create ${label} Account</button>
-      </div>
-    `;
+    return openEmployerSignupWorkflow(authTab === 'neighbor' ? 'neighbor' : 'employer');
   }
 
   openModal('Welcome to CoGo City', `
@@ -1321,40 +1368,273 @@ function publishStudentSignupProfile(){
   location.hash = '#/dashboard';
   renderPage();
 }
-function submitEmployerSignup(type){
-  const prefix = type === 'neighbor' ? 'neighbor' : 'business';
-  const label = type === 'neighbor' ? 'Neighbor' : 'Employer';
-  const name = (document.getElementById(`${prefix}SignupName`).value || '').trim();
-  const city = (document.getElementById(`${prefix}SignupCity`).value || '').trim();
-  const emoji = (document.getElementById(`${prefix}SignupEmoji`).value || (type === 'neighbor' ? '🏠' : '🏢')).trim() || (type === 'neighbor' ? '🏠' : '🏢');
-  const email = (document.getElementById(`${prefix}SignupEmail`).value || '').trim().toLowerCase();
-  const password = document.getElementById(`${prefix}SignupPassword`).value || '';
-  const brand = (document.getElementById(`${prefix}SignupCardBrand`).value || '').trim();
-  const last4 = (document.getElementById(`${prefix}SignupCardLast4`).value || '').trim();
-  const company = type === 'business' ? (document.getElementById('businessSignupCompany').value || '').trim() : '';
-  if (!name || !email || !password || !city || !brand || last4.length !== 4) return toast(`Please complete the required ${label.toLowerCase()} signup fields.`);
+function extractCity(address=''){
+  const clean = String(address || '').trim();
+  if (!clean) return '';
+  const parts = clean.split(',').map(part => part.trim()).filter(Boolean);
+  return parts.length >= 2 ? parts[1] : parts[0];
+}
+function createDefaultEmployerSignupDraft(mode='neighbor'){
+  const isBusiness = mode === 'employer';
+  return {
+    firstName:'',
+    lastName:'',
+    photo:'',
+    avatar:isBusiness ? '🏢' : '🏠',
+    about:'',
+    email:'',
+    phone:'',
+    address:'',
+    city:'',
+    isBusiness,
+    businessName:'',
+    businessLogo:'',
+    businessAbout:'',
+    businessPhone:'',
+    businessAddress:'',
+    businessCity:'',
+    tin:'',
+    password:'',
+    confirmPassword:'',
+    profileSubmitted:false,
+    verificationStatus:'skipped_test_mode'
+  };
+}
+function employerSignupTotalSteps(){
+  return employerSignupDraft && employerSignupDraft.isBusiness ? 5 : 4;
+}
+function employerSignupDisplayStep(){
+  if (employerSignupDraft && !employerSignupDraft.isBusiness) {
+    if (employerSignupStep >= 4) return employerSignupStep - 1;
+  }
+  return employerSignupStep;
+}
+function employerSignupStepTitle(){
+  if (employerSignupStep === 1) return 'Basic Info';
+  if (employerSignupStep === 2) return 'Hiring Type';
+  if (employerSignupStep === 3) return 'Business Info';
+  if (employerSignupStep === 4) return 'Preview';
+  return 'Create Password';
+}
+function renderEmployerAvatarPicker(){
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${EMPLOYER_AVATAR_OPTIONS.map(emoji => `<button class="pill ${emoji === (employerSignupDraft.avatar || '') ? 'active' : ''}" onclick="setEmployerSignupAvatar('${emoji}');return false;">${emoji}</button>`).join('')}</div>`;
+}
+function openEmployerSignupWorkflow(mode='neighbor', step=1){
+  employerSignupMode = mode;
+  if (!employerSignupDraft || step === 1) employerSignupDraft = createDefaultEmployerSignupDraft(mode);
+  employerSignupStep = step;
+  renderEmployerSignupModal();
+}
+function renderEmployerSignupModal(){
+  const d = employerSignupDraft || createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
+  const footer = renderEmployerSignupFooter();
+  openModal(`Join CoGo City as ${d.isBusiness ? 'Employer' : 'Neighbor'}`, `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <button class="pill ${employerSignupMode==='neighbor'?'active':''}" onclick="openEmployerSignupWorkflow('neighbor',1)">Join as Neighbor</button>
+      <button class="pill ${employerSignupMode==='employer'?'active':''}" onclick="openEmployerSignupWorkflow('employer',1)">Join as Employer</button>
+    </div>
+    <div class="card" style="padding:14px 16px;background:#f8fafc;border:1px solid var(--border);margin-bottom:16px">
+      <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div class="small muted">Step ${employerSignupDisplayStep()} of ${employerSignupTotalSteps()}</div>
+          <div style="font-weight:800;font-size:1.05rem">${employerSignupStepTitle()}</div>
+        </div>
+        <div class="small muted">Email verification is skipped in test mode for now.</div>
+      </div>
+    </div>
+    ${renderEmployerSignupStepContent()}
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px">${footer}</div>
+  `, '820px');
+}
+function renderEmployerSignupStepContent(){
+  const d = employerSignupDraft;
+  if (employerSignupStep === 1) return `
+    <div class="card form-card">
+      <div class="row">
+        <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="Tanya"></div>
+        <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip"></div>
+      </div>
+      <div class="field"><label>Profile Photo (required)</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"></div>
+      <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
+      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? `<img src="${esc(d.photo)}" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🏠')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
+      <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself...">${esc(d.about)}</textarea></div>
+      <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
+      <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
+      <div class="field"><label>Home Address (private)</label><input id="employerSignupAddress" value="${esc(d.address)}" placeholder="123 Main St, Walnut Creek, CA"><div class="small muted" style="margin-top:6px">Full address is stored internally for future background checks and is not visible publicly. Only the city is shown publicly.</div></div>
+    </div>
+  `;
+  if (employerSignupStep === 2) return `
+    <div class="card form-card">
+      <label style="display:flex;gap:10px;align-items:flex-start"><input id="employerBusinessToggle" type="checkbox" ${d.isBusiness ? 'checked' : ''} style="width:auto;margin-top:3px"><span>I am hiring for my business</span></label>
+      <div class="small muted" style="margin-top:10px">If this is unchecked, the account continues as a Neighbor. If checked, you’ll add business information next.</div>
+    </div>
+  `;
+  if (employerSignupStep === 3) return `
+    <div class="card form-card">
+      <div class="field"><label>Business Name</label><input id="employerBusinessName" value="${esc(d.businessName)}" placeholder="Business name"></div>
+      <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/*" onchange="handleEmployerSignupBusinessLogoUpload(this)"></div>
+      <div style="margin-bottom:14px">${d.businessLogo ? `<img src="${esc(d.businessLogo)}" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)">` : `<div class="small muted">No business logo added yet.</div>`}</div>
+      <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business...">${esc(d.businessAbout)}</textarea></div>
+      <div class="field"><label>Business Phone Number (private)</label><input id="employerBusinessPhone" value="${esc(d.businessPhone || d.phone)}" placeholder="(555) 555-5555"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
+      <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA"><div class="small muted" style="margin-top:6px">Only the city is shown publicly.</div></div>
+      <div class="field"><label>TIN (private)</label><input id="employerBusinessTin" value="${esc(d.tin)}" placeholder="12-3456789"><div class="small muted" style="margin-top:6px">This is not visible publicly and will be used later for business verification.</div></div>
+    </div>
+  `;
+  if (employerSignupStep === 4) return `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Review your profile before submission.</div>
+      <div class="split" style="align-items:center">
+        <div style="display:flex;gap:14px;align-items:center">${d.photo ? `<img src="${esc(d.photo)}" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🏠')}</div>`}<div><div style="font-weight:800">${esc(d.firstName)} ${esc((d.lastName || '').slice(0,1))}.</div><div class="muted">${esc(d.city || extractCity(d.address))}</div></div></div>
+      </div>
+      <div style="margin-top:14px"><div class="small muted">About</div><div>${esc(d.about || 'No about section added yet.')}</div></div>
+      ${d.isBusiness ? `<div class="card" style="padding:14px;margin-top:16px;background:#fff"><div style="font-weight:800">${esc(d.businessName)}</div><div class="small muted" style="margin-top:4px">${esc(d.businessCity || extractCity(d.businessAddress))}</div>${d.businessLogo ? `<div style="margin-top:10px"><img src="${esc(d.businessLogo)}" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)"></div>` : ''}<div style="margin-top:10px">${esc(d.businessAbout)}</div></div>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-outline" onclick="editEmployerSignupPreview()">Edit</button></div>
+    </div>
+  `;
+  return `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Create your password last. Email verification is skipped in this MVP test flow.</div>
+      <div class="field"><label>Create Password</label><input id="employerSignupPassword" type="password" value="${esc(d.password)}" placeholder="••••••••"></div>
+      <div class="field"><label>Confirm Password</label><input id="employerSignupConfirmPassword" type="password" value="${esc(d.confirmPassword)}" placeholder="••••••••"></div>
+    </div>
+  `;
+}
+function renderEmployerSignupFooter(){
+  const prevStep = employerSignupStep === 4 && employerSignupDraft && !employerSignupDraft.isBusiness ? 2 : employerSignupStep - 1;
+  const prev = employerSignupStep > 1 ? `<button class="btn btn-outline" onclick="goEmployerSignupStep(${prevStep})">Back</button>` : `<span></span>`;
+  if (employerSignupStep === 4) return `${prev}<button class="btn btn-blue" onclick="submitEmployerSignupDraft()">Submit</button>`;
+  if (employerSignupStep === 5) return `${prev}<button class="btn btn-blue" onclick="publishEmployerSignupProfile()">Create Password</button>`;
+  const nextStep = employerSignupStep === 2 && employerSignupDraft && !employerSignupDraft.isBusiness ? 4 : employerSignupStep + 1;
+  return `${prev}<button class="btn btn-blue" onclick="goEmployerSignupStep(${nextStep})">Next</button>`;
+}
+function saveEmployerSignupStep(step){
+  if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
+  if (step === 1) {
+    const firstName = (document.getElementById('employerSignupFirstName').value || '').trim();
+    const lastName = (document.getElementById('employerSignupLastName').value || '').trim();
+    const about = (document.getElementById('employerSignupAbout').value || '').trim();
+    const email = (document.getElementById('employerSignupEmail').value || '').trim().toLowerCase();
+    const phone = (document.getElementById('employerSignupPhone').value || '').trim();
+    const address = (document.getElementById('employerSignupAddress').value || '').trim();
+    if (!firstName || !lastName || !(employerSignupDraft.photo || employerSignupDraft.avatar) || !email || !phone || !address) return toast('Please complete all required personal profile fields.'), false;
+    Object.assign(employerSignupDraft, { firstName, lastName, about, email, phone, address, city: extractCity(address) });
+    return true;
+  }
+  if (step === 2) {
+    employerSignupDraft.isBusiness = !!document.getElementById('employerBusinessToggle').checked;
+    if (!employerSignupDraft.isBusiness) employerSignupDraft.businessPhone = '';
+    return true;
+  }
+  if (step === 3) {
+    if (!employerSignupDraft.isBusiness) return true;
+    const businessName = (document.getElementById('employerBusinessName').value || '').trim();
+    const businessAbout = (document.getElementById('employerBusinessAbout').value || '').trim();
+    const businessPhone = (document.getElementById('employerBusinessPhone').value || '').trim();
+    const businessAddress = (document.getElementById('employerBusinessAddress').value || '').trim();
+    const tin = (document.getElementById('employerBusinessTin').value || '').trim();
+    if (!businessName || !businessAbout || !businessPhone || !businessAddress || !tin) return toast('Please complete all required business fields.'), false;
+    Object.assign(employerSignupDraft, { businessName, businessAbout, businessPhone, businessAddress, businessCity: extractCity(businessAddress), tin });
+    return true;
+  }
+  if (step === 5) {
+    const password = document.getElementById('employerSignupPassword').value || '';
+    const confirmPassword = document.getElementById('employerSignupConfirmPassword').value || '';
+    if (!password || password.length < 6) return toast('Please create a password with at least 6 characters.'), false;
+    if (password !== confirmPassword) return toast('Passwords do not match.'), false;
+    Object.assign(employerSignupDraft, { password, confirmPassword });
+    return true;
+  }
+  return true;
+}
+function goEmployerSignupStep(targetStep){
+  if (targetStep > employerSignupStep && !saveEmployerSignupStep(employerSignupStep)) return;
+  employerSignupStep = targetStep;
+  renderEmployerSignupModal();
+}
+function setEmployerSignupAvatar(emoji){
+  employerSignupDraft.avatar = emoji;
+  renderEmployerSignupModal();
+}
+function handleEmployerSignupPhotoUpload(input){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    employerSignupDraft.photo = reader.result;
+    renderEmployerSignupModal();
+  };
+  reader.readAsDataURL(file);
+}
+function handleEmployerSignupBusinessLogoUpload(input){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    employerSignupDraft.businessLogo = reader.result;
+    renderEmployerSignupModal();
+  };
+  reader.readAsDataURL(file);
+}
+function editEmployerSignupPreview(){
+  employerSignupStep = employerSignupDraft && employerSignupDraft.isBusiness ? 3 : 1;
+  renderEmployerSignupModal();
+}
+function submitEmployerSignupDraft(){
+  const requiredStep = employerSignupDraft && employerSignupDraft.isBusiness ? 3 : 2;
+  if (!saveEmployerSignupStep(requiredStep)) return;
+  employerSignupDraft.profileSubmitted = true;
+  employerSignupStep = 5;
+  renderEmployerSignupModal();
+}
+function publishEmployerSignupProfile(){
+  if (!employerSignupDraft || !employerSignupDraft.profileSubmitted) return toast('Please submit your profile preview first.');
+  if (!saveEmployerSignupStep(5)) return;
+  const d = employerSignupDraft;
   const users = getUsers();
-  if (users.some(u => (u.email || '').toLowerCase() === email)) return toast('Email already registered. Please sign in.');
+  if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
+  const lastInitial = (d.lastName || '').slice(0,1).toUpperCase();
+  const createdAt = new Date().toISOString();
   const newUser = {
     id:uid('u'),
-    email,
-    password,
-    name,
+    email:d.email,
+    password:d.password,
+    firstName:d.firstName,
+    lastName:d.lastName,
+    name:`${d.firstName} ${lastInitial}.`,
+    publicName:`${d.firstName} ${lastInitial}.`,
     role:'employer',
-    type,
-    emoji,
-    city,
-    company,
-    paymentMethod:{ status:'valid', brand, last4 },
+    type:d.isBusiness ? 'business' : 'neighbor',
+    emoji:d.avatar || (d.isBusiness ? '🏢' : '🏠'),
+    photo:d.photo || '',
+    about:d.about || '',
+    phone:d.phone,
+    address:d.address,
+    city:d.city || extractCity(d.address),
+    verificationStatus:'skipped_test_mode',
+    paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' },
     paymentSetupComplete:true,
-    createdAt:new Date().toISOString()
+    company:d.businessName || '',
+    businessProfile:d.isBusiness ? {
+      name:d.businessName,
+      logo:d.businessLogo || '',
+      about:d.businessAbout,
+      phone:d.businessPhone || d.phone,
+      address:d.businessAddress,
+      city:d.businessCity || extractCity(d.businessAddress),
+      tin:d.tin,
+      createdAt
+    } : null,
+    createdAt
   };
   users.push(newUser);
   saveUsers(users);
   setCurrentUser(newUser);
+  employerSignupDraft = null;
+  employerSignupStep = 1;
   closeModal();
-  toast(`${label} account created.`);
-  location.hash = '#/';
+  toast(`${newUser.type === 'business' ? 'Employer' : 'Neighbor'} account created.`);
+  dashSection = 'profile';
+  location.hash = '#/dashboard';
   renderPage();
 }
 function signOut(){
@@ -1437,6 +1717,39 @@ function renderVideoPreviewHtml(url='', label='Video preview'){
     ? `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><iframe src="${esc(embed)}" style="width:100%;max-width:420px;height:236px;border:1px solid var(--border);border-radius:12px;background:#fff" allowfullscreen></iframe></div>`
     : `<div class="small"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}: ${esc(url)}</a></div>`;
 }
+function normalizeStudentServiceRecord(student, service, index=0){
+  const baseTitle = student.title || 'Student Service';
+  const baseRate = student.rate || 20;
+  const baseLocation = student.location || '';
+  const baseAvailability = student.availability || '';
+  if (typeof service === 'string') {
+    return {
+      id:`service_${student.id || 'student'}_${index}`,
+      title: service,
+      description: index === 0 ? ((student.about || [])[0] || '') : '',
+      images: [],
+      videoLink: '',
+      rate: baseRate,
+      location: baseLocation,
+      availability: baseAvailability,
+      reviews: index === 0 && Array.isArray(student.reviews) ? student.reviews : []
+    };
+  }
+  const record = Object.assign({
+    id:`service_${student.id || 'student'}_${index}`,
+    title: index === 0 ? baseTitle : `Service ${index + 1}`,
+    description: index === 0 ? ((student.about || [])[0] || '') : '',
+    images: [],
+    videoLink: '',
+    rate: baseRate,
+    location: baseLocation,
+    availability: baseAvailability,
+    reviews: index === 0 && Array.isArray(student.reviews) ? student.reviews : []
+  }, service || {});
+  if ((!record.title || !String(record.title).trim()) && typeof service !== 'string') record.title = index === 0 ? baseTitle : `Service ${index + 1}`;
+  if ((!record.description || !String(record.description).trim()) && index === 0) record.description = ((student.about || [])[0] || '');
+  return record;
+}
 function getServiceReviews(student, service, index=0){
   if (service && Array.isArray(service.reviews) && service.reviews.length) return service.reviews;
   if (index === 0 && Array.isArray(student.reviews) && student.reviews.length) return student.reviews;
@@ -1472,12 +1785,8 @@ function readImagesToDataUrls(input, callback, limit=3){
   }))).then(callback);
 }
 function getRenderableStudentServices(student){
-  const services = (student.services || []).filter(s => s && (s.title || s.description || s.rate || s.location || s.availability)).map((service, index) => Object.assign({
-    id: service.id || `service_${student.id || 'student'}_${index}`,
-    images: [],
-    videoLink: '',
-    reviews: index === 0 && Array.isArray(student.reviews) && student.reviews.length ? student.reviews : []
-  }, service));
+  const rawServices = Array.isArray(student.services) ? student.services.filter(Boolean) : [];
+  const services = rawServices.map((service, index) => normalizeStudentServiceRecord(student, service, index)).filter(s => s && (s.title || s.description || s.rate || s.location || s.availability));
   if (services.length) return services;
   return [{
     id:'default_service',
@@ -1531,6 +1840,7 @@ function renderProfileCard(card){
         </div>
       </div>
       <div class="profile-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
+        <div class="small" style="min-height:2.8em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(service.description || '')}</div>
         <div class="small muted">Availability: ${esc(service.availability || '')}</div>
         <div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews)</div>
         <div class="split" style="margin-top:auto;align-items:flex-end">
@@ -1932,8 +2242,8 @@ function renderDashboard(){
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','settings'].includes(dashSection)) {
     dashSection = 'profile';
   }
-  if (currentUser.role === 'employer' && !['myposts','applicants_projects','messages','settings'].includes(dashSection)) {
-    dashSection = 'myposts';
+  if (currentUser.role === 'employer' && !['profile','myposts','applicants_projects','messages','settings'].includes(dashSection)) {
+    dashSection = 'profile';
   }
 
   document.getElementById('app').innerHTML = `
@@ -1950,6 +2260,7 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : `
+          <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">👤 My Profile</a>
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
           <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">📋 Applicants & Projects</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
@@ -1971,6 +2282,7 @@ function renderDashboard(){
     if (dashSection === 'myposts') return renderMyPosts(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else {
+    if (dashSection === 'profile') return renderEmployerProfile(el);
     if (dashSection === 'myposts') return renderMyPosts(el);
     if (dashSection === 'applicants_projects') return renderEmployerApplicantsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
@@ -1978,6 +2290,57 @@ function renderDashboard(){
   }
 }
 
+function renderEmployerProfile(el){
+  const user = getUserById(currentUser.id) || currentUser;
+  const business = user.businessProfile || null;
+  const tabs = business
+    ? [
+        { key:'all', label:'All' },
+        { key:'profile', label:'My Profile' },
+        { key:'business', label:'My Business' }
+      ]
+    : [
+        { key:'all', label:'All' },
+        { key:'profile', label:'My Profile' }
+      ];
+  if (!tabs.find(tab => tab.key === employerProfileTab)) employerProfileTab = 'all';
+  const showProfile = ['all','profile'].includes(employerProfileTab);
+  const showBusiness = business && ['all','business'].includes(employerProfileTab);
+  el.innerHTML = `
+    <div class="section-title">My Profile</div>
+    <div class="subtabs">
+      ${tabs.map(tab => `<button class="pill ${employerProfileTab===tab.key?'active':''}" onclick="employerProfileTab='${tab.key}';renderDashboard()">${tab.label}</button>`).join('')}
+    </div>
+    ${showProfile ? `
+      <div class="card form-card" style="margin-top:16px">
+        <div class="split" style="align-items:center;margin-bottom:14px">
+          <div style="display:flex;gap:14px;align-items:center">${user.photo ? `<img src="${esc(user.photo)}" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(user.emoji || '🏠')}</div>`}<div><div style="font-weight:800;font-size:1.05rem">${esc(user.publicName || user.name || '')}</div><div class="small muted">${esc(user.city || '')}</div></div></div>
+        </div>
+        <div class="row">
+          <div><div class="small muted">Name</div><div style="font-weight:700">${esc(user.publicName || user.name || '')}</div></div>
+          <div><div class="small muted">Home address (private, not editable)</div><div style="font-weight:700">${esc(user.address || 'Not added yet')}</div></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(user.phone || 'Not added yet')}</div></div>
+          <div><div class="small muted">Email (private)</div><div style="font-weight:700">${esc(user.email || '')}</div></div>
+        </div>
+        <div style="margin-top:14px"><div class="small muted">About</div><div>${esc(user.about || 'No about section added yet.')}</div></div>
+      </div>
+    ` : ''}
+    ${showBusiness ? `
+      <div class="card form-card" style="margin-top:16px">
+        <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Business</div>
+        <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">${business.logo ? `<img src="${esc(business.logo)}" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)">` : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">🏢</div>`}<div><div style="font-weight:800">${esc(business.name || user.company || '')}</div><div class="small muted">${esc(business.city || '')}</div></div></div>
+        <div style="margin-top:14px"><div class="small muted">About</div><div>${esc(business.about || 'No business about section added yet.')}</div></div>
+        <div class="row" style="margin-top:12px">
+          <div><div class="small muted">Business phone (private)</div><div style="font-weight:700">${esc(business.phone || 'Not added yet')}</div></div>
+          <div><div class="small muted">TIN (private, not editable)</div><div style="font-weight:700">${esc(business.tin || 'Not added yet')}</div></div>
+        </div>
+        <div style="margin-top:12px"><div class="small muted">Business address (private, not editable)</div><div style="font-weight:700">${esc(business.address || 'Not added yet')}</div></div>
+      </div>
+    ` : ''}
+  `;
+}
 function renderStudentProfile(el){
   const profile = currentStudentProfile();
   if (!profile){
@@ -1989,46 +2352,75 @@ function renderStudentProfile(el){
     `;
     return;
   }
-  const services = (profile.services || []).filter(Boolean);
+  const services = getRenderableStudentServices(profile);
+  const profileSummary = getProfileReviewSummary(profile);
+  const reviews = services.flatMap((service, index) => getServiceReviews(profile, service, index).map(review => Object.assign({ serviceTitle: service.title || `Service ${index + 1}` }, review)));
+  const query = (studentProfileQuery || '').trim().toLowerCase();
+  const filteredServices = !query ? services : services.filter(service => [service.title, service.description, service.location, service.availability].join(' ').toLowerCase().includes(query));
+  const filteredReviews = !query ? reviews : reviews.filter(review => [review.comment, review.reviewerName, review.serviceTitle].join(' ').toLowerCase().includes(query));
+  const showProfile = ['all','profile'].includes(studentProfileTab);
+  const showServices = ['all','services'].includes(studentProfileTab);
+  const showReviews = ['all','reviews'].includes(studentProfileTab);
   el.innerHTML = `
-    <div class="split" style="margin-bottom:16px">
-      <div class="section-title" style="margin:0">My Profile</div>
-      <button class="btn btn-blue btn-sm" onclick="openStudentServiceForm()">Add Service</button>
+    <div class="section-title">My Profile</div>
+    <div class="subtabs">
+      <button class="pill ${studentProfileTab==='all'?'active':''}" onclick="studentProfileTab='all';renderDashboard()">All</button>
+      <button class="pill ${studentProfileTab==='profile'?'active':''}" onclick="studentProfileTab='profile';renderDashboard()">My Profile</button>
+      <button class="pill ${studentProfileTab==='services'?'active':''}" onclick="studentProfileTab='services';renderDashboard()">My Services</button>
+      <button class="pill ${studentProfileTab==='reviews'?'active':''}" onclick="studentProfileTab='reviews';renderDashboard()">My Reviews</button>
+    </div>
+    <div class="card form-card" style="margin-top:16px;margin-bottom:16px">
+      <div class="field" style="margin-bottom:0"><label>Search</label><input value="${esc(studentProfileQuery)}" placeholder="Search profile, services, or reviews" oninput="studentProfileQuery=this.value;renderDashboard()"></div>
     </div>
     <div class="grid" style="grid-template-columns:1fr;gap:18px">
-      <div class="card form-card">
-        <div class="split" style="margin-bottom:12px">
-          <div style="font-weight:800;font-size:1.05rem">My Profile</div>
-          <button class="btn btn-outline btn-sm" onclick="openStudentProfileForm('${esc(profile.id)}')">Edit Profile</button>
+      ${showProfile ? `
+        <div class="card form-card">
+          <div class="split" style="margin-bottom:12px">
+            <div style="font-weight:800;font-size:1.05rem">My Profile</div>
+            <button class="btn btn-outline btn-sm" onclick="openStudentProfileForm('${esc(profile.id)}')">Edit Profile</button>
+          </div>
+          <div class="row">
+            <div><div class="small muted">Name</div><div style="font-weight:700">${esc(profile.name || '')}</div></div>
+            <div><div class="small muted">Age</div><div style="font-weight:700">${esc(profile.age || '')}</div></div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <div><div class="small muted">Location</div><div style="font-weight:700">${esc(profile.location || '')}</div></div>
+            <div><div class="small muted">School(s)</div><div style="font-weight:700">${esc(profile.school || '')}</div></div>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <div><div class="small muted">Email (private)</div><div style="font-weight:700">${esc(profile.privateEmail || currentUser.email || '')}</div></div>
+            <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(profile.phone || 'Not added yet')}</div></div>
+          </div>
+          <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderImagePreviewHtml(profile.profileImages || [], 80)}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(profile.profileVideoLink || '', 'Profile video')}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">⭐ ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
-        <div class="row">
-          <div><div class="small muted">Name</div><div style="font-weight:700">${esc(profile.name || '')}</div></div>
-          <div><div class="small muted">Age</div><div style="font-weight:700">${esc(profile.age || '')}</div></div>
+      ` : ''}
+      ${showServices ? `
+        <div class="card form-card">
+          <div class="split" style="margin-bottom:12px">
+            <div style="font-weight:800;font-size:1.05rem">My Services</div>
+            <button class="btn btn-blue btn-sm" onclick="openStudentServiceForm()">Add Service</button>
+          </div>
+          ${filteredServices.length ? filteredServices.map((service, index) => renderStudentServiceManagerCard(service, services.findIndex(s => s.id === service.id || (s.title === service.title && s.description === service.description)))).join('') : `<div class="muted">No services match your search.</div>`}
         </div>
-        <div class="row" style="margin-top:12px">
-          <div><div class="small muted">Location</div><div style="font-weight:700">${esc(profile.location || '')}</div></div>
-          <div><div class="small muted">School(s)</div><div style="font-weight:700">${esc(profile.school || '')}</div></div>
+      ` : ''}
+      ${showReviews ? `
+        <div class="card form-card">
+          <div class="split" style="margin-bottom:12px">
+            <div style="font-weight:800;font-size:1.05rem">My Reviews</div>
+            <div class="small muted">${esc(filteredReviews.length)} review${filteredReviews.length === 1 ? '' : 's'}</div>
+          </div>
+          ${filteredReviews.length ? filteredReviews.map(review => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(review.reviewerName || 'Employer')} · ${esc(review.rating || 5)}/5</div><div class="muted small">${esc(review.serviceTitle || 'Service')} · ${timeAgo(review.createdAt)}</div><div style="margin-top:6px">${esc(review.comment || '')}</div></div>`).join('') : `<div class="muted">No reviews match your search yet.</div>`}
         </div>
-        <div class="row" style="margin-top:12px">
-          <div><div class="small muted">Email (private)</div><div style="font-weight:700">${esc(profile.privateEmail || currentUser.email || '')}</div></div>
-          <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(profile.phone || 'Not added yet')}</div></div>
-        </div>
-        <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
-        <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
-        <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderImagePreviewHtml(profile.profileImages || [], 80)}</div></div>
-        <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(profile.profileVideoLink || '', 'Profile video')}</div></div>
-      </div>
-      <div class="card form-card">
-        <div class="split" style="margin-bottom:12px">
-          <div style="font-weight:800;font-size:1.05rem">My Services</div>
-          <button class="btn btn-blue btn-sm" onclick="openStudentServiceForm()">Add Service</button>
-        </div>
-        ${services.length ? services.map((service, index) => renderStudentServiceManagerCard(service, index)).join('') : `<div class="muted">No services yet. Add your first service.</div>`}
-      </div>
+      ` : ''}
     </div>
   `;
 }
 function renderStudentServiceManagerCard(service, index){
+  const summary = getServiceReviewSummary(currentStudentProfile(), service, index);
   return `
     <div class="card item-card" style="margin-bottom:12px">
       <div class="split">
@@ -2036,6 +2428,7 @@ function renderStudentServiceManagerCard(service, index){
           <div style="font-weight:800">${esc(service.title || '')}</div>
           <div class="small" style="margin-top:6px">${esc(service.description || '')}</div>
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
+          <div class="small muted" style="margin-top:8px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
           <div style="margin-top:10px">${renderMediaThumbs(service.images || [], 3, 64)}</div>
           <div style="margin-top:10px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
         </div>
@@ -2128,7 +2521,8 @@ function previewStudentServiceVideoLink(value){
 function openStudentServiceForm(serviceIndex=''){
   const profile = currentStudentProfile();
   if (!profile) return toast('Create your profile first.');
-  const existing = serviceIndex === '' || serviceIndex === null || serviceIndex === undefined ? null : (profile.services || [])[Number(serviceIndex)];
+  profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
+  const existing = serviceIndex === '' || serviceIndex === null || serviceIndex === undefined ? null : profile.services[Number(serviceIndex)];
   studentServiceImagesBuffer = Array.isArray(existing?.images) ? [...existing.images] : [];
   openModal(existing ? 'Edit Service' : 'Add Service', `
     <div class="field"><label>Title</label><input id="studentServiceTitle" value="${esc(existing?.title || '')}"></div>
@@ -2149,7 +2543,7 @@ function saveStudentServiceForm(serviceIndex=''){
   const students = getStudents();
   const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
   if (!profile) return;
-  profile.services = profile.services || [];
+  profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
   const title = (document.getElementById('studentServiceTitle').value || '').trim();
   const description = (document.getElementById('studentServiceDescription').value || '').trim();
   const videoLink = (document.getElementById('studentServiceVideoLink').value || '').trim();
@@ -2184,7 +2578,7 @@ function deleteStudentService(serviceIndex){
   const students = getStudents();
   const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
   if (!profile) return;
-  profile.services = profile.services || [];
+  profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
   if (profile.services.length <= 1) return toast('Keep at least one service on your profile.');
   profile.services.splice(Number(serviceIndex), 1);
   profile.title = profile.services[0]?.title || profile.title;
@@ -2924,7 +3318,8 @@ function submitReview(projectId){
   if (!student) return toast('Student profile not found.');
   const rating = Number(ratingEl.value || 5);
   const comment = (commentEl.value || '').trim();
-  const review = { id: uid('review'), reviewerId: currentUser.id, reviewerName: currentUser.name, rating, comment, projectId, createdAt: new Date().toISOString(), studentServiceId: p.studentServiceId || null };
+  const review = { id: uid('review'), reviewerId: currentUser.id, reviewerName: currentUser.publicName || currentUser.name, rating, comment, projectId, createdAt: new Date().toISOString(), studentServiceId: p.studentServiceId || null };
+  student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
   const services = student.services || [];
   const targetService = services.find(service => service.id === p.studentServiceId) || services[0] || null;
   if (targetService) {
