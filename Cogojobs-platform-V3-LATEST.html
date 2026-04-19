@@ -1017,17 +1017,17 @@ function renderStudentSignupStepContent(){
         </div>
       ` : ''}
       <div style="font-weight:800;margin-bottom:10px">${studentSignupEditingServiceIndex === null ? 'Create Service' : 'Edit Service'}</div>
-      <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper"></div>
-      <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?">${esc((d.serviceForm || {}).description || '')}</textarea></div>
+      <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
+      <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
       <div class="field"><label>Add Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
       <div style="margin-bottom:14px">${renderImagePreviewHtml((d.serviceForm || {}).images || [], 80)}</div>
       <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc((d.serviceForm || {}).videoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupServiceVideo(this.value)"></div>
       <div id="student-service-video-preview">${renderVideoPreviewHtml((d.serviceForm || {}).videoLink || '', 'Service video preview')}</div>
       <div class="row">
-        <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}"></div>
-        <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA"></div>
+        <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}" oninput="syncStudentSignupServiceForm()"></div>
+        <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA" oninput="syncStudentSignupServiceForm()"></div>
       </div>
-      <div class="field"><label>Availability</label><input id="studentFlowServiceAvailability" value="${esc((d.serviceForm || {}).availability || '')}" placeholder="Weekday afternoons · Weekends"></div>
+      <div class="field"><label>Availability</label><input id="studentFlowServiceAvailability" value="${esc((d.serviceForm || {}).availability || '')}" placeholder="Weekday afternoons · Weekends" oninput="syncStudentSignupServiceForm()"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-blue" onclick="saveStudentSignupService()">${studentSignupEditingServiceIndex === null ? 'Save Service' : 'Update Service'}</button>
         <button class="btn btn-outline" onclick="startNewStudentSignupService()">Add Another Service</button>
@@ -1107,6 +1107,28 @@ function saveStudentSignupStep(step){
     return true;
   }
   if (step === 5){
+    syncStudentSignupServiceForm();
+    const services = studentSignupDraft.services || [];
+    const form = studentSignupDraft.serviceForm || {};
+    const hasDraftValues = !!(form.title || form.description || form.videoLink || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
+    if (!services.length && hasDraftValues) {
+      const draftRate = Number(form.rate || 0);
+      if (!form.title || !form.description || !draftRate || !form.location || !form.availability) return toast('Please complete all required service fields.'), false;
+      const service = {
+        id: uid('service'),
+        title: form.title,
+        description: form.description,
+        images: form.images || [],
+        videoLink: form.videoLink || '',
+        rate: draftRate,
+        location: form.location,
+        availability: form.availability,
+        reviews: []
+      };
+      studentSignupDraft.services.push(service);
+      studentSignupEditingServiceIndex = null;
+      studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+    }
     if (!(studentSignupDraft.services || []).length) return toast('Please save at least one service before continuing.'), false;
     return true;
   }
@@ -1154,12 +1176,30 @@ function handleStudentSignupProfileImagesUpload(input){
     renderStudentSignupModal();
   });
 }
+function syncStudentSignupServiceForm(){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location:'', availability:'' };
+  const titleEl = document.getElementById('studentFlowServiceTitle');
+  const descriptionEl = document.getElementById('studentFlowServiceDescription');
+  const videoEl = document.getElementById('studentFlowServiceVideoLink');
+  const rateEl = document.getElementById('studentFlowServiceRate');
+  const locationEl = document.getElementById('studentFlowServiceLocation');
+  const availabilityEl = document.getElementById('studentFlowServiceAvailability');
+  if (titleEl) studentSignupDraft.serviceForm.title = (titleEl.value || '').trim();
+  if (descriptionEl) studentSignupDraft.serviceForm.description = (descriptionEl.value || '').trim();
+  if (videoEl) studentSignupDraft.serviceForm.videoLink = (videoEl.value || '').trim();
+  if (rateEl) studentSignupDraft.serviceForm.rate = rateEl.value || '20';
+  if (locationEl) studentSignupDraft.serviceForm.location = (locationEl.value || '').trim();
+  if (availabilityEl) studentSignupDraft.serviceForm.availability = (availabilityEl.value || '').trim();
+}
 function previewStudentSignupServiceVideo(value){
+  syncStudentSignupServiceForm();
   studentSignupDraft.serviceForm.videoLink = value || '';
   const el = document.getElementById('student-service-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.serviceForm.videoLink, 'Service video preview');
 }
 function handleStudentSignupServiceImagesUpload(input){
+  syncStudentSignupServiceForm();
   readImagesToDataUrls(input, (images) => {
     studentSignupDraft.serviceForm.images = images;
     renderStudentSignupModal();
@@ -1184,12 +1224,14 @@ function removeStudentSignupService(index){
   else renderStudentSignupModal();
 }
 function saveStudentSignupService(){
-  const title = (document.getElementById('studentFlowServiceTitle').value || '').trim();
-  const description = (document.getElementById('studentFlowServiceDescription').value || '').trim();
-  const videoLink = (document.getElementById('studentFlowServiceVideoLink').value || '').trim();
-  const rate = Number(document.getElementById('studentFlowServiceRate').value || 0);
-  const location = (document.getElementById('studentFlowServiceLocation').value || '').trim();
-  const availability = (document.getElementById('studentFlowServiceAvailability').value || '').trim();
+  syncStudentSignupServiceForm();
+  const form = studentSignupDraft.serviceForm || {};
+  const title = (form.title || '').trim();
+  const description = (form.description || '').trim();
+  const videoLink = (form.videoLink || '').trim();
+  const rate = Number(form.rate || 0);
+  const location = (form.location || '').trim();
+  const availability = (form.availability || '').trim();
   if (!title || !description || !rate || !location || !availability) return toast('Please complete all required service fields.');
   const service = {
     id: studentSignupEditingServiceIndex !== null && studentSignupDraft.services[studentSignupEditingServiceIndex]
