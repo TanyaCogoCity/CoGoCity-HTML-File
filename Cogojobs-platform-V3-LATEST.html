@@ -1205,7 +1205,7 @@ function renderStudentSignupStepContent(){
   if (studentSignupStep === 4) return `
     <div class="card form-card">
       <div class="field"><label>Profile Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupProfileImagesUpload(this)"></div>
-      <div style="margin-bottom:14px">${renderImagePreviewHtml(d.profileImages || [], 80)}</div>
+      ${renderSignupImageGallery(d.profileImages || [], 120)}
       <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(d.profileVideoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupProfileVideo(this.value)"></div>
       <div id="student-profile-video-preview">${renderVideoPreviewHtml(d.profileVideoLink || '', 'Profile video preview')}</div>
     </div>
@@ -1236,7 +1236,7 @@ function renderStudentSignupStepContent(){
       <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
       <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
       <div class="field"><label>Add Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
-      <div style="margin-bottom:14px">${renderImagePreviewHtml((d.serviceForm || {}).images || [], 80)}</div>
+      ${renderSignupImageGallery((d.serviceForm || {}).images || [], 120)}
       <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc((d.serviceForm || {}).videoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupServiceVideo(this.value)"></div>
       <div id="student-service-video-preview">${renderVideoPreviewHtml((d.serviceForm || {}).videoLink || '', 'Service video preview')}</div>
       <div class="row">
@@ -1503,7 +1503,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
       <div class="small muted" style="margin-top:6px">$${esc(service.rate || 0)}/hr · ${esc(service.location || '')}</div>
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
       <div style="margin-top:14px">${esc(service.description || '')}</div>
-      <div style="margin-top:14px">${renderImagePreviewHtml(service.images || [], 84)}</div>
+      <div style="margin-top:14px">${renderSignupImageGallery(service.images || [], 120)}</div>
       <div style="margin-top:14px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
       <div style="margin-top:16px">${backButtonHtml}</div>
     </div>
@@ -1534,7 +1534,7 @@ function renderStudentSignupPreviewHtml(){
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       <div class="small">${esc((student.highlights || [])[0] || '')}</div>
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
-      ${renderImagePreviewHtml(student.profileImages || [], 84)}
+      ${renderSignupImageGallery(student.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
       ${renderVideoPreviewHtml(student.profileVideoLink || '', 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
@@ -2029,6 +2029,10 @@ function renderImagePreviewHtml(images=[], size=72){
   if (!images.length) return `<div class="small muted">No images added yet.</div>`;
   return images.length > 1 && size >= 80 ? renderMediaCarousel(images, size) : renderMediaThumbs(images, 3, size, '');
 }
+function renderSignupImageGallery(images=[], size=120){
+  if (!images.length) return `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They’ll appear in a carousel on your preview, profile, and service views.</div>`;
+  return `<div style="margin-bottom:14px">${renderMediaCarousel(images, size)}</div>`;
+}
 function parseVideoLink(url=''){
   const clean = (url || '').trim();
   if (!clean) return null;
@@ -2453,7 +2457,7 @@ function openProfile(studentId){
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       ${(s.highlights||[]).map(p => `<div class="small">• ${esc(p)}</div>`).join('')}
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
-      ${renderImagePreviewHtml(s.profileImages || [], 88)}
+      ${renderSignupImageGallery(s.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
       ${renderVideoPreviewHtml(s.profileVideoLink || '', 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
@@ -3021,7 +3025,7 @@ function renderStudentProfile(el){
           </div>
           <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderImagePreviewHtml(profile.profileImages || [], 80)}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(profile.profileImages || [], 120)}</div></div>
           <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(profile.profileVideoLink || '', 'Profile video')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">⭐ ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
@@ -3057,7 +3061,7 @@ function renderStudentServiceManagerCard(service, index){
           <div class="small" style="margin-top:6px">${esc(service.description || '')}</div>
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
-          <div style="margin-top:10px">${renderImagePreviewHtml(service.images || [], 84)}</div>
+          <div style="margin-top:10px">${renderSignupImageGallery(service.images || [], 120)}</div>
           <div style="margin-top:10px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
@@ -3086,7 +3090,7 @@ function openStudentProfileForm(profileId=''){
     <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc((profile.about || []).join('\n'))}</textarea></div>
     <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc((profile.highlights || []).join('\n'))}</textarea></div>
     <div class="field"><label>Profile Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentProfileImagesUpload(this)"></div>
-    <div id="student-profile-images-preview" style="margin-bottom:14px">${renderImagePreviewHtml(studentProfileImagesBuffer, 80)}</div>
+    <div id="student-profile-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentProfileImagesBuffer, 120)}</div>
     <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(profile.profileVideoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentProfileVideoLink(this.value)"></div>
     <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(profile.profileVideoLink || '', 'Profile video')}</div>
     <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profile.id)}')">Save Profile</button>
@@ -3128,7 +3132,7 @@ function handleStudentProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     studentProfileImagesBuffer = images;
     const el = document.getElementById('student-profile-images-preview');
-    if (el) el.innerHTML = renderImagePreviewHtml(studentProfileImagesBuffer, 80);
+    if (el) el.innerHTML = renderSignupImageGallery(studentProfileImagesBuffer, 120);
   });
 }
 function previewStudentProfileVideoLink(value){
@@ -3139,7 +3143,7 @@ function handleStudentServiceImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     studentServiceImagesBuffer = images;
     const el = document.getElementById('student-service-images-preview');
-    if (el) el.innerHTML = renderImagePreviewHtml(studentServiceImagesBuffer, 80);
+    if (el) el.innerHTML = renderSignupImageGallery(studentServiceImagesBuffer, 120);
   });
 }
 function previewStudentServiceVideoLink(value){
@@ -3156,7 +3160,7 @@ function openStudentServiceForm(serviceIndex=''){
     <div class="field"><label>Title</label><input id="studentServiceTitle" value="${esc(existing?.title || '')}"></div>
     <div class="field"><label>Description</label><textarea id="studentServiceDescription">${esc(existing?.description || '')}</textarea></div>
     <div class="field"><label>Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentServiceImagesUpload(this)"></div>
-    <div id="student-service-images-preview" style="margin-bottom:14px">${renderImagePreviewHtml(studentServiceImagesBuffer, 80)}</div>
+    <div id="student-service-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentServiceImagesBuffer, 120)}</div>
     <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(existing?.videoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentServiceVideoLink(this.value)"></div>
     <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(existing?.videoLink || '', 'Service video')}</div>
     <div class="row">
