@@ -3686,7 +3686,7 @@ function declineApplicant(appId, shouldSendMessage){
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(application.postId, apps);
   if (sendableMessage) {
-    sendInboxMessage(application.studentUserId, application.studentName, message, null, currentUser);
+    sendInboxMessage(application.studentUserId, application.studentName, message, null, currentUser, { postId: application.postId || null, applicationId: application.id });
     pushNotif(application.studentUserId, `${currentUser.name} sent you a message about "${application.jobTitle}".`, { type:'dashboard', section:'messages' });
   }
   closeModal();
@@ -4217,10 +4217,7 @@ function renderThreadView(userId){
 
   const partnerMsgs = all
     .filter(m => (m.fromId === currentUser.id && m.toId === userId) || (m.fromId === userId && m.toId === currentUser.id));
-  const msgs = (activeProject
-    ? partnerMsgs.filter(m => m.projectId === activeProject.id)
-    : partnerMsgs)
-    .sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
+  const msgs = partnerMsgs.sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
   const projectBreakdown = activeProject
     ? calculateCommissionBreakdown(activeProject.actualHours || activeProject.estimatedHours || 0, activeProject.rate || 0)
     : null;
@@ -4231,7 +4228,7 @@ function renderThreadView(userId){
       : `<div class="card" style="padding:12px 14px;margin:0 12px 10px;background:#f8fafc;border:1px solid var(--border)">${renderEmployerCommissionBreakdownHtml(projectBreakdown, activeProject.actualHours ? 'Actual' : 'Estimated')}<div class="small muted" style="margin-top:6px">Work Total, Platform Fee, and final payment stay visible here for transparency.</div></div>`;
 
   return `
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${renderMessagePartnerName(partner.id, partner.name)}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Project thread: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${renderMessagePartnerName(partner.id, partner.name)}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Active project: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
     ${projectBreakdownHtml}
     <div class="messages" id="messages-box">
       ${msgs.length ? msgs.map(m => `
@@ -4247,7 +4244,7 @@ function renderThreadView(userId){
     </div>
   `;
 }
-function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null){
+function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
   const sender = fromUser || currentUser || {};
   const msgs = getMessages();
   msgs.push({
@@ -4258,6 +4255,8 @@ function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null){
     toName,
     content,
     projectId,
+    postId: meta.postId || null,
+    applicationId: meta.applicationId || null,
     createdAt: new Date().toISOString(),
     read: false
   });
