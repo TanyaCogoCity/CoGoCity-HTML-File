@@ -1084,7 +1084,7 @@ function createDefaultStudentSignupDraft(){
     school:'',
     city:'',
     photo:'',
-    avatar:'🎓',
+    avatar:'',
     about:'',
     experience:'',
     profileImages:[],
@@ -1188,13 +1188,13 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 2) return `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Add profile photos or choose an avatar. You can’t continue without one.</div>
-      <div class="field"><label>Upload up to 3 profile pictures</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
-      ${renderSignupImageGallery(d.profileImages || [], 120)}
-      <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '🎓')}</div>
+      <div class="warning" style="margin-bottom:14px">Upload a photo or choose an avatar.</div>
+      <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
+      <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
+      <div style="margin-bottom:14px">${d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:120px;height:120px;border-radius:20px;object-fit:cover;border:3px solid #dbeafe">` : `<div class="small muted">No photo uploaded yet.</div>`}</div>
+      <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
-        ${(d.profileImages || []).length ? `<img src="${esc((d.profileImages || [])[0])}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🎓')}</div>`}
-        <div class="small muted">Your uploaded photos will be used in the carousel on preview, profile, and service views.</div>
+        ${d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
       </div>
     </div>
   `;
@@ -1307,8 +1307,7 @@ function saveStudentSignupStep(step){
     return true;
   }
   if (step === 2){
-    studentSignupDraft.avatar = studentSignupDraft.avatar || '🎓';
-    if (!((studentSignupDraft.profileImages || []).length || studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
+    if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
     return true;
   }
   if (step === 3){
@@ -1373,11 +1372,15 @@ function goStudentSignupStep(targetStep){
   renderStudentSignupModal();
 }
 function handleStudentSignupPhotoUpload(input){
-  readImagesToDataUrls(input, (images) => {
-    studentSignupDraft.profileImages = images;
-    studentSignupDraft.photo = images[0] || '';
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    studentSignupDraft.photo = reader.result;
+    if (!(studentSignupDraft.profileImages || []).length) studentSignupDraft.profileImages = [reader.result];
     renderStudentSignupModal();
-  });
+  };
+  reader.readAsDataURL(file);
 }
 function previewStudentSignupProfileVideo(value){
   studentSignupDraft.profileVideoLink = value || '';
@@ -2032,14 +2035,14 @@ function renderSignupImageGallery(images=[], size=120){
   if (!images.length) return `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They’ll appear in a carousel on your preview, profile, and service views.</div>`;
   return `<div style="margin-bottom:14px">${renderMediaCarousel(images, size)}</div>`;
 }
-function renderStudentAvatarOptions(selected='🎓'){
+function renderStudentAvatarOptions(selected=''){
   return `<div style="display:flex;flex-wrap:wrap;gap:10px">${STUDENT_AVATAR_OPTIONS.map(avatar => `
     <button type="button" class="btn ${avatar === selected ? 'btn-blue' : 'btn-outline'} btn-sm" style="min-width:48px;height:48px;padding:0;font-size:1.35rem" onclick="chooseStudentSignupAvatar('${avatar}')">${avatar}</button>
   `).join('')}</div>`;
 }
 function chooseStudentSignupAvatar(avatar){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
-  studentSignupDraft.avatar = avatar || '🎓';
+  studentSignupDraft.avatar = avatar || '';
   renderStudentSignupModal();
 }
 function parseVideoLink(url=''){
