@@ -1954,8 +1954,7 @@ function renderPage(){
 }
 
 function renderHome(){
-  const students = getStudents().filter(s => s.status === 'live');
-  const serviceCards = students.flatMap(student => getRenderableStudentServices(student).map((service, index) => ({ student, service, index })));
+  const serviceCards = getHomepageOrderedServiceCards();
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <section class="hero">
@@ -1973,6 +1972,7 @@ function renderHome(){
       </div>
     </div>
   `;
+  markHomepageServicesShown(serviceCards);
 }
 function renderStudentAvatar(student, size=54, extraStyle=''){
   const image = student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
@@ -2004,13 +2004,193 @@ function renderVideoPreviewHtml(url='', label='Video preview'){
     ? `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><iframe src="${esc(embed)}" style="width:100%;max-width:420px;height:236px;border:1px solid var(--border);border-radius:12px;background:#fff" allowfullscreen></iframe></div>`
     : `<div class="small"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}: ${esc(url)}</a></div>`;
 }
+function getHomepageSessionId(){
+  let sessionId = '';
+  try {
+    sessionId = sessionStorage.getItem('cogo_homepage_session_id') || '';
+    if (!sessionId) {
+      sessionId = uid('home');
+      sessionStorage.setItem('cogo_homepage_session_id', sessionId);
+    }
+  } catch (error) {
+    sessionId = ls('cogo_homepage_fallback_session_id') || uid('home');
+    ls('cogo_homepage_fallback_session_id', sessionId);
+  }
+  return sessionId;
+}
+function getHomepageServiceKey(card){
+  return `${card.student.userId || card.student.id}:${card.service.id || `service_${card.index || 0}`}`;
+}
+function hashString(value=''){
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0);
+}
+function daysSince(value){
+  if (!value) return Infinity;
+  return (Date.now() - new Date(value).getTime()) / 86400000;
+}
+function getHomepageRecencyScore(updatedAt){
+  const ageDays = daysSince(updatedAt);
+  if (ageDays <= 3) return 100;
+  if (ageDays <= 7) return 80;
+  if (ageDays <= 14) return 60;
+  if (ageDays <= 30) return 40;
+  return 20;
+}
+function getHomepageQualityScore(service){
+  const reviewCount = Number(service.review_count || 0);
+  if (!reviewCount) return 50;
+  const ratingScore = (Number(service.average_rating || 0) / 5) * 70;
+  const reviewScore = (Math.min(reviewCount, 10) / 10) * 30;
+  return ratingScore + reviewScore;
+}
+function getHomepageLowExposureBoost(lastShownAt){
+  const ageDays = daysSince(lastShownAt);
+  if (!lastShownAt || !Number.isFinite(ageDays)) return 40;
+  if (ageDays >= 3) return 30;
+  if (ageDays >= 1) return 15;
+  return 0;
+}
+function getHomepageRandomOffset(sessionId, card){
+  const viewerKey = currentUser ? currentUser.id : 'guest';
+  return (hashString(`${sessionId}:${viewerKey}:${getHomepageServiceKey(card)}`) % 2001) / 100;
+}
+function getHomepageServiceCategory(card){
+  return card.service.category_id || card.service.categoryId || (Array.isArray(card.service.tags) && card.service.tags[0]) || (Array.isArray(card.student.tags) && card.student.tags[0]) || 'general';
+}
+function isHomepageServiceNew(card){
+  return Number(card.service.review_count || 0) === 0 || daysSince(card.service.created_at || card.service.createdAt) <= 7;
+}
+function getEligibleHomepageServiceCards(){
+  const students = getStudents().filter(student => student.status === 'live');
+  return students.flatMap(student => getRenderableStudentServices(student).map((service, index) => ({ student, service, index }))).filter(card => {
+    const user = getUserById(card.student.userId);
+    return user
+      && user.role === 'student'
+      && user.status !== 'suspended'
+      && !user.archived
+      && card.service.status === 'active'
+      && card.service.is_approved === true
+      && card.service.is_visible === true;
+  });
+}
+function scoreHomepageServiceCard(card, sessionId){
+  const recencyScore = getHomepageRecencyScore(card.service.updated_at || card.service.updatedAt || card.student.createdAt);
+  const qualityScore = getHomepageQualityScore(card.service);
+  const lowExposureBoost = getHomepageLowExposureBoost(card.service.last_shown_at || card.service.lastShownAt);
+  const randomOffset = getHomepageRandomOffset(sessionId, card);
+  const finalScore = (recencyScore * 0.4) + (qualityScore * 0.3) + (lowExposureBoost * 0.2) + (randomOffset * 0.1);
+  return Object.assign({}, card, {
+    homepageKey: getHomepageServiceKey(card),
+    homepageCategory: getHomepageServiceCategory(card),
+    homepageScore: finalScore,
+    homepageSignals: { recencyScore, qualityScore, lowExposureBoost, randomOffset }
+  });
+}
+function pullHomepageCandidate(pool, placedCards, topStudentIds, topLimit=12){
+  for (let i = 0; i < pool.length; i += 1) {
+    const card = pool[i];
+    const wouldDuplicateStudent = placedCards.length < topLimit && topStudentIds.has(card.student.userId);
+    const lastTwo = placedCards.slice(-2);
+    const wouldBreakCategoryMix = lastTwo.length === 2 && lastTwo.every(item => item.homepageCategory === card.homepageCategory);
+    if (!wouldDuplicateStudent && !wouldBreakCategoryMix) return pool.splice(i, 1)[0];
+  }
+  return null;
+}
+function buildHomepageFairOrder(sortedCards){
+  const featuredNewCards = [];
+  const seenFeaturedStudents = new Set();
+  sortedCards.forEach(card => {
+    if (featuredNewCards.length >= 3) return;
+    if (!isHomepageServiceNew(card)) return;
+    if (seenFeaturedStudents.has(card.student.userId)) return;
+    seenFeaturedStudents.add(card.student.userId);
+    featuredNewCards.push(card);
+  });
+  const featuredKeys = new Set(featuredNewCards.map(card => card.homepageKey));
+  const remaining = sortedCards.filter(card => !featuredKeys.has(card.homepageKey));
+  const featuredQueue = [...featuredNewCards];
+  const featuredSlots = new Set([1, 5, 9]);
+  const topCards = [];
+  const topStudentIds = new Set();
+  const desiredTopCount = Math.min(12, sortedCards.length);
+  while (topCards.length < desiredTopCount) {
+    let candidate = null;
+    if (featuredSlots.has(topCards.length) && featuredQueue.length) candidate = pullHomepageCandidate(featuredQueue, topCards, topStudentIds, 12);
+    if (!candidate) candidate = pullHomepageCandidate(remaining, topCards, topStudentIds, 12);
+    if (!candidate && featuredQueue.length) candidate = featuredQueue.shift();
+    if (!candidate && remaining.length) candidate = remaining.shift();
+    if (!candidate) break;
+    topCards.push(candidate);
+    if (topCards.length <= 12) topStudentIds.add(candidate.student.userId);
+  }
+  const tailPool = [...featuredQueue, ...remaining];
+  const tailCards = [];
+  while (tailPool.length) {
+    const candidate = pullHomepageCandidate(tailPool, topCards.concat(tailCards), new Set(), 0) || tailPool.shift();
+    if (!candidate) break;
+    tailCards.push(candidate);
+  }
+  return topCards.concat(tailCards);
+}
+function getHomepageOrderedServiceCards(){
+  const sessionId = getHomepageSessionId();
+  const viewerKey = currentUser ? currentUser.id : 'guest';
+  const eligibleCards = getEligibleHomepageServiceCards();
+  const cardMap = new Map(eligibleCards.map(card => [getHomepageServiceKey(card), card]));
+  const signature = Array.from(cardMap.keys()).sort().join('|');
+  let cached = null;
+  try {
+    cached = JSON.parse(sessionStorage.getItem('cogo_homepage_order_v1') || 'null');
+  } catch (error) {
+    cached = null;
+  }
+  if (cached && cached.sessionId === sessionId && cached.viewerKey === viewerKey && cached.signature === signature && Array.isArray(cached.order)) {
+    return cached.order.map(key => cardMap.get(key)).filter(Boolean);
+  }
+  const orderedCards = buildHomepageFairOrder(eligibleCards.map(card => scoreHomepageServiceCard(card, sessionId)).sort((a, b) => b.homepageScore - a.homepageScore));
+  try {
+    sessionStorage.setItem('cogo_homepage_order_v1', JSON.stringify({ sessionId, viewerKey, signature, order: orderedCards.map(card => card.homepageKey) }));
+  } catch (error) {}
+  return orderedCards;
+}
+function markHomepageServicesShown(cards=[]){
+  if (!cards.length) return;
+  const students = getStudents();
+  const byStudent = new Map();
+  cards.forEach(card => {
+    const studentKey = card.student.id;
+    if (!byStudent.has(studentKey)) byStudent.set(studentKey, new Set());
+    byStudent.get(studentKey).add(card.service.id);
+  });
+  const now = new Date().toISOString();
+  let changed = false;
+  students.forEach(student => {
+    const shownIds = byStudent.get(student.id);
+    if (!shownIds || !shownIds.size) return;
+    const normalizedServices = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
+    normalizedServices.forEach(service => {
+      if (shownIds.has(service.id)) {
+        service.last_shown_at = now;
+        changed = true;
+      }
+    });
+    student.services = normalizedServices;
+  });
+  if (changed) saveStudents(students);
+}
 function normalizeStudentServiceRecord(student, service, index=0){
   const baseTitle = student.title || 'Student Service';
   const baseRate = student.rate || 20;
   const baseLocation = student.location || '';
   const baseAvailability = student.availability || '';
+  const baseReviews = index === 0 && Array.isArray(student.reviews) ? student.reviews : [];
   if (typeof service === 'string') {
-    return {
+    return normalizeStudentServiceRecord(student, {
       id:`service_${student.id || 'student'}_${index}`,
       title: service,
       description: index === 0 ? ((student.about || [])[0] || '') : '',
@@ -2019,11 +2199,13 @@ function normalizeStudentServiceRecord(student, service, index=0){
       rate: baseRate,
       location: baseLocation,
       availability: baseAvailability,
-      reviews: index === 0 && Array.isArray(student.reviews) ? student.reviews : []
-    };
+      reviews: baseReviews
+    }, index);
   }
   const record = Object.assign({
     id:`service_${student.id || 'student'}_${index}`,
+    user_id: student.userId || student.id || '',
+    category_id: (Array.isArray(student.tags) && student.tags[0]) || 'general',
     title: index === 0 ? baseTitle : `Service ${index + 1}`,
     description: index === 0 ? ((student.about || [])[0] || '') : '',
     images: [],
@@ -2031,10 +2213,32 @@ function normalizeStudentServiceRecord(student, service, index=0){
     rate: baseRate,
     location: baseLocation,
     availability: baseAvailability,
-    reviews: index === 0 && Array.isArray(student.reviews) ? student.reviews : []
+    reviews: baseReviews,
+    status: 'active',
+    is_visible: true,
+    is_approved: true,
+    created_at: student.createdAt || new Date().toISOString(),
+    updated_at: student.createdAt || new Date().toISOString(),
+    last_shown_at: ''
   }, service || {});
   if ((!record.title || !String(record.title).trim()) && typeof service !== 'string') record.title = index === 0 ? baseTitle : `Service ${index + 1}`;
   if ((!record.description || !String(record.description).trim()) && index === 0) record.description = ((student.about || [])[0] || '');
+  if (!Array.isArray(record.images)) record.images = [];
+  if (!Array.isArray(record.reviews)) record.reviews = [];
+  if (!record.user_id) record.user_id = student.userId || student.id || '';
+  record.category_id = record.category_id || record.categoryId || (Array.isArray(record.tags) && record.tags[0]) || (Array.isArray(student.tags) && student.tags[0]) || 'general';
+  record.created_at = record.created_at || record.createdAt || student.createdAt || new Date().toISOString();
+  record.updated_at = record.updated_at || record.updatedAt || record.created_at;
+  record.last_shown_at = record.last_shown_at || record.lastShownAt || '';
+  if (!record.status || record.status === 'live') record.status = 'active';
+  if (record.is_visible === undefined) record.is_visible = true;
+  if (record.is_approved === undefined) record.is_approved = true;
+  const reviewCount = Number(record.review_count ?? record.reviewCount ?? (record.reviews.length || 0));
+  const avgRating = reviewCount
+    ? Number(record.average_rating ?? record.averageRating ?? (record.reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / Math.max(reviewCount, 1)))
+    : Number(record.average_rating ?? record.averageRating ?? 0);
+  record.review_count = reviewCount;
+  record.average_rating = Number.isFinite(avgRating) ? avgRating : 0;
   return record;
 }
 function getServiceReviews(student, service, index=0){
