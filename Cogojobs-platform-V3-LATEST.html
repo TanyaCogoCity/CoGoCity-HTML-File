@@ -561,15 +561,7 @@ function currentUserRoleLabel(){
   return 'Employer';
 }
 function renderUserIdentityBanner(){
-  if (!currentUser) return '';
-  return `
-    <div class="container" style="padding-top:18px;padding-bottom:0">
-      <div class="card" style="padding:12px 16px;background:#f8fafc;border:1px solid var(--border)">
-        <div class="small muted">Signed in as</div>
-        <div style="font-weight:800">${esc(firstName(currentUser.publicName || currentUser.name))} — ${esc(currentUserRoleLabel())}</div>
-      </div>
-    </div>
-  `;
+  return '';
 }
 function money(n){
   return Number(n || 0).toFixed(2);
@@ -717,7 +709,7 @@ function pushAdminCommissionNotification(project){
   items.unshift({
     id: uid('n'),
     title: `You received $${money(commission)} total Platform Fee revenue from project ${project.jobTitle}`,
-    action: { type:'dashboard', section:'applicants_projects', projectId: project.id },
+    action: { type:'dashboard', section:'transactions', projectId: project.id },
     read:false,
     createdAt:new Date().toISOString()
   });
@@ -2360,34 +2352,36 @@ function sendDirectOffer(studentId, serviceId=''){
 function renderDashboard(){
   if (!currentUser) return openLoginModal();
 
-  if (currentUser.role === 'admin' && !['admin','settings'].includes(dashSection)) {
+  if (currentUser.role === 'admin' && !['admin','transactions','settings'].includes(dashSection)) {
     dashSection = 'admin';
   }
-  if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','settings'].includes(dashSection)) {
+  if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings'].includes(dashSection)) {
     dashSection = 'profile';
   }
-  if (currentUser.role === 'employer' && !['profile','myposts','applicants_projects','messages','settings'].includes(dashSection)) {
+  if (currentUser.role === 'employer' && !['profile','myposts','applicants_projects','messages','transactions','settings'].includes(dashSection)) {
     dashSection = 'profile';
   }
 
   document.getElementById('app').innerHTML = `
-    ${renderUserIdentityBanner()}
     <div class="dashboard">
       <div class="sidebar">
         ${currentUser.role === 'admin' ? `
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">🛡️ Admin Panel</a>
+          <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : currentUser.role === 'student' ? `
           <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">👤 My Profile</a>
           <a href="#" class="${dashSection==='jobs_bookings'?'active':''}" onclick="dashSection='jobs_bookings';renderDashboard();return false;">📋 Jobs & Bookings</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
+          <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 My Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : `
           <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">👤 My Profile</a>
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
           <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">📋 Applicants & Projects</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
+          <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 My Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         `}
       </div>
@@ -2398,18 +2392,21 @@ function renderDashboard(){
   const el = document.getElementById('dash-main');
   if (currentUser.role === 'admin'){
     if (dashSection === 'admin') return renderAdminPanel(el);
+    if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else if (currentUser.role === 'student'){
     if (dashSection === 'profile') return renderStudentProfile(el);
     if (dashSection === 'jobs_bookings') return renderStudentJobsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
     if (dashSection === 'myposts') return renderMyPosts(el);
+    if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else {
     if (dashSection === 'profile') return renderEmployerProfile(el);
     if (dashSection === 'myposts') return renderMyPosts(el);
     if (dashSection === 'applicants_projects') return renderEmployerApplicantsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
+    if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   }
 }
@@ -2829,6 +2826,7 @@ function renderStudentProjectCard(p){
         <div style="margin-top:8px">${renderStudentCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(p.studentServiceTitle)}</div>` : ''}
         ${p.changeRequestNote ? `<div class="warning" style="margin-top:10px">Employer requested changes: ${esc(p.changeRequestNote)}</div>` : ''}
+        ${p.status === 'completed' ? `<div class="warning" style="margin-top:10px">You can view this transaction in the My Transactions section of your Dashboard.</div>` : ''}
         ${finalInvoiceSummary}
         ${p.contractHtml ? `<div class="contract-box small">${p.contractHtml}</div>` : ''}
       </div>
@@ -3269,6 +3267,7 @@ function renderEmployerProjectCard(p){
         <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
         <div class="small muted" style="margin-top:6px">Escrow held: $${esc(money(p.escrowAmount || p.estimatedEmployerTotal || estimatedBreakdown.employerTotal))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
         ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
+        ${p.status === 'completed' ? `<div class="warning" style="margin-top:10px">You can view this transaction in the My Transactions section of your Dashboard.</div>` : ''}
         ${invoiceSummary}
         <div class="contract-box small">${p.contractHtml}</div>
         </div>
@@ -3409,9 +3408,10 @@ function approveFinalInvoice(projectId){
   saveTransactions(transactions);
 
   saveProjects(projects);
-  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work Total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.employerPlatformFee || 0)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
-  pushNotif(p.studentUserId, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after a $${money(p.studentPlatformFee || 0)} Platform Fee.`, { type:'dashboard', section:'settings' });
-  sendSystemMessage(p.studentUserId, p.studentName, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.studentPlatformFee || 0)}.`, p.id);
+  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work Total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.employerPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions' });
+  pushNotif(p.studentUserId, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after a $${money(p.studentPlatformFee || 0)} Platform Fee. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions' });
+  sendSystemMessage(p.studentUserId, p.studentName, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.studentPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
+  sendSystemMessage(p.employerId, p.employerName, `Payment completed for '${p.jobTitle}'. Work Total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.employerPlatformFee || 0)}. Total Payment: $${money(p.finalTotal || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
   pushAdminCommissionNotification(p);
   pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   closeModal();
@@ -3736,6 +3736,36 @@ function getCurrentUserTransactions(){
 function renderTransactionsPanel(){
   const wrap = document.getElementById('transactions-panel');
   if (!wrap) return;
+  const isAdmin = currentUser.role === 'admin';
+  const isEmployer = currentUser.role === 'employer';
+  const title = isAdmin ? 'Transactions' : 'My Transactions';
+  const helper = isAdmin
+    ? 'Admin view shows total Platform Fee collected from both sides.'
+    : isEmployer
+      ? 'Review completed job payments, including your Platform Fee and final payment.'
+      : 'Review completed job payouts, including your Platform Fee and final payout.';
+  wrap.innerHTML = `
+    <div class="card form-card" style="margin-top:18px">
+      <div class="split" style="align-items:flex-start;margin-bottom:14px">
+        <div>
+          <div class="section-title" style="margin:0 0 6px">${title}</div>
+          <div class="small muted">${helper}</div>
+          ${currentUser.role === 'student' ? `<div class="small muted">Stripe connection and live balance are placeholders for now.</div>` : ''}
+        </div>
+        <div style="min-width:260px">
+          <input id="transactionsSearch" placeholder="Search by date, amount, job title, or name" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsResults()">
+        </div>
+      </div>
+      <div id="transactions-summary"></div>
+      <div id="transactions-results"></div>
+    </div>
+  `;
+  renderTransactionsResults();
+}
+function renderTransactionsResults(){
+  const summaryWrap = document.getElementById('transactions-summary');
+  const resultsWrap = document.getElementById('transactions-results');
+  if (!summaryWrap || !resultsWrap) return;
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getCurrentUserTransactions().filter(tx => {
     const haystack = [
@@ -3758,12 +3788,23 @@ function renderTransactionsPanel(){
 
   const isAdmin = currentUser.role === 'admin';
   const isEmployer = currentUser.role === 'employer';
-  const title = isAdmin ? 'Transactions' : 'My Transactions';
-  const helper = isAdmin
-    ? 'Admin view shows total Platform Fee collected from both sides.'
+  const totalWork = rows.reduce((sum, tx) => sum + Number(tx.work_total || 0), 0);
+  const totalPayout = rows.reduce((sum, tx) => sum + Number(tx.payout_amount || 0), 0);
+  const totalPaid = rows.reduce((sum, tx) => sum + Number(tx.total_amount || 0), 0);
+  const totalPlatformFees = rows.reduce((sum, tx) => sum + Number(tx.platform_fee_total || 0), 0);
+  const roleSummary = isAdmin
+    ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Platform Fees</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPlatformFees)}</div></div>`
     : isEmployer
-      ? 'Review completed job payments, including your Platform Fee and final payment.'
-      : 'Review completed job payouts, including your Platform Fee and final payout.';
+      ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPaid)}</div></div>`
+      : `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPayout)}</div></div>`;
+  summaryWrap.innerHTML = `
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
+      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
+      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Work</div><div style="font-weight:800;font-size:1.2rem">$${money(totalWork)}</div></div>
+      ${roleSummary}
+    </div>
+  `;
+
   const tableHead = isAdmin ? `
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
         <th style="padding:10px 8px">Date Completed</th>
@@ -3813,39 +3854,28 @@ function renderTransactionsPanel(){
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
         <td style="padding:12px 8px">${platformFeeLabel}</td>
-        <td style="padding:12px 8px">${finalValue}</td>
+        ${isAdmin ? '' : `<td style="padding:12px 8px">${finalValue}</td>`}
       </tr>
     `;
   }).join('');
 
-  wrap.innerHTML = `
-    <div class="card form-card" style="margin-top:18px">
-      <div class="split" style="align-items:flex-start;margin-bottom:14px">
-        <div>
-          <div class="section-title" style="margin:0 0 6px">${title}</div>
-          <div class="small muted">${helper}</div>
-          ${currentUser.role === 'student' ? `<div class="small muted">Stripe connection and live balance are placeholders for now.</div>` : ''}
-        </div>
-        <div style="min-width:260px">
-          <input id="transactionsSearch" placeholder="Search by date, amount, job title, or name" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsPanel()">
-        </div>
-      </div>
-      ${rows.length ? `
-        <div style="overflow:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:.92rem">
-            <thead>${tableHead}</thead>
-            <tbody>${tableRows}</tbody>
-          </table>
-        </div>
-      ` : `<div class="muted">No transactions yet.</div>`}
+  resultsWrap.innerHTML = rows.length ? `
+    <div style="overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+        <thead>${tableHead}</thead>
+        <tbody>${tableRows}</tbody>
+      </table>
     </div>
-  `;
+  ` : `<div class="muted">No transactions yet.</div>`;
+}
+function renderTransactionsSection(el){
+  el.innerHTML = `<div id="transactions-panel"></div>`;
+  renderTransactionsPanel();
 }
 function renderSettings(el){
   const paymentMethod = getEmployerPaymentMethod(currentUser.id);
   el.innerHTML = `
     <div class="section-title">Settings</div>
-    <div id="transactions-panel"></div>
     <div class="card form-card" style="margin-top:18px;max-width:720px">
       <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Password</div>
       <div class="field"><label>Current Password</label><input id="currentPassword" type="password" placeholder="Current password"></div>
@@ -3863,7 +3893,6 @@ function renderSettings(el){
       ` : ''}
     </div>
   `;
-  renderTransactionsPanel();
 }
 function changePassword(){
   const users = getUsers();
