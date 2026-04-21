@@ -214,6 +214,7 @@ let employerProfileTab = 'all';
 let studentProfileImagesBuffer = [];
 let studentServiceImagesBuffer = [];
 const PLATFORM_FEE_RATE = 0.15;
+const DEFAULT_PLATFORM_COMMISSION_PERCENT = 10;
 const STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
 const EMPLOYER_AVATAR_OPTIONS = ['🏠','🏢','💼','🛠️','📦','🧰','🪴','☕','🛍️','🍽️','🚚','💻'];
@@ -259,6 +260,14 @@ function getPaymentLogs(){ return ls('cogo_payment_logs') || []; }
 function savePaymentLogs(v){ ls('cogo_payment_logs', v); }
 function getFinance(){ return ls('cogo_finance') || { cogoCommission: 0, completedProjects: 0 }; }
 function saveFinance(v){ ls('cogo_finance', v); }
+function getPaymentSettings(){
+  const saved = ls('cogo_payment_settings') || {};
+  return {
+    studentCommissionPct: Number(saved.studentCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT),
+    employerCommissionPct: Number(saved.employerCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT)
+  };
+}
+function savePaymentSettings(v){ ls('cogo_payment_settings', v); }
 function getTransactions(){ return ls('cogo_transactions') || []; }
 function saveTransactions(v){ ls('cogo_transactions', v); }
 
@@ -565,6 +574,50 @@ function renderUserIdentityBanner(){
 function money(n){
   return Number(n || 0).toFixed(2);
 }
+function formatPercent(value){
+  const num = Number(value || 0);
+  const text = Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.0+$/,'').replace(/(\.\d*[1-9])0+$/,'$1');
+  return `${text}%`;
+}
+function calculateCommissionBreakdown(hours, rate){
+  const settings = getPaymentSettings();
+  const safeHours = Number(hours || 0);
+  const safeRate = Number(rate || 0);
+  const workTotal = Number((safeHours * safeRate).toFixed(2));
+  const studentCommissionPct = Number(settings.studentCommissionPct || 0);
+  const employerCommissionPct = Number(settings.employerCommissionPct || 0);
+  const studentCommissionAmount = Number((workTotal * (studentCommissionPct / 100)).toFixed(2));
+  const employerCommissionAmount = Number((workTotal * (employerCommissionPct / 100)).toFixed(2));
+  const studentPayout = Number((workTotal - studentCommissionAmount).toFixed(2));
+  const employerTotal = Number((workTotal + employerCommissionAmount).toFixed(2));
+  const platformFeeTotal = Number((studentCommissionAmount + employerCommissionAmount).toFixed(2));
+  return {
+    hours: safeHours,
+    rate: safeRate,
+    workTotal,
+    studentCommissionPct,
+    employerCommissionPct,
+    studentCommissionAmount,
+    employerCommissionAmount,
+    studentPayout,
+    employerTotal,
+    platformFeeTotal
+  };
+}
+function renderStudentCommissionBreakdownHtml(breakdown, label='Estimated'){
+  return `
+    <div class="small"><strong>${esc(label)}:</strong> ${esc(breakdown.hours)} hours × $${esc(money(breakdown.rate))}/hr = $${esc(money(breakdown.workTotal))}</div>
+    <div class="small">Platform commission (${esc(formatPercent(breakdown.studentCommissionPct))}): -$${esc(money(breakdown.studentCommissionAmount))}</div>
+    <div class="small"><strong>You will receive:</strong> $${esc(money(breakdown.studentPayout))}</div>
+  `;
+}
+function renderEmployerCommissionBreakdownHtml(breakdown, label='Estimated'){
+  return `
+    <div class="small"><strong>${esc(label)}:</strong> ${esc(breakdown.hours)} hours × $${esc(money(breakdown.rate))}/hr = $${esc(money(breakdown.workTotal))}</div>
+    <div class="small">Platform fee (${esc(formatPercent(breakdown.employerCommissionPct))}): +$${esc(money(breakdown.employerCommissionAmount))}</div>
+    <div class="small"><strong>You will pay:</strong> $${esc(money(breakdown.employerTotal))}</div>
+  `;
+}
 function getEmployerPaymentMethod(userId){
   const user = getUserById(userId);
   return user && user.paymentMethod ? user.paymentMethod : null;
@@ -659,11 +712,11 @@ function openPaymentFailureModal(appId, reason){
   `, '620px');
 }
 function pushAdminCommissionNotification(project){
-  const commission = Number(project.platformFee || 0);
+  const commission = Number(project.platformFeeTotal || project.platformFee || 0);
   const items = getNotifications('cogo_admin');
   items.unshift({
     id: uid('n'),
-    title: `You received $${money(commission)} commission from project ${project.jobTitle}`,
+    title: `You received $${money(commission)} total commission from project ${project.jobTitle}`,
     action: { type:'dashboard', section:'applicants_projects', projectId: project.id },
     read:false,
     createdAt:new Date().toISOString()
@@ -2761,9 +2814,10 @@ function renderStudentProjectCard(p){
  if (p.status === 'in_progress'){
     actions.push(`<button class="btn btn-blue btn-sm" onclick="openSubmitCompletion('${esc(p.id)}')">Project Completed</button>`);
  }
- const agreedPrice = Number(p.agreedPrice || p.estimatedTotal || ((p.rate || 0) * (p.estimatedHours || 0))).toFixed(2);
- const finalInvoiceSummary = p.actualHours
-   ? `<div class="small">Submitted final hours: ${esc(p.actualHours)} hrs · Subtotal: $${esc(Number(p.finalSubtotal || p.studentPayout || 0).toFixed(2))} · Total due: $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
+ const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
+ const finalBreakdown = p.actualHours ? calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0) : null;
+ const finalInvoiceSummary = finalBreakdown
+   ? `<div style="margin-top:8px">${renderStudentCommissionBreakdownHtml(finalBreakdown, 'Actual')}</div>`
    : '';
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.employerId)}')">Message</button>`);
   return `
@@ -2772,7 +2826,7 @@ function renderStudentProjectCard(p){
       <div>
         <div style="font-weight:800">${esc(p.jobTitle)}</div>
         <div class="muted small">Employer: ${esc(p.employerName)}</div>
-        <div class="small" style="margin-top:8px">Agreed: ${esc(p.estimatedHours)} hrs at $${esc(p.rate)}/hr · Total: $${esc(agreedPrice)}</div>
+        <div style="margin-top:8px">${renderStudentCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(p.studentServiceTitle)}</div>` : ''}
         ${p.changeRequestNote ? `<div class="warning" style="margin-top:10px">Employer requested changes: ${esc(p.changeRequestNote)}</div>` : ''}
         ${finalInvoiceSummary}
@@ -2796,12 +2850,13 @@ function openSubmitCompletion(projectId){
     location: p.location || '',
     estimatedHours: p.estimatedHours
   };
+  const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
   openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
       Once your work is complete, click “Project Completed” to notify the employer. After they review and approve it, you’ll get paid. Do your best, great work leads to great reviews and helps you grow your skills.
     </div>
     <div class="small muted" style="margin-bottom:14px">
-      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and the final total will update automatically before employer approval.
+      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and your payout will recalculate automatically before employer approval.
     </div>
     <div class="field"><label>Job Title</label><input value="${esc(snapshot.title || '')}" readonly></div>
     <div class="field"><label>Job Description</label><textarea readonly>${esc(snapshot.description || '')}</textarea></div>
@@ -2809,13 +2864,11 @@ function openSubmitCompletion(projectId){
       <div class="field"><label>Hourly Rate</label><input value="$${esc(snapshot.rate || 0)}/hr" readonly></div>
       <div class="field"><label>Location</label><input value="${esc(snapshot.location || '')}" readonly></div>
     </div>
-    <div class="row">
-      <div class="field">
-        <label>Hours Worked <span class="small" style="color:#2563eb;font-weight:700">(editable)</span></label>
-        <input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#e0f2fe;border:2px solid #60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.12)">
-      </div>
-      <div class="field"><label>Total</label><input id="finalInvoiceTotal" value="$${esc(money((p.estimatedHours || 0) * (p.rate || 0)))}" readonly></div>
+    <div class="field">
+      <label>Hours Worked <span class="small" style="color:#2563eb;font-weight:700">(editable)</span></label>
+      <input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#e0f2fe;border:2px solid #60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.12)">
     </div>
+    <div id="student-completion-breakdown" class="card" style="padding:12px;background:#f8fafc;border:1px solid var(--border);margin-top:12px">${renderStudentCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
     <button class="btn btn-blue" onclick="submitFinalInvoice('${esc(projectId)}')">Complete Project</button>
   `, '620px');
 }
@@ -2823,8 +2876,8 @@ function updateCompletionPreview(projectId){
   const p = getProjects().find(x => x.id === projectId);
   if (!p) return;
   const hours = Number(document.getElementById('finalHours').value || 0);
-  const totalInput = document.getElementById('finalInvoiceTotal');
-  if (totalInput) totalInput.value = `$${money(hours * (p.rate || 0))}`;
+  const breakdownWrap = document.getElementById('student-completion-breakdown');
+  if (breakdownWrap) breakdownWrap.innerHTML = renderStudentCommissionBreakdownHtml(calculateCommissionBreakdown(hours, p.rate || 0), 'Actual');
 }
 function submitFinalInvoice(projectId){
   const pList = getProjects();
@@ -2832,10 +2885,11 @@ function submitFinalInvoice(projectId){
   if (!p) return;
   const actualHours = Number(document.getElementById('finalHours').value || 0);
   if (!actualHours) return toast('Please enter actual hours.');
-  const subtotal = Number((actualHours * p.rate).toFixed(2));
-  const platformFee = Number((subtotal * PLATFORM_FEE_RATE).toFixed(2));
-  const totalDue = Number((subtotal + platformFee).toFixed(2));
-  const studentPayout = subtotal;
+  const breakdown = calculateCommissionBreakdown(actualHours, p.rate || 0);
+  const subtotal = breakdown.workTotal;
+  const platformFee = breakdown.employerCommissionAmount;
+  const totalDue = breakdown.employerTotal;
+  const studentPayout = breakdown.studentPayout;
   const snapshot = p.projectSnapshot || {
     title: p.jobTitle,
     description: p.scope || p.description || '',
@@ -2846,8 +2900,11 @@ function submitFinalInvoice(projectId){
   p.actualHours = actualHours;
   p.finalSubtotal = subtotal;
   p.studentPayout = studentPayout;
-  p.platformFee = platformFee;
-  p.cogoFee = platformFee;
+  p.studentPlatformFee = breakdown.studentCommissionAmount;
+  p.employerPlatformFee = breakdown.employerCommissionAmount;
+  p.platformFee = breakdown.employerCommissionAmount;
+  p.platformFeeTotal = breakdown.platformFeeTotal;
+  p.cogoFee = breakdown.platformFeeTotal;
   p.finalTotal = totalDue;
   p.employerTotal = totalDue;
   p.finalInvoice = {
@@ -2858,13 +2915,15 @@ function submitFinalInvoice(projectId){
     actualHours,
     subtotal,
     studentPayout,
-    platformFee,
+    studentPlatformFee: breakdown.studentCommissionAmount,
+    employerPlatformFee: breakdown.employerCommissionAmount,
+    platformFeeTotal: breakdown.platformFeeTotal,
     totalDue
   };
   p.status = 'awaiting_employer_approval';
   saveProjects(pList);
-  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". CoGo City commission (15%): $${platformFee.toFixed(2)}. Total due: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
-  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": subtotal $${subtotal.toFixed(2)}, commission $${platformFee.toFixed(2)}, total due $${totalDue.toFixed(2)}.`, p.id);
+  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work total: $${subtotal.toFixed(2)}. Platform fee (${formatPercent(breakdown.employerCommissionPct)}): $${breakdown.employerCommissionAmount.toFixed(2)}. Total due: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
+  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": work total $${subtotal.toFixed(2)}, platform fee $${breakdown.employerCommissionAmount.toFixed(2)}, total due $${totalDue.toFixed(2)}.`, p.id);
   closeModal();
   toast('Final invoice submitted for employer approval.');
   renderDashboard();
@@ -3040,7 +3099,7 @@ function renderEmployerAppCard(a){
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(a.studentServiceTitle)}</div>` : ''}
           <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr · ${esc(a.estimatedHours||'')} hours</div>` : ''}
-          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">A 15% platform fee will be added to the final job total at checkout.</div>` : ''}
+          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">Platform fee for employers/neighbors is currently ${formatPercent(getPaymentSettings().employerCommissionPct)} and is added on top of the work total.</div>` : ''}
           ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To move forward, please click ‘Start Project’ to confirm and begin the job. This lets the student know you’re ready to proceed.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -3113,9 +3172,10 @@ function startProject(appId){
     return renderDashboard();
   }
 
-  const estimatedSubtotal = Number((a.rate * a.estimatedHours).toFixed(2));
-  const estimatedPlatformFee = Number((estimatedSubtotal * PLATFORM_FEE_RATE).toFixed(2));
-  const estimatedEmployerTotal = Number((estimatedSubtotal + estimatedPlatformFee).toFixed(2));
+  const estimatedBreakdown = calculateCommissionBreakdown(a.estimatedHours, a.rate);
+  const estimatedSubtotal = estimatedBreakdown.workTotal;
+  const estimatedPlatformFee = estimatedBreakdown.employerCommissionAmount;
+  const estimatedEmployerTotal = estimatedBreakdown.employerTotal;
   const paymentAttempt = attemptEscrowAuthorization(a, estimatedEmployerTotal);
   if (!paymentAttempt.success) {
     openPaymentFailureModal(appId, paymentAttempt.reason);
@@ -3135,9 +3195,11 @@ function startProject(appId){
     <div>Rate: $${esc(projectSnapshot.rate)}/hr</div>
     <div>Location: ${esc(projectSnapshot.location)}</div>
     <div>Estimated hours: ${esc(projectSnapshot.estimatedHours)}</div>
-    <div>Work subtotal: $${esc(money(estimatedSubtotal))}</div>
-    <div>CoGo City commission (15%): $${esc(money(estimatedPlatformFee))}</div>
-    <div>Total charged on start: $${esc(money(estimatedEmployerTotal))}</div>
+    <div>Work total: $${esc(money(estimatedSubtotal))}</div>
+    <div>Employer platform fee (${esc(formatPercent(estimatedBreakdown.employerCommissionPct))}): +$${esc(money(estimatedBreakdown.employerCommissionAmount))}</div>
+    <div>Employer total charged on start: $${esc(money(estimatedEmployerTotal))}</div>
+    <div>Student platform commission (${esc(formatPercent(estimatedBreakdown.studentCommissionPct))}): -$${esc(money(estimatedBreakdown.studentCommissionAmount))}</div>
+    <div>Estimated student payout: $${esc(money(estimatedBreakdown.studentPayout))}</div>
     <div>Status: In Progress</div>
     <div>Final hours may be adjusted and confirmed before payment release.</div>
   `;
@@ -3166,6 +3228,10 @@ function startProject(appId){
     estimatedHours: a.estimatedHours,
     estimatedTotal: estimatedSubtotal,
     estimatedPlatformFee,
+    estimatedEmployerPlatformFee: estimatedBreakdown.employerCommissionAmount,
+    estimatedStudentPlatformFee: estimatedBreakdown.studentCommissionAmount,
+    estimatedStudentPayout: estimatedBreakdown.studentPayout,
+    estimatedPlatformFeeTotal: estimatedBreakdown.platformFeeTotal,
     estimatedEmployerTotal,
     location: a.location,
     projectSnapshot,
@@ -3180,8 +3246,8 @@ function startProject(appId){
   saveApplications(apps);
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
-  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Escrow of $${money(estimatedEmployerTotal)} is held.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
-  sendSystemMessage(a.studentUserId, a.studentName, `Project started: escrow of $${money(estimatedEmployerTotal)} is held and work is now in progress.`, projectId);
+  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after ${formatPercent(estimatedBreakdown.studentCommissionPct)} commission is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your platform commission is $${money(estimatedBreakdown.studentCommissionAmount)}, and your estimated payout is $${money(estimatedBreakdown.studentPayout)}.`, projectId);
   employerTab = 'projects';
   toast('Project started successfully');
   renderDashboard();
@@ -3192,8 +3258,10 @@ function renderEmployerProjectCard(p){
   if (p.status === 'awaiting_employer_approval') actions.push(`<button class="btn btn-blue btn-sm" onclick="openEmployerApproval('${esc(p.id)}')">Review Final Invoice</button>`);
   if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message</button>`);
-  const invoiceSummary = p.actualHours
-    ? `<div class="small">Final invoice: Work subtotal $${esc(Number(p.finalSubtotal || p.studentPayout || 0).toFixed(2))} · CoGo commission $${esc(Number(p.platformFee || 0).toFixed(2))} · Total due $${esc(Number(p.finalTotal || 0).toFixed(2))}</div>`
+  const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
+  const finalBreakdown = p.actualHours ? calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0) : null;
+  const invoiceSummary = finalBreakdown
+    ? `<div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(finalBreakdown, 'Actual')}</div>`
     : '';
 
   return `
@@ -3203,7 +3271,8 @@ function renderEmployerProjectCard(p){
         <div style="font-weight:800">${esc(p.jobTitle)}</div>
         <div class="muted small">Student: ${esc(p.studentName)} · Rate: $${esc(p.rate)}/hr</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(p.studentServiceTitle)}</div>` : ''}
-        <div class="small" style="margin-top:8px">Work subtotal: $${esc(money(p.estimatedTotal || 0))} · CoGo City commission (15%): $${esc(money(p.estimatedPlatformFee || 0))} · Escrow held: $${esc(money(p.escrowAmount || p.estimatedEmployerTotal || 0))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
+        <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
+        <div class="small muted" style="margin-top:6px">Escrow held: $${esc(money(p.escrowAmount || p.estimatedEmployerTotal || estimatedBreakdown.employerTotal))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
         ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
         ${invoiceSummary}
         <div class="contract-box small">${p.contractHtml}</div>
@@ -3251,10 +3320,8 @@ function openEmployerApproval(projectId){
     rate: p.rate,
     location: p.location || ''
   };
-  const subtotal = Number(p.finalSubtotal || p.studentPayout || ((p.actualHours || 0) * (p.rate || 0))).toFixed(2);
-  const platformFee = Number(p.platformFee || (Number(subtotal) * PLATFORM_FEE_RATE)).toFixed(2);
-  const totalDue = Number(p.finalTotal || (Number(subtotal) + Number(platformFee))).toFixed(2);
-  const escrowHeld = Number(p.escrowAmount || p.estimatedTotal || 0).toFixed(2);
+  const breakdown = calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0);
+  const escrowHeld = Number(p.escrowAmount || p.estimatedEmployerTotal || breakdown.employerTotal).toFixed(2);
 
   openModal('Review Final Invoice', `
     <div class="card form-card">
@@ -3267,9 +3334,8 @@ function openEmployerApproval(projectId){
         <div><strong>Actual Hours Worked:</strong> ${esc(p.actualHours || 0)}</div>
       </div>
       <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
-      <div class="small"><strong>Project subtotal:</strong> $${esc(subtotal)}</div>
-      <div class="small"><strong>CoGo Commission (15%):</strong> $${esc(platformFee)}</div>
-      <div class="small"><strong>Total Due:</strong> $${esc(totalDue)}</div>
+      <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(breakdown, 'Actual')}</div>
+      <div class="small" style="margin-top:8px">Student will receive: $${esc(money(breakdown.studentPayout))} after ${esc(formatPercent(breakdown.studentCommissionPct))} student commission.</div>
       <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Test mode is active, so approval will always release payment successfully.`}</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
@@ -3283,20 +3349,28 @@ function approveFinalInvoice(projectId){
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   const now = new Date().toISOString();
+  const finalBreakdown = calculateCommissionBreakdown(p.actualHours || p.estimatedHours || 0, p.rate || 0);
   p.status = 'completed';
   p.completedAt = now;
   p.escrowStatus = 'released';
   p.paid = true;
   p.paymentReleasedAt = now;
+  p.finalSubtotal = finalBreakdown.workTotal;
+  p.studentPayout = finalBreakdown.studentPayout;
+  p.studentPlatformFee = finalBreakdown.studentCommissionAmount;
+  p.employerPlatformFee = finalBreakdown.employerCommissionAmount;
+  p.platformFee = finalBreakdown.employerCommissionAmount;
+  p.platformFeeTotal = finalBreakdown.platformFeeTotal;
+  p.finalTotal = finalBreakdown.employerTotal;
+  p.employerTotal = finalBreakdown.employerTotal;
 
-  const agreedLabor = Number(p.agreedPrice || p.estimatedTotal || 0);
-  const baseline = Number((agreedLabor + (agreedLabor * PLATFORM_FEE_RATE)).toFixed(2));
+  const baseline = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0).employerTotal;
   const diff = Number((p.finalTotal - baseline).toFixed(2));
   p.reconciliation = diff === 0
     ? `Final invoice approved at $${p.finalTotal}.`
     : diff < 0
-      ? `Final invoice approved at $${p.finalTotal}, which is $${Math.abs(diff).toFixed(2)} below the agreed amount.`
-      : `Final invoice approved at $${p.finalTotal}, which is $${diff.toFixed(2)} above the agreed amount.`;
+      ? `Final invoice approved at $${p.finalTotal}, which is $${Math.abs(diff).toFixed(2)} below the estimated employer total.`
+      : `Final invoice approved at $${p.finalTotal}, which is $${diff.toFixed(2)} above the estimated employer total.`;
 
   const students = getStudents();
   const student = students.find(s => s.userId === p.studentUserId);
@@ -3305,7 +3379,7 @@ function approveFinalInvoice(projectId){
     saveStudents(students);
   }
   const finance = getFinance();
-  finance.cogoCommission = Number((Number(finance.cogoCommission || 0) + Number(p.platformFee || 0)).toFixed(2));
+  finance.cogoCommission = Number((Number(finance.cogoCommission || 0) + Number(p.platformFeeTotal || 0)).toFixed(2));
   finance.completedProjects = Number(finance.completedProjects || 0) + 1;
   saveFinance(finance);
 
@@ -3325,8 +3399,12 @@ function approveFinalInvoice(projectId){
     job_title: p.jobTitle,
     hourly_rate: Number(p.rate || 0),
     hours_worked: Number(p.actualHours || 0),
+    work_total: Number(p.finalSubtotal || 0),
     total_amount: Number(p.finalTotal || 0),
-    platform_fee: Number(p.platformFee || 0),
+    employer_platform_fee: Number(p.employerPlatformFee || 0),
+    student_platform_fee: Number(p.studentPlatformFee || 0),
+    platform_fee_total: Number(p.platformFeeTotal || 0),
+    platform_fee: Number(p.studentPlatformFee || 0),
     payout_amount: Number(p.studentPayout || 0),
     status: 'paid',
     status_history: ['processing','paid'],
@@ -3337,9 +3415,9 @@ function approveFinalInvoice(projectId){
   saveTransactions(transactions);
 
   saveProjects(projects);
-  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project, including a 15% CoGo City commission of $${money(p.platformFee || 0)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
-  pushNotif(p.studentUserId, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'`, { type:'dashboard', section:'settings' });
-  sendSystemMessage(p.studentUserId, p.studentName, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'.`, p.id);
+  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work total: $${money(p.finalSubtotal || 0)}. Platform fee: $${money(p.employerPlatformFee || 0)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
+  pushNotif(p.studentUserId, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after $${money(p.studentPlatformFee || 0)} platform commission.`, { type:'dashboard', section:'settings' });
+  sendSystemMessage(p.studentUserId, p.studentName, `You’ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. Platform commission: $${money(p.studentPlatformFee || 0)}.`, p.id);
   pushAdminCommissionNotification(p);
   pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   closeModal();
@@ -3540,9 +3618,18 @@ function renderThreadView(userId){
     ? partnerMsgs.filter(m => m.projectId === activeProject.id)
     : partnerMsgs)
     .sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
+  const projectBreakdown = activeProject
+    ? calculateCommissionBreakdown(activeProject.actualHours || activeProject.estimatedHours || 0, activeProject.rate || 0)
+    : null;
+  const projectBreakdownHtml = !activeProject || !projectBreakdown
+    ? ''
+    : currentUser.role === 'student'
+      ? `<div class="card" style="padding:12px 14px;margin:0 12px 10px;background:#f8fafc;border:1px solid var(--border)">${renderStudentCommissionBreakdownHtml(projectBreakdown, activeProject.actualHours ? 'Actual' : 'Estimated')}<div class="small muted" style="margin-top:6px">Work total, commission, and final payout stay visible here for transparency.</div></div>`
+      : `<div class="card" style="padding:12px 14px;margin:0 12px 10px;background:#f8fafc;border:1px solid var(--border)">${renderEmployerCommissionBreakdownHtml(projectBreakdown, activeProject.actualHours ? 'Actual' : 'Estimated')}<div class="small muted" style="margin-top:6px">Base cost, platform fee, and final total stay visible here for transparency.</div></div>`;
 
   return `
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${renderMessagePartnerName(partner.id, partner.name)}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Project thread: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
+    ${projectBreakdownHtml}
     <div class="messages" id="messages-box">
       ${msgs.length ? msgs.map(m => `
         <div class="bubble ${m.fromId === currentUser.id ? 'mine' : 'theirs'}">
@@ -3602,12 +3689,22 @@ function renderAdminPanel(el){
   const archivedProfiles = getStudents().filter(s => s.status === 'archived');
   const archivedUsers = getUsers().filter(u => u.archived);
   const finance = getFinance();
+  const paymentSettings = getPaymentSettings();
   el.innerHTML = `
     <div class="section-title">Admin Panel</div>
     <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
       <div class="card form-card"><div class="small muted">Archived Profiles</div><div style="font-size:1.5rem;font-weight:800">${archivedProfiles.length}</div></div>
       <div class="card form-card"><div class="small muted">Archived Users</div><div style="font-size:1.5rem;font-weight:800">${archivedUsers.length}</div></div>
       <div class="card form-card"><div class="small muted">CoGo Commission</div><div style="font-size:1.5rem;font-weight:800">$${money(finance.cogoCommission || 0)}</div></div>
+    </div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div style="font-weight:800;margin-bottom:12px">Payments</div>
+      <div class="row">
+        <div class="field"><label>Commission Percentage for Student</label><input id="adminStudentCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.studentCommissionPct)}"></div>
+        <div class="field"><label>Commission Percentage for Employers/Neighbors</label><input id="adminEmployerCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.employerCommissionPct)}"></div>
+      </div>
+      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, messaging, and payout calculations across the platform.</div>
+      <button class="btn btn-blue" onclick="saveAdminPaymentSettings()">Save Payment Settings</button>
     </div>
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:12px">Archived Profiles & Services</div>
@@ -3621,6 +3718,14 @@ function renderAdminPanel(el){
       `).join('') : `<div class="muted">No archived profiles yet.</div>`}
     </div>
   `;
+}
+function saveAdminPaymentSettings(){
+  const studentCommissionPct = Number(document.getElementById('adminStudentCommissionPct').value || 0);
+  const employerCommissionPct = Number(document.getElementById('adminEmployerCommissionPct').value || 0);
+  if (studentCommissionPct < 0 || employerCommissionPct < 0) return toast('Commission percentages must be 0 or higher.');
+  savePaymentSettings({ studentCommissionPct, employerCommissionPct });
+  toast('Payment settings updated.');
+  renderDashboard();
 }
 
 // ---------- Settings ----------
@@ -3641,6 +3746,8 @@ function renderTransactionsPanel(){
       tx.job_title,
       tx.employerName,
       tx.payout_amount,
+      tx.work_total,
+      tx.student_platform_fee,
       tx.hourly_rate,
       tx.hours_worked,
       formatTransactionDate(tx.date_completed),
@@ -3670,7 +3777,9 @@ function renderTransactionsPanel(){
                 <th style="padding:10px 8px">Job Title</th>
                 <th style="padding:10px 8px">Student Rate</th>
                 <th style="padding:10px 8px">Final Hours Worked</th>
-                <th style="padding:10px 8px">Amount Received</th>
+                <th style="padding:10px 8px">Work Total</th>
+                <th style="padding:10px 8px">Platform Fee</th>
+                <th style="padding:10px 8px">Final Payout</th>
               </tr>
             </thead>
             <tbody>
@@ -3680,6 +3789,8 @@ function renderTransactionsPanel(){
                   <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
                   <td style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
                   <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
+                  <td style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
+                  <td style="padding:12px 8px">-$${esc(Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2))}</td>
                   <td style="padding:12px 8px">$${esc(Number(tx.payout_amount || 0).toFixed(2))}</td>
                 </tr>
               `).join('')}
