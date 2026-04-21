@@ -211,6 +211,7 @@ let settingsTransactionQuery = '';
 let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
+let activeModalDraftKey = null;
 let studentProfileImagesBuffer = [];
 let studentServiceImagesBuffer = [];
 const PLATFORM_FEE_RATE = 0.15;
@@ -726,21 +727,76 @@ function loadCurrentUser(){
 }
 
 // ---------- Modal ----------
+function getModalDraftStore(){
+  return ls('cogo_modal_drafts') || {};
+}
+function saveModalDraftStore(store){
+  ls('cogo_modal_drafts', store);
+}
+function modalDraftKey(title){
+  return `modal:${String(title || '').trim().toLowerCase()}`;
+}
+function saveActiveModalDraft(){
+  if (!activeModalDraftKey) return;
+  const modalBody = document.querySelector('#modal-root .modal-body');
+  if (!modalBody) return;
+  const values = {};
+  modalBody.querySelectorAll('input, textarea, select').forEach(field => {
+    if (!field.id || field.type === 'file') return;
+    values[field.id] = field.type === 'checkbox' ? !!field.checked : field.value;
+  });
+  const store = getModalDraftStore();
+  store[activeModalDraftKey] = values;
+  saveModalDraftStore(store);
+}
+function restoreActiveModalDraft(){
+  if (!activeModalDraftKey) return;
+  const modalBody = document.querySelector('#modal-root .modal-body');
+  if (!modalBody) return;
+  const store = getModalDraftStore();
+  const draft = store[activeModalDraftKey] || {};
+  Object.entries(draft).forEach(([id, value]) => {
+    const field = modalBody.querySelector(`#${id}`);
+    if (!field) return;
+    if (field.type === 'checkbox') field.checked = !!value;
+    else field.value = value;
+  });
+}
+function clearActiveModalDraft(){
+  if (!activeModalDraftKey) return;
+  const store = getModalDraftStore();
+  delete store[activeModalDraftKey];
+  saveModalDraftStore(store);
+}
+function bindModalDraftAutosave(){
+  const modalBody = document.querySelector('#modal-root .modal-body');
+  if (!modalBody) return;
+  modalBody.querySelectorAll('input, textarea, select').forEach(field => {
+    field.addEventListener('input', saveActiveModalDraft);
+    field.addEventListener('change', saveActiveModalDraft);
+  });
+}
 function openModal(title, bodyHtml, width='760px'){
+  activeModalDraftKey = modalDraftKey(title);
   document.getElementById('modal-root').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this) closeModal()">
-      <div class="modal" style="max-width:${width}">
+    <div class="modal-bg" onmousedown="window._modalBackdropDown=(event.target===this)" onclick="if(event.target===this && window._modalBackdropDown) closeModal(true)">
+      <div class="modal" style="max-width:${width}" onmousedown="window._modalBackdropDown=false">
         <div class="modal-header">
           <h2 style="margin:0">${esc(title)}</h2>
-          <button class="close-btn" onclick="closeModal()">✕</button>
+          <button class="close-btn" onclick="closeModal(true)">✕</button>
         </div>
         <div class="modal-body">${bodyHtml}</div>
       </div>
     </div>
   `;
+  restoreActiveModalDraft();
+  bindModalDraftAutosave();
 }
-function closeModal(){
+function closeModal(preserveDraft=false){
+  if (preserveDraft) saveActiveModalDraft();
+  else clearActiveModalDraft();
   document.getElementById('modal-root').innerHTML = '';
+  activeModalDraftKey = null;
 }
 
 // ---------- Nav ----------
@@ -3267,9 +3323,9 @@ function renderEmployerProjectCard(p){
         <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
         <div class="small muted" style="margin-top:6px">Escrow held: $${esc(money(p.escrowAmount || p.estimatedEmployerTotal || estimatedBreakdown.employerTotal))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
         ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
-        ${p.status === 'completed' ? `<div class="warning" style="margin-top:10px">You can view this transaction in the My Transactions section of your Dashboard.</div>` : ''}
         ${invoiceSummary}
         <div class="contract-box small">${p.contractHtml}</div>
+        ${p.status === 'completed' ? `<div class="warning" style="margin-top:10px">You can view this transaction in the My Transactions section of your Dashboard.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(p.status)}
@@ -3632,7 +3688,6 @@ function renderThreadView(userId){
         </div>
       `).join('') : `<div class="muted small">No messages yet. Say hello.</div>`}
     </div>
-    <div class="warning" style="margin:0 12px 8px">${activeProject ? 'This conversation is now locked to the active project thread.' : 'Phone numbers and email addresses are blocked until work is confirmed.'}</div>
     <div class="msg-compose">
       <input id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}">
       <button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button>
