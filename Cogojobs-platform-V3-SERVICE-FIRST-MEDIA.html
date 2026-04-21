@@ -2349,7 +2349,9 @@ function openReviewListModal(title, reviews=[]){
   `, '620px');
 }
 function readImagesToDataUrls(input, callback, limit=3){
-  const files = Array.from((input && input.files) || []).slice(0, limit);
+  const allFiles = Array.from((input && input.files) || []);
+  if (allFiles.length > limit) toast(`You can upload up to ${limit} images. The first ${limit} were kept.`);
+  const files = allFiles.slice(0, limit);
   if (!files.length) return callback([]);
   Promise.all(files.map(file => new Promise(resolve => {
     const reader = new FileReader();
