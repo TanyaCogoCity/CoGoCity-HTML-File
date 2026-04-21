@@ -4066,8 +4066,8 @@ function deleteAdminUser(userId){
   toast('User deleted.');
   renderDashboard();
 }
-function renderAdminUsersSection(el){
-  const users = getUsers()
+function getFilteredAdminUsers(){
+  return getUsers()
     .filter(user => !user.archived)
     .filter(user => {
       const roleValue = getAdminRoleValueForUser(user);
@@ -4079,6 +4079,57 @@ function renderAdminUsersSection(el){
       return matchesSearch && matchesRole && matchesStatus;
     })
     .sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+}
+function renderAdminUsersResults(){
+  const wrap = document.getElementById('admin-users-results');
+  if (!wrap) return;
+  const users = getFilteredAdminUsers();
+  wrap.innerHTML = users.length ? `
+    <div style="overflow:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+        <thead>
+          <tr style="background:#f8fafc;text-align:left">
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Email</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Role</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Status</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Date Joined</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Last Login</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Jobs/Projects Count</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${users.map(user => {
+            const counts = getUserJobsProjectsSummary(user);
+            const isSelfAdmin = user.id === currentUser.id;
+            return `
+              <tr>
+                <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(user.name || 'User')}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '—')}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(getUserRoleLabel(user))}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${roleStatusPill(user.status)}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.createdAt)}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.lastLogin, true)}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(counts.label)}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-outline btn-sm" onclick="openAdminMessageModal('${esc(user.id)}')">Message</button>
+                    <button class="btn btn-outline btn-sm" onclick="startAdminImpersonation('${esc(user.id)}')">Login as User</button>
+                    <button class="btn btn-outline btn-sm" onclick="openAdminRoleModal('${esc(user.id)}')">Edit Role</button>
+                    <button class="btn btn-outline btn-sm" onclick="toggleAdminUserStatus('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>${user.status === 'suspended' ? 'Enable' : 'Disable'}</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>Delete</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : `<div class="muted">No users match these filters.</div>`;
+}
+function renderAdminUsersSection(el){
   const allUsers = getUsers().filter(user => !user.archived);
   const activeCount = allUsers.filter(user => user.status !== 'suspended').length;
   const suspendedCount = allUsers.filter(user => user.status === 'suspended').length;
@@ -4098,9 +4149,9 @@ function renderAdminUsersSection(el){
     </div>
     <div class="card form-card" style="margin-bottom:18px">
       <div class="row" style="align-items:end">
-        <div class="field"><label>Search</label><input value="${esc(adminUsersQuery)}" placeholder="Search by name or email" oninput="adminUsersQuery=this.value;renderDashboard()"></div>
+        <div class="field"><label>Search</label><input value="${esc(adminUsersQuery)}" placeholder="Search by name or email" oninput="adminUsersQuery=this.value;renderAdminUsersResults()"></div>
         <div class="field"><label>Role</label>
-          <select onchange="adminUsersRoleFilter=this.value;renderDashboard()">
+          <select onchange="adminUsersRoleFilter=this.value;renderAdminUsersResults()">
             <option value="all" ${adminUsersRoleFilter === 'all' ? 'selected' : ''}>All Roles</option>
             <option value="student" ${adminUsersRoleFilter === 'student' ? 'selected' : ''}>Student</option>
             <option value="employer" ${adminUsersRoleFilter === 'employer' ? 'selected' : ''}>Employer</option>
@@ -4109,7 +4160,7 @@ function renderAdminUsersSection(el){
           </select>
         </div>
         <div class="field"><label>Status</label>
-          <select onchange="adminUsersStatusFilter=this.value;renderDashboard()">
+          <select onchange="adminUsersStatusFilter=this.value;renderAdminUsersResults()">
             <option value="all" ${adminUsersStatusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
             <option value="active" ${adminUsersStatusFilter === 'active' ? 'selected' : ''}>Active</option>
             <option value="suspended" ${adminUsersStatusFilter === 'suspended' ? 'selected' : ''}>Suspended</option>
@@ -4117,52 +4168,7 @@ function renderAdminUsersSection(el){
         </div>
       </div>
     </div>
-    <div class="card form-card" style="margin-bottom:18px">
-      ${users.length ? `
-        <div style="overflow:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:.92rem">
-            <thead>
-              <tr style="background:#f8fafc;text-align:left">
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Name</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Email</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Role</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Status</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Date Joined</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Last Login</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Jobs/Projects Count</th>
-                <th style="padding:12px;border-bottom:1px solid var(--border)">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${users.map(user => {
-                const counts = getUserJobsProjectsSummary(user);
-                const isSelfAdmin = user.id === currentUser.id;
-                return `
-                  <tr>
-                    <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(user.name || 'User')}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '—')}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(getUserRoleLabel(user))}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">${roleStatusPill(user.status)}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.createdAt)}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.lastLogin, true)}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(counts.label)}</td>
-                    <td style="padding:12px;border-bottom:1px solid var(--border)">
-                      <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button class="btn btn-outline btn-sm" onclick="openAdminMessageModal('${esc(user.id)}')">Message</button>
-                        <button class="btn btn-outline btn-sm" onclick="startAdminImpersonation('${esc(user.id)}')">Login as User</button>
-                        <button class="btn btn-outline btn-sm" onclick="openAdminRoleModal('${esc(user.id)}')">Edit Role</button>
-                        <button class="btn ${user.status === 'suspended' ? 'btn-outline' : 'btn-outline'} btn-sm" onclick="toggleAdminUserStatus('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>${user.status === 'suspended' ? 'Enable' : 'Disable'}</button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      ` : `<div class="muted">No users match these filters.</div>`}
-    </div>
+    <div class="card form-card" style="margin-bottom:18px" id="admin-users-results"></div>
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:12px">Recent Admin Actions</div>
       ${logs.length ? logs.slice(0, 10).map(entry => `
@@ -4174,6 +4180,7 @@ function renderAdminUsersSection(el){
       `).join('') : `<div class="muted">No admin actions logged yet.</div>`}
     </div>
   `;
+  renderAdminUsersResults();
 }
 
 // ---------- Settings ----------
