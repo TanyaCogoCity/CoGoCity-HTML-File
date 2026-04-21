@@ -2406,8 +2406,37 @@ function openProfile(studentId){
 }
 
 // ---------- Community ----------
+function getCommunityFeedApplicationCount(postId, applications=getApplications()){
+  const countableStatuses = new Set(['pending','applied','offer_sent','offer_pending']);
+  return applications.filter(application => application.postId === postId && countableStatuses.has(application.status)).length;
+}
+function syncCommunityJobApplicationCounts(applications=getApplications()){
+  const posts = getPosts();
+  let changed = false;
+  posts.forEach(post => {
+    if (!post.isJob) return;
+    const nextCount = getCommunityFeedApplicationCount(post.id, applications);
+    if (Number(post.application_count || 0) !== nextCount) {
+      post.application_count = nextCount;
+      changed = true;
+    }
+  });
+  if (changed) savePosts(posts);
+  return posts;
+}
+function getCommunityFeedStatusLabel(post){
+  const applicationCount = Number(post.application_count || 0);
+  if (post.status === 'open') {
+    if (applicationCount > 0) return `${applicationCount} Student${applicationCount === 1 ? '' : 's'} Applied`;
+    return 'Open';
+  }
+  return 'Closed';
+}
+function isCommunityFeedJobOpen(post){
+  return post.status === 'open';
+}
 function renderCommunity(){
-  const posts = getPosts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container feed-wrap">
@@ -2470,7 +2499,8 @@ function submitPost(){
     isJob,
     createdAt: new Date().toISOString(),
     likes: [],
-    status: isJob ? 'open' : undefined
+    status: isJob ? 'open' : undefined,
+    application_count: isJob ? 0 : undefined
   };
   if (isJob){
     post.jobTitle = (document.getElementById('jobTitle').value || '').trim();
@@ -2490,8 +2520,9 @@ function submitPost(){
   renderCommunity();
 }
 function renderPost(p){
-  const appsCount = getApplications().filter(a => a.postId === p.id).length;
-  const canApply = currentUser && currentUser.role === 'student' && p.isJob;
+  const appsCount = Number(p.application_count ?? getCommunityFeedApplicationCount(p.id));
+  const jobIsOpen = p.isJob && isCommunityFeedJobOpen(p);
+  const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen;
   const canManage = currentUser && currentUser.id === p.authorId;
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
   return `
@@ -2511,7 +2542,7 @@ function renderPost(p){
             <span>💰 $${esc(p.rate)}/hr</span>
             <span>⏱️ ${esc(p.hoursNeeded)} hours</span>
             <span>📍 ${esc(p.location)}</span>
-            <span>${badge(p.status || 'open')}</span>
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${jobIsOpen ? '#DBEAFE' : '#E5E7EB'};color:${jobIsOpen ? '#1D4ED8' : '#374151'};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
           </div>
           <div class="small">${esc(p.description)}</div>
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
@@ -2519,7 +2550,7 @@ function renderPost(p){
       ` : ''}
       <div class="post-footer">
         <button class="btn btn-outline btn-sm" onclick="toggleLike('${esc(p.id)}')">${liked ? '❤️ Liked' : '🤍 Like'} (${(p.likes||[]).length})</button>
-        ${canApply ? `<button class="btn btn-blue btn-sm" onclick="applyToPost('${esc(p.id)}')">Apply</button>` : ''}
+        ${p.isJob && currentUser && currentUser.role === 'student' ? `<button class="btn btn-blue btn-sm" onclick="${jobIsOpen ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${jobIsOpen ? '' : 'disabled title="This job is no longer accepting applications"'}>Apply</button>` : ''}
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
@@ -2589,6 +2620,7 @@ function applyToPost(postId){
   if (currentUser.role !== 'student') return toast('Only students can apply.');
   const p = getPosts().find(x => x.id === postId);
   if (!p) return;
+  if (!isCommunityFeedJobOpen(p)) return toast('This job is no longer accepting applications.');
   const apps = getApplications();
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
     return toast("You’ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
@@ -2636,9 +2668,11 @@ function submitApplication(postId){
     createdAt: new Date().toISOString()
   });
   saveApplications(apps);
+  syncCommunityJobApplicationCounts(apps);
   pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   closeModal();
   toast('Application submitted. Check Dashboard → Jobs & Bookings.');
+  renderCommunity();
 }
 
 // ---------- Direct book / offer from profile ----------
@@ -3167,6 +3201,7 @@ function acceptOffer(appId){
   if (!a) return;
   a.status = 'accepted';
   saveApplications(apps);
+  syncCommunityJobApplicationCounts(apps);
   pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   openModal('Offer Accepted', `
     <div class="warning">You can’t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to “In Progress” once confirmed.</div>
@@ -3181,6 +3216,7 @@ function declineOffer(appId){
   if (!a) return;
   a.status = 'declined';
   saveApplications(apps);
+  syncCommunityJobApplicationCounts(apps);
   pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   toast('Offer declined.');
   renderDashboard();
@@ -3533,6 +3569,7 @@ function confirmSendOffer(appId){
     status:'offer_sent'
   });
   saveApplications(apps);
+  syncCommunityJobApplicationCounts(apps);
   pushNotif(a.studentUserId, `You have an offer for "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
   closeModal();
   toast('Offer sent.');
@@ -3616,6 +3653,13 @@ function startProject(appId){
   });
   a.status = 'project_started';
   saveApplications(apps);
+  syncCommunityJobApplicationCounts(apps);
+  const posts = getPosts();
+  const post = posts.find(x => x.id === a.postId);
+  if (post) {
+    post.status = 'in_progress';
+    savePosts(posts);
+  }
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${formatPercent(estimatedBreakdown.studentCommissionPct)} Platform Fee is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
@@ -3671,6 +3715,13 @@ function activateProject(projectId){
   if (a) {
     a.status = 'project_started';
     saveApplications(apps);
+    syncCommunityJobApplicationCounts(apps);
+  }
+  const posts = getPosts();
+  const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
+  if (post) {
+    post.status = 'in_progress';
+    savePosts(posts);
   }
 
   pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
@@ -3785,6 +3836,13 @@ function approveFinalInvoice(projectId){
     date_paid: now
   });
   saveTransactions(transactions);
+
+  const posts = getPosts();
+  const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
+  if (post) {
+    post.status = 'completed';
+    savePosts(posts);
+  }
 
   saveProjects(projects);
   pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work Total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.employerPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions' });
