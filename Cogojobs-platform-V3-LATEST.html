@@ -216,6 +216,7 @@ let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
 let activeModalDraftKey = null;
+let mediaCarouselState = {};
 let studentProfileImagesBuffer = [];
 let studentServiceImagesBuffer = [];
 const PLATFORM_FEE_RATE = 0.15;
@@ -1502,7 +1503,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
       <div class="small muted" style="margin-top:6px">$${esc(service.rate || 0)}/hr · ${esc(service.location || '')}</div>
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
       <div style="margin-top:14px">${esc(service.description || '')}</div>
-      <div style="margin-top:14px">${renderMediaThumbs(service.images || [], 3, 84)}</div>
+      <div style="margin-top:14px">${renderImagePreviewHtml(service.images || [], 84)}</div>
       <div style="margin-top:14px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
       <div style="margin-top:16px">${backButtonHtml}</div>
     </div>
@@ -1962,7 +1963,7 @@ function renderHome(){
       <h1>Find Trusted Local Student Help</h1>
  <p>Test the full CoGo City student, employer, and neighbor flow in one file: profiles, community feed, applications, offers, projects, hours, invoices, messages, and approvals.</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        <button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>
+        ${!currentUser ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>` : ''}
         <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Feed</button>
       </div>
     </section>
@@ -1984,26 +1985,102 @@ function renderMediaThumbs(images=[], max=3, size=72, emptyHtml=''){
   if (!images.length) return emptyHtml;
   return `<div style="display:flex;gap:10px;flex-wrap:wrap">${images.slice(0, max).map(src => `<img src="${esc(src)}" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">`).join('')}</div>`;
 }
-function renderImagePreviewHtml(images=[], size=72){
-  return renderMediaThumbs(images, 3, size, `<div class="small muted">No images added yet.</div>`);
+function updateMediaCarousel(carouselId){
+  const state = mediaCarouselState[carouselId];
+  if (!state || !state.images.length) return;
+  const img = document.getElementById(`${carouselId}_image`);
+  const dots = document.querySelectorAll(`[data-carousel-dot="${carouselId}"]`);
+  if (img) img.src = state.images[state.index] || '';
+  dots.forEach((dot, index) => {
+    dot.style.opacity = index === state.index ? '1' : '.35';
+    dot.style.transform = index === state.index ? 'scale(1.1)' : 'scale(1)';
+  });
 }
-function getVideoEmbedUrl(url=''){
+function setMediaCarouselIndex(carouselId, index){
+  const state = mediaCarouselState[carouselId];
+  if (!state || !state.images.length) return;
+  const total = state.images.length;
+  state.index = ((index % total) + total) % total;
+  updateMediaCarousel(carouselId);
+}
+function shiftMediaCarousel(carouselId, delta){
+  const state = mediaCarouselState[carouselId];
+  if (!state) return;
+  setMediaCarouselIndex(carouselId, state.index + delta);
+}
+function renderMediaCarousel(images=[], size=84){
+  if (!images.length) return `<div class="small muted">No images added yet.</div>`;
+  if (images.length === 1) return renderMediaThumbs(images, 1, size, '');
+  const carouselId = `media_${uid('carousel').replace(/[^a-zA-Z0-9_]/g, '')}`;
+  mediaCarouselState[carouselId] = { images:[...images], index:0 };
+  const height = Math.max(180, Number(size) * 3);
+  return `
+    <div style="max-width:420px">
+      <div style="position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f8fafc">
+        <img id="${carouselId}_image" src="${esc(images[0])}" style="width:100%;height:${height}px;object-fit:cover;display:block">
+        <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', -1)" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">‹</button>
+        <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', 1)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">›</button>
+      </div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">${images.map((_, index) => `<button type="button" data-carousel-dot="${carouselId}" onclick="setMediaCarouselIndex('${carouselId}', ${index})" style="width:10px;height:10px;border-radius:50%;border:0;background:#2563eb;opacity:${index === 0 ? 1 : .35};cursor:pointer"></button>`).join('')}</div>
+    </div>
+  `;
+}
+function renderImagePreviewHtml(images=[], size=72){
+  if (!images.length) return `<div class="small muted">No images added yet.</div>`;
+  return images.length > 1 && size >= 80 ? renderMediaCarousel(images, size) : renderMediaThumbs(images, 3, size, '');
+}
+function parseVideoLink(url=''){
   const clean = (url || '').trim();
-  if (!clean) return '';
-  const yt = clean.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?/]+)/i);
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
-  const vimeo = clean.match(/vimeo\.com\/(\d+)/i);
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
-  const loom = clean.match(/loom\.com\/share\/([a-zA-Z0-9]+)/i);
-  if (loom) return `https://www.loom.com/embed/${loom[1]}`;
-  return '';
+  if (!clean) return null;
+  let parsed;
+  try {
+    parsed = new URL(clean);
+  } catch (error) {
+    return { type:'link', url:clean, label:clean };
+  }
+  const host = parsed.hostname.replace(/^www\./, '');
+  const path = parsed.pathname || '';
+  const videoFile = clean.match(/\.(mp4|webm|ogg)(\?|#|$)/i);
+  if (videoFile) return { type:'file', url:clean, label:'Video file' };
+  if (host.includes('youtu.be')) {
+    const videoId = path.split('/').filter(Boolean)[0] || '';
+    return videoId ? { type:'youtube', url:clean, videoId, thumbnail:`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+  }
+  if (host.includes('youtube.com')) {
+    const videoId = parsed.searchParams.get('v') || '';
+    return videoId ? { type:'youtube', url:clean, videoId, thumbnail:`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+  }
+  if (host.includes('vimeo.com')) {
+    const videoId = path.split('/').filter(Boolean)[0] || '';
+    return videoId ? { type:'vimeo', url:clean, videoId, label:'Vimeo video' } : { type:'link', url:clean, label:clean };
+  }
+  if (host.includes('loom.com')) {
+    const parts = path.split('/').filter(Boolean);
+    const videoId = parts[1] || parts[0] || '';
+    return videoId ? { type:'loom', url:clean, videoId, label:'Loom video' } : { type:'link', url:clean, label:clean };
+  }
+  return { type:'link', url:clean, label:clean };
 }
 function renderVideoPreviewHtml(url='', label='Video preview'){
   if (!url) return `<div class="small muted">No video link added yet.</div>`;
-  const embed = getVideoEmbedUrl(url);
-  return embed
-    ? `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><iframe src="${esc(embed)}" style="width:100%;max-width:420px;height:236px;border:1px solid var(--border);border-radius:12px;background:#fff" allowfullscreen></iframe></div>`
-    : `<div class="small"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}: ${esc(url)}</a></div>`;
+  const video = parseVideoLink(url);
+  if (!video) return `<div class="small muted">No video link added yet.</div>`;
+  if (video.type === 'file') {
+    return `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><video controls style="width:100%;max-width:420px;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
+  }
+  const previewImage = video.thumbnail || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="840" height="472" viewBox="0 0 840 472"><rect width="840" height="472" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%234b5563" font-family="Arial" font-size="40">Video Preview</text></svg>';
+  return `
+    <div style="max-width:420px">
+      <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
+      <a href="${esc(video.url)}" target="_blank" rel="noopener" style="display:block;position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f8fafc;text-decoration:none;color:inherit">
+        <img src="${esc(previewImage)}" alt="${esc(label)}" style="width:100%;height:236px;object-fit:cover;display:block">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(15,23,42,.08),rgba(15,23,42,.35))">
+          <div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:1.4rem">▶</div>
+        </div>
+      </a>
+      <div class="small" style="margin-top:8px"><a href="${esc(video.url)}" target="_blank" rel="noopener">Open ${esc(video.label || 'video')}</a></div>
+    </div>
+  `;
 }
 function getHomepageSessionId(){
   let sessionId = '';
@@ -2425,8 +2502,23 @@ function syncCommunityJobApplicationCounts(applications=getApplications()){
   if (changed) savePosts(posts);
   return posts;
 }
+function syncCommunityJobStatus(postId, applications=getApplications()){
+  if (!postId) return;
+  const posts = getPosts();
+  const post = posts.find(item => item.id === postId && item.isJob);
+  if (!post || ['in_progress','completed'].includes(post.status)) return;
+  const relatedApplications = applications.filter(application => application.postId === postId);
+  const hasAccepted = relatedApplications.some(application => application.status === 'accepted');
+  const hasOfferPending = relatedApplications.some(application => ['offer_sent','offer_pending'].includes(application.status));
+  const nextStatus = hasAccepted ? 'closed' : (hasOfferPending ? 'pending' : (post.status === 'closed' ? 'closed' : 'open'));
+  if (post.status !== nextStatus) {
+    post.status = nextStatus;
+    savePosts(posts);
+  }
+}
 function getCommunityFeedStatusLabel(post){
   const applicationCount = Number(post.application_count || 0);
+  if (post.status === 'pending') return 'Pending';
   if (post.status === 'open') {
     if (applicationCount > 0) return `${applicationCount} Student${applicationCount === 1 ? '' : 's'} Applied`;
     return 'Open';
@@ -2434,7 +2526,7 @@ function getCommunityFeedStatusLabel(post){
   return 'Closed';
 }
 function isCommunityFeedJobOpen(post){
-  return post.status === 'open';
+  return post.status === 'open' || post.status === 'pending';
 }
 function renderCommunity(){
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -2523,6 +2615,7 @@ function submitPost(){
 function renderPost(p){
   const appsCount = Number(p.application_count ?? getCommunityFeedApplicationCount(p.id));
   const jobIsOpen = p.isJob && isCommunityFeedJobOpen(p);
+  const isPending = p.status === 'pending';
   const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen;
   const canManage = currentUser && currentUser.id === p.authorId;
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
@@ -2543,7 +2636,7 @@ function renderPost(p){
             <span>💰 $${esc(p.rate)}/hr</span>
             <span>⏱️ ${esc(p.hoursNeeded)} hours</span>
             <span>📍 ${esc(p.location)}</span>
-            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${jobIsOpen ? '#DBEAFE' : '#E5E7EB'};color:${jobIsOpen ? '#1D4ED8' : '#374151'};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#DBEAFE' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#1D4ED8' : '#374151')};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
           </div>
           <div class="small">${esc(p.description)}</div>
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
@@ -2964,7 +3057,7 @@ function renderStudentServiceManagerCard(service, index){
           <div class="small" style="margin-top:6px">${esc(service.description || '')}</div>
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
-          <div style="margin-top:10px">${renderMediaThumbs(service.images || [], 3, 64)}</div>
+          <div style="margin-top:10px">${renderImagePreviewHtml(service.images || [], 84)}</div>
           <div style="margin-top:10px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
@@ -3203,6 +3296,7 @@ function acceptOffer(appId){
   a.status = 'accepted';
   saveApplications(apps);
   syncCommunityJobApplicationCounts(apps);
+  syncCommunityJobStatus(a.postId, apps);
   pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   openModal('Offer Accepted', `
     <div class="warning">You can’t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to “In Progress” once confirmed.</div>
@@ -3218,6 +3312,7 @@ function declineOffer(appId){
   a.status = 'declined';
   saveApplications(apps);
   syncCommunityJobApplicationCounts(apps);
+  syncCommunityJobStatus(a.postId, apps);
   pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   toast('Offer declined.');
   renderDashboard();
@@ -3469,11 +3564,11 @@ function getApplicationJobPost(application){
 function canDeclineApplicant(application){
   const eligibleStatuses = new Set(['pending','applied','offer_sent','offer_pending']);
   const job = getApplicationJobPost(application);
-  return eligibleStatuses.has(application.status) && (!job || job.status === 'open');
+  return eligibleStatuses.has(application.status) && (!job || ['open','pending'].includes(job.status));
 }
 function shouldDisableDeclineApplicant(application){
   const job = getApplicationJobPost(application);
-  return application.status === 'accepted' || !!(job && job.status !== 'open');
+  return application.status === 'accepted' || !!(job && !['open','pending'].includes(job.status));
 }
 function renderEmployerApplicantsBookings(el){
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
@@ -3571,6 +3666,7 @@ function declineApplicant(appId, shouldSendMessage){
   application.status = 'rejected';
   saveApplications(apps);
   syncCommunityJobApplicationCounts(apps);
+  syncCommunityJobStatus(application.postId, apps);
   if (sendableMessage) {
     const msgs = getMessages();
     msgs.push({
@@ -3639,6 +3735,7 @@ function confirmSendOffer(appId){
   });
   saveApplications(apps);
   syncCommunityJobApplicationCounts(apps);
+  syncCommunityJobStatus(a.postId, apps);
   pushNotif(a.studentUserId, `You have an offer for "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
   closeModal();
   toast('Offer sent.');
@@ -4589,10 +4686,15 @@ function renderTransactionsResults(){
     : isEmployer
       ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPaid)}</div></div>`
       : `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPayout)}</div></div>`;
-  summaryWrap.innerHTML = `
+  summaryWrap.innerHTML = isAdmin ? `
     <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
       <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
       <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Work</div><div style="font-weight:800;font-size:1.2rem">$${money(totalWork)}</div></div>
+      ${roleSummary}
+    </div>
+  ` : `
+    <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px">
+      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
       ${roleSummary}
     </div>
   `;
