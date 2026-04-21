@@ -98,6 +98,7 @@
     .badge-pending_approval,.badge-awaiting_employer_approval{background:#FCE7F3;color:#9D174D}
     .badge-completed{background:#DCFCE7;color:#166534}
     .badge-declined{background:#FEE2E2;color:#991B1B}
+    .badge-rejected{background:#FEE2E2;color:#991B1B}
     .badge-closed{background:#F3F4F6;color:#4B5563}
     .meta-row{display:flex;gap:12px;flex-wrap:wrap;color:var(--gray);font-size:.85rem}
     .post-footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
@@ -3462,10 +3463,24 @@ function toggleJobStatus(postId){
   renderDashboard();
 }
 
+function getApplicationJobPost(application){
+  return application && application.postId ? getPosts().find(post => post.id === application.postId) : null;
+}
+function canDeclineApplicant(application){
+  const eligibleStatuses = new Set(['pending','applied','offer_sent','offer_pending']);
+  const job = getApplicationJobPost(application);
+  return eligibleStatuses.has(application.status) && (!job || job.status === 'open');
+}
+function shouldDisableDeclineApplicant(application){
+  const job = getApplicationJobPost(application);
+  return application.status === 'accepted' || !!(job && job.status !== 'open');
+}
 function renderEmployerApplicantsBookings(el){
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
- const myApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
+ const allApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  const myApplications = allApplications.filter(a => a.status !== 'rejected');
+  const declinedApplications = allApplications.filter(a => a.status === 'rejected');
   const myProjects = getProjects().filter(p => p.employerId === currentUser.id)
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
@@ -3483,6 +3498,8 @@ function renderEmployerApplicantsBookings(el){
   if (employerTab === 'all' || employerTab === 'applicants'){
     html += `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers</div>`;
     html += myApplications.length ? myApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No applicants or offers yet.</div>`;
+    html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Declined</div>`;
+    html += declinedApplications.length ? declinedApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No declined applicants yet.</div>`;
   }
   if (employerTab === 'all' || employerTab === 'projects'){
     html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Projects</div>`;
@@ -3493,9 +3510,12 @@ function renderEmployerApplicantsBookings(el){
 function renderEmployerAppCard(a){
   const student = getStudents().find(s => s.id === a.studentProfileId) || getStudents().find(s => s.userId === a.studentUserId);
   const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community feed application';
+  const job = getApplicationJobPost(a);
   const actions = [];
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.studentUserId)}')">Message</button>`);
   if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
+  if (canDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" onclick="openDeclineApplicantModal('${esc(a.id)}')">Decline</button>`);
+  else if (shouldDisableDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" disabled title="Decline is only available while the job is open and the applicant has not been accepted.">Decline</button>`);
   if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}')">Start Project</button>`);
 
   return `
@@ -3509,6 +3529,7 @@ function renderEmployerAppCard(a){
           </div>
           <div class="muted small">${timeAgo(a.createdAt)}${a.location ? ` · ${esc(a.location)}` : ''}</div>
           <div class="small muted" style="margin-top:6px">Source: ${esc(sourceLabel)}</div>
+          ${job ? `<div class="small muted" style="margin-top:6px">Job status: ${esc(getCommunityFeedStatusLabel(job))}</div>` : ''}
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(a.studentServiceTitle)}</div>` : ''}
           <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr · ${esc(a.estimatedHours||'')} hours</div>` : ''}
@@ -3522,6 +3543,54 @@ function renderEmployerAppCard(a){
       </div>
     </div>
   `;
+}
+function openDeclineApplicantModal(appId){
+  const apps = getApplications();
+  const application = apps.find(item => item.id === appId);
+  if (!application) return toast('Applicant not found.');
+  openModal('Decline Applicant', `
+    <div class="warning" style="margin-bottom:14px">Optionally share a short, supportive message with the student. This helps them improve and stay motivated.</div>
+    <div class="field">
+      <label>Message to student (optional)</label>
+      <textarea id="declineApplicantMessage" placeholder="Thanks for applying. We went with another applicant this time, but I appreciate your interest..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="declineApplicant('${esc(appId)}', false)">Decline Without Message</button>
+      <button class="btn btn-danger" onclick="declineApplicant('${esc(appId)}', true)">Decline & Send Message</button>
+    </div>
+  `, '680px');
+}
+function declineApplicant(appId, shouldSendMessage){
+  const apps = getApplications();
+  const application = apps.find(item => item.id === appId);
+  if (!application) return toast('Applicant not found.');
+  if (!confirm('Are you sure you want to decline this applicant?')) return;
+  if (!canDeclineApplicant(application) && application.status !== 'rejected') return toast('This applicant can no longer be declined.');
+  const message = ((document.getElementById('declineApplicantMessage') || {}).value || '').trim();
+  const sendableMessage = shouldSendMessage && message && !detectContactInfo(message);
+  application.status = 'rejected';
+  saveApplications(apps);
+  syncCommunityJobApplicationCounts(apps);
+  if (sendableMessage) {
+    const msgs = getMessages();
+    msgs.push({
+      id: uid('m'),
+      fromId: currentUser.id,
+      fromName: currentUser.name,
+      toId: application.studentUserId,
+      toName: application.studentName,
+      content: message,
+      projectId: null,
+      createdAt: new Date().toISOString(),
+      read: false
+    });
+    saveMessages(msgs);
+    pushNotif(application.studentUserId, `${currentUser.name} sent you a message.`, { type:'dashboard', section:'messages' });
+  }
+  closeModal();
+  if (shouldSendMessage && message && !sendableMessage) toast('Applicant declined. Message not sent because contact info is blocked.');
+  else toast(sendableMessage ? 'Applicant declined and message sent.' : 'Applicant declined.');
+  renderDashboard();
 }
 function openPostFromDashboard(postId){
   location.hash = '#/community';
