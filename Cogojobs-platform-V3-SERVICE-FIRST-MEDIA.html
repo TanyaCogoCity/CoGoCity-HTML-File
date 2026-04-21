@@ -208,6 +208,9 @@ let employerSignupStep = 1;
 let employerSignupMode = 'neighbor';
 let employerSignupDraft = null;
 let settingsTransactionQuery = '';
+let adminUsersQuery = '';
+let adminUsersRoleFilter = 'all';
+let adminUsersStatusFilter = 'all';
 let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
@@ -230,8 +233,34 @@ function ls(key, value){
 function uid(prefix='id'){
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 }
-function getUsers(){ return ls('cogo_users') || []; }
-function saveUsers(v){ ls('cogo_users', v); }
+function normalizeUserRecord(user){
+  const normalized = Object.assign({}, user || {});
+  if (!normalized.name) normalized.name = [normalized.firstName, normalized.lastName].filter(Boolean).join(' ').trim() || normalized.email || 'User';
+  if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
+  if (!normalized.status) normalized.status = normalized.archived ? 'archived' : 'active';
+  if (!Object.prototype.hasOwnProperty.call(normalized, 'lastLogin')) normalized.lastLogin = null;
+  if (normalized.role === 'employer' && !normalized.type) normalized.type = 'business';
+  return normalized;
+}
+function getUsers(){
+  const users = ls('cogo_users') || [];
+  let changed = false;
+  const normalized = users.map(user => {
+    const next = normalizeUserRecord(user);
+    if (JSON.stringify(next) !== JSON.stringify(user)) changed = true;
+    return next;
+  });
+  if (changed) ls('cogo_users', normalized);
+  return normalized;
+}
+function saveUsers(v){ ls('cogo_users', v.map(normalizeUserRecord)); }
+function getAdminActionLog(){ return ls('cogo_admin_action_log') || []; }
+function saveAdminActionLog(v){ ls('cogo_admin_action_log', v); }
+function logAdminAction(action, meta={}){
+  const items = getAdminActionLog();
+  items.unshift(Object.assign({ id: uid('adminlog'), action, actorId: currentUser ? currentUser.id : null, actorName: currentUser ? currentUser.name : 'Admin', createdAt: new Date().toISOString() }, meta));
+  saveAdminActionLog(items.slice(0, 50));
+}
 function getStudents(){
   const students = ls('cogo_students') || [];
   let changed = false;
@@ -508,6 +537,69 @@ function currentStudentPrimaryService(){
   return getRenderableStudentServices(profile)[0] || null;
 }
 function getUserById(id){ return getUsers().find(u => u.id === id); }
+function getUserRoleLabel(user){
+  if (!user) return 'User';
+  if (user.role === 'admin') return 'Admin';
+  if (user.role === 'student') return 'Student';
+  return user.type === 'neighbor' ? 'Neighbor' : 'Employer';
+}
+function getAdminImpersonation(){ return ls('cogo_admin_impersonation'); }
+function isAdminImpersonating(){
+  const session = getAdminImpersonation();
+  return !!(session && currentUser && currentUser.id === session.userId);
+}
+function canViewBillingDetails(){
+  return !isAdminImpersonating();
+}
+function formatAdminDate(value, includeTime=false){
+  if (!value) return '—';
+  return new Date(value).toLocaleString('en-US', includeTime ? { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' } : { month:'short', day:'numeric', year:'numeric' });
+}
+function getUserJobsProjectsSummary(user){
+  const jobs = getPosts().filter(post => post.authorId === user.id && post.isJob).length;
+  const projects = getProjects().filter(project => project.employerId === user.id || project.studentUserId === user.id).length;
+  return { jobs, projects, label: `${jobs} job${jobs === 1 ? '' : 's'} · ${projects} project${projects === 1 ? '' : 's'}` };
+}
+function syncCurrentUserRecord(){
+  if (!currentUser) return true;
+  const latest = getUserById(currentUser.id);
+  if (!latest || latest.archived) {
+    signOut();
+    toast('This profile is no longer active.');
+    return false;
+  }
+  currentUser = latest;
+  ls('cogo_current_user', currentUser);
+  if (currentUser.status === 'suspended' && !isAdminImpersonating()) {
+    signOut();
+    toast('This account is suspended.');
+    return false;
+  }
+  return true;
+}
+function stopAdminImpersonation(silent=false){
+  const session = getAdminImpersonation();
+  if (!session) return;
+  const adminUser = getUserById(session.adminId);
+  localStorage.removeItem('cogo_admin_impersonation');
+  if (adminUser) setCurrentUser(adminUser);
+  if (!silent) toast('Returned to Admin view.');
+  dashSection = 'users';
+  location.hash = '#/dashboard';
+  renderPage();
+}
+function startAdminImpersonation(userId){
+  if (!currentUser || currentUser.role !== 'admin') return;
+  const target = getUserById(userId);
+  if (!target || target.archived) return toast('User not found.');
+  ls('cogo_admin_impersonation', { adminId: currentUser.id, userId: target.id, startedAt: new Date().toISOString() });
+  logAdminAction('login_as_user', { targetUserId: target.id, targetUserName: target.name, targetRole: getUserRoleLabel(target) });
+  setCurrentUser(target);
+  dashSection = target.role === 'student' ? 'profile' : (target.role === 'admin' ? 'admin' : 'profile');
+  location.hash = '#/dashboard';
+  renderPage();
+  toast(`Viewing as ${firstName(target.name)}.`);
+}
 function getStudentByUserId(userId){ return getStudents().find(s => s.userId === userId && s.status !== 'archived'); }
 function setActiveStudentProfile(profileId){
   ls('cogo_active_student_profile', profileId);
@@ -668,6 +760,7 @@ function attachMessagesToProject(projectId, employerId, studentUserId){
   if (changed) saveMessages(messages);
 }
 function openPaymentMethodModal(retryAppId=''){
+  if (!canViewBillingDetails()) return toast('Billing details are hidden while viewing as a user.');
   const paymentMethod = getEmployerPaymentMethod(currentUser.id) || {};
   openModal('Update Payment Method', `
     <div class="warning" style="margin-bottom:14px">Employers sign up with a payment method on file. Update the saved test card here if needed.</div>
@@ -967,9 +1060,14 @@ function resetDemoData(){
 function doLogin(){
   const email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
   const password = document.getElementById('loginPassword').value || '';
-  const user = getUsers().find(u => u.email.toLowerCase() === email && u.password === password);
+  const users = getUsers();
+  const user = users.find(u => u.email.toLowerCase() === email && u.password === password);
   if (!user) { toast('Invalid email or password'); return; }
   if (user.archived) { toast('This profile is no longer active.'); return; }
+  if (user.status === 'suspended') { toast('This account is suspended.'); return; }
+  localStorage.removeItem('cogo_admin_impersonation');
+  user.lastLogin = new Date().toISOString();
+  saveUsers(users);
   setCurrentUser(user);
   closeModal();
   toast(`Welcome back, ${firstName(user.name)}!`);
@@ -1828,6 +1926,7 @@ function signOut(){
   currentUser = null;
   avatarMenuOpen = false;
   localStorage.removeItem('cogo_current_user');
+  localStorage.removeItem('cogo_admin_impersonation');
   activeThreadUserId = null;
   renderNav();
   location.hash = '#/';
@@ -1846,6 +1945,7 @@ document.addEventListener('click', (event) => {
 
 // ---------- Pages ----------
 function renderPage(){
+  if (!syncCurrentUserRecord()) return;
   renderNav();
   const route = getRoute();
   if (route === '#/community') return renderCommunity();
@@ -2422,8 +2522,9 @@ function sendDirectOffer(studentId, serviceId=''){
 // ---------- Dashboard ----------
 function renderDashboard(){
   if (!currentUser) return openLoginModal();
+  if (!syncCurrentUserRecord()) return;
 
-  if (currentUser.role === 'admin' && !['admin','transactions','settings'].includes(dashSection)) {
+  if (currentUser.role === 'admin' && !['admin','users','transactions','settings'].includes(dashSection)) {
     dashSection = 'admin';
   }
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings'].includes(dashSection)) {
@@ -2436,8 +2537,10 @@ function renderDashboard(){
   document.getElementById('app').innerHTML = `
     <div class="dashboard">
       <div class="sidebar">
+        ${isAdminImpersonating() ? `<div class="card" style="padding:12px;margin-bottom:12px;background:#eff6ff;border:1px solid #bfdbfe"><div class="small muted">Viewing as ${esc(currentUser.name)}</div><button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="stopAdminImpersonation()">Return to Admin</button></div>` : ''}
         ${currentUser.role === 'admin' ? `
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">🛡️ Admin Panel</a>
+          <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">👥 Users</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : currentUser.role === 'student' ? `
@@ -2463,6 +2566,7 @@ function renderDashboard(){
   const el = document.getElementById('dash-main');
   if (currentUser.role === 'admin'){
     if (dashSection === 'admin') return renderAdminPanel(el);
+    if (dashSection === 'users') return renderAdminUsersSection(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else if (currentUser.role === 'student'){
@@ -3791,6 +3895,286 @@ function saveAdminPaymentSettings(){
   toast('Payment settings updated.');
   renderDashboard();
 }
+function getAdminRoleValueForUser(user){
+  if (!user) return 'student';
+  if (user.role === 'admin') return 'admin';
+  if (user.role === 'student') return 'student';
+  return user.type === 'neighbor' ? 'neighbor' : 'employer';
+}
+function applyAdminRoleValue(user, roleValue){
+  if (roleValue === 'admin') {
+    user.role = 'admin';
+    delete user.type;
+  } else if (roleValue === 'student') {
+    user.role = 'student';
+    delete user.type;
+  } else {
+    user.role = 'employer';
+    user.type = roleValue === 'neighbor' ? 'neighbor' : 'business';
+  }
+  return user;
+}
+function roleStatusPill(status){
+  const active = status !== 'suspended';
+  return `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:.78rem;font-weight:700;background:${active ? '#dcfce7' : '#fee2e2'};color:${active ? '#166534' : '#991b1b'}">${active ? 'Active' : 'Suspended'}</span>`;
+}
+function openCreateAdminUserModal(){
+  openModal('Create New User', `
+    <div class="field"><label>Name</label><input id="adminCreateUserName" placeholder="Full name"></div>
+    <div class="field"><label>Email</label><input id="adminCreateUserEmail" type="email" placeholder="name@example.com"></div>
+    <div class="field"><label>Role</label>
+      <select id="adminCreateUserRole">
+        <option value="student">Student</option>
+        <option value="employer">Employer</option>
+        <option value="neighbor">Neighbor</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="field"><label>Temporary Password</label><input id="adminCreateUserPassword" placeholder="Defaults to welcome123"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="createAdminUser()">Create User</button>
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+    </div>
+  `, '620px');
+}
+function createAdminUser(){
+  const users = getUsers();
+  const name = (document.getElementById('adminCreateUserName').value || '').trim();
+  const email = (document.getElementById('adminCreateUserEmail').value || '').trim().toLowerCase();
+  const roleValue = document.getElementById('adminCreateUserRole').value || 'student';
+  const password = (document.getElementById('adminCreateUserPassword').value || '').trim() || 'welcome123';
+  if (!name || !email) return toast('Name and email are required.');
+  if (users.some(user => user.email.toLowerCase() === email)) return toast('That email is already in use.');
+  const user = applyAdminRoleValue(normalizeUserRecord({
+    id: uid('u'),
+    name,
+    publicName: name,
+    email,
+    password,
+    emoji: roleValue === 'student' ? '🎓' : (roleValue === 'admin' ? '🛡️' : (roleValue === 'neighbor' ? '🏠' : '🏢')),
+    createdAt: new Date().toISOString(),
+    status: 'active',
+    lastLogin: null
+  }), roleValue);
+  users.push(user);
+  saveUsers(users);
+  logAdminAction('user_created', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  closeModal();
+  toast(`User created. Temporary password: ${password}`);
+  renderDashboard();
+}
+function openAdminMessageModal(userId){
+  const user = getUserById(userId);
+  if (!user) return toast('User not found.');
+  openModal(`Message ${user.name}`, `
+    <div class="field"><label>Message</label><textarea id="adminMessageBody" rows="5" placeholder="Write a message to ${esc(user.name)}"></textarea></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="sendAdminMessageToUser('${esc(user.id)}')">Send Message</button>
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+    </div>
+  `, '620px');
+}
+function sendAdminMessageToUser(userId){
+  const user = getUserById(userId);
+  if (!user) return toast('User not found.');
+  const content = (document.getElementById('adminMessageBody').value || '').trim();
+  if (!content) return toast('Please enter a message.');
+  if (!blockTextCheck(content)) return;
+  const msgs = getMessages();
+  msgs.push({
+    id: uid('m'),
+    fromId: currentUser.id,
+    fromName: currentUser.name,
+    toId: user.id,
+    toName: user.name,
+    content,
+    projectId: null,
+    createdAt: new Date().toISOString(),
+    read: false
+  });
+  saveMessages(msgs);
+  pushNotif(user.id, 'Admin sent you a message.', { type:'dashboard', section:'messages' });
+  logAdminAction('message_sent', { targetUserId: user.id, targetUserName: user.name });
+  closeModal();
+  toast('Message sent.');
+}
+function openAdminRoleModal(userId){
+  const user = getUserById(userId);
+  if (!user) return toast('User not found.');
+  openModal(`Edit Role: ${user.name}`, `
+    <div class="field"><label>Role</label>
+      <select id="adminEditUserRole">
+        <option value="student" ${getAdminRoleValueForUser(user) === 'student' ? 'selected' : ''}>Student</option>
+        <option value="employer" ${getAdminRoleValueForUser(user) === 'employer' ? 'selected' : ''}>Employer</option>
+        <option value="neighbor" ${getAdminRoleValueForUser(user) === 'neighbor' ? 'selected' : ''}>Neighbor</option>
+        <option value="admin" ${getAdminRoleValueForUser(user) === 'admin' ? 'selected' : ''}>Admin</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="saveAdminUserRole('${esc(user.id)}')">Save Role</button>
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+    </div>
+  `, '560px');
+}
+function saveAdminUserRole(userId){
+  const users = getUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) return toast('User not found.');
+  const nextRole = document.getElementById('adminEditUserRole').value || 'student';
+  if (user.id === currentUser.id && nextRole !== 'admin') return toast('You cannot change your own admin role.');
+  const previousRole = getUserRoleLabel(user);
+  applyAdminRoleValue(user, nextRole);
+  saveUsers(users);
+  logAdminAction('role_changed', { targetUserId: user.id, targetUserName: user.name, fromRole: previousRole, toRole: getUserRoleLabel(user) });
+  closeModal();
+  toast('User role updated.');
+  renderDashboard();
+}
+function toggleAdminUserStatus(userId){
+  const users = getUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) return toast('User not found.');
+  if (user.id === currentUser.id) return toast('You cannot suspend your own admin account.');
+  user.status = user.status === 'suspended' ? 'active' : 'suspended';
+  saveUsers(users);
+  logAdminAction(user.status === 'suspended' ? 'user_suspended' : 'user_reactivated', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast(user.status === 'suspended' ? 'User suspended.' : 'User reactivated.');
+  renderDashboard();
+}
+function deleteAdminUser(userId){
+  const users = getUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) return toast('User not found.');
+  if (user.id === currentUser.id) return toast('You cannot delete your own admin account.');
+  if (!confirm(`Delete ${user.name}? This removes the user from active platform access.`)) return;
+  user.archived = true;
+  user.status = 'archived';
+  user.archivedAt = new Date().toISOString();
+  saveUsers(users);
+  const students = getStudents();
+  let studentsChanged = false;
+  students.forEach(profile => {
+    if (profile.userId === user.id && profile.status !== 'archived') {
+      profile.status = 'archived';
+      profile.archivedAt = new Date().toISOString();
+      profile.archivedServices = getRenderableStudentServices(profile);
+      studentsChanged = true;
+    }
+  });
+  if (studentsChanged) saveStudents(students);
+  logAdminAction('user_deleted', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast('User deleted.');
+  renderDashboard();
+}
+function renderAdminUsersSection(el){
+  const users = getUsers()
+    .filter(user => !user.archived)
+    .filter(user => {
+      const roleValue = getAdminRoleValueForUser(user);
+      const statusValue = user.status === 'suspended' ? 'suspended' : 'active';
+      const search = adminUsersQuery.trim().toLowerCase();
+      const matchesSearch = !search || [user.name, user.email].join(' ').toLowerCase().includes(search);
+      const matchesRole = adminUsersRoleFilter === 'all' || roleValue === adminUsersRoleFilter;
+      const matchesStatus = adminUsersStatusFilter === 'all' || statusValue === adminUsersStatusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
+    })
+    .sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const allUsers = getUsers().filter(user => !user.archived);
+  const activeCount = allUsers.filter(user => user.status !== 'suspended').length;
+  const suspendedCount = allUsers.filter(user => user.status === 'suspended').length;
+  const logs = getAdminActionLog();
+  el.innerHTML = `
+    <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
+      <div>
+        <div class="section-title" style="margin:0">Users</div>
+        <div class="small muted">Manage all platform users, roles, status, and direct admin actions.</div>
+      </div>
+      <button class="btn btn-blue" onclick="openCreateAdminUserModal()">Create New User</button>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
+      <div class="card form-card"><div class="small muted">Total Users</div><div style="font-size:1.5rem;font-weight:800">${allUsers.length}</div></div>
+      <div class="card form-card"><div class="small muted">Active</div><div style="font-size:1.5rem;font-weight:800">${activeCount}</div></div>
+      <div class="card form-card"><div class="small muted">Suspended</div><div style="font-size:1.5rem;font-weight:800">${suspendedCount}</div></div>
+    </div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div class="row" style="align-items:end">
+        <div class="field"><label>Search</label><input value="${esc(adminUsersQuery)}" placeholder="Search by name or email" oninput="adminUsersQuery=this.value;renderDashboard()"></div>
+        <div class="field"><label>Role</label>
+          <select onchange="adminUsersRoleFilter=this.value;renderDashboard()">
+            <option value="all" ${adminUsersRoleFilter === 'all' ? 'selected' : ''}>All Roles</option>
+            <option value="student" ${adminUsersRoleFilter === 'student' ? 'selected' : ''}>Student</option>
+            <option value="employer" ${adminUsersRoleFilter === 'employer' ? 'selected' : ''}>Employer</option>
+            <option value="neighbor" ${adminUsersRoleFilter === 'neighbor' ? 'selected' : ''}>Neighbor</option>
+            <option value="admin" ${adminUsersRoleFilter === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        </div>
+        <div class="field"><label>Status</label>
+          <select onchange="adminUsersStatusFilter=this.value;renderDashboard()">
+            <option value="all" ${adminUsersStatusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
+            <option value="active" ${adminUsersStatusFilter === 'active' ? 'selected' : ''}>Active</option>
+            <option value="suspended" ${adminUsersStatusFilter === 'suspended' ? 'selected' : ''}>Suspended</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card form-card" style="margin-bottom:18px">
+      ${users.length ? `
+        <div style="overflow:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+            <thead>
+              <tr style="background:#f8fafc;text-align:left">
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Name</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Email</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Role</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Status</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Date Joined</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Last Login</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Jobs/Projects Count</th>
+                <th style="padding:12px;border-bottom:1px solid var(--border)">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map(user => {
+                const counts = getUserJobsProjectsSummary(user);
+                const isSelfAdmin = user.id === currentUser.id;
+                return `
+                  <tr>
+                    <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(user.name || 'User')}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '—')}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(getUserRoleLabel(user))}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">${roleStatusPill(user.status)}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.createdAt)}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.lastLogin, true)}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(counts.label)}</td>
+                    <td style="padding:12px;border-bottom:1px solid var(--border)">
+                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-outline btn-sm" onclick="openAdminMessageModal('${esc(user.id)}')">Message</button>
+                        <button class="btn btn-outline btn-sm" onclick="startAdminImpersonation('${esc(user.id)}')">Login as User</button>
+                        <button class="btn btn-outline btn-sm" onclick="openAdminRoleModal('${esc(user.id)}')">Edit Role</button>
+                        <button class="btn ${user.status === 'suspended' ? 'btn-outline' : 'btn-outline'} btn-sm" onclick="toggleAdminUserStatus('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>${user.status === 'suspended' ? 'Enable' : 'Disable'}</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="muted">No users match these filters.</div>`}
+    </div>
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:12px">Recent Admin Actions</div>
+      ${logs.length ? logs.slice(0, 10).map(entry => `
+        <div class="contract-box small" style="margin-top:10px">
+          <div style="font-weight:700">${esc(String(entry.action || '').replaceAll('_', ' '))}</div>
+          <div class="muted small" style="margin-top:4px">${esc(entry.targetUserName || 'User')}${entry.toRole ? ` · ${esc(entry.fromRole || '')} → ${esc(entry.toRole || '')}` : ''}</div>
+          <div class="muted small" style="margin-top:4px">${formatAdminDate(entry.createdAt, true)}</div>
+        </div>
+      `).join('') : `<div class="muted">No admin actions logged yet.</div>`}
+    </div>
+  `;
+}
 
 // ---------- Settings ----------
 function formatTransactionDate(value){
@@ -3956,11 +4340,11 @@ function renderSettings(el){
         <button class="btn btn-danger" onclick="deleteCurrentProfile()">Delete Profile</button>
       </div>
       <div class="warning" style="margin-bottom:14px">If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.</div>
-      ${currentUser.role === 'employer' ? `
+      ${currentUser.role === 'employer' ? (canViewBillingDetails() ? `
         <div class="small muted" style="margin-bottom:8px">Payment Method</div>
         <div class="field"><input value="${paymentMethod ? esc(paymentMethod.brand + ' •••• ' + paymentMethod.last4) : 'Visa •••• 4242'}" readonly></div>
         <button class="btn btn-outline" onclick="openPaymentMethodModal()">Update Payment Method</button>
-      ` : ''}
+      ` : `<div class="warning">Billing details are hidden while Admin is viewing as this user.</div>`) : ''}
     </div>
   `;
 }
