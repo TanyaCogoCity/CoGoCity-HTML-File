@@ -2044,24 +2044,25 @@ function parseVideoLink(url=''){
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
-  const videoFile = clean.match(/\.(mp4|webm|ogg)(\?|#|$)/i);
+  const videoFile = clean.match(/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i);
   if (videoFile) return { type:'file', url:clean, label:'Video file' };
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
-    return videoId ? { type:'youtube', url:clean, videoId, thumbnail:`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube-nocookie.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
-    const videoId = parsed.searchParams.get('v') || '';
-    return videoId ? { type:'youtube', url:clean, videoId, thumbnail:`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    const parts = path.split('/').filter(Boolean);
+    const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube-nocookie.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
-    const videoId = path.split('/').filter(Boolean)[0] || '';
-    return videoId ? { type:'vimeo', url:clean, videoId, label:'Vimeo video' } : { type:'link', url:clean, label:clean };
+    const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
+    return videoId ? { type:'vimeo', url:clean, videoId, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('loom.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parts[1] || parts[0] || '';
-    return videoId ? { type:'loom', url:clean, videoId, label:'Loom video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'loom', url:clean, videoId, embedUrl:`https://www.loom.com/embed/${videoId}`, label:'Loom video' } : { type:'link', url:clean, label:clean };
   }
   return { type:'link', url:clean, label:clean };
 }
@@ -2070,21 +2071,19 @@ function renderVideoPreviewHtml(url='', label='Video preview'){
   const video = parseVideoLink(url);
   if (!video) return `<div class="small muted">No video link added yet.</div>`;
   if (video.type === 'file') {
-    return `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><video controls style="width:100%;max-width:420px;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
+    return `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><video controls playsinline preload="metadata" style="width:100%;max-width:420px;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
   }
-  const previewImage = video.thumbnail || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="840" height="472" viewBox="0 0 840 472"><rect width="840" height="472" fill="%23e5e7eb"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%234b5563" font-family="Arial" font-size="40">Video Preview</text></svg>';
-  return `
-    <div style="max-width:420px">
-      <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
-      <a href="${esc(video.url)}" target="_blank" rel="noopener" style="display:block;position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f8fafc;text-decoration:none;color:inherit">
-        <img src="${esc(previewImage)}" alt="${esc(label)}" style="width:100%;height:236px;object-fit:cover;display:block">
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(15,23,42,.08),rgba(15,23,42,.35))">
-          <div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:1.4rem">▶</div>
+  if (video.embedUrl) {
+    return `
+      <div style="max-width:420px">
+        <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
+        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
+          <iframe src="${esc(video.embedUrl)}" title="${esc(label)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
         </div>
-      </a>
-      <div class="small" style="margin-top:8px"><a href="${esc(video.url)}" target="_blank" rel="noopener">Open ${esc(video.label || 'video')}</a></div>
-    </div>
-  `;
+      </div>
+    `;
+  }
+  return `<div style="max-width:420px"><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><div class="card form-card small">This video host can’t be embedded here right now. <a href="${esc(video.url)}" target="_blank" rel="noopener">Open video</a></div></div>`;
 }
 function getHomepageSessionId(){
   let sessionId = '';
@@ -2554,24 +2553,27 @@ function togglePostComposer(){
     wrap.innerHTML = '';
     return;
   }
+  const canCreateJobPost = currentUser && ['employer','neighbor'].includes(currentUser.role);
   wrap.innerHTML = `
     <div class="card form-card" style="margin-bottom:16px">
       <div class="field">
         <label>Your post</label>
         <textarea id="postContent" placeholder="Share something with the community..."></textarea>
       </div>
-      <div class="field">
-        <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
-      </div>
-      <div id="jobFields" class="hidden">
-        <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="e.g. Event Helper This Saturday"></div>
-        <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..."></textarea></div>
-        <div class="row">
-          <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20"></div>
-          <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5"></div>
+      ${canCreateJobPost ? `
+        <div class="field">
+          <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
         </div>
-        <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA"></div>
-      </div>
+        <div id="jobFields" class="hidden">
+          <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="e.g. Event Helper This Saturday"></div>
+          <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..."></textarea></div>
+          <div class="row">
+            <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20"></div>
+            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5"></div>
+          </div>
+          <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA"></div>
+        </div>
+      ` : ''}
       <div class="warning" style="margin:10px 0">Phone numbers and email addresses are blocked until work is confirmed.</div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline btn-sm" onclick="togglePostComposer()">Cancel</button>
@@ -2586,7 +2588,7 @@ function toggleJobFields(){
 function submitPost(){
   if (!currentUser) return openLoginModal();
   const content = (document.getElementById('postContent').value || '').trim();
-  const isJob = document.getElementById('postIsJob').checked;
+  const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
   if (!content) return toast('Please write a post.');
   if (!blockTextCheck(content)) return;
   const post = {
@@ -2650,7 +2652,7 @@ function renderPost(p){
       ` : ''}
       <div class="post-footer">
         <button class="btn btn-outline btn-sm" onclick="toggleLike('${esc(p.id)}')">${liked ? '❤️ Liked' : '🤍 Like'} (${(p.likes||[]).length})</button>
-        ${p.isJob && currentUser && currentUser.role === 'student' ? `<button class="btn btn-blue btn-sm" onclick="${jobIsOpen ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${jobIsOpen ? '' : 'disabled title="This job is no longer accepting applications"'}>Apply</button>` : ''}
+        ${p.isJob && currentUser && currentUser.role === 'student' ? `<button class="btn ${jobIsOpen ? 'btn-blue' : 'btn-outline'} btn-sm" style="${jobIsOpen ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${jobIsOpen ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${jobIsOpen ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>` : ''}
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
@@ -3488,7 +3490,7 @@ function syncJobDescriptionFromPost(force=false){
 function submitEmployerDashboardPost(){
   const content = (document.getElementById('empPostContent').value || '').trim();
   const isJobToggle = document.getElementById('empIsJob');
-  const isJob = currentUser.role === 'employer' && !!(isJobToggle && isJobToggle.checked);
+  const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(isJobToggle && isJobToggle.checked);
   if (!content) return toast('Please write a post.');
   if (!blockTextCheck(content)) return;
   const post = {
@@ -3674,20 +3676,8 @@ function declineApplicant(appId, shouldSendMessage){
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(application.postId, apps);
   if (sendableMessage) {
-    const msgs = getMessages();
-    msgs.push({
-      id: uid('m'),
-      fromId: currentUser.id,
-      fromName: currentUser.name,
-      toId: application.studentUserId,
-      toName: application.studentName,
-      content: message,
-      projectId: null,
-      createdAt: new Date().toISOString(),
-      read: false
-    });
-    saveMessages(msgs);
-    pushNotif(application.studentUserId, `${currentUser.name} sent you a message.`, { type:'dashboard', section:'messages' });
+    sendInboxMessage(application.studentUserId, application.studentName, message, null, currentUser);
+    pushNotif(application.studentUserId, `${currentUser.name} sent you a message about "${application.jobTitle}".`, { type:'dashboard', section:'messages' });
   }
   closeModal();
   if (shouldSendMessage && message && !sendableMessage) toast('Applicant declined. Message not sent because contact info is blocked.');
@@ -4110,7 +4100,7 @@ function renderMyPosts(el){
     : myPostsTab === 'jobs'
       ? allPosts.filter(p => p.isJob)
       : allPosts;
-  const canCreateJobs = currentUser.role === 'employer';
+  const canCreateJobs = ['employer','neighbor'].includes(currentUser.role);
 
   el.innerHTML = `
     <div class="section-title">My Posts</div>
@@ -4247,36 +4237,13 @@ function renderThreadView(userId){
     </div>
   `;
 }
-function sendMessageToActive(){
-  if (!activeThreadUserId) return;
-  const input = document.getElementById('msgInput');
-  const content = (input.value || '').trim();
-  if (!content) return;
-  if (!blockTextCheck(content)) return;
-  const partner = getUserById(activeThreadUserId) || { id:activeThreadUserId, name:'User' };
-  const activeProject = getProjectForUsers(currentUser.id, partner.id);
+function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null){
+  const sender = fromUser || currentUser || {};
   const msgs = getMessages();
   msgs.push({
     id: uid('m'),
-    fromId: currentUser.id,
-    fromName: currentUser.name,
-    toId: partner.id,
-    toName: partner.name,
-    content,
-    projectId: activeProject ? activeProject.id : null,
-    createdAt: new Date().toISOString(),
-    read: false
-  });
-  saveMessages(msgs);
-  input.value = '';
-  renderDashboard();
-}
-function sendSystemMessage(toId, toName, content, projectId=null){
-  const msgs = getMessages();
-  msgs.push({
-    id: uid('m'),
-    fromId: currentUser.id,
-    fromName: currentUser.name,
+    fromId: sender.id || currentUser?.id,
+    fromName: sender.publicName || sender.name || currentUser?.name || 'User',
     toId,
     toName,
     content,
@@ -4285,6 +4252,21 @@ function sendSystemMessage(toId, toName, content, projectId=null){
     read: false
   });
   saveMessages(msgs);
+}
+function sendMessageToActive(){
+  if (!activeThreadUserId) return;
+  const input = document.getElementById('msgInput');
+  const content = (input.value || '').trim();
+  if (!content) return;
+  if (!blockTextCheck(content)) return;
+  const partner = getUserById(activeThreadUserId) || { id:activeThreadUserId, name:'User' };
+  const activeProject = getProjectForUsers(currentUser.id, partner.id);
+  sendInboxMessage(partner.id, partner.name, content, activeProject ? activeProject.id : null);
+  input.value = '';
+  renderDashboard();
+}
+function sendSystemMessage(toId, toName, content, projectId=null){
+  sendInboxMessage(toId, toName, content, projectId);
 }
 
 function renderAdminPanel(el){
