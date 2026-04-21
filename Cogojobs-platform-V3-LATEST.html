@@ -1076,6 +1076,7 @@ function doLogin(){
   location.hash = '#/';
   renderPage();
 }
+const STUDENT_AVATAR_OPTIONS = ['🎓','📚','💻','🎨','🎵','⚽','🧠','🚲','📷','🛠️','🌟','🎬','🧑‍🍳','🧪'];
 function createDefaultStudentSignupDraft(){
   return {
     name:'',
@@ -1083,7 +1084,7 @@ function createDefaultStudentSignupDraft(){
     school:'',
     city:'',
     photo:'',
-    avatar:'',
+    avatar:'🎓',
     about:'',
     experience:'',
     profileImages:[],
@@ -1187,12 +1188,13 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 2) return `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Add a profile photo or choose an avatar. You can’t continue without one.</div>
-      <div class="field"><label>Upload Photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
-      <div class="field"><label>Or choose an avatar</label><input id="studentFlowAvatar" value="${esc(d.avatar || '')}" placeholder="🎓"></div>
+      <div class="warning" style="margin-bottom:14px">Add profile photos or choose an avatar. You can’t continue without one.</div>
+      <div class="field"><label>Upload up to 3 profile pictures</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
+      ${renderSignupImageGallery(d.profileImages || [], 120)}
+      <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '🎓')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
-        ${d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🎓')}</div>`}
-        <div class="small muted">A photo or avatar is required before you can continue.</div>
+        ${(d.profileImages || []).length ? `<img src="${esc((d.profileImages || [])[0])}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🎓')}</div>`}
+        <div class="small muted">Your uploaded photos will be used in the carousel on preview, profile, and service views.</div>
       </div>
     </div>
   `;
@@ -1305,9 +1307,8 @@ function saveStudentSignupStep(step){
     return true;
   }
   if (step === 2){
-    const avatar = (document.getElementById('studentFlowAvatar').value || '').trim();
-    studentSignupDraft.avatar = avatar || studentSignupDraft.avatar || '🎓';
-    if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
+    studentSignupDraft.avatar = studentSignupDraft.avatar || '🎓';
+    if (!((studentSignupDraft.profileImages || []).length || studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
     return true;
   }
   if (step === 3){
@@ -1372,14 +1373,11 @@ function goStudentSignupStep(targetStep){
   renderStudentSignupModal();
 }
 function handleStudentSignupPhotoUpload(input){
-  const file = input && input.files && input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    studentSignupDraft.photo = reader.result;
+  readImagesToDataUrls(input, (images) => {
+    studentSignupDraft.profileImages = images;
+    studentSignupDraft.photo = images[0] || '';
     renderStudentSignupModal();
-  };
-  reader.readAsDataURL(file);
+  });
 }
 function previewStudentSignupProfileVideo(value){
   studentSignupDraft.profileVideoLink = value || '';
@@ -1389,6 +1387,7 @@ function previewStudentSignupProfileVideo(value){
 function handleStudentSignupProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     studentSignupDraft.profileImages = images;
+    if (images[0]) studentSignupDraft.photo = images[0];
     renderStudentSignupModal();
   });
 }
@@ -1479,8 +1478,8 @@ function buildStudentSignupPreviewStudent(){
     age:d.age,
     school:d.school,
     location:d.city ? (String(d.city).includes(',') ? d.city : `${d.city}, CA`) : '',
-    photo:d.photo || '',
-    profileImages:d.profileImages || [],
+    photo:d.photo || ((d.profileImages || [])[0]) || '',
+    profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
     profileVideoLink:d.profileVideoLink || '',
     emoji:d.avatar || '🎓',
     title:primaryService.title || 'Student Service',
@@ -1592,8 +1591,8 @@ function publishStudentSignupProfile(){
     age:Number(d.age) || 17,
     school:d.school,
     location:String(d.city || '').includes(',') ? d.city : `${d.city}, CA`,
-    photo:d.photo || '',
-    profileImages:d.profileImages || [],
+    photo:d.photo || ((d.profileImages || [])[0]) || '',
+    profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
     profileVideoLink:d.profileVideoLink || '',
     emoji:d.avatar || '🎓',
     title:primaryService.title || 'Student Service',
@@ -2032,6 +2031,16 @@ function renderImagePreviewHtml(images=[], size=72){
 function renderSignupImageGallery(images=[], size=120){
   if (!images.length) return `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They’ll appear in a carousel on your preview, profile, and service views.</div>`;
   return `<div style="margin-bottom:14px">${renderMediaCarousel(images, size)}</div>`;
+}
+function renderStudentAvatarOptions(selected='🎓'){
+  return `<div style="display:flex;flex-wrap:wrap;gap:10px">${STUDENT_AVATAR_OPTIONS.map(avatar => `
+    <button type="button" class="btn ${avatar === selected ? 'btn-blue' : 'btn-outline'} btn-sm" style="min-width:48px;height:48px;padding:0;font-size:1.35rem" onclick="chooseStudentSignupAvatar('${avatar}')">${avatar}</button>
+  `).join('')}</div>`;
+}
+function chooseStudentSignupAvatar(avatar){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  studentSignupDraft.avatar = avatar || '🎓';
+  renderStudentSignupModal();
 }
 function parseVideoLink(url=''){
   const clean = (url || '').trim();
@@ -3119,6 +3128,7 @@ function saveStudentProfileForm(profileId=''){
   profile.about = (document.getElementById('studentProfileAbout').value || '').split('\n').map(s => s.trim()).filter(Boolean);
   profile.highlights = (document.getElementById('studentProfileHighlights').value || '').split('\n').map(s => s.trim()).filter(Boolean);
   profile.profileImages = [...studentProfileImagesBuffer];
+  if (profile.profileImages[0]) profile.photo = profile.profileImages[0];
   profile.profileVideoLink = (document.getElementById('studentProfileVideoLink').value || '').trim();
   profile.updatedAt = new Date().toISOString();
   if (user) {
