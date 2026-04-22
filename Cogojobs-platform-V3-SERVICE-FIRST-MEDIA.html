@@ -2216,6 +2216,44 @@ document.addEventListener('click', (event) => {
 });
 
 // ---------- Pages ----------
+let renderRecoveryAttempted = false;
+function clearPrototypeDataStores(){
+  [
+    'cogo_users','cogo_students','cogo_images','cogo_blog_posts','cogo_current_user','cogo_admin_impersonation','cogo_active_student_profile',
+    'cogo_posts','cogo_applications','cogo_bookings','cogo_projects','cogo_messages','cogo_payment_logs','cogo_finance','cogo_payment_settings',
+    'cogo_transactions','cogo_notifications','cogo_seeded_v3'
+  ].forEach(key => {
+    try { localStorage.removeItem(key); } catch (error) {}
+  });
+  try { sessionStorage.removeItem('cogo_homepage_order_v1'); } catch (error) {}
+}
+function resetPrototypeRuntimeState(){
+  currentUser = null;
+  dashSection = 'profile';
+  studentJobsTab = 'all';
+  adminUsersQuery = '';
+  adminUsersRoleFilter = 'all';
+  adminUsersStatusFilter = 'all';
+  adminSelectedUserId = '';
+  adminPendingUserAction = '';
+  adminBlogQuery = '';
+  adminBlogDraft = null;
+  adminUserEditDraft = null;
+  studentProfileDraft = null;
+  studentServiceDraft = null;
+  studentProfileImagesBuffer = [];
+  studentServiceImagesBuffer = [];
+  activeStudentProfileFormId = '';
+  activeStudentServiceFormIndex = '';
+  mediaCarouselState = {};
+}
+function resetDemoDataAndRender(route=''){
+  clearPrototypeDataStores();
+  resetPrototypeRuntimeState();
+  seedData();
+  if (route) location.hash = route;
+  renderPage();
+}
 function renderAppErrorState(error, route=''){
   console.error('CoGo render error', route, error);
   const app = document.getElementById('app');
@@ -2225,9 +2263,11 @@ function renderAppErrorState(error, route=''){
       <div class="card form-card">
         <div class="section-title">We hit a page error</div>
         <div class="small muted" style="margin-bottom:14px">The page could not render cleanly. This usually means older local demo data needs to be normalized by the latest build.</div>
+        <div class="small muted" style="margin-bottom:14px">${esc((error && error.message) || 'Unknown error')}</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-blue" onclick="location.reload()">Reload Page</button>
           <button class="btn btn-outline" onclick="location.hash='#/';renderPage()">Go Home</button>
+          <button class="btn btn-outline" onclick="resetDemoDataAndRender('${esc(route || '#/')}')">Reset Demo Data</button>
         </div>
       </div>
     </div>
@@ -2241,9 +2281,20 @@ function renderPage(){
     if (route === '#/community') return renderCommunity();
     if (route === '#/dashboard') return renderDashboard();
     if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
-    return renderHome();
+    const result = renderHome();
+    renderRecoveryAttempted = false;
+    return result;
   } catch (error) {
-    renderAppErrorState(error, getRoute());
+    const route = getRoute();
+    if (!renderRecoveryAttempted) {
+      renderRecoveryAttempted = true;
+      try {
+        return resetDemoDataAndRender(route || '#/');
+      } catch (recoveryError) {
+        error = recoveryError;
+      }
+    }
+    renderAppErrorState(error, route);
   }
 }
 
