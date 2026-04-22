@@ -159,12 +159,19 @@
       background:#F8FAFC;border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:12px
     }
     .small{font-size:.84rem}
+    .blog-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .blog-featured{display:grid;grid-template-columns:1.2fr 1fr;gap:0;overflow:hidden}
+    .blog-featured img{width:100%;height:100%;min-height:320px;object-fit:cover;display:block}
+    .blog-card-image{width:100%;height:220px;object-fit:cover;display:block}
     .blog-article-content img{max-width:100%;height:auto;border-radius:12px}
-    .blog-article-content iframe,.blog-article-content video{max-width:100%}
+    .blog-article-content iframe,.blog-article-content video{width:100%;max-width:100%;min-height:420px;border:0;border-radius:12px;background:#000}
     .blog-article-content figure{margin:18px 0}
+    .blog-article-content figcaption{margin-top:8px;color:var(--gray);font-size:.84rem}
+    .blog-article-content p,.blog-article-content ul,.blog-article-content ol{margin:16px 0}
     .blog-article-content h2,.blog-article-content h3,.blog-article-content h4{margin-top:28px}
     @media (max-width: 900px){
       .profiles-grid{grid-template-columns:repeat(2,1fr)}
+      .blog-grid,.blog-featured{grid-template-columns:1fr}
       .dashboard{flex-direction:column}
       .sidebar{width:100%;display:flex;overflow:auto;padding:10px}
       .sidebar a{white-space:nowrap}
@@ -172,6 +179,7 @@
     }
     @media (max-width: 640px){
       .profiles-grid{grid-template-columns:1fr}
+      .blog-grid{grid-template-columns:1fr}
       .row{grid-template-columns:1fr}
       .nav-links{display:none}
       .hero h1{font-size:1.9rem}
@@ -2022,15 +2030,15 @@ function getBlogPostBySlug(slug=''){
 function renderBlogCard(post){
   const excerpt = stripHtmlTags(post.excerpt || post.content || '').slice(0, 180);
   return `
-    <div class="card profile-card" style="overflow:hidden">
-      ${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="${esc(post.title)}" style="width:100%;height:200px;object-fit:cover;display:block">` : `<div style="height:200px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`}
+    <article class="card profile-card" style="overflow:hidden">
+      ${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="${esc(post.title)}" class="blog-card-image">` : `<div style="height:220px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`}
       <div class="profile-body">
         <div class="small muted" style="margin-bottom:8px">${esc(formatBlogDate(post.date))}</div>
-        <div style="font-weight:800;font-size:1.05rem;line-height:1.4;margin-bottom:10px">${esc(stripHtmlTags(post.title))}</div>
+        <div style="font-weight:800;font-size:1.08rem;line-height:1.4;margin-bottom:10px">${esc(stripHtmlTags(post.title))}</div>
         <div class="small muted" style="margin-bottom:14px">${esc(excerpt)}${excerpt.length >= 180 ? '…' : ''}</div>
-        <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog/${esc(post.slug)}';renderPage()">Read Article</button>
+        <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog/${esc(post.slug)}';renderPage()">Read More</button>
       </div>
-    </div>
+    </article>
   `;
 }
 function renderBlog(){
@@ -2038,15 +2046,29 @@ function renderBlog(){
   const articleMatch = route.match(/^#\/blog\/([^?#]+)/);
   if (articleMatch) return renderBlogArticle(decodeURIComponent(articleMatch[1]));
   const posts = [...BLOG_POSTS].sort((a,b) => new Date(b.date) - new Date(a.date));
+  const featuredPost = posts[0];
+  const remainingPosts = posts.slice(1);
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <section class="hero">
       <h1>CoGo City Blog</h1>
-      <p>All current blog articles from the live CoGo City website are now available in this prototype.</p>
+      <p>Guides, interviews, student advice, and community stories, with support for images, videos, and text-rich article content.</p>
     </section>
     <div class="container">
-      <div class="grid" style="grid-template-columns:repeat(3,1fr)">
-        ${posts.map(renderBlogCard).join('')}
+      ${featuredPost ? `
+        <div class="card blog-featured" style="margin-bottom:24px">
+          ${featuredPost.featuredImage ? `<img src="${esc(featuredPost.featuredImage)}" alt="${esc(featuredPost.title)}">` : `<div style="min-height:320px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:800">CoGo Blog</div>`}
+          <div style="padding:24px">
+            <div class="small muted" style="margin-bottom:8px">Latest Article · ${esc(formatBlogDate(featuredPost.date))}</div>
+            <div style="font-size:1.8rem;font-weight:800;line-height:1.2;margin-bottom:14px">${esc(stripHtmlTags(featuredPost.title))}</div>
+            <div class="muted" style="line-height:1.7;margin-bottom:18px">${esc(stripHtmlTags(featuredPost.excerpt || featuredPost.content || '').slice(0, 260))}…</div>
+            <button class="btn btn-blue" onclick="location.hash='#/blog/${esc(featuredPost.slug)}';renderPage()">Read Latest Article</button>
+          </div>
+        </div>
+      ` : ''}
+      <div class="section-title" style="margin-bottom:14px">All Articles</div>
+      <div class="blog-grid">
+        ${remainingPosts.map(renderBlogCard).join('')}
       </div>
     </div>
   `;
