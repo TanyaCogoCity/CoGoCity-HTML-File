@@ -229,6 +229,8 @@ let adminSelectedUserId = '';
 let adminPendingUserAction = '';
 let adminBlogQuery = '';
 let adminBlogDraft = null;
+let adminUserEditDraft = null;
+let adminModalImageLibraryTarget = null;
 let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
@@ -236,6 +238,10 @@ let activeModalDraftKey = null;
 let mediaCarouselState = {};
 let studentProfileImagesBuffer = [];
 let studentServiceImagesBuffer = [];
+let activeStudentProfileFormId = '';
+let activeStudentServiceFormIndex = '';
+let studentProfileDraft = null;
+let studentServiceDraft = null;
 const PLATFORM_FEE_RATE = 0.15;
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 10;
 const STRIPE_ENABLED = false;
@@ -256,6 +262,12 @@ function uid(prefix='id'){
 }
 function normalizeUserRecord(user){
   const normalized = Object.assign({}, user || {});
+  if (looksLikeImageSource(normalized.photo || '')) normalized.photo = upsertImageRecord(normalized.photo, { source:'profile', entity_type:'user', entity_id: normalized.id || '', owner_id: normalized.id || '' });
+  if (normalized.businessProfile && looksLikeImageSource(normalized.businessProfile.logo || '')) {
+    normalized.businessProfile.logo = upsertImageRecord(normalized.businessProfile.logo, { source:'business_logo', entity_type:'business', entity_id: normalized.id || '', owner_id: normalized.id || '' });
+  }
+  if (normalized.photo) normalized.profile_image_id = normalized.profile_image_id || normalized.photo;
+  if (normalized.businessProfile?.logo) normalized.businessProfile.image_id = normalized.businessProfile.image_id || normalized.businessProfile.logo;
   if (!normalized.name) normalized.name = [normalized.firstName, normalized.lastName].filter(Boolean).join(' ').trim() || normalized.email || 'User';
   if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
   if (!normalized.status) normalized.status = normalized.archived ? 'archived' : 'active';
@@ -275,6 +287,116 @@ function getUsers(){
   return normalized;
 }
 function saveUsers(v){ ls('cogo_users', v.map(normalizeUserRecord)); }
+function looksLikeImageSource(value=''){
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  return /^data:image\//i.test(raw)
+    || /^blob:/i.test(raw)
+    || /^https?:\/\//i.test(raw)
+    || /^\/\//.test(raw)
+    || /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(raw);
+}
+function isImageRecordId(value=''){
+  return /^img_/i.test(String(value || '').trim());
+}
+function normalizeImageRecord(image){
+  const normalized = Object.assign({
+    id: uid('img'),
+    url: '',
+    thumbnail_url: '',
+    alt: '',
+    source: 'library',
+    entity_type: '',
+    entity_id: '',
+    owner_id: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }, image || {});
+  normalized.id = String(normalized.id || uid('img'));
+  normalized.url = String(normalized.url || '').trim();
+  normalized.thumbnail_url = String(normalized.thumbnail_url || normalized.thumb_url || normalized.url || '').trim() || normalized.url;
+  normalized.alt = String(normalized.alt || '').trim();
+  normalized.updatedAt = normalized.updatedAt || new Date().toISOString();
+  normalized.createdAt = normalized.createdAt || normalized.updatedAt;
+  return normalized;
+}
+function getImages(){
+  const images = ls('cogo_images') || [];
+  let changed = false;
+  const normalized = images.map(image => {
+    const next = normalizeImageRecord(image);
+    if (JSON.stringify(next) !== JSON.stringify(image)) changed = true;
+    return next;
+  }).filter(image => image.url);
+  if (changed) ls('cogo_images', normalized);
+  return normalized;
+}
+function saveImages(images){ ls('cogo_images', images.map(normalizeImageRecord).filter(image => image.url)); }
+function getImageById(imageId=''){
+  return getImages().find(image => String(image.id) === String(imageId)) || null;
+}
+function findImageByUrl(url=''){
+  const clean = String(url || '').trim();
+  if (!clean) return null;
+  return getImages().find(image => image.url === clean || image.thumbnail_url === clean) || null;
+}
+function upsertImageRecord(value, meta={}){
+  if (!value) return '';
+  if (typeof value === 'object' && value.id && !value.url) return String(value.id);
+  if (typeof value === 'object' && value.id && value.url) {
+    const existing = getImageById(value.id);
+    if (existing) return existing.id;
+    value = value.url;
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (isImageRecordId(raw)) return raw;
+  if (!looksLikeImageSource(raw)) return raw;
+  const existing = findImageByUrl(raw);
+  if (existing) return existing.id;
+  const images = getImages();
+  const record = normalizeImageRecord(Object.assign({ url: raw, thumbnail_url: raw }, meta));
+  images.unshift(record);
+  saveImages(images);
+  return record.id;
+}
+function upsertImageRecords(values=[], meta={}){
+  return [...new Set((Array.isArray(values) ? values : []).map(value => upsertImageRecord(value, meta)).filter(Boolean))];
+}
+function getImageView(source='', variant='full'){
+  if (!source) return null;
+  if (typeof source === 'object' && source.url) {
+    const image = normalizeImageRecord(source);
+    return Object.assign({}, image, { url: variant === 'thumb' ? (image.thumbnail_url || image.url) : image.url });
+  }
+  const raw = String(source || '').trim();
+  if (!raw) return null;
+  const stored = isImageRecordId(raw) ? getImageById(raw) : null;
+  if (stored) return Object.assign({}, stored, { url: variant === 'thumb' ? (stored.thumbnail_url || stored.url) : stored.url });
+  if (looksLikeImageSource(raw)) return { id:'', url: raw, thumbnail_url: raw, alt:'' };
+  return null;
+}
+function getImageViews(values=[], variant='full'){
+  return (Array.isArray(values) ? values : []).map(value => getImageView(value, variant)).filter(Boolean);
+}
+function renderManagedImage(source='', alt='', style='', variant='full', extraAttrs='loading="lazy"'){
+  const image = getImageView(source, variant);
+  if (!image || !image.url) return '';
+  return `<img src="${esc(image.url)}" alt="${esc(alt)}" style="${style}" ${extraAttrs}>`;
+}
+function addImageIdToList(list=[], imageId='', limit=3){
+  const next = Array.isArray(list) ? [...list] : [];
+  const cleanId = String(imageId || '').trim();
+  if (!cleanId) return next;
+  if (!next.includes(cleanId)) next.push(cleanId);
+  return next.slice(0, limit);
+}
+function removeImageIdFromList(list=[], imageId=''){
+  return (Array.isArray(list) ? list : []).filter(value => String(value) !== String(imageId));
+}
+function canUseImageLibrary(){
+  return !!(currentUser && (currentUser.role === 'admin' || isAdminImpersonating()));
+}
 function normalizeBlogPostRecord(post){
   const normalized = Object.assign({
     id: uid('blog'),
@@ -284,22 +406,31 @@ function normalizeBlogPostRecord(post){
     title: '',
     excerpt: '',
     content: '',
+    image_id: '',
     featuredImage: '',
+    entity_images: [],
     images: [],
-    videoLink: '',
+    video_url: '',
     status: 'published',
     publishRequested: true,
     updatedAt: null
   }, post || {});
   normalized.id = String(normalized.id || uid('blog'));
-  normalized.images = Array.isArray(normalized.images) ? normalized.images : [];
+  if (!normalized.image_id && normalized.featuredImage) normalized.image_id = normalized.featuredImage;
+  normalized.image_id = upsertImageRecord(normalized.image_id, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' });
+  normalized.featuredImage = normalized.image_id || '';
+  const rawImages = Array.isArray(normalized.entity_images) && normalized.entity_images.length ? normalized.entity_images : normalized.images;
+  normalized.entity_images = upsertImageRecords(rawImages, { source:'article_gallery', entity_type:'article', entity_id: normalized.id || '' });
+  normalized.images = [...normalized.entity_images];
+  if (!normalized.video_url && normalized.videoLink) normalized.video_url = normalized.videoLink;
+  delete normalized.videoLink;
   if (post && post.publishRequested == null) normalized.publishRequested = normalized.status !== 'draft';
   return normalized;
 }
 function getBlogPosts(){
   const stored = ls('cogo_blog_posts');
   if (stored && stored.length) return stored.map(normalizeBlogPostRecord);
-  const seeded = BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, { status:'published', publishRequested:true, images:[], videoLink:'', updatedAt:post.date })));
+  const seeded = BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, { status:'published', publishRequested:true, images:[], video_url:'', updatedAt:post.date })));
   ls('cogo_blog_posts', seeded);
   return seeded;
 }
@@ -314,6 +445,26 @@ function getBlogPostStatusLabel(post){
 }
 function getPublicBlogPosts(){
   return getBlogPosts().filter(post => getBlogPostStatus(post) === 'published').sort((a,b) => new Date(b.date) - new Date(a.date));
+}
+function normalizeStudentRecord(student){
+  const normalized = Object.assign({
+    profile_image_id: '',
+    profileImages: [],
+    video_url: '',
+    services: []
+  }, student || {});
+  if (!normalized.profile_image_id && normalized.photo) normalized.profile_image_id = normalized.photo;
+  normalized.profile_image_id = upsertImageRecord(normalized.profile_image_id, { source:'profile', entity_type:'student', entity_id: normalized.id || '', owner_id: normalized.userId || '' });
+  const rawProfileImages = Array.isArray(normalized.profileImages) && normalized.profileImages.length
+    ? normalized.profileImages
+    : (normalized.profile_image_id ? [normalized.profile_image_id] : []);
+  normalized.profileImages = upsertImageRecords(rawProfileImages, { source:'profile_gallery', entity_type:'student', entity_id: normalized.id || '', owner_id: normalized.userId || '' });
+  if (!normalized.profile_image_id && normalized.profileImages[0]) normalized.profile_image_id = normalized.profileImages[0];
+  normalized.photo = normalized.profile_image_id || '';
+  if (!normalized.video_url && normalized.profileVideoLink) normalized.video_url = normalized.profileVideoLink;
+  delete normalized.profileVideoLink;
+  normalized.services = (Array.isArray(normalized.services) ? normalized.services : []).map((service, index) => normalizeStudentServiceRecord(normalized, service, index));
+  return normalized;
 }
 function slugifyBlogTitle(value=''){
   return String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
@@ -334,16 +485,15 @@ function logAdminAction(action, meta={}){
 function getStudents(){
   const students = ls('cogo_students') || [];
   let changed = false;
-  students.forEach(student => {
-    if (Array.isArray(student.services) && student.services.some(service => typeof service === 'string' || !service || typeof service !== 'object' || (!service.title && !service.description))) {
-      student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
-      changed = true;
-    }
+  const normalized = students.map(student => {
+    const next = normalizeStudentRecord(student);
+    if (JSON.stringify(next) !== JSON.stringify(student)) changed = true;
+    return next;
   });
-  if (changed) ls('cogo_students', students);
-  return students;
+  if (changed) ls('cogo_students', normalized);
+  return normalized;
 }
-function saveStudents(v){ ls('cogo_students', v); }
+function saveStudents(v){ ls('cogo_students', v.map(normalizeStudentRecord)); }
 function getPosts(){ return ls('cogo_posts') || []; }
 function savePosts(v){ ls('cogo_posts', v); }
 function getApplications(){ return ls('cogo_applications') || []; }
@@ -411,9 +561,17 @@ function migrateLegacyData(){
     }
   });
   if (studentsChanged) ls('cogo_students', students);
+  saveUsers(getUsers());
+  saveStudents(getStudents());
+  saveBlogPosts(getBlogPosts());
 }
 function seedData(){
-  if (ls('cogo_seeded_v3')) return;
+  if (ls('cogo_seeded_v3')) {
+    saveUsers(getUsers());
+    saveStudents(getStudents());
+    saveBlogPosts(getBlogPosts());
+    return;
+  }
   if (ls('cogo_users') || ls('cogo_students')) {
     migrateLegacyData();
     ls('cogo_seeded_v3', true);
@@ -439,7 +597,7 @@ function seedData(){
       title:'Reliable Student Helper | Tutoring • Tech Help • Events',
       tags:['tutoring','admin','events'],
       services:[
-        { id:'svc_daniel_1', title:'Reliable Student Helper | Tutoring • Tech Help • Events', description:'I can help with tutoring, homework, tech tasks, and event support for local families and businesses.', rate:20, location:'Danville, CA', availability:'Weekday afternoons · Weekends', images:[], videoLink:'', reviews:[] }
+        { id:'svc_daniel_1', title:'Reliable Student Helper | Tutoring • Tech Help • Events', description:'I can help with tutoring, homework, tech tasks, and event support for local families and businesses.', rate:20, location:'Danville, CA', availability:'Weekday afternoons · Weekends', images:[], video_url:'', reviews:[] }
       ],
       about:[
         'I am a motivated student who enjoys helping local families and businesses.',
@@ -465,7 +623,7 @@ function seedData(){
       title:'Tech Help • Tutoring • Creative Projects',
       tags:['tutoring','admin'],
       services:[
-        { id:'svc_niki_1', title:'Tech Help • Tutoring • Creative Projects', description:'Tech help, tutoring, and creative project support for local families and small businesses.', rate:25, location:'Danville, CA', availability:'Weekday evenings · Weekends', images:[], videoLink:'', reviews:[] }
+        { id:'svc_niki_1', title:'Tech Help • Tutoring • Creative Projects', description:'Tech help, tutoring, and creative project support for local families and small businesses.', rate:25, location:'Danville, CA', availability:'Weekday evenings · Weekends', images:[], video_url:'', reviews:[] }
       ],
       about:['Motivated student with strong problem-solving and tech skills.'],
       whyHire:['Dependable','Fast learner'],
@@ -531,6 +689,7 @@ function seedData(){
   saveBookings([]);
   saveProjects([]);
   saveMessages([]);
+  saveBlogPosts(getBlogPosts());
   ls('cogo_seeded_v3', true);
 }
 
@@ -1157,9 +1316,9 @@ function createDefaultStudentSignupDraft(){
     about:'',
     experience:'',
     profileImages:[],
-    profileVideoLink:'',
+    video_url:'',
     services:[],
-    serviceForm:{ title:'', description:'', images:[], videoLink:'', rate:'20', location:'', availability:'' },
+    serviceForm:{ title:'', description:'', images:[], video_url:'', rate:'20', location:'', availability:'' },
     email:'',
     phone:'',
     address:'',
@@ -1199,7 +1358,7 @@ function getStudentSignupSuggestions(){
 function openStudentSignupWorkflow(step=1){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupStep = step;
-  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location:'', availability:'' };
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location:'', availability:'' };
   renderStudentSignupModal();
 }
 function renderStudentSignupModal(){
@@ -1260,10 +1419,11 @@ function renderStudentSignupStepContent(){
       <div class="warning" style="margin-bottom:14px">Upload a photo or choose an avatar.</div>
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
       <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
-      <div style="margin-bottom:14px">${d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:120px;height:120px;border-radius:20px;object-fit:cover;border:3px solid #dbeafe">` : `<div class="small muted">No photo uploaded yet.</div>`}</div>
+      ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
+      <div style="margin-bottom:14px">${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:120px;height:120px;border-radius:20px;object-fit:cover;border:3px solid #dbeafe', 'full', 'loading="eager"') : `<div class="small muted">No photo uploaded yet.</div>`}</div>
       <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
-        ${d.photo ? `<img src="${esc(d.photo)}" alt="Profile preview" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
+        ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
       </div>
     </div>
   `;
@@ -1276,9 +1436,10 @@ function renderStudentSignupStepContent(){
   if (studentSignupStep === 4) return `
     <div class="card form-card">
       <div class="field"><label>Profile Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupProfileImagesUpload(this)"></div>
+      ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupProfileImageFromLibrary')}</div>` : ''}
       ${renderSignupImageGallery(d.profileImages || [], 120)}
-      <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(d.profileVideoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupProfileVideo(this.value)"></div>
-      <div id="student-profile-video-preview">${renderVideoPreviewHtml(d.profileVideoLink || '', 'Profile video preview')}</div>
+      <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(d.video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupProfileVideo(this.value)"></div>
+      <div id="student-profile-video-preview">${renderVideoPreviewHtml(d.video_url || '', 'Profile video preview')}</div>
     </div>
   `;
   if (studentSignupStep === 5) return `
@@ -1307,9 +1468,10 @@ function renderStudentSignupStepContent(){
       <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
       <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
       <div class="field"><label>Add Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
+      ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderSignupImageGallery((d.serviceForm || {}).images || [], 120)}
-      <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc((d.serviceForm || {}).videoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupServiceVideo(this.value)"></div>
-      <div id="student-service-video-preview">${renderVideoPreviewHtml((d.serviceForm || {}).videoLink || '', 'Service video preview')}</div>
+      <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc((d.serviceForm || {}).video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupServiceVideo(this.value)"></div>
+      <div id="student-service-video-preview">${renderVideoPreviewHtml((d.serviceForm || {}).video_url || '', 'Service video preview')}</div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}" oninput="syncStudentSignupServiceForm()"></div>
         <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA" oninput="syncStudentSignupServiceForm()"></div>
@@ -1387,15 +1549,15 @@ function saveStudentSignupStep(step){
     return true;
   }
   if (step === 4){
-    const profileVideoLink = (document.getElementById('studentFlowProfileVideoLink').value || '').trim();
-    studentSignupDraft.profileVideoLink = profileVideoLink;
+    const videoUrl = (document.getElementById('studentFlowProfileVideoLink').value || '').trim();
+    studentSignupDraft.video_url = videoUrl;
     return true;
   }
   if (step === 5){
     syncStudentSignupServiceForm();
     const services = studentSignupDraft.services || [];
     const form = studentSignupDraft.serviceForm || {};
-    const hasDraftValues = !!(form.title || form.description || form.videoLink || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
+    const hasDraftValues = !!(form.title || form.description || form.video_url || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
     if (!services.length && hasDraftValues) {
       const draftRate = Number(form.rate || 0);
       if (!form.title || !form.description || !draftRate || !form.location || !form.availability) return toast('Please complete all required service fields.'), false;
@@ -1404,7 +1566,7 @@ function saveStudentSignupStep(step){
         title: form.title,
         description: form.description,
         images: form.images || [],
-        videoLink: form.videoLink || '',
+        video_url: form.video_url || '',
         rate: draftRate,
         location: form.location,
         availability: form.availability,
@@ -1412,7 +1574,7 @@ function saveStudentSignupStep(step){
       };
       studentSignupDraft.services.push(service);
       studentSignupEditingServiceIndex = null;
-      studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+      studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
     }
     if (!(studentSignupDraft.services || []).length) return toast('Please save at least one service before continuing.'), false;
     return true;
@@ -1445,16 +1607,23 @@ function handleStudentSignupPhotoUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    studentSignupDraft.photo = reader.result;
-    if (!(studentSignupDraft.profileImages || []).length) studentSignupDraft.profileImages = [reader.result];
+    const imageId = upsertImageRecord(reader.result, { source:'signup_profile' });
+    studentSignupDraft.photo = imageId;
+    if (!(studentSignupDraft.profileImages || []).length) studentSignupDraft.profileImages = [imageId];
     renderStudentSignupModal();
   };
   reader.readAsDataURL(file);
 }
+function selectStudentSignupPhotoFromLibrary(imageId){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  studentSignupDraft.photo = imageId;
+  if (!(studentSignupDraft.profileImages || []).length) studentSignupDraft.profileImages = [imageId];
+  renderStudentSignupModal();
+}
 function previewStudentSignupProfileVideo(value){
-  studentSignupDraft.profileVideoLink = value || '';
+  studentSignupDraft.video_url = value || '';
   const el = document.getElementById('student-profile-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.profileVideoLink, 'Profile video preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.video_url, 'Profile video preview');
 }
 function handleStudentSignupProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
@@ -1463,9 +1632,15 @@ function handleStudentSignupProfileImagesUpload(input){
     renderStudentSignupModal();
   });
 }
+function addStudentSignupProfileImageFromLibrary(imageId){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  studentSignupDraft.profileImages = addImageIdToList(studentSignupDraft.profileImages || [], imageId, 3);
+  if (!studentSignupDraft.photo) studentSignupDraft.photo = studentSignupDraft.profileImages[0] || '';
+  renderStudentSignupModal();
+}
 function syncStudentSignupServiceForm(){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
-  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location:'', availability:'' };
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location:'', availability:'' };
   const titleEl = document.getElementById('studentFlowServiceTitle');
   const descriptionEl = document.getElementById('studentFlowServiceDescription');
   const videoEl = document.getElementById('studentFlowServiceVideoLink');
@@ -1474,16 +1649,16 @@ function syncStudentSignupServiceForm(){
   const availabilityEl = document.getElementById('studentFlowServiceAvailability');
   if (titleEl) studentSignupDraft.serviceForm.title = (titleEl.value || '').trim();
   if (descriptionEl) studentSignupDraft.serviceForm.description = (descriptionEl.value || '').trim();
-  if (videoEl) studentSignupDraft.serviceForm.videoLink = (videoEl.value || '').trim();
+  if (videoEl) studentSignupDraft.serviceForm.video_url = (videoEl.value || '').trim();
   if (rateEl) studentSignupDraft.serviceForm.rate = rateEl.value || '20';
   if (locationEl) studentSignupDraft.serviceForm.location = (locationEl.value || '').trim();
   if (availabilityEl) studentSignupDraft.serviceForm.availability = (availabilityEl.value || '').trim();
 }
 function previewStudentSignupServiceVideo(value){
   syncStudentSignupServiceForm();
-  studentSignupDraft.serviceForm.videoLink = value || '';
+  studentSignupDraft.serviceForm.video_url = value || '';
   const el = document.getElementById('student-service-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.serviceForm.videoLink, 'Service video preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.serviceForm.video_url, 'Service video preview');
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
@@ -1492,16 +1667,21 @@ function handleStudentSignupServiceImagesUpload(input){
     renderStudentSignupModal();
   });
 }
+function addStudentSignupServiceImageFromLibrary(imageId){
+  syncStudentSignupServiceForm();
+  studentSignupDraft.serviceForm.images = addImageIdToList((studentSignupDraft.serviceForm || {}).images || [], imageId, 3);
+  renderStudentSignupModal();
+}
 function startNewStudentSignupService(){
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
   renderStudentSignupModal();
 }
 function editStudentSignupService(index){
   const service = (studentSignupDraft.services || [])[index];
   if (!service) return;
   studentSignupEditingServiceIndex = index;
-  studentSignupDraft.serviceForm = Object.assign({ images:[], videoLink:'' }, service);
+  studentSignupDraft.serviceForm = Object.assign({ images:[], video_url:'' }, service);
   studentSignupStep = 5;
   renderStudentSignupModal();
 }
@@ -1515,7 +1695,7 @@ function saveStudentSignupService(){
   const form = studentSignupDraft.serviceForm || {};
   const title = (form.title || '').trim();
   const description = (form.description || '').trim();
-  const videoLink = (form.videoLink || '').trim();
+  const videoUrl = (form.video_url || '').trim();
   const rate = Number(form.rate || 0);
   const location = (form.location || '').trim();
   const availability = (form.availability || '').trim();
@@ -1527,7 +1707,7 @@ function saveStudentSignupService(){
     title,
     description,
     images: (studentSignupDraft.serviceForm || {}).images || [],
-    videoLink,
+    video_url: videoUrl,
     rate,
     location,
     availability,
@@ -1536,7 +1716,7 @@ function saveStudentSignupService(){
   if (studentSignupEditingServiceIndex !== null) studentSignupDraft.services[studentSignupEditingServiceIndex] = service;
   else studentSignupDraft.services.push(service);
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], videoLink:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
   toast('Service saved.');
   renderStudentSignupModal();
 }
@@ -1552,11 +1732,11 @@ function buildStudentSignupPreviewStudent(){
     location:d.city ? (String(d.city).includes(',') ? d.city : `${d.city}, CA`) : '',
     photo:d.photo || ((d.profileImages || [])[0]) || '',
     profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
-    profileVideoLink:d.profileVideoLink || '',
+    video_url:d.video_url || '',
     emoji:d.avatar || '🎓',
     title:primaryService.title || 'Student Service',
     tags:[],
-    services:(d.services || []).map(s => Object.assign({ images:[], videoLink:'', reviews:[] }, s)),
+    services:(d.services || []).map(s => Object.assign({ images:[], video_url:'', reviews:[] }, s)),
     about:d.about ? [d.about] : [],
     whyHire:[],
     highlights:d.experience ? [d.experience] : [],
@@ -1575,7 +1755,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
       <div style="margin-top:14px">${esc(service.description || '')}</div>
       <div style="margin-top:14px">${renderSignupImageGallery(service.images || [], 120)}</div>
-      <div style="margin-top:14px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
+      <div style="margin-top:14px">${renderVideoPreviewHtml(service.video_url || '', 'Service video')}</div>
       <div style="margin-top:16px">${backButtonHtml}</div>
     </div>
   `;
@@ -1607,7 +1787,7 @@ function renderStudentSignupPreviewHtml(){
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(student.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoPreviewHtml(student.profileVideoLink || '', 'Profile video')}
+      ${renderVideoPreviewHtml(student.video_url || '', 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.length ? services.map((service, index) => `
         <button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentSignupServicePreview(${index})">
@@ -1653,6 +1833,8 @@ function publishStudentSignupProfile(){
     name:d.name,
     role:'student',
     emoji:d.avatar || '🎓',
+    photo:d.photo || ((d.profileImages || [])[0]) || '',
+    profile_image_id:d.photo || ((d.profileImages || [])[0]) || '',
     createdAt,
     verificationStatus:'skipped_test_mode'
   };
@@ -1664,12 +1846,13 @@ function publishStudentSignupProfile(){
     school:d.school,
     location:String(d.city || '').includes(',') ? d.city : `${d.city}, CA`,
     photo:d.photo || ((d.profileImages || [])[0]) || '',
+    profile_image_id:d.photo || ((d.profileImages || [])[0]) || '',
     profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
-    profileVideoLink:d.profileVideoLink || '',
+    video_url:d.video_url || '',
     emoji:d.avatar || '🎓',
     title:primaryService.title || 'Student Service',
     tags:[],
-    services:(d.services || []).map(s => Object.assign({ images:[], videoLink:'', reviews:[] }, s)),
+    services:(d.services || []).map(s => Object.assign({ images:[], video_url:'', reviews:[] }, s)),
     about:[d.about],
     whyHire:['Friendly','Reliable','Motivated'],
     highlights:[d.experience],
@@ -1687,6 +1870,7 @@ function publishStudentSignupProfile(){
   students.unshift(newStudent);
   saveUsers(users);
   saveStudents(students);
+  saveBlogPosts(getBlogPosts());
   ls('cogo_active_student_profile', studentId);
   setCurrentUser(newUser);
   studentSignupDraft = null;
@@ -1817,8 +2001,9 @@ function renderEmployerSignupStepContent(){
         <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip" oninput="syncEmployerSignupPersonalDraft()"></div>
       </div>
       <div class="field"><label>Profile Photo</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"></div>
+      ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
-      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? `<img src="${esc(d.photo)}" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🏠')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
+      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🏠')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
       <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
@@ -1829,7 +2014,8 @@ function renderEmployerSignupStepContent(){
     <div class="card form-card">
       <div class="field"><label>Business Name</label><input id="employerBusinessName" value="${esc(d.businessName)}" placeholder="Business name" oninput="syncEmployerSignupBusinessDraft()"></div>
       <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/*" onchange="handleEmployerSignupBusinessLogoUpload(this)"></div>
-      <div style="margin-bottom:14px">${d.businessLogo ? `<img src="${esc(d.businessLogo)}" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)">` : `<div class="small muted">No business logo added yet.</div>`}</div>
+      ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupBusinessLogoFromLibrary')}</div>` : ''}
+      <div style="margin-bottom:14px">${d.businessLogo ? renderManagedImage(d.businessLogo, 'Business logo', 'width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"') : `<div class="small muted">No business logo added yet.</div>`}</div>
       <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business..." oninput="syncEmployerSignupBusinessDraft()">${esc(d.businessAbout)}</textarea></div>
       <div class="field"><label>Business Phone Number (private)</label><input id="employerBusinessPhone" value="${esc(d.businessPhone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">This is a separate field from the personal phone number.</div></div>
       <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">Only the city is shown publicly.</div></div>
@@ -1841,7 +2027,7 @@ function renderEmployerSignupStepContent(){
       <div class="warning" style="margin-bottom:14px">Review your profile before continuing to password setup.</div>
       <div class="card" style="padding:14px;background:#fff;margin-bottom:14px">
         <div class="split" style="align-items:center;gap:14px;flex-wrap:wrap">
-          <div style="display:flex;gap:14px;align-items:center">${d.photo ? `<img src="${esc(d.photo)}" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🏢')}</div>`}<div><div style="font-weight:800">${esc(d.firstName)} ${esc((d.lastName || '').slice(0,1))}.</div><div class="muted">${esc(d.city || extractCity(d.address))}</div></div></div>
+          <div style="display:flex;gap:14px;align-items:center">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '🏢')}</div>`}<div><div style="font-weight:800">${esc(d.firstName)} ${esc((d.lastName || '').slice(0,1))}.</div><div class="muted">${esc(d.city || extractCity(d.address))}</div></div></div>
           <button class="btn btn-outline btn-sm" onclick="editEmployerSignupPreview('personal')">Edit Personal Info</button>
         </div>
         <div class="row" style="margin-top:12px">
@@ -1853,7 +2039,7 @@ function renderEmployerSignupStepContent(){
       </div>
       <div class="card" style="padding:14px;background:#fff">
         <div class="split" style="align-items:center;gap:14px;flex-wrap:wrap">
-          <div style="display:flex;gap:14px;align-items:center">${d.businessLogo ? `<img src="${esc(d.businessLogo)}" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)">` : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">🏢</div>`}<div><div style="font-weight:800">${esc(d.businessName || 'Business')}</div><div class="muted">${esc(d.businessCity || extractCity(d.businessAddress))}</div></div></div>
+          <div style="display:flex;gap:14px;align-items:center">${d.businessLogo ? renderManagedImage(d.businessLogo, 'Business logo', 'width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">🏢</div>`}<div><div style="font-weight:800">${esc(d.businessName || 'Business')}</div><div class="muted">${esc(d.businessCity || extractCity(d.businessAddress))}</div></div></div>
           <button class="btn btn-outline btn-sm" onclick="editEmployerSignupPreview('business')">Edit Business Info</button>
         </div>
         <div style="margin-top:12px"><div class="small muted">Business Phone</div><div style="font-weight:700">${esc(d.businessPhone || 'Not added yet')}</div></div>
@@ -1919,10 +2105,15 @@ function handleEmployerSignupPhotoUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    employerSignupDraft.photo = reader.result;
+    employerSignupDraft.photo = upsertImageRecord(reader.result, { source:'employer_profile' });
     renderEmployerSignupModal();
   };
   reader.readAsDataURL(file);
+}
+function selectEmployerSignupPhotoFromLibrary(imageId){
+  syncEmployerSignupPersonalDraft();
+  employerSignupDraft.photo = imageId;
+  renderEmployerSignupModal();
 }
 function handleEmployerSignupBusinessLogoUpload(input){
   syncEmployerSignupBusinessDraft();
@@ -1930,10 +2121,15 @@ function handleEmployerSignupBusinessLogoUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    employerSignupDraft.businessLogo = reader.result;
+    employerSignupDraft.businessLogo = upsertImageRecord(reader.result, { source:'business_logo' });
     renderEmployerSignupModal();
   };
   reader.readAsDataURL(file);
+}
+function selectEmployerSignupBusinessLogoFromLibrary(imageId){
+  syncEmployerSignupBusinessDraft();
+  employerSignupDraft.businessLogo = imageId;
+  renderEmployerSignupModal();
 }
 function editEmployerSignupPreview(section='personal'){
   employerSignupStep = section === 'business' ? 2 : 1;
@@ -2087,9 +2283,10 @@ function getBlogPostBySlug(slug=''){
 }
 function renderBlogCard(post){
   const excerpt = stripHtmlTags(post.excerpt || post.content || '').slice(0, 180);
+  const image = getImageView(post.image_id || post.featuredImage || '', 'thumb');
   return `
     <article class="card profile-card" style="overflow:hidden">
-      ${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="${esc(post.title)}" class="blog-card-image">` : `<div style="height:220px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`}
+      ${image ? `<img src="${esc(image.url)}" alt="${esc(post.title)}" class="blog-card-image" loading="lazy">` : `<div style="height:220px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`}
       <div class="profile-body">
         <div class="small muted" style="margin-bottom:8px">${esc(formatBlogDate(post.date))}</div>
         <div style="font-weight:800;font-size:1.08rem;line-height:1.4;margin-bottom:10px">${esc(stripHtmlTags(post.title))}</div>
@@ -2105,6 +2302,7 @@ function renderBlog(){
   if (articleMatch) return renderBlogArticle(decodeURIComponent(articleMatch[1]));
   const posts = getPublicBlogPosts();
   const featuredPost = posts[0];
+  const featuredImage = featuredPost ? getImageView(featuredPost.image_id || featuredPost.featuredImage || '', 'full') : null;
   const remainingPosts = posts.slice(1);
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -2115,7 +2313,7 @@ function renderBlog(){
     <div class="container">
       ${featuredPost ? `
         <div class="card blog-featured" style="margin-bottom:24px">
-          ${featuredPost.featuredImage ? `<img src="${esc(featuredPost.featuredImage)}" alt="${esc(featuredPost.title)}">` : `<div style="min-height:320px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:800">CoGo Blog</div>`}
+          ${featuredImage ? `<img src="${esc(featuredImage.url)}" alt="${esc(featuredPost.title)}">` : `<div style="min-height:320px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:800">CoGo Blog</div>`}
           <div style="padding:24px">
             <div class="small muted" style="margin-bottom:8px">Latest Article · ${esc(formatBlogDate(featuredPost.date))}</div>
             <div style="font-size:1.8rem;font-weight:800;line-height:1.2;margin-bottom:14px">${esc(stripHtmlTags(featuredPost.title))}</div>
@@ -2145,6 +2343,7 @@ function renderBlogArticle(slug){
     `;
     return;
   }
+  const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -2152,29 +2351,30 @@ function renderBlogArticle(slug){
       <div class="card form-card" style="margin-top:16px;padding:24px">
         <div class="small muted" style="margin-bottom:10px">${esc(formatBlogDate(post.date))}</div>
         <h1 style="margin:0 0 18px;font-size:2rem;line-height:1.2">${esc(stripHtmlTags(post.title))}</h1>
-        ${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="${esc(stripHtmlTags(post.title))}" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">` : ''}
-        ${post.videoLink ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.videoLink, 'Article video')}</div>` : ''}
-        ${(post.images || []).length ? `<div style="margin-bottom:22px">${renderMediaCarousel(post.images, 420)}</div>` : ''}
+        ${featuredImage ? `<img src="${esc(featuredImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">` : ''}
+        ${post.video_url ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video')}</div>` : ''}
+        ${(post.entity_images || []).length ? `<div style="margin-bottom:22px">${renderMediaCarousel(post.entity_images, 420)}</div>` : ''}
         <div class="blog-article-content" style="line-height:1.75;font-size:1rem">${formatArticleBodyHtml(post.content || '')}</div>
       </div>
     </div>
   `;
 }
 function renderStudentAvatar(student, size=54, extraStyle=''){
-  const image = student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
-  if (image) return `<img src="${esc(image)}" alt="${esc(student.name || 'Student')}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}">`;
+  const image = student.profile_image_id || student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
+  if (image) return renderManagedImage(image, student.name || 'Student', `width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}`, 'thumb');
   return `<div class="avatar" style="width:${size}px;height:${size}px;${extraStyle}">${esc(student.emoji || '👤')}</div>`;
 }
 function renderMediaThumbs(images=[], max=3, size=72, emptyHtml=''){
-  if (!images.length) return emptyHtml;
-  return `<div style="display:flex;gap:10px;flex-wrap:wrap">${images.slice(0, max).map(src => `<img src="${esc(src)}" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">`).join('')}</div>`;
+  const imageViews = getImageViews(images, 'thumb');
+  if (!imageViews.length) return emptyHtml;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap">${imageViews.slice(0, max).map(image => `<img src="${esc(image.url)}" loading="lazy" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">`).join('')}</div>`;
 }
 function updateMediaCarousel(carouselId){
   const state = mediaCarouselState[carouselId];
   if (!state || !state.images.length) return;
   const img = document.getElementById(`${carouselId}_image`);
   const dots = document.querySelectorAll(`[data-carousel-dot="${carouselId}"]`);
-  if (img) img.src = state.images[state.index] || '';
+  if (img) img.src = (state.images[state.index] || {}).url || '';
   dots.forEach((dot, index) => {
     dot.style.opacity = index === state.index ? '1' : '.35';
     dot.style.transform = index === state.index ? 'scale(1.1)' : 'scale(1)';
@@ -2193,19 +2393,20 @@ function shiftMediaCarousel(carouselId, delta){
   setMediaCarouselIndex(carouselId, state.index + delta);
 }
 function renderMediaCarousel(images=[], size=84){
-  if (!images.length) return `<div class="small muted">No images added yet.</div>`;
-  if (images.length === 1) return renderMediaThumbs(images, 1, size, '');
+  const imageViews = getImageViews(images, 'full');
+  if (!imageViews.length) return `<div class="small muted">No images added yet.</div>`;
+  if (imageViews.length === 1) return renderMediaThumbs(imageViews, 1, size, '');
   const carouselId = `media_${uid('carousel').replace(/[^a-zA-Z0-9_]/g, '')}`;
-  mediaCarouselState[carouselId] = { images:[...images], index:0 };
+  mediaCarouselState[carouselId] = { images:[...imageViews], index:0 };
   const height = Math.max(180, Number(size) * 3);
   return `
     <div style="max-width:420px">
       <div style="position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f8fafc">
-        <img id="${carouselId}_image" src="${esc(images[0])}" style="width:100%;height:${height}px;object-fit:cover;display:block">
+        <img id="${carouselId}_image" src="${esc(imageViews[0].url)}" loading="lazy" style="width:100%;height:${height}px;object-fit:cover;display:block">
         <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', -1)" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">‹</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', 1)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">›</button>
       </div>
-      <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">${images.map((_, index) => `<button type="button" data-carousel-dot="${carouselId}" onclick="setMediaCarouselIndex('${carouselId}', ${index})" style="width:10px;height:10px;border-radius:50%;border:0;background:#2563eb;opacity:${index === 0 ? 1 : .35};cursor:pointer"></button>`).join('')}</div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">${imageViews.map((_, index) => `<button type="button" data-carousel-dot="${carouselId}" onclick="setMediaCarouselIndex('${carouselId}', ${index})" style="width:10px;height:10px;border-radius:50%;border:0;background:#2563eb;opacity:${index === 0 ? 1 : .35};cursor:pointer"></button>`).join('')}</div>
     </div>
   `;
 }
@@ -2470,8 +2671,9 @@ function normalizeStudentServiceRecord(student, service, index=0){
       id:`service_${student.id || 'student'}_${index}`,
       title: service,
       description: index === 0 ? ((student.about || [])[0] || '') : '',
+      entity_images: [],
       images: [],
-      videoLink: '',
+      video_url: '',
       rate: baseRate,
       location: baseLocation,
       availability: baseAvailability,
@@ -2484,8 +2686,9 @@ function normalizeStudentServiceRecord(student, service, index=0){
     category_id: (Array.isArray(student.tags) && student.tags[0]) || 'general',
     title: index === 0 ? baseTitle : `Service ${index + 1}`,
     description: index === 0 ? ((student.about || [])[0] || '') : '',
+    entity_images: [],
     images: [],
-    videoLink: '',
+    video_url: '',
     rate: baseRate,
     location: baseLocation,
     availability: baseAvailability,
@@ -2499,7 +2702,11 @@ function normalizeStudentServiceRecord(student, service, index=0){
   }, service || {});
   if ((!record.title || !String(record.title).trim()) && typeof service !== 'string') record.title = index === 0 ? baseTitle : `Service ${index + 1}`;
   if ((!record.description || !String(record.description).trim()) && index === 0) record.description = ((student.about || [])[0] || '');
-  if (!Array.isArray(record.images)) record.images = [];
+  const rawImages = Array.isArray(record.entity_images) && record.entity_images.length ? record.entity_images : record.images;
+  record.entity_images = upsertImageRecords(rawImages, { source:'service', entity_type:'service', entity_id: record.id || '', owner_id: student.userId || student.id || '' });
+  record.images = [...record.entity_images];
+  if (!record.video_url && record.videoLink) record.video_url = record.videoLink;
+  delete record.videoLink;
   if (!Array.isArray(record.reviews)) record.reviews = [];
   if (!record.user_id) record.user_id = student.userId || student.id || '';
   record.category_id = record.category_id || record.categoryId || (Array.isArray(record.tags) && record.tags[0]) || (Array.isArray(student.tags) && student.tags[0]) || 'general';
@@ -2549,9 +2756,223 @@ function readImagesToDataUrls(input, callback, limit=3){
   if (!files.length) return callback([]);
   Promise.all(files.map(file => new Promise(resolve => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload = () => resolve(upsertImageRecord(reader.result, { source:'upload' }));
     reader.readAsDataURL(file);
   }))).then(callback);
+}
+function renderImageLibraryButton(callbackName, label='Select from Library'){
+  if (!canUseImageLibrary()) return '';
+  return `<button class="btn btn-outline btn-sm" type="button" onclick="openAdminImageLibrary('${esc(callbackName)}')">${esc(label)}</button>`;
+}
+function parseJsonArray(value=''){
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch (error) {
+    return [];
+  }
+}
+function renderAdminModalSingleImagePreview(imageId='', alt='Image', emptyLabel='No image selected yet.'){
+  return imageId
+    ? renderManagedImage(imageId, alt, 'width:96px;height:96px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"')
+    : `<div class="small muted">${esc(emptyLabel)}</div>`;
+}
+function getAdminModalImageList(inputId=''){
+  return parseJsonArray((document.getElementById(inputId) || {}).value || '[]');
+}
+function setAdminModalSingleImage(inputId='', previewId='', imageId='', alt='Image', emptyLabel='No image selected yet.'){
+  const input = document.getElementById(inputId);
+  if (input) input.value = imageId || '';
+  const preview = document.getElementById(previewId);
+  if (preview) preview.innerHTML = renderAdminModalSingleImagePreview(imageId, alt, emptyLabel);
+}
+function setAdminModalImageList(inputId='', previewId='', imageIds=[], limit=3){
+  const nextImages = Array.isArray(imageIds) ? imageIds.filter(Boolean).slice(0, limit) : [];
+  const input = document.getElementById(inputId);
+  if (input) input.value = JSON.stringify(nextImages);
+  const preview = document.getElementById(previewId);
+  if (preview) preview.innerHTML = renderSignupImageGallery(nextImages, 120);
+}
+function openAdminModalImageLibrary(mode='single', inputId='', previewId='', limit=1, alt='Image', emptyLabel='No image selected yet.'){
+  adminModalImageLibraryTarget = { mode, inputId, previewId, limit, alt, emptyLabel };
+  openAdminImageLibrary('selectAdminModalImageFromLibrary');
+}
+function selectAdminModalImageFromLibrary(imageId=''){
+  if (!adminModalImageLibraryTarget) return toast('Image target is unavailable.');
+  const { mode, inputId, previewId, limit, alt, emptyLabel } = adminModalImageLibraryTarget;
+  if (mode === 'list') {
+    const nextImages = addImageIdToList(getAdminModalImageList(inputId), imageId, limit || 3);
+    setAdminModalImageList(inputId, previewId, nextImages, limit || 3);
+  } else {
+    setAdminModalSingleImage(inputId, previewId, imageId, alt, emptyLabel);
+  }
+}
+function handleAdminModalSingleImageUpload(input, inputId='', previewId='', source='profile', alt='Image', emptyLabel='No image selected yet.'){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const imageId = upsertImageRecord(reader.result, { source });
+    setAdminModalSingleImage(inputId, previewId, imageId, alt, emptyLabel);
+  };
+  reader.readAsDataURL(file);
+}
+function handleAdminModalImageListUpload(input, inputId='', previewId='', source='gallery', limit=3){
+  readImagesToDataUrls(input, (images) => {
+    const taggedImages = upsertImageRecords(images, { source });
+    setAdminModalImageList(inputId, previewId, taggedImages, limit);
+  }, limit);
+}
+function selectImageFromLibrary(callbackName, imageId){
+  const fn = window[callbackName];
+  if (typeof fn !== 'function') return toast('Image library action is unavailable.');
+  fn(imageId);
+}
+function openAdminImageLibrary(callbackName=''){
+  if (!canUseImageLibrary()) return toast('Admin access is required.');
+  const images = getImages().sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  openModal('Select from Library', `
+    <div class="small muted" style="margin-bottom:14px">Choose an existing image and return its image_id to the form.</div>
+    ${images.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px">${images.map(image => `
+      <div class="card" style="padding:12px;border:1px solid var(--border)">
+        <div style="margin-bottom:10px">${renderManagedImage(image.id, image.alt || 'Library image', 'width:100%;height:140px;object-fit:cover;border-radius:12px;border:1px solid var(--border)', 'thumb')}</div>
+        <div class="small muted" style="word-break:break-word;margin-bottom:10px">${esc(image.id)}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-blue btn-sm" type="button" onclick="selectImageFromLibrary('${esc(callbackName)}','${esc(image.id)}')">Select</button>
+          <button class="btn btn-outline btn-sm" type="button" onclick="copyImageUrl('${esc(image.id)}')">Copy URL</button>
+        </div>
+      </div>
+    `).join('')}</div>` : `<div class="muted">No images are in the library yet.</div>`}
+  `, '980px');
+}
+function copyImageUrl(imageId){
+  const image = getImageView(imageId, 'full');
+  if (!image) return toast('Image not found.');
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(image.url).then(() => toast('Image URL copied.')).catch(() => toast('Could not copy the image URL.'));
+    return;
+  }
+  toast('Clipboard copy is not supported here.');
+}
+function getImageUsageDetails(imageId=''){
+  const usage = [];
+  getUsers().forEach(user => {
+    if (String(user.photo || '') === String(imageId)) usage.push({ type:'user_profile', id:user.id || '', label:user.name || user.email || 'User' });
+    if (String(user.profile_image_id || '') === String(imageId)) usage.push({ type:'user_profile', id:user.id || '', label:user.name || user.email || 'User' });
+    if (user.businessProfile && (String(user.businessProfile.logo || '') === String(imageId) || String(user.businessProfile.image_id || '') === String(imageId))) {
+      usage.push({ type:'business_logo', id:user.id || '', label:user.businessProfile.name || user.company || user.name || 'Business' });
+    }
+  });
+  getStudents().forEach(student => {
+    if (String(student.photo || '') === String(imageId) || String(student.profile_image_id || '') === String(imageId)) {
+      usage.push({ type:'student_profile', id:student.id || '', label:student.name || 'Student profile' });
+    }
+    if ((student.profileImages || []).some(id => String(id) === String(imageId))) {
+      usage.push({ type:'student_gallery', id:student.id || '', label:student.name || 'Student gallery' });
+    }
+    (student.services || []).forEach(service => {
+      if ((service.images || service.entity_images || []).some(id => String(id) === String(imageId))) {
+        usage.push({ type:'service_gallery', id:service.id || '', label:service.title || 'Service' });
+      }
+    });
+  });
+  getBlogPosts().forEach(post => {
+    if (String(post.image_id || post.featuredImage || '') === String(imageId)) usage.push({ type:'article_featured', id:post.id || '', label:stripHtmlTags(post.title || 'Article') });
+    if ((post.entity_images || post.images || []).some(id => String(id) === String(imageId))) usage.push({ type:'article_gallery', id:post.id || '', label:stripHtmlTags(post.title || 'Article') });
+  });
+  const deduped = [];
+  const seen = new Set();
+  usage.forEach(item => {
+    const key = `${item.type}:${item.id}:${item.label}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push(item);
+  });
+  return deduped;
+}
+function removeImageReferences(imageId=''){
+  const users = getUsers();
+  let usersChanged = false;
+  users.forEach(user => {
+    if (String(user.photo || '') === String(imageId)) {
+      user.photo = '';
+      user.profile_image_id = '';
+      usersChanged = true;
+    }
+    if (user.businessProfile && String(user.businessProfile.logo || '') === String(imageId)) {
+      user.businessProfile.logo = '';
+      user.businessProfile.image_id = '';
+      usersChanged = true;
+    }
+  });
+  if (usersChanged) saveUsers(users);
+
+  const students = getStudents();
+  let studentsChanged = false;
+  students.forEach(student => {
+    if (String(student.photo || '') === String(imageId)) {
+      student.photo = '';
+      student.profile_image_id = '';
+      studentsChanged = true;
+    }
+    const nextProfileImages = removeImageIdFromList(student.profileImages || [], imageId);
+    if (nextProfileImages.length !== (student.profileImages || []).length) {
+      student.profileImages = nextProfileImages;
+      if (!student.photo && student.profileImages[0]) {
+        student.photo = student.profileImages[0];
+        student.profile_image_id = student.profileImages[0];
+      }
+      studentsChanged = true;
+    }
+    (student.services || []).forEach(service => {
+      const nextImages = removeImageIdFromList(service.images || [], imageId);
+      if (nextImages.length !== (service.images || []).length) {
+        service.images = nextImages;
+        service.entity_images = [...nextImages];
+        studentsChanged = true;
+      }
+    });
+  });
+  if (studentsChanged) saveStudents(students);
+
+  const posts = getBlogPosts();
+  let postsChanged = false;
+  posts.forEach(post => {
+    if (String(post.featuredImage || '') === String(imageId) || String(post.image_id || '') === String(imageId)) {
+      post.featuredImage = '';
+      post.image_id = '';
+      postsChanged = true;
+    }
+    const nextImages = removeImageIdFromList(post.images || [], imageId);
+    if (nextImages.length !== (post.images || []).length) {
+      post.images = nextImages;
+      post.entity_images = [...nextImages];
+      postsChanged = true;
+    }
+  });
+  if (postsChanged) saveBlogPosts(posts);
+}
+function deleteImageFromLibrary(imageId=''){
+  if (!imageId) return;
+  if (getImageUsageDetails(imageId).length) return toast('This image is in use and cannot be deleted');
+  removeImageReferences(imageId);
+  saveImages(getImages().filter(image => String(image.id) !== String(imageId)));
+  toast('Image deleted from the library.');
+  if (dashSection === 'images') renderDashboard();
+}
+function viewImageFromLibrary(imageId=''){
+  const image = getImageView(imageId, 'full');
+  if (!image) return toast('Image not found.');
+  const usage = getImageUsageDetails(imageId);
+  openModal('Image Preview', `
+    <div>${renderManagedImage(image.id || image.url, image.alt || 'Image preview', 'width:100%;max-height:520px;object-fit:contain;border-radius:16px;border:1px solid var(--border)', 'full', 'loading="eager"')}</div>
+    <div class="small muted" style="margin-top:12px;word-break:break-word">${esc(image.url)}</div>
+    ${usage.length ? `<div class="warning" style="margin-top:12px">This image is in use and cannot be deleted.</div>` : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn btn-outline" type="button" onclick="copyImageUrl('${esc(imageId)}')">Copy URL</button>
+      <button class="btn btn-danger" type="button" ${usage.length ? 'disabled' : ''} onclick="deleteImageFromLibrary('${esc(imageId)}')">Delete</button>
+    </div>
+  `, '760px');
 }
 function getRenderableStudentServices(student){
   const rawServices = Array.isArray(student.services) ? student.services.filter(Boolean) : [];
@@ -2564,8 +2985,9 @@ function getRenderableStudentServices(student){
     rate: student.rate || 20,
     location: student.location || '',
     availability: student.availability || '',
+    entity_images: student.profileImages || [],
     images: student.profileImages || [],
-    videoLink: student.profileVideoLink || '',
+    video_url: student.video_url || '',
     reviews: student.reviews || []
   }];
 }
@@ -2655,7 +3077,7 @@ function openProfile(studentId){
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(s.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoPreviewHtml(s.profileVideoLink || '', 'Profile video')}
+      ${renderVideoPreviewHtml(s.video_url || '', 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.map((service, index) => {
         const summary = getServiceReviewSummary(s, service, index);
@@ -3059,7 +3481,7 @@ function renderDashboard(){
   if (!currentUser) return openLoginModal();
   if (!syncCurrentUserRecord()) return;
 
-  if (currentUser.role === 'admin' && !['admin','users','blog_manager','transactions','settings'].includes(dashSection)) {
+  if (currentUser.role === 'admin' && !['admin','users','blog_manager','images','transactions','settings'].includes(dashSection)) {
     dashSection = 'admin';
   }
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings'].includes(dashSection)) {
@@ -3077,6 +3499,7 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">🛡️ Admin Panel</a>
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">👥 Users</a>
           <a href="#" class="${dashSection==='blog_manager'?'active':''}" onclick="dashSection='blog_manager';renderDashboard();return false;">📰 Blog Manager</a>
+          <a href="#" class="${dashSection==='images'?'active':''}" onclick="dashSection='images';renderDashboard();return false;">🖼️ Images</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : currentUser.role === 'student' ? `
@@ -3104,6 +3527,7 @@ function renderDashboard(){
     if (dashSection === 'admin') return renderAdminPanel(el);
     if (dashSection === 'users') return renderAdminUsersSection(el);
     if (dashSection === 'blog_manager') return renderAdminBlogManager(el);
+    if (dashSection === 'images') return renderAdminImagesSection(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else if (currentUser.role === 'student'){
@@ -3147,7 +3571,7 @@ function renderEmployerProfile(el){
     ${showProfile ? `
       <div class="card form-card" style="margin-top:16px">
         <div class="split" style="align-items:center;margin-bottom:14px">
-          <div style="display:flex;gap:14px;align-items:center">${user.photo ? `<img src="${esc(user.photo)}" style="width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe">` : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(user.emoji || '🏠')}</div>`}<div><div style="font-weight:800;font-size:1.05rem">${esc(user.publicName || user.name || '')}</div><div class="small muted">${esc(user.city || '')}</div></div></div>
+          <div style="display:flex;gap:14px;align-items:center">${user.photo ? renderManagedImage(user.photo, user.publicName || user.name || 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(user.emoji || '🏠')}</div>`}<div><div style="font-weight:800;font-size:1.05rem">${esc(user.publicName || user.name || '')}</div><div class="small muted">${esc(user.city || '')}</div></div></div>
         </div>
         <div class="row">
           <div><div class="small muted">Name</div><div style="font-weight:700">${esc(user.publicName || user.name || '')}</div></div>
@@ -3163,7 +3587,7 @@ function renderEmployerProfile(el){
     ${showBusiness ? `
       <div class="card form-card" style="margin-top:16px">
         <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Business</div>
-        <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">${business.logo ? `<img src="${esc(business.logo)}" style="width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)">` : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">🏢</div>`}<div><div style="font-weight:800">${esc(business.name || user.company || '')}</div><div class="small muted">${esc(business.city || '')}</div></div></div>
+        <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">${business.logo ? renderManagedImage(business.logo, business.name || 'Business logo', 'width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">🏢</div>`}<div><div style="font-weight:800">${esc(business.name || user.company || '')}</div><div class="small muted">${esc(business.city || '')}</div></div></div>
         <div style="margin-top:14px"><div class="small muted">About</div><div>${esc(business.about || 'No business about section added yet.')}</div></div>
         <div class="row" style="margin-top:12px">
           <div><div class="small muted">Business phone (private)</div><div style="font-weight:700">${esc(business.phone || 'Not added yet')}</div></div>
@@ -3227,7 +3651,7 @@ function renderStudentProfile(el){
           <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(profile.profileImages || [], 120)}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(profile.profileVideoLink || '', 'Profile video')}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(profile.video_url || '', 'Profile video')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">⭐ ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
       ` : ''}
@@ -3263,7 +3687,7 @@ function renderStudentServiceManagerCard(service, index){
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
           <div style="margin-top:10px">${renderSignupImageGallery(service.images || [], 120)}</div>
-          <div style="margin-top:10px">${renderVideoPreviewHtml(service.videoLink || '', 'Service video')}</div>
+          <div style="margin-top:10px">${renderVideoPreviewHtml(service.video_url || '', 'Service video')}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="openStudentServiceForm(${index})">Edit</button>
@@ -3273,27 +3697,67 @@ function renderStudentServiceManagerCard(service, index){
     </div>
   `;
 }
+function createStudentProfileFormDraft(profile){
+  return {
+    id: profile.id,
+    name: profile.name || currentUser?.name || '',
+    age: profile.age || '',
+    school: profile.school || '',
+    city: (profile.location || '').replace(', CA',''),
+    phone: profile.phone || '',
+    email: profile.privateEmail || currentUser?.email || '',
+    about: (profile.about || []).join('\n'),
+    highlights: (profile.highlights || []).join('\n'),
+    profileImages: Array.isArray(profile.profileImages) ? [...profile.profileImages] : [],
+    video_url: profile.video_url || ''
+  };
+}
+function syncStudentProfileDraftFromForm(){
+  if (!studentProfileDraft) return;
+  const nameEl = document.getElementById('studentProfileName');
+  const ageEl = document.getElementById('studentProfileAge');
+  const schoolEl = document.getElementById('studentProfileSchool');
+  const cityEl = document.getElementById('studentProfileCity');
+  const phoneEl = document.getElementById('studentProfilePhone');
+  const emailEl = document.getElementById('studentProfileEmail');
+  const aboutEl = document.getElementById('studentProfileAbout');
+  const highlightsEl = document.getElementById('studentProfileHighlights');
+  const videoEl = document.getElementById('studentProfileVideoLink');
+  if (nameEl) studentProfileDraft.name = (nameEl.value || '').trim();
+  if (ageEl) studentProfileDraft.age = ageEl.value || '';
+  if (schoolEl) studentProfileDraft.school = (schoolEl.value || '').trim();
+  if (cityEl) studentProfileDraft.city = (cityEl.value || '').trim();
+  if (phoneEl) studentProfileDraft.phone = (phoneEl.value || '').trim();
+  if (emailEl) studentProfileDraft.email = (emailEl.value || '').trim();
+  if (aboutEl) studentProfileDraft.about = aboutEl.value || '';
+  if (highlightsEl) studentProfileDraft.highlights = highlightsEl.value || '';
+  if (videoEl) studentProfileDraft.video_url = (videoEl.value || '').trim();
+  studentProfileDraft.profileImages = [...studentProfileImagesBuffer];
+}
 function openStudentProfileForm(profileId=''){
   const profile = profileId ? getStudents().find(s => s.id === profileId) : currentStudentProfile();
   if (!profile) return toast('Create your student profile first.');
-  studentProfileImagesBuffer = Array.isArray(profile.profileImages) ? [...profile.profileImages] : [];
+  activeStudentProfileFormId = profile.id;
+  if (!studentProfileDraft || studentProfileDraft.id !== profile.id) studentProfileDraft = createStudentProfileFormDraft(profile);
+  studentProfileImagesBuffer = Array.isArray(studentProfileDraft.profileImages) ? [...studentProfileDraft.profileImages] : [];
   openModal('Edit Profile', `
-    <div class="field"><label>Name</label><input id="studentProfileName" value="${esc(profile.name || currentUser?.name || '')}"></div>
+    <div class="field"><label>Name</label><input id="studentProfileName" value="${esc(studentProfileDraft.name || '')}"></div>
     <div class="row">
-      <div class="field"><label>Age</label><input id="studentProfileAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div>
-      <div class="field"><label>School(s)</label><input id="studentProfileSchool" value="${esc(profile.school || '')}"></div>
+      <div class="field"><label>Age</label><input id="studentProfileAge" type="number" min="13" max="25" value="${esc(studentProfileDraft.age || '')}"></div>
+      <div class="field"><label>School(s)</label><input id="studentProfileSchool" value="${esc(studentProfileDraft.school || '')}"></div>
     </div>
     <div class="row">
-      <div class="field"><label>Location</label><input id="studentProfileCity" value="${esc((profile.location || '').replace(', CA',''))}"></div>
-      <div class="field"><label>Phone (private)</label><input id="studentProfilePhone" value="${esc(profile.phone || '')}"></div>
+      <div class="field"><label>Location</label><input id="studentProfileCity" value="${esc(studentProfileDraft.city || '')}"></div>
+      <div class="field"><label>Phone (private)</label><input id="studentProfilePhone" value="${esc(studentProfileDraft.phone || '')}"></div>
     </div>
-    <div class="field"><label>Email (private)</label><input id="studentProfileEmail" type="email" value="${esc(profile.privateEmail || currentUser?.email || '')}"></div>
-    <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc((profile.about || []).join('\n'))}</textarea></div>
-    <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc((profile.highlights || []).join('\n'))}</textarea></div>
+    <div class="field"><label>Email (private)</label><input id="studentProfileEmail" type="email" value="${esc(studentProfileDraft.email || '')}"></div>
+    <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc(studentProfileDraft.about || '')}</textarea></div>
+    <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc(studentProfileDraft.highlights || '')}</textarea></div>
     <div class="field"><label>Profile Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentProfileImagesUpload(this)"></div>
+    ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentProfileImageFromLibrary')}</div>` : ''}
     <div id="student-profile-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentProfileImagesBuffer, 120)}</div>
-    <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(profile.profileVideoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentProfileVideoLink(this.value)"></div>
-    <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(profile.profileVideoLink || '', 'Profile video')}</div>
+    <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(studentProfileDraft.video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentProfileVideoLink(this.value)"></div>
+    <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(studentProfileDraft.video_url || '', 'Profile video')}</div>
     <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profile.id)}')">Save Profile</button>
   `, '720px');
 }
@@ -3303,29 +3767,33 @@ function saveStudentProfileForm(profileId=''){
   if (!profile) return;
   const users = getUsers();
   const user = users.find(u => u.id === currentUser.id);
-  const name = (document.getElementById('studentProfileName').value || '').trim();
-  const city = (document.getElementById('studentProfileCity').value || '').trim();
-  const email = (document.getElementById('studentProfileEmail').value || '').trim();
-  if (!name || !city || !email) return toast('Name, location, and email are required.');
-  profile.name = name;
-  profile.age = Number(document.getElementById('studentProfileAge').value || 0) || profile.age || 17;
-  profile.school = (document.getElementById('studentProfileSchool').value || '').trim();
-  profile.location = city.includes(',') ? city : `${city}, CA`;
-  profile.phone = (document.getElementById('studentProfilePhone').value || '').trim();
-  profile.privateEmail = email;
-  profile.about = (document.getElementById('studentProfileAbout').value || '').split('\n').map(s => s.trim()).filter(Boolean);
-  profile.highlights = (document.getElementById('studentProfileHighlights').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+  syncStudentProfileDraftFromForm();
+  const draft = studentProfileDraft || createStudentProfileFormDraft(profile);
+  if (!draft.name || !draft.city || !draft.email) return toast('Name, location, and email are required.');
+  profile.name = draft.name;
+  profile.age = Number(draft.age || 0) || profile.age || 17;
+  profile.school = draft.school || '';
+  profile.location = draft.city.includes(',') ? draft.city : `${draft.city}, CA`;
+  profile.phone = draft.phone || '';
+  profile.privateEmail = draft.email;
+  profile.about = String(draft.about || '').split('\n').map(s => s.trim()).filter(Boolean);
+  profile.highlights = String(draft.highlights || '').split('\n').map(s => s.trim()).filter(Boolean);
   profile.profileImages = [...studentProfileImagesBuffer];
-  if (profile.profileImages[0]) profile.photo = profile.profileImages[0];
-  profile.profileVideoLink = (document.getElementById('studentProfileVideoLink').value || '').trim();
+  profile.photo = profile.profileImages[0] || '';
+  profile.profile_image_id = profile.photo || '';
+  profile.video_url = draft.video_url || '';
   profile.updatedAt = new Date().toISOString();
   if (user) {
-    user.name = name;
-    user.email = email;
+    user.name = draft.name;
+    user.email = draft.email;
+    user.photo = profile.photo || '';
+    user.profile_image_id = profile.photo || '';
     saveUsers(users);
     setCurrentUser(user);
   }
   saveStudents(students);
+  studentProfileDraft = null;
+  activeStudentProfileFormId = '';
   closeModal();
   toast('Profile updated.');
   renderDashboard();
@@ -3333,22 +3801,66 @@ function saveStudentProfileForm(profileId=''){
 function handleStudentProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     studentProfileImagesBuffer = images;
+    if (studentProfileDraft) studentProfileDraft.profileImages = [...images];
     const el = document.getElementById('student-profile-images-preview');
     if (el) el.innerHTML = renderSignupImageGallery(studentProfileImagesBuffer, 120);
   });
 }
+function addStudentProfileImageFromLibrary(imageId){
+  syncStudentProfileDraftFromForm();
+  studentProfileImagesBuffer = addImageIdToList(studentProfileImagesBuffer, imageId, 3);
+  if (studentProfileDraft) studentProfileDraft.profileImages = [...studentProfileImagesBuffer];
+  openStudentProfileForm(activeStudentProfileFormId);
+}
 function previewStudentProfileVideoLink(value){
+  if (studentProfileDraft) studentProfileDraft.video_url = value || '';
   const el = document.getElementById('student-profile-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Profile video');
+}
+function createStudentServiceFormDraft(profile, existing=null){
+  return {
+    id: existing?.id || '',
+    title: existing?.title || '',
+    description: existing?.description || '',
+    images: Array.isArray(existing?.images) ? [...existing.images] : [],
+    video_url: existing?.video_url || '',
+    rate: existing?.rate || profile.rate || 20,
+    availability: existing?.availability || profile.availability || '',
+    location: existing?.location || profile.location || ''
+  };
+}
+function syncStudentServiceDraftFromForm(){
+  if (!studentServiceDraft) return;
+  const titleEl = document.getElementById('studentServiceTitle');
+  const descriptionEl = document.getElementById('studentServiceDescription');
+  const videoEl = document.getElementById('studentServiceVideoLink');
+  const rateEl = document.getElementById('studentServiceRate');
+  const availabilityEl = document.getElementById('studentServiceAvailability');
+  const locationEl = document.getElementById('studentServiceLocation');
+  if (titleEl) studentServiceDraft.title = (titleEl.value || '').trim();
+  if (descriptionEl) studentServiceDraft.description = (descriptionEl.value || '').trim();
+  if (videoEl) studentServiceDraft.video_url = (videoEl.value || '').trim();
+  if (rateEl) studentServiceDraft.rate = rateEl.value || 0;
+  if (availabilityEl) studentServiceDraft.availability = (availabilityEl.value || '').trim();
+  if (locationEl) studentServiceDraft.location = (locationEl.value || '').trim();
+  studentServiceDraft.images = [...studentServiceImagesBuffer];
 }
 function handleStudentServiceImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     studentServiceImagesBuffer = images;
+    if (studentServiceDraft) studentServiceDraft.images = [...images];
     const el = document.getElementById('student-service-images-preview');
     if (el) el.innerHTML = renderSignupImageGallery(studentServiceImagesBuffer, 120);
   });
 }
+function addStudentServiceImageFromLibrary(imageId){
+  syncStudentServiceDraftFromForm();
+  studentServiceImagesBuffer = addImageIdToList(studentServiceImagesBuffer, imageId, 3);
+  if (studentServiceDraft) studentServiceDraft.images = [...studentServiceImagesBuffer];
+  openStudentServiceForm(activeStudentServiceFormIndex);
+}
 function previewStudentServiceVideoLink(value){
+  if (studentServiceDraft) studentServiceDraft.video_url = value || '';
   const el = document.getElementById('student-service-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Service video');
 }
@@ -3357,19 +3869,24 @@ function openStudentServiceForm(serviceIndex=''){
   if (!profile) return toast('Create your profile first.');
   profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
   const existing = serviceIndex === '' || serviceIndex === null || serviceIndex === undefined ? null : profile.services[Number(serviceIndex)];
-  studentServiceImagesBuffer = Array.isArray(existing?.images) ? [...existing.images] : [];
+  activeStudentServiceFormIndex = serviceIndex;
+  if (!studentServiceDraft || String(studentServiceDraft.id || '') !== String(existing?.id || '') || String(activeStudentServiceFormIndex) !== String(serviceIndex)) {
+    studentServiceDraft = createStudentServiceFormDraft(profile, existing);
+  }
+  studentServiceImagesBuffer = Array.isArray(studentServiceDraft.images) ? [...studentServiceDraft.images] : [];
   openModal(existing ? 'Edit Service' : 'Add Service', `
-    <div class="field"><label>Title</label><input id="studentServiceTitle" value="${esc(existing?.title || '')}"></div>
-    <div class="field"><label>Description</label><textarea id="studentServiceDescription">${esc(existing?.description || '')}</textarea></div>
+    <div class="field"><label>Title</label><input id="studentServiceTitle" value="${esc(studentServiceDraft.title || '')}"></div>
+    <div class="field"><label>Description</label><textarea id="studentServiceDescription">${esc(studentServiceDraft.description || '')}</textarea></div>
     <div class="field"><label>Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentServiceImagesUpload(this)"></div>
+    ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentServiceImageFromLibrary')}</div>` : ''}
     <div id="student-service-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentServiceImagesBuffer, 120)}</div>
-    <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(existing?.videoLink || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentServiceVideoLink(this.value)"></div>
-    <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(existing?.videoLink || '', 'Service video')}</div>
+    <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(studentServiceDraft.video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentServiceVideoLink(this.value)"></div>
+    <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(studentServiceDraft.video_url || '', 'Service video')}</div>
     <div class="row">
-      <div class="field"><label>Rate</label><input id="studentServiceRate" type="number" min="1" value="${esc(existing?.rate || profile.rate || 20)}"></div>
-      <div class="field"><label>Availability</label><input id="studentServiceAvailability" value="${esc(existing?.availability || profile.availability || '')}"></div>
+      <div class="field"><label>Rate</label><input id="studentServiceRate" type="number" min="1" value="${esc(studentServiceDraft.rate || profile.rate || 20)}"></div>
+      <div class="field"><label>Availability</label><input id="studentServiceAvailability" value="${esc(studentServiceDraft.availability || profile.availability || '')}"></div>
     </div>
-    <div class="field"><label>Location</label><input id="studentServiceLocation" value="${esc(existing?.location || profile.location || '')}"></div>
+    <div class="field"><label>Location</label><input id="studentServiceLocation" value="${esc(studentServiceDraft.location || profile.location || '')}"></div>
     <button class="btn btn-blue" onclick="saveStudentServiceForm('${esc(serviceIndex)}')">${existing ? 'Save Service' : 'Add Service'}</button>
   `, '720px');
 }
@@ -3378,12 +3895,14 @@ function saveStudentServiceForm(serviceIndex=''){
   const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
   if (!profile) return;
   profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
-  const title = (document.getElementById('studentServiceTitle').value || '').trim();
-  const description = (document.getElementById('studentServiceDescription').value || '').trim();
-  const videoLink = (document.getElementById('studentServiceVideoLink').value || '').trim();
-  const rate = Number(document.getElementById('studentServiceRate').value || 0);
-  const availability = (document.getElementById('studentServiceAvailability').value || '').trim();
-  const location = (document.getElementById('studentServiceLocation').value || '').trim();
+  syncStudentServiceDraftFromForm();
+  const draft = studentServiceDraft || createStudentServiceFormDraft(profile);
+  const title = (draft.title || '').trim();
+  const description = (draft.description || '').trim();
+  const videoUrl = (draft.video_url || '').trim();
+  const rate = Number(draft.rate || 0);
+  const availability = (draft.availability || '').trim();
+  const location = (draft.location || '').trim();
   if (!title || !description || !rate || !availability) return toast('Please complete the required service fields.');
   const service = {
     id: serviceIndex === '' || serviceIndex === null || serviceIndex === undefined || !profile.services[Number(serviceIndex)]
@@ -3392,7 +3911,8 @@ function saveStudentServiceForm(serviceIndex=''){
     title,
     description,
     images: [...studentServiceImagesBuffer],
-    videoLink,
+    entity_images: [...studentServiceImagesBuffer],
+    video_url: videoUrl,
     rate,
     availability,
     location: location || profile.location || '',
@@ -3404,6 +3924,8 @@ function saveStudentServiceForm(serviceIndex=''){
   profile.rate = profile.services[0]?.rate || profile.rate || 20;
   profile.availability = profile.services[0]?.availability || profile.availability || '';
   saveStudents(students);
+  studentServiceDraft = null;
+  activeStudentServiceFormIndex = '';
   closeModal();
   toast('Service saved.');
   renderDashboard();
@@ -4765,57 +5287,185 @@ function permanentlyDeleteAdminUser(userId){
   toast('User permanently deleted.');
   renderDashboard();
 }
-function openAdminUserEditModal(userId){
+function createAdminUserEditDraft(userId){
   const user = getUserById(userId);
-  if (!user) return toast('User not found.');
-  const student = getStudentByUserId(user.id);
+  if (!user) return null;
   const nameParts = splitAdminUserName(user);
-  const services = student ? getRenderableStudentServices(student) : [];
-  const aboutText = student ? (student.about || []).join('\n') : (user.about || '');
-  const highlightsText = student ? (student.highlights || []).join('\n') : '';
-  openModal(`Edit User: ${user.name}`, `
-    <div class="field"><label>First Name</label><input id="adminEditUserFirstName" value="${esc(nameParts.firstName)}"></div>
-    <div class="field"><label>Last Name</label><input id="adminEditUserLastName" value="${esc(nameParts.lastName)}"></div>
+  const student = getStudentByUserId(user.id);
+  const services = student ? getRenderableStudentServices(student).map(service => Object.assign({ images:[], video_url:'', reviews:[] }, service)) : [];
+  const photo = user.photo || user.profile_image_id || student?.profile_image_id || '';
+  return {
+    userId: user.id,
+    firstName: nameParts.firstName,
+    lastName: nameParts.lastName,
+    email: user.email || '',
+    phone: user.phone || '',
+    publicName: user.publicName || user.name || '',
+    city: user.city || '',
+    address: user.address || '',
+    roleValue: getAdminRoleValueForUser(user),
+    statusValue: user.status === 'suspended' ? 'suspended' : 'active',
+    photo,
+    company: user.company || user.businessProfile?.name || '',
+    businessAbout: user.businessProfile?.about || user.about || '',
+    businessLogo: user.businessProfile?.logo || user.businessProfile?.image_id || '',
+    student: student ? {
+      age: student.age || '',
+      school: student.school || '',
+      about: (student.about || []).join('\n'),
+      highlights: (student.highlights || []).join('\n'),
+      profileImages: Array.isArray(student.profileImages) && student.profileImages.length ? [...student.profileImages] : (photo ? [photo] : []),
+      video_url: student.video_url || '',
+      services
+    } : null
+  };
+}
+function syncAdminUserEditDraftFromForm(){
+  if (!adminUserEditDraft) return;
+  const firstNameEl = document.getElementById('adminEditUserFirstName');
+  const lastNameEl = document.getElementById('adminEditUserLastName');
+  const emailEl = document.getElementById('adminEditUserEmail');
+  const phoneEl = document.getElementById('adminEditUserPhone');
+  const publicNameEl = document.getElementById('adminEditUserPublicName');
+  const cityEl = document.getElementById('adminEditUserCity');
+  const addressEl = document.getElementById('adminEditUserAddress');
+  const roleEl = document.getElementById('adminEditUserRoleValue');
+  const statusEl = document.getElementById('adminEditUserStatusValue');
+  if (firstNameEl) adminUserEditDraft.firstName = (firstNameEl.value || '').trim();
+  if (lastNameEl) adminUserEditDraft.lastName = (lastNameEl.value || '').trim();
+  if (emailEl) adminUserEditDraft.email = (emailEl.value || '').trim().toLowerCase();
+  if (phoneEl) adminUserEditDraft.phone = (phoneEl.value || '').trim();
+  if (publicNameEl) adminUserEditDraft.publicName = (publicNameEl.value || '').trim();
+  if (cityEl) adminUserEditDraft.city = (cityEl.value || '').trim();
+  if (addressEl) adminUserEditDraft.address = (addressEl.value || '').trim();
+  if (roleEl) adminUserEditDraft.roleValue = roleEl.value || adminUserEditDraft.roleValue || 'student';
+  if (statusEl) adminUserEditDraft.statusValue = statusEl.value || adminUserEditDraft.statusValue || 'active';
+  adminUserEditDraft.photo = (document.getElementById('adminEditUserPhoto') || {}).value || adminUserEditDraft.photo || '';
+  if (document.getElementById('adminEditBusinessName')) adminUserEditDraft.company = (document.getElementById('adminEditBusinessName').value || '').trim();
+  if (document.getElementById('adminEditBusinessAbout')) adminUserEditDraft.businessAbout = document.getElementById('adminEditBusinessAbout').value || '';
+  if (document.getElementById('adminEditBusinessLogo')) adminUserEditDraft.businessLogo = (document.getElementById('adminEditBusinessLogo').value || '').trim();
+  if (adminUserEditDraft.student && document.getElementById('adminEditStudentAge')) {
+    adminUserEditDraft.student.age = (document.getElementById('adminEditStudentAge').value || '').trim();
+    adminUserEditDraft.student.school = (document.getElementById('adminEditStudentSchool').value || '').trim();
+    adminUserEditDraft.student.about = document.getElementById('adminEditStudentAbout').value || '';
+    adminUserEditDraft.student.highlights = document.getElementById('adminEditStudentHighlights').value || '';
+    adminUserEditDraft.student.profileImages = parseJsonArray((document.getElementById('adminEditStudentProfileImages') || {}).value || '[]');
+    adminUserEditDraft.student.video_url = (document.getElementById('adminEditStudentVideo').value || '').trim();
+    adminUserEditDraft.student.services = (adminUserEditDraft.student.services || []).map((service, index) => Object.assign({}, service, {
+      title:(document.getElementById(`adminEditServiceTitle_${index}`) || {}).value || service.title || '',
+      description:(document.getElementById(`adminEditServiceDescription_${index}`) || {}).value || service.description || '',
+      images:parseJsonArray((document.getElementById(`adminEditServiceImages_${index}`) || {}).value || '[]'),
+      entity_images:parseJsonArray((document.getElementById(`adminEditServiceImages_${index}`) || {}).value || '[]'),
+      video_url:(document.getElementById(`adminEditServiceVideo_${index}`) || {}).value || service.video_url || '',
+      rate:Number((document.getElementById(`adminEditServiceRate_${index}`) || {}).value || service.rate || 0),
+      location:(document.getElementById(`adminEditServiceLocation_${index}`) || {}).value || service.location || '',
+      availability:(document.getElementById(`adminEditServiceAvailability_${index}`) || {}).value || service.availability || ''
+    }));
+  }
+}
+function setAdminUserEditDraftValue(path='', value){
+  if (!adminUserEditDraft || !path) return;
+  const parts = path.split('.');
+  let target = adminUserEditDraft;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const key = /^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i];
+    if (target[key] == null) target[key] = /^\d+$/.test(parts[i + 1] || '') ? [] : {};
+    target = target[key];
+  }
+  const finalKey = /^\d+$/.test(parts[parts.length - 1]) ? Number(parts[parts.length - 1]) : parts[parts.length - 1];
+  target[finalKey] = value;
+}
+function getAdminUserEditDraftValue(path=''){
+  if (!adminUserEditDraft || !path) return undefined;
+  return path.split('.').reduce((acc, part) => {
+    const key = /^\d+$/.test(part) ? Number(part) : part;
+    return acc == null ? undefined : acc[key];
+  }, adminUserEditDraft);
+}
+function openAdminUserEditImageLibrary(mode='single', path='', limit=1){
+  syncAdminUserEditDraftFromForm();
+  adminModalImageLibraryTarget = { mode, path, limit };
+  openAdminImageLibrary('selectAdminUserEditImageFromLibrary');
+}
+function selectAdminUserEditImageFromLibrary(imageId=''){
+  if (!adminUserEditDraft || !adminModalImageLibraryTarget) return toast('Admin edit image target is unavailable.');
+  const { mode, path, limit } = adminModalImageLibraryTarget;
+  if (mode === 'list') {
+    const currentImages = Array.isArray(getAdminUserEditDraftValue(path)) ? getAdminUserEditDraftValue(path) : [];
+    setAdminUserEditDraftValue(path, addImageIdToList(currentImages, imageId, limit || 3));
+  } else {
+    setAdminUserEditDraftValue(path, imageId || '');
+  }
+  openAdminUserEditModal(adminUserEditDraft.userId);
+}
+function openAdminUserEditModal(userId){
+  if (!adminUserEditDraft || String(adminUserEditDraft.userId) !== String(userId)) adminUserEditDraft = createAdminUserEditDraft(userId);
+  if (!adminUserEditDraft) return toast('User not found.');
+  const sourceUser = getUserById(userId);
+  if (!sourceUser) return toast('User not found.');
+  const draft = adminUserEditDraft;
+  const services = draft.student ? (draft.student.services || []) : [];
+  const studentProfileImages = draft.student ? (draft.student.profileImages || (draft.photo ? [draft.photo] : [])) : [];
+  openModal(`Edit User: ${sourceUser.name}`, `
+    <div class="field"><label>First Name</label><input id="adminEditUserFirstName" value="${esc(draft.firstName || '')}"></div>
+    <div class="field"><label>Last Name</label><input id="adminEditUserLastName" value="${esc(draft.lastName || '')}"></div>
     <div class="row">
-      <div class="field"><label>Email</label><input id="adminEditUserEmail" type="email" value="${esc(user.email || '')}"></div>
-      <div class="field"><label>Phone</label><input id="adminEditUserPhone" value="${esc(user.phone || '')}"></div>
+      <div class="field"><label>Email</label><input id="adminEditUserEmail" type="email" value="${esc(draft.email || '')}"></div>
+      <div class="field"><label>Phone</label><input id="adminEditUserPhone" value="${esc(draft.phone || '')}"></div>
     </div>
     <div class="row">
       <div class="field"><label>Role</label>
         <select id="adminEditUserRoleValue">
-          <option value="student" ${getAdminRoleValueForUser(user) === 'student' ? 'selected' : ''}>Student</option>
-          <option value="employer" ${getAdminRoleValueForUser(user) === 'employer' ? 'selected' : ''}>Employer</option>
-          <option value="neighbor" ${getAdminRoleValueForUser(user) === 'neighbor' ? 'selected' : ''}>Neighbor</option>
-          <option value="admin" ${getAdminRoleValueForUser(user) === 'admin' ? 'selected' : ''}>Admin</option>
+          <option value="student" ${draft.roleValue === 'student' ? 'selected' : ''}>Student</option>
+          <option value="employer" ${draft.roleValue === 'employer' ? 'selected' : ''}>Employer</option>
+          <option value="neighbor" ${draft.roleValue === 'neighbor' ? 'selected' : ''}>Neighbor</option>
+          <option value="admin" ${draft.roleValue === 'admin' ? 'selected' : ''}>Admin</option>
         </select>
       </div>
       <div class="field"><label>Status</label>
         <select id="adminEditUserStatusValue">
-          <option value="active" ${user.status === 'suspended' ? '' : 'selected'}>Active</option>
-          <option value="suspended" ${user.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+          <option value="active" ${draft.statusValue === 'suspended' ? '' : 'selected'}>Active</option>
+          <option value="suspended" ${draft.statusValue === 'suspended' ? 'selected' : ''}>Suspended</option>
         </select>
       </div>
     </div>
     <div class="row">
-      <div class="field"><label>Public Name</label><input id="adminEditUserPublicName" value="${esc(user.publicName || user.name || '')}"></div>
-      <div class="field"><label>City</label><input id="adminEditUserCity" value="${esc(user.city || '')}"></div>
+      <div class="field"><label>Public Name</label><input id="adminEditUserPublicName" value="${esc(draft.publicName || '')}"></div>
+      <div class="field"><label>City</label><input id="adminEditUserCity" value="${esc(draft.city || '')}"></div>
     </div>
-    <div class="field"><label>Address</label><input id="adminEditUserAddress" value="${esc(user.address || '')}"></div>
-    ${student ? `
+    <div class="field"><label>Address</label><input id="adminEditUserAddress" value="${esc(draft.address || '')}"></div>
+    <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
+      <div style="font-weight:800;margin-bottom:10px">Profile Photo</div>
+      <input type="hidden" id="adminEditUserPhoto" value="${esc(draft.photo || '')}">
+      <div id="admin-edit-user-photo-preview" style="margin-bottom:12px">${renderAdminModalSingleImagePreview(draft.photo || '', 'Profile photo', 'No profile photo selected yet.')}</div>
+      <div class="field"><label>Upload Profile Photo</label><input type="file" accept="image/*" onchange="handleAdminModalSingleImageUpload(this,'adminEditUserPhoto','admin-edit-user-photo-preview','profile','Profile photo','No profile photo selected yet.')"></div>
+      <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('single','photo',1)">Select from Library</button></div>
+    </div>
+    ${draft.student ? `
       <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
         <div style="font-weight:800;margin-bottom:10px">Student Portfolio</div>
         <div class="row">
-          <div class="field"><label>Age</label><input id="adminEditStudentAge" type="number" min="13" value="${esc(student.age || '')}"></div>
-          <div class="field"><label>School</label><input id="adminEditStudentSchool" value="${esc(student.school || '')}"></div>
+          <div class="field"><label>Age</label><input id="adminEditStudentAge" type="number" min="13" value="${esc(draft.student.age || '')}"></div>
+          <div class="field"><label>School</label><input id="adminEditStudentSchool" value="${esc(draft.student.school || '')}"></div>
         </div>
-        <div class="field"><label>About</label><textarea id="adminEditStudentAbout" rows="4">${esc(aboutText)}</textarea></div>
-        <div class="field"><label>Highlights / Experience</label><textarea id="adminEditStudentHighlights" rows="4">${esc(highlightsText)}</textarea></div>
-        <div class="field"><label>Profile Video Link</label><input id="adminEditStudentVideo" value="${esc(student.profileVideoLink || '')}"></div>
+        <div class="field"><label>About</label><textarea id="adminEditStudentAbout" rows="4">${esc(draft.student.about || '')}</textarea></div>
+        <div class="field"><label>Highlights / Experience</label><textarea id="adminEditStudentHighlights" rows="4">${esc(draft.student.highlights || '')}</textarea></div>
+        <input type="hidden" id="adminEditStudentProfileImages" value="${esc(JSON.stringify(studentProfileImages))}">
+        <div style="font-weight:700;margin:14px 0 8px">Profile Images</div>
+        <div id="admin-edit-student-profile-images-preview" style="margin-bottom:12px">${renderSignupImageGallery(studentProfileImages, 120)}</div>
+        <div class="field"><label>Upload Profile Images</label><input type="file" multiple accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditStudentProfileImages','admin-edit-student-profile-images-preview','profile_gallery',3)"></div>
+        <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.profileImages',3)">Select from Library</button></div>
+        <div class="field"><label>Profile Video Link</label><input id="adminEditStudentVideo" value="${esc(draft.student.video_url || '')}"></div>
         <div style="font-weight:700;margin:14px 0 8px">Services</div>
         ${services.length ? services.map((service, index) => `
           <div class="card" style="padding:12px;margin-top:10px;border:1px solid var(--border)">
             <div class="field"><label>Service Title</label><input id="adminEditServiceTitle_${index}" value="${esc(service.title || '')}"></div>
             <div class="field"><label>Description</label><textarea id="adminEditServiceDescription_${index}" rows="3">${esc(service.description || '')}</textarea></div>
+            <input type="hidden" id="adminEditServiceImages_${index}" value="${esc(JSON.stringify(service.images || []))}">
+            <div id="admin-edit-service-images-preview_${index}" style="margin-bottom:12px">${renderSignupImageGallery(service.images || [], 120)}</div>
+            <div class="field"><label>Upload Service Images</label><input type="file" multiple accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditServiceImages_${index}','admin-edit-service-images-preview_${index}','service',3)"></div>
+            <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.services.${index}.images',3)">Select from Library</button></div>
+            <div class="field"><label>Video Link</label><input id="adminEditServiceVideo_${index}" value="${esc(service.video_url || '')}"></div>
             <div class="row">
               <div class="field"><label>Rate</label><input id="adminEditServiceRate_${index}" type="number" min="0" value="${esc(service.rate || 0)}"></div>
               <div class="field"><label>Location</label><input id="adminEditServiceLocation_${index}" value="${esc(service.location || '')}"></div>
@@ -4825,16 +5475,20 @@ function openAdminUserEditModal(userId){
         `).join('') : `<div class="small muted">No services yet.</div>`}
       </div>
     ` : ''}
-    ${user.role === 'employer' ? `
+    ${draft.roleValue === 'employer' ? `
       <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
         <div style="font-weight:800;margin-bottom:10px">Business Details</div>
-        <div class="field"><label>Company / Business Name</label><input id="adminEditBusinessName" value="${esc(user.company || user.businessProfile?.name || '')}"></div>
-        <div class="field"><label>About</label><textarea id="adminEditBusinessAbout" rows="3">${esc(user.businessProfile?.about || user.about || '')}</textarea></div>
+        <div class="field"><label>Company / Business Name</label><input id="adminEditBusinessName" value="${esc(draft.company || '')}"></div>
+        <div class="field"><label>About</label><textarea id="adminEditBusinessAbout" rows="3">${esc(draft.businessAbout || '')}</textarea></div>
+        <input type="hidden" id="adminEditBusinessLogo" value="${esc(draft.businessLogo || '')}">
+        <div id="admin-edit-business-logo-preview" style="margin-bottom:12px">${renderAdminModalSingleImagePreview(draft.businessLogo || '', 'Business logo', 'No business logo selected yet.')}</div>
+        <div class="field"><label>Upload Business Logo</label><input type="file" accept="image/*" onchange="handleAdminModalSingleImageUpload(this,'adminEditBusinessLogo','admin-edit-business-logo-preview','business_logo','Business logo','No business logo selected yet.')"></div>
+        <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('single','businessLogo',1)">Select from Library</button></div>
       </div>
     ` : ''}
     <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
-      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
-      <button class="btn btn-blue" onclick="saveAdminUserEdit('${esc(user.id)}')">Save Changes</button>
+      <button class="btn btn-outline" onclick="adminUserEditDraft=null;closeModal(true)">Cancel</button>
+      <button class="btn btn-blue" onclick="saveAdminUserEdit('${esc(sourceUser.id)}')">Save Changes</button>
     </div>
   `, '860px');
 }
@@ -4842,15 +5496,18 @@ function saveAdminUserEdit(userId){
   const users = getUsers();
   const user = users.find(item => item.id === userId);
   if (!user) return toast('User not found.');
-  const firstName = (document.getElementById('adminEditUserFirstName').value || '').trim();
-  const lastName = (document.getElementById('adminEditUserLastName').value || '').trim();
-  const email = (document.getElementById('adminEditUserEmail').value || '').trim().toLowerCase();
-  const phone = (document.getElementById('adminEditUserPhone').value || '').trim();
-  const publicName = (document.getElementById('adminEditUserPublicName').value || '').trim();
-  const city = (document.getElementById('adminEditUserCity').value || '').trim();
-  const address = (document.getElementById('adminEditUserAddress').value || '').trim();
-  const nextRole = document.getElementById('adminEditUserRoleValue').value || 'student';
-  const nextStatus = document.getElementById('adminEditUserStatusValue').value || 'active';
+  if (!adminUserEditDraft || String(adminUserEditDraft.userId) !== String(userId)) adminUserEditDraft = createAdminUserEditDraft(userId);
+  syncAdminUserEditDraftFromForm();
+  const draft = adminUserEditDraft || createAdminUserEditDraft(userId);
+  const firstName = (draft.firstName || '').trim();
+  const lastName = (draft.lastName || '').trim();
+  const email = (draft.email || '').trim().toLowerCase();
+  const phone = (draft.phone || '').trim();
+  const publicName = (draft.publicName || '').trim();
+  const city = (draft.city || '').trim();
+  const address = (draft.address || '').trim();
+  const nextRole = draft.roleValue || 'student';
+  const nextStatus = draft.statusValue || 'active';
   if (!firstName || !lastName || !email) return toast('First name, last name, and email are required.');
   const duplicate = users.find(item => item.id !== user.id && String(item.email || '').toLowerCase() === email);
   if (duplicate) return toast('That email is already in use.');
@@ -4864,13 +5521,17 @@ function saveAdminUserEdit(userId){
   user.phone = phone;
   user.city = city;
   user.address = address;
+  user.photo = draft.photo || '';
+  user.profile_image_id = user.photo || '';
   user.status = nextStatus;
   applyAdminRoleValue(user, nextRole);
   if (user.role === 'employer') {
-    user.company = (document.getElementById('adminEditBusinessName') || {}).value || user.company || '';
+    user.company = draft.company || user.company || '';
     user.businessProfile = Object.assign({}, user.businessProfile || {}, {
-      name: (document.getElementById('adminEditBusinessName') || {}).value || user.company || '',
-      about: (document.getElementById('adminEditBusinessAbout') || {}).value || user.about || '',
+      name: draft.company || user.company || '',
+      about: draft.businessAbout || user.about || '',
+      logo: draft.businessLogo || '',
+      image_id: draft.businessLogo || '',
       phone,
       address,
       city
@@ -4888,7 +5549,7 @@ function saveAdminUserEdit(userId){
       location: city ? (city.includes(',') ? city : `${city}, CA`) : '',
       photo: user.photo || '',
       profileImages: user.photo ? [user.photo] : [],
-      profileVideoLink: '',
+      video_url: '',
       emoji: user.emoji || '🎓',
       title: 'Student Service',
       tags: [],
@@ -4905,21 +5566,27 @@ function saveAdminUserEdit(userId){
     students.push(student);
   }
   if (student) {
+    let profileImages = draft.student ? [...(draft.student.profileImages || [])] : [];
+    if (!profileImages.length && user.photo) profileImages = [user.photo];
+    else if (user.photo && !profileImages.some(id => String(id) === String(user.photo))) profileImages = addImageIdToList(profileImages, user.photo, 3);
     student.name = user.publicName || user.name;
     student.privateEmail = email;
     student.phone = phone;
     student.location = city ? (city.includes(',') ? city : `${city}, CA`) : student.location;
-    student.school = (document.getElementById('adminEditStudentSchool') || {}).value || student.school || '';
-    student.age = Number((document.getElementById('adminEditStudentAge') || {}).value || student.age || 16);
-    student.about = String((document.getElementById('adminEditStudentAbout') || {}).value || '').split('\n').map(line => line.trim()).filter(Boolean);
-    student.highlights = String((document.getElementById('adminEditStudentHighlights') || {}).value || '').split('\n').map(line => line.trim()).filter(Boolean);
-    student.profileVideoLink = (document.getElementById('adminEditStudentVideo') || {}).value || student.profileVideoLink || '';
-    const services = getRenderableStudentServices(student).map((service, index) => Object.assign({}, service, {
-      title:(document.getElementById(`adminEditServiceTitle_${index}`) || {}).value || service.title || '',
-      description:(document.getElementById(`adminEditServiceDescription_${index}`) || {}).value || service.description || '',
-      rate:Number((document.getElementById(`adminEditServiceRate_${index}`) || {}).value || service.rate || 0),
-      location:(document.getElementById(`adminEditServiceLocation_${index}`) || {}).value || service.location || '',
-      availability:(document.getElementById(`adminEditServiceAvailability_${index}`) || {}).value || service.availability || ''
+    student.school = draft.student?.school || student.school || '';
+    student.age = Number(draft.student?.age || student.age || 16);
+    student.about = String(draft.student?.about || '').split('\n').map(line => line.trim()).filter(Boolean);
+    student.highlights = String(draft.student?.highlights || '').split('\n').map(line => line.trim()).filter(Boolean);
+    student.profileImages = profileImages;
+    student.photo = profileImages[0] || user.photo || '';
+    student.profile_image_id = student.photo || '';
+    student.video_url = draft.student?.video_url || student.video_url || '';
+    user.photo = student.photo || user.photo || '';
+    user.profile_image_id = user.photo || '';
+    const services = (draft.student?.services || getRenderableStudentServices(student)).map(service => Object.assign({}, service, {
+      images:[...(service.images || [])],
+      entity_images:[...(service.images || service.entity_images || [])],
+      video_url:service.video_url || ''
     })).filter(service => service.title || service.description || service.rate || service.location || service.availability);
     student.services = services;
     if (services[0]) {
@@ -4931,6 +5598,7 @@ function saveAdminUserEdit(userId){
   saveUsers(users);
   saveStudents(students);
   if (currentUser.id === user.id) setCurrentUser(user);
+  adminUserEditDraft = null;
   adminPendingUserAction = '';
   closeModal();
   logAdminAction('user_edited', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
@@ -5055,7 +5723,7 @@ function getAdminBlogEditorTitle(){
 }
 function createAdminBlogDraft(postId=''){
   const existing = postId !== '' ? getBlogPosts().find(post => String(post.id) === String(postId)) : null;
-  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', featuredImage:'', images:[], videoLink:'', updatedAt:new Date().toISOString() });
+  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', featuredImage:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
 }
 function syncAdminBlogDraftFromForm(){
   if (!adminBlogDraft) return;
@@ -5070,8 +5738,11 @@ function syncAdminBlogDraftFromForm(){
   if (slugEl) adminBlogDraft.slug = slugEl.value || '';
   if (dateEl && dateEl.value) adminBlogDraft.date = new Date(dateEl.value).toISOString();
   if (excerptEl) adminBlogDraft.excerpt = excerptEl.value || '';
-  if (featuredEl) adminBlogDraft.featuredImage = featuredEl.value || '';
-  if (videoEl) adminBlogDraft.videoLink = videoEl.value || '';
+  if (featuredEl) {
+    adminBlogDraft.featuredImage = featuredEl.value || '';
+    adminBlogDraft.image_id = featuredEl.value || '';
+  }
+  if (videoEl) adminBlogDraft.video_url = videoEl.value || '';
   if (contentEl) adminBlogDraft.content = contentEl.value || '';
 }
 function ensureUniqueBlogSlug(slug, postId=''){
@@ -5088,6 +5759,7 @@ function ensureUniqueBlogSlug(slug, postId=''){
 function renderAdminBlogEditorHtml(){
   const post = adminBlogDraft || createAdminBlogDraft();
   const localDate = post.date ? formatDateTimeLocalInput(post.date) : formatDateTimeLocalInput(new Date().toISOString());
+  const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
   return `
     <div class="row">
       <div class="field"><label>Article Title</label><input id="adminBlogTitle" value="${esc(post.title || '')}" placeholder="Article title"></div>
@@ -5095,16 +5767,18 @@ function renderAdminBlogEditorHtml(){
     </div>
     <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
     <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
-    <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
+    <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
     <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
-    <div id="admin-blog-featured-preview" style="margin-bottom:14px">${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="Featured image" style="width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)">` : `<div class="small muted">No featured image yet.</div>`}</div>
+    <div style="margin:-6px 0 14px">${renderImageLibraryButton('setAdminBlogFeaturedImageFromLibrary')}</div>
+    <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
     <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogFeaturedImage()">Remove Featured Image</button></div>
-    <div class="field"><label>Video Link</label><input id="adminBlogVideoLink" value="${esc(post.videoLink || '')}" placeholder="https://youtube.com/... or direct video URL" oninput="previewAdminBlogVideoLink(this.value)"></div>
+    <div class="field"><label>Video Link</label><input id="adminBlogVideoLink" value="${esc(post.video_url || '')}" placeholder="https://youtube.com/... or direct video URL" oninput="previewAdminBlogVideoLink(this.value)"></div>
     <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
-    <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.videoLink || '', 'Article video')}</div>
+    <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.video_url || '', 'Article video')}</div>
     <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
     <div class="field"><label>Article Images (optional)</label><input type="file" multiple accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
-    <div id="admin-blog-images-preview" style="margin-bottom:14px">${(post.images || []).length ? renderImagePreviewHtml(post.images || [], 120) : `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`}</div>
+    <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
+    <div id="admin-blog-images-preview" style="margin-bottom:14px">${(post.entity_images || []).length ? renderImagePreviewHtml(post.entity_images || [], 120) : `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`}</div>
     <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Clear Article Images</button></div>
     <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
     <div class="small muted" style="margin-bottom:16px">Tip: you can paste structured HTML, or just write normal text and the article page will format it into paragraphs.</div>
@@ -5127,14 +5801,18 @@ function cancelAdminBlogEditor(){
   closeModal();
 }
 function previewAdminBlogFeaturedImage(value){
-  if (adminBlogDraft) adminBlogDraft.featuredImage = value || '';
+  if (adminBlogDraft) {
+    adminBlogDraft.featuredImage = value || '';
+    adminBlogDraft.image_id = value || '';
+  }
   const el = document.getElementById('admin-blog-featured-preview');
   if (!el) return;
-  el.innerHTML = value ? `<img src="${esc(value)}" alt="Featured image" style="width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)">` : `<div class="small muted">No featured image yet.</div>`;
+  el.innerHTML = value ? renderManagedImage(value, 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`;
 }
 function clearAdminBlogFeaturedImage(){
   if (!adminBlogDraft) return;
   adminBlogDraft.featuredImage = '';
+  adminBlogDraft.image_id = '';
   const input = document.getElementById('adminBlogFeaturedImage');
   if (input) input.value = '';
   previewAdminBlogFeaturedImage('');
@@ -5146,14 +5824,22 @@ function handleAdminBlogFeaturedImageUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    adminBlogDraft.featuredImage = reader.result;
+    adminBlogDraft.featuredImage = upsertImageRecord(reader.result, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' });
+    adminBlogDraft.image_id = adminBlogDraft.featuredImage;
     reopenAdminBlogEditor();
   };
   reader.readAsDataURL(file);
 }
+function setAdminBlogFeaturedImageFromLibrary(imageId){
+  if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
+  syncAdminBlogDraftFromForm();
+  adminBlogDraft.featuredImage = imageId;
+  adminBlogDraft.image_id = imageId;
+  reopenAdminBlogEditor();
+}
 function clearAdminBlogVideo(){
   if (!adminBlogDraft) return;
-  adminBlogDraft.videoLink = '';
+  adminBlogDraft.video_url = '';
   const input = document.getElementById('adminBlogVideoLink');
   if (input) input.value = '';
   previewAdminBlogVideoLink('');
@@ -5165,7 +5851,7 @@ function handleAdminBlogVideoUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    adminBlogDraft.videoLink = reader.result;
+    adminBlogDraft.video_url = reader.result;
     reopenAdminBlogEditor();
   };
   reader.readAsDataURL(file);
@@ -5173,6 +5859,7 @@ function handleAdminBlogVideoUpload(input){
 function clearAdminBlogImages(){
   if (!adminBlogDraft) return;
   adminBlogDraft.images = [];
+  adminBlogDraft.entity_images = [];
   const el = document.getElementById('admin-blog-images-preview');
   if (el) el.innerHTML = `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`;
 }
@@ -5181,11 +5868,19 @@ function handleAdminBlogImagesUpload(input){
   syncAdminBlogDraftFromForm();
   readImagesToDataUrls(input, (images) => {
     adminBlogDraft.images = images;
+    adminBlogDraft.entity_images = [...images];
     reopenAdminBlogEditor();
   }, 6);
 }
+function addAdminBlogImageFromLibrary(imageId){
+  if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
+  syncAdminBlogDraftFromForm();
+  adminBlogDraft.images = addImageIdToList(adminBlogDraft.images || [], imageId, 6);
+  adminBlogDraft.entity_images = [...adminBlogDraft.images];
+  reopenAdminBlogEditor();
+}
 function previewAdminBlogVideoLink(value){
-  if (adminBlogDraft) adminBlogDraft.videoLink = value || '';
+  if (adminBlogDraft) adminBlogDraft.video_url = value || '';
   const el = document.getElementById('admin-blog-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Article video');
 }
@@ -5198,6 +5893,11 @@ function persistAdminBlogPost(mode='draft'){
   adminBlogDraft.publishRequested = mode === 'publish';
   adminBlogDraft.status = getBlogPostStatus(adminBlogDraft);
   adminBlogDraft.link = `#/blog/${adminBlogDraft.slug}`;
+  adminBlogDraft.image_id = adminBlogDraft.featuredImage || adminBlogDraft.image_id || '';
+  adminBlogDraft.featuredImage = adminBlogDraft.image_id;
+  adminBlogDraft.entity_images = Array.isArray(adminBlogDraft.images) ? [...adminBlogDraft.images] : [...(adminBlogDraft.entity_images || [])];
+  adminBlogDraft.images = [...adminBlogDraft.entity_images];
+  adminBlogDraft.video_url = adminBlogDraft.video_url || '';
   adminBlogDraft.updatedAt = new Date().toISOString();
   const posts = getBlogPosts();
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
@@ -5277,6 +5977,35 @@ function renderAdminBlogManager(el){
     <div class="card form-card" id="admin-blog-results"></div>
   `;
   renderAdminBlogResults();
+}
+function renderAdminImagesSection(el){
+  const images = getImages().sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  el.innerHTML = `
+    <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
+      <div>
+        <div class="section-title" style="margin:0">Images</div>
+        <div class="small muted">All uploaded and imported images are centralized here for reuse across profiles, services, and blog articles.</div>
+      </div>
+      <div class="small muted">${images.length} image${images.length === 1 ? '' : 's'}</div>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">
+      ${images.length ? images.map(image => {
+        const usage = getImageUsageDetails(image.id);
+        return `
+        <div class="card form-card">
+          <div style="margin-bottom:12px">${renderManagedImage(image.id, image.alt || 'Library image', 'width:100%;height:160px;object-fit:cover;border-radius:14px;border:1px solid var(--border)', 'thumb')}</div>
+          <div class="small muted" style="word-break:break-word;margin-bottom:6px">${esc(image.id)}</div>
+          <div class="small muted" style="word-break:break-word;margin-bottom:12px">${esc(image.url)}</div>
+          ${usage.length ? `<div class="small muted" style="margin-bottom:12px">In use, cannot delete</div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" type="button" onclick="viewImageFromLibrary('${esc(image.id)}')">View</button>
+            <button class="btn btn-outline btn-sm" type="button" onclick="copyImageUrl('${esc(image.id)}')">Copy URL</button>
+            <button class="btn btn-danger btn-sm" type="button" ${usage.length ? 'disabled' : ''} onclick="deleteImageFromLibrary('${esc(image.id)}')">Delete</button>
+          </div>
+        </div>
+      `}).join('') : `<div class="card form-card muted">No images in the library yet.</div>`}
+    </div>
+  `;
 }
 
 // ---------- Settings ----------
