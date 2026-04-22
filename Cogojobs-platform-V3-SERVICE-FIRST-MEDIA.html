@@ -260,6 +260,9 @@ function ls(key, value){
 function uid(prefix='id'){
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 }
+function ensureArray(value){
+  return Array.isArray(value) ? value : [];
+}
 function normalizeUserRecord(user){
   const normalized = Object.assign({}, user || {});
   if (looksLikeImageSource(normalized.photo || '')) normalized.photo = upsertImageRecord(normalized.photo, { source:'profile', entity_type:'user', entity_id: normalized.id || '', owner_id: normalized.id || '' });
@@ -276,7 +279,7 @@ function normalizeUserRecord(user){
   return normalized;
 }
 function getUsers(){
-  const users = ls('cogo_users') || [];
+  const users = ensureArray(ls('cogo_users'));
   let changed = false;
   const normalized = users.map(user => {
     const next = normalizeUserRecord(user);
@@ -286,7 +289,7 @@ function getUsers(){
   if (changed) ls('cogo_users', normalized);
   return normalized;
 }
-function saveUsers(v){ ls('cogo_users', v.map(normalizeUserRecord)); }
+function saveUsers(v){ ls('cogo_users', ensureArray(v).map(normalizeUserRecord)); }
 function looksLikeImageSource(value=''){
   const raw = String(value || '').trim();
   if (!raw) return false;
@@ -321,7 +324,7 @@ function normalizeImageRecord(image){
   return normalized;
 }
 function getImages(){
-  const images = ls('cogo_images') || [];
+  const images = ensureArray(ls('cogo_images'));
   let changed = false;
   const normalized = images.map(image => {
     const next = normalizeImageRecord(image);
@@ -331,7 +334,7 @@ function getImages(){
   if (changed) ls('cogo_images', normalized);
   return normalized;
 }
-function saveImages(images){ ls('cogo_images', images.map(normalizeImageRecord).filter(image => image.url)); }
+function saveImages(images){ ls('cogo_images', ensureArray(images).map(normalizeImageRecord).filter(image => image.url)); }
 function getImageById(imageId=''){
   return getImages().find(image => String(image.id) === String(imageId)) || null;
 }
@@ -429,12 +432,12 @@ function normalizeBlogPostRecord(post){
 }
 function getBlogPosts(){
   const stored = ls('cogo_blog_posts');
-  if (stored && stored.length) return stored.map(normalizeBlogPostRecord);
+  if (Array.isArray(stored) && stored.length) return stored.map(normalizeBlogPostRecord);
   const seeded = BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, { status:'published', publishRequested:true, images:[], video_url:'', updatedAt:post.date })));
   ls('cogo_blog_posts', seeded);
   return seeded;
 }
-function saveBlogPosts(posts){ ls('cogo_blog_posts', posts.map(normalizeBlogPostRecord)); }
+function saveBlogPosts(posts){ ls('cogo_blog_posts', ensureArray(posts).map(normalizeBlogPostRecord)); }
 function getBlogPostStatus(post){
   const publishDate = post && post.date ? new Date(post.date).getTime() : Date.now();
   if (!post || post.publishRequested === false) return 'draft';
@@ -483,7 +486,7 @@ function logAdminAction(action, meta={}){
   saveAdminActionLog(items.slice(0, 50));
 }
 function getStudents(){
-  const students = ls('cogo_students') || [];
+  const students = ensureArray(ls('cogo_students'));
   let changed = false;
   const normalized = students.map(student => {
     const next = normalizeStudentRecord(student);
@@ -493,7 +496,7 @@ function getStudents(){
   if (changed) ls('cogo_students', normalized);
   return normalized;
 }
-function saveStudents(v){ ls('cogo_students', v.map(normalizeStudentRecord)); }
+function saveStudents(v){ ls('cogo_students', ensureArray(v).map(normalizeStudentRecord)); }
 function getPosts(){ return ls('cogo_posts') || []; }
 function savePosts(v){ ls('cogo_posts', v); }
 function getApplications(){ return ls('cogo_applications') || []; }
@@ -523,7 +526,7 @@ function saveTransactions(v){ ls('cogo_transactions', v); }
 
 // ---------- Seed ----------
 function migrateLegacyData(){
-  const users = ls('cogo_users') || [];
+  const users = ensureArray(ls('cogo_users'));
   let usersChanged = false;
   users.forEach(user => {
     if (user.role === 'employer') {
@@ -552,7 +555,7 @@ function migrateLegacyData(){
   });
   if (usersChanged) ls('cogo_users', users);
 
-  const students = ls('cogo_students') || [];
+  const students = ensureArray(ls('cogo_students'));
   let studentsChanged = false;
   students.forEach(student => {
     if (Array.isArray(student.services) && student.services.some(service => typeof service === 'string' || !service || typeof service !== 'object' || (!service.title && !service.description))) {
@@ -572,7 +575,7 @@ function seedData(){
     saveBlogPosts(getBlogPosts());
     return;
   }
-  if (ls('cogo_users') || ls('cogo_students')) {
+  if (ensureArray(ls('cogo_users')).length || ensureArray(ls('cogo_students')).length) {
     migrateLegacyData();
     ls('cogo_seeded_v3', true);
     return;
@@ -2213,14 +2216,35 @@ document.addEventListener('click', (event) => {
 });
 
 // ---------- Pages ----------
+function renderAppErrorState(error, route=''){
+  console.error('CoGo render error', route, error);
+  const app = document.getElementById('app');
+  if (!app) return;
+  app.innerHTML = `
+    <div class="container" style="padding-top:28px;padding-bottom:28px">
+      <div class="card form-card">
+        <div class="section-title">We hit a page error</div>
+        <div class="small muted" style="margin-bottom:14px">The page could not render cleanly. This usually means older local demo data needs to be normalized by the latest build.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-blue" onclick="location.reload()">Reload Page</button>
+          <button class="btn btn-outline" onclick="location.hash='#/';renderPage()">Go Home</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
 function renderPage(){
-  if (!syncCurrentUserRecord()) return;
-  renderNav();
-  const route = getRoute();
-  if (route === '#/community') return renderCommunity();
-  if (route === '#/dashboard') return renderDashboard();
-  if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
-  return renderHome();
+  try {
+    if (!syncCurrentUserRecord()) return;
+    renderNav();
+    const route = getRoute();
+    if (route === '#/community') return renderCommunity();
+    if (route === '#/dashboard') return renderDashboard();
+    if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
+    return renderHome();
+  } catch (error) {
+    renderAppErrorState(error, getRoute());
+  }
 }
 
 function renderHome(){
