@@ -414,6 +414,7 @@ function normalizeBlogPostRecord(post){
     authorName: 'CoGo Team',
     image_id: '',
     featuredImage: '',
+    articleMediaImage: '',
     entity_images: [],
     images: [],
     video_url: '',
@@ -425,6 +426,9 @@ function normalizeBlogPostRecord(post){
   if (!normalized.image_id && normalized.featuredImage) normalized.image_id = normalized.featuredImage;
   normalized.image_id = upsertImageRecord(normalized.image_id, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' });
   normalized.featuredImage = normalized.image_id || '';
+  if (!normalized.articleMediaImage && normalized.article_media) normalized.articleMediaImage = normalized.article_media;
+  if (!normalized.articleMediaImage && Array.isArray(normalized.entity_images) && normalized.entity_images[0]) normalized.articleMediaImage = normalized.entity_images[0];
+  normalized.articleMediaImage = upsertImageRecord(normalized.articleMediaImage, { source:'article_media', entity_type:'article', entity_id: normalized.id || '' });
   const rawImages = Array.isArray(normalized.entity_images) && normalized.entity_images.length ? normalized.entity_images : normalized.images;
   normalized.entity_images = upsertImageRecords(rawImages, { source:'article_gallery', entity_type:'article', entity_id: normalized.id || '' });
   normalized.images = [...normalized.entity_images];
@@ -2360,19 +2364,12 @@ function getBlogPostBySlug(slug=''){
   return getPublicBlogPosts().find(post => post.slug === slug);
 }
 function getBlogThumbnailView(post, variant='thumb'){
-  const sources = [
-    post.image_id,
-    post.featuredImage,
-    ...((Array.isArray(post.entity_images) ? post.entity_images : []).filter(Boolean)),
-    ...((Array.isArray(post.images) ? post.images : []).filter(Boolean))
-  ].filter(Boolean);
+  const sources = [post.image_id, post.featuredImage].filter(Boolean);
   for (const source of sources) {
     const image = getImageView(source, variant);
     if (image && image.url) return image;
   }
-  const video = parseVideoLink(post.video_url || '');
-  const posterUrl = getVideoPosterUrl(video);
-  return posterUrl ? { id:'', url:posterUrl, thumbnail_url:posterUrl, alt:stripHtmlTags(post.title || '') } : null;
+  return null;
 }
 function renderBlogThumbnail(post, variant='card'){
   const image = getBlogThumbnailView(post, variant === 'featured' ? 'full' : 'thumb');
@@ -2445,7 +2442,7 @@ function renderBlogArticle(slug){
     `;
     return;
   }
-  const articleImage = getImageView((post.entity_images || [])[0] || '', 'full') || getImageView(post.image_id || post.featuredImage || '', 'full');
+  const articleImage = getImageView(post.articleMediaImage || (post.entity_images || [])[0] || '', 'full') || getImageView(post.image_id || post.featuredImage || '', 'full');
   const topMediaHtml = post.video_url
     ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
     : articleImage
@@ -2546,9 +2543,9 @@ function parseVideoLink(url=''){
   const path = parsed.pathname || '';
   const embedOrigin = (() => {
     try {
-      return location && location.origin && location.origin !== 'null' ? location.origin : 'https://raw.githack.com';
+      return location && location.origin && /^https?:/i.test(location.origin) ? location.origin : '';
     } catch (error) {
-      return 'https://raw.githack.com';
+      return '';
     }
   })();
   const parseYouTubeStart = () => {
@@ -2565,13 +2562,13 @@ function parseVideoLink(url=''){
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(embedOrigin)}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1${embedOrigin ? `&origin=${encodeURIComponent(embedOrigin)}` : ''}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(embedOrigin)}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1${embedOrigin ? `&origin=${encodeURIComponent(embedOrigin)}` : ''}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
@@ -5881,7 +5878,7 @@ function getAdminBlogEditorTitle(){
 }
 function createAdminBlogDraft(postId=''){
   const existing = postId !== '' ? getBlogPosts().find(post => String(post.id) === String(postId)) : null;
-  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', authorName:'CoGo Team', featuredImage:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
+  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', authorName:'CoGo Team', featuredImage:'', articleMediaImage:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
 }
 function syncAdminBlogDraftFromForm(){
   if (!adminBlogDraft) return;
@@ -5903,10 +5900,7 @@ function syncAdminBlogDraftFromForm(){
     adminBlogDraft.featuredImage = featuredEl.value || '';
     adminBlogDraft.image_id = featuredEl.value || '';
   }
-  if (articleImageEl) {
-    adminBlogDraft.entity_images = articleImageEl.value ? [articleImageEl.value] : [];
-    adminBlogDraft.images = [...adminBlogDraft.entity_images];
-  }
+  if (articleImageEl) adminBlogDraft.articleMediaImage = articleImageEl.value || '';
   if (videoEl) adminBlogDraft.video_url = videoEl.value || '';
   if (contentEl) adminBlogDraft.content = contentEl.value || '';
 }
@@ -5925,7 +5919,7 @@ function renderAdminBlogEditorHtml(){
   const post = adminBlogDraft || createAdminBlogDraft();
   const localDate = post.date ? formatDateTimeLocalInput(post.date) : formatDateTimeLocalInput(new Date().toISOString());
   const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
-  const articleImage = getImageView((post.entity_images || [])[0] || '', 'full');
+  const articleImage = getImageView(post.articleMediaImage || (post.entity_images || [])[0] || '', 'full');
   return `
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Details</div>
@@ -5945,10 +5939,10 @@ function renderAdminBlogEditorHtml(){
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Body</div>
       <div class="small muted" style="margin-bottom:14px">The full article page shows either the article video or the article image at the top. If both exist, video is shown first.</div>
-      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc((post.entity_images || [])[0] || '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
+      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(post.articleMediaImage || (post.entity_images || [])[0] || '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
       <div class="field"><label>Or upload article image</label><input type="file" accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
       <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
-      <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage((post.entity_images || [])[0] || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
+      <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.articleMediaImage || (post.entity_images || [])[0] || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
       <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.video_url || '')}" placeholder="https://youtube.com/... or direct video URL" oninput="previewAdminBlogVideoLink(this.value)"></div>
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
@@ -6034,18 +6028,14 @@ function handleAdminBlogVideoUpload(input){
 }
 function clearAdminBlogImages(){
   if (!adminBlogDraft) return;
-  adminBlogDraft.images = [];
-  adminBlogDraft.entity_images = [];
+  adminBlogDraft.articleMediaImage = '';
   const el = document.getElementById('admin-blog-images-preview');
   const input = document.getElementById('adminBlogArticleImage');
   if (input) input.value = '';
   if (el) el.innerHTML = `<div class="small muted">No article image yet.</div>`;
 }
 function previewAdminBlogArticleImage(value){
-  if (adminBlogDraft) {
-    adminBlogDraft.images = value ? [value] : [];
-    adminBlogDraft.entity_images = [...adminBlogDraft.images];
-  }
+  if (adminBlogDraft) adminBlogDraft.articleMediaImage = value || '';
   const el = document.getElementById('admin-blog-images-preview');
   if (!el) return;
   el.innerHTML = value ? renderManagedImage(value, 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`;
@@ -6054,16 +6044,14 @@ function handleAdminBlogImagesUpload(input){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
   readImagesToDataUrls(input, (images) => {
-    adminBlogDraft.images = images.length ? [images[0]] : [];
-    adminBlogDraft.entity_images = [...adminBlogDraft.images];
+    adminBlogDraft.articleMediaImage = images[0] || '';
     reopenAdminBlogEditor();
   }, 1);
 }
 function addAdminBlogImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
   syncAdminBlogDraftFromForm();
-  adminBlogDraft.images = imageId ? [imageId] : [];
-  adminBlogDraft.entity_images = [...adminBlogDraft.images];
+  adminBlogDraft.articleMediaImage = imageId || '';
   reopenAdminBlogEditor();
 }
 function previewAdminBlogVideoLink(value){
@@ -6082,8 +6070,7 @@ function persistAdminBlogPost(mode='draft'){
   adminBlogDraft.link = `#/blog/${adminBlogDraft.slug}`;
   adminBlogDraft.image_id = adminBlogDraft.featuredImage || adminBlogDraft.image_id || '';
   adminBlogDraft.featuredImage = adminBlogDraft.image_id;
-  adminBlogDraft.entity_images = Array.isArray(adminBlogDraft.images) ? [...adminBlogDraft.images] : [...(adminBlogDraft.entity_images || [])];
-  adminBlogDraft.images = [...adminBlogDraft.entity_images];
+  adminBlogDraft.articleMediaImage = adminBlogDraft.articleMediaImage || '';
   adminBlogDraft.video_url = adminBlogDraft.video_url || '';
   adminBlogDraft.updatedAt = new Date().toISOString();
   const posts = getBlogPosts();
