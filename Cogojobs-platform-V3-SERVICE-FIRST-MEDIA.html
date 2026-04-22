@@ -212,6 +212,8 @@ let settingsTransactionQuery = '';
 let adminUsersQuery = '';
 let adminUsersRoleFilter = 'all';
 let adminUsersStatusFilter = 'all';
+let adminSelectedUserId = '';
+let adminPendingUserAction = '';
 let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
@@ -2889,7 +2891,7 @@ function renderDashboard(){
   document.getElementById('app').innerHTML = `
     <div class="dashboard">
       <div class="sidebar">
-        ${isAdminImpersonating() ? `<div class="card" style="padding:12px;margin-bottom:12px;background:#eff6ff;border:1px solid #bfdbfe"><div class="small muted">Viewing as ${esc(currentUser.name)}</div><button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="stopAdminImpersonation()">Return to Admin</button></div>` : ''}
+        ${isAdminImpersonating() ? `<div class="card" style="padding:12px;margin-bottom:12px;background:#eff6ff;border:1px solid #bfdbfe"><div class="small muted">Viewing as ${esc(currentUser.name)}</div><button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="stopAdminImpersonation()">Return to Admin Dashboard</button></div>` : ''}
         ${currentUser.role === 'admin' ? `
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">🛡️ Admin Panel</a>
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">👥 Users</a>
@@ -4470,85 +4472,326 @@ function toggleAdminUserStatus(userId){
   renderDashboard();
 }
 function deleteAdminUser(userId){
-  const users = getUsers();
-  const user = users.find(item => item.id === userId);
-  if (!user) return toast('User not found.');
-  if (user.id === currentUser.id) return toast('You cannot delete your own admin account.');
-  if (!confirm(`Delete ${user.name}? This removes the user from active platform access.`)) return;
-  user.archived = true;
-  user.status = 'archived';
-  user.archivedAt = new Date().toISOString();
-  saveUsers(users);
-  const students = getStudents();
-  let studentsChanged = false;
-  students.forEach(profile => {
-    if (profile.userId === user.id && profile.status !== 'archived') {
-      profile.status = 'archived';
-      profile.archivedAt = new Date().toISOString();
-      profile.archivedServices = getRenderableStudentServices(profile);
-      studentsChanged = true;
-    }
-  });
-  if (studentsChanged) saveStudents(students);
-  logAdminAction('user_deleted', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
-  toast('User deleted.');
-  renderDashboard();
+  openAdminDeleteUserModal(userId);
+}
+function splitAdminUserName(user){
+  const fullName = String(user?.name || '').trim();
+  const parts = fullName ? fullName.split(/\s+/) : [];
+  return {
+    firstName: (user?.firstName || parts[0] || '').trim(),
+    lastName: (user?.lastName || parts.slice(1).join(' ') || '').trim()
+  };
 }
 function getFilteredAdminUsers(){
   return getUsers()
     .filter(user => !user.archived)
     .filter(user => {
       const roleValue = getAdminRoleValueForUser(user);
-      const statusValue = user.status === 'suspended' ? 'suspended' : 'active';
       const search = adminUsersQuery.trim().toLowerCase();
-      const matchesSearch = !search || [user.name, user.email].join(' ').toLowerCase().includes(search);
+      const haystack = [user.firstName, user.lastName, user.name, user.email].join(' ').toLowerCase();
+      const matchesSearch = !search || haystack.includes(search);
       const matchesRole = adminUsersRoleFilter === 'all' || roleValue === adminUsersRoleFilter;
-      const matchesStatus = adminUsersStatusFilter === 'all' || statusValue === adminUsersStatusFilter;
-      return matchesSearch && matchesRole && matchesStatus;
+      return matchesSearch && matchesRole;
     })
-    .sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+    .sort((a,b) => [a.lastName || '', a.firstName || '', a.name || ''].join(' ').localeCompare([b.lastName || '', b.firstName || '', b.name || ''].join(' ')));
+}
+function getSelectedAdminUser(){
+  return getUserById(adminSelectedUserId);
+}
+function getAdminUserActionOptions(user){
+  if (!user) return [];
+  const options = [
+    { value:'edit', label:'Edit' },
+    { value:'password_reset', label:'Send Password Reset' }
+  ];
+  if (user.id !== currentUser.id) options.push({ value:'toggle_status', label:user.status === 'suspended' ? 'Unsuspend' : 'Suspend' });
+  if (user.id !== currentUser.id) options.push({ value:'delete', label:'Delete' });
+  return options;
+}
+function syncAdminUsersToolbar(){
+  const countEl = document.getElementById('admin-users-count');
+  const results = getFilteredAdminUsers();
+  const selectedUser = getSelectedAdminUser();
+  if (countEl) countEl.textContent = `${results.length}`;
+  const selectedEl = document.getElementById('admin-users-selected-label');
+  if (selectedEl) selectedEl.textContent = selectedUser ? `Selected: ${selectedUser.name}` : 'Select one user to take action.';
+  const actionSelect = document.getElementById('admin-users-action-select');
+  const actionButton = document.getElementById('admin-users-action-button');
+  if (actionSelect) {
+    const options = selectedUser ? getAdminUserActionOptions(selectedUser) : [];
+    actionSelect.innerHTML = `<option value="">Take Action</option>${options.map(option => `<option value="${esc(option.value)}">${esc(option.label)}</option>`).join('')}`;
+    actionSelect.disabled = !selectedUser;
+    if (!options.some(option => option.value === adminPendingUserAction)) adminPendingUserAction = '';
+    actionSelect.value = adminPendingUserAction || '';
+  }
+  if (actionButton) actionButton.disabled = !(selectedUser && adminPendingUserAction);
+}
+function selectAdminUser(userId){
+  adminSelectedUserId = userId || '';
+  adminPendingUserAction = '';
+  renderAdminUsersResults();
+}
+function runAdminUserAction(){
+  const user = getSelectedAdminUser();
+  if (!user) return toast('Select a user first.');
+  if (!adminPendingUserAction) return toast('Choose an action first.');
+  if (adminPendingUserAction === 'edit') return openAdminUserEditModal(user.id);
+  if (adminPendingUserAction === 'password_reset') return sendAdminPasswordReset(user.id);
+  if (adminPendingUserAction === 'toggle_status') return toggleAdminUserStatus(user.id);
+  if (adminPendingUserAction === 'delete') return openAdminDeleteUserModal(user.id);
+}
+function sendAdminPasswordReset(userId){
+  const user = getUserById(userId);
+  if (!user) return toast('User not found.');
+  logAdminAction('password_reset_sent', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  adminPendingUserAction = '';
+  syncAdminUsersToolbar();
+  toast(`Password reset email queued for ${user.email || user.name} (mock).`);
+}
+function openAdminDeleteUserModal(userId){
+  const user = getUserById(userId);
+  if (!user) return toast('User not found.');
+  if (user.id === currentUser.id) return toast('You cannot delete your own admin account.');
+  openModal('Delete User', `
+    <div class="warning" style="margin-bottom:14px">Are you sure you want to permanently delete this user?</div>
+    <div class="small muted" style="margin-bottom:18px">This action is irreversible and removes the user account from the database.</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+      <button class="btn btn-danger" onclick="permanentlyDeleteAdminUser('${esc(user.id)}')">Yes, Delete User</button>
+    </div>
+  `, '560px');
+}
+function permanentlyDeleteAdminUser(userId){
+  const users = getUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) return toast('User not found.');
+  if (user.id === currentUser.id) return toast('You cannot delete your own admin account.');
+  const relatedPostIds = getPosts().filter(post => post.authorId === user.id).map(post => post.id);
+  saveUsers(users.filter(item => item.id !== userId));
+  saveStudents(getStudents().filter(profile => profile.userId !== userId));
+  savePosts(getPosts().filter(post => post.authorId !== userId).map(post => Object.assign({}, post, { likes:(post.likes || []).filter(id => id !== userId) })));
+  saveApplications(getApplications().filter(application => application.studentUserId !== userId && application.employerId !== userId && !relatedPostIds.includes(application.postId)));
+  saveProjects(getProjects().filter(project => project.studentUserId !== userId && project.employerId !== userId));
+  saveMessages(getMessages().filter(message => message.fromId !== userId && message.toId !== userId));
+  saveTransactions(getTransactions().filter(tx => tx.student_id !== userId && tx.employer_id !== userId));
+  saveNotifications(userId, []);
+  adminSelectedUserId = '';
+  adminPendingUserAction = '';
+  closeModal();
+  logAdminAction('user_deleted', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast('User permanently deleted.');
+  renderDashboard();
+}
+function openAdminUserEditModal(userId){
+  const user = getUserById(userId);
+  if (!user) return toast('User not found.');
+  const student = getStudentByUserId(user.id);
+  const nameParts = splitAdminUserName(user);
+  const services = student ? getRenderableStudentServices(student) : [];
+  const aboutText = student ? (student.about || []).join('\n') : (user.about || '');
+  const highlightsText = student ? (student.highlights || []).join('\n') : '';
+  openModal(`Edit User: ${user.name}`, `
+    <div class="field"><label>First Name</label><input id="adminEditUserFirstName" value="${esc(nameParts.firstName)}"></div>
+    <div class="field"><label>Last Name</label><input id="adminEditUserLastName" value="${esc(nameParts.lastName)}"></div>
+    <div class="row">
+      <div class="field"><label>Email</label><input id="adminEditUserEmail" type="email" value="${esc(user.email || '')}"></div>
+      <div class="field"><label>Phone</label><input id="adminEditUserPhone" value="${esc(user.phone || '')}"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Role</label>
+        <select id="adminEditUserRoleValue">
+          <option value="student" ${getAdminRoleValueForUser(user) === 'student' ? 'selected' : ''}>Student</option>
+          <option value="employer" ${getAdminRoleValueForUser(user) === 'employer' ? 'selected' : ''}>Employer</option>
+          <option value="neighbor" ${getAdminRoleValueForUser(user) === 'neighbor' ? 'selected' : ''}>Neighbor</option>
+          <option value="admin" ${getAdminRoleValueForUser(user) === 'admin' ? 'selected' : ''}>Admin</option>
+        </select>
+      </div>
+      <div class="field"><label>Status</label>
+        <select id="adminEditUserStatusValue">
+          <option value="active" ${user.status === 'suspended' ? '' : 'selected'}>Active</option>
+          <option value="suspended" ${user.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Public Name</label><input id="adminEditUserPublicName" value="${esc(user.publicName || user.name || '')}"></div>
+      <div class="field"><label>City</label><input id="adminEditUserCity" value="${esc(user.city || '')}"></div>
+    </div>
+    <div class="field"><label>Address</label><input id="adminEditUserAddress" value="${esc(user.address || '')}"></div>
+    ${student ? `
+      <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
+        <div style="font-weight:800;margin-bottom:10px">Student Portfolio</div>
+        <div class="row">
+          <div class="field"><label>Age</label><input id="adminEditStudentAge" type="number" min="13" value="${esc(student.age || '')}"></div>
+          <div class="field"><label>School</label><input id="adminEditStudentSchool" value="${esc(student.school || '')}"></div>
+        </div>
+        <div class="field"><label>About</label><textarea id="adminEditStudentAbout" rows="4">${esc(aboutText)}</textarea></div>
+        <div class="field"><label>Highlights / Experience</label><textarea id="adminEditStudentHighlights" rows="4">${esc(highlightsText)}</textarea></div>
+        <div class="field"><label>Profile Video Link</label><input id="adminEditStudentVideo" value="${esc(student.profileVideoLink || '')}"></div>
+        <div style="font-weight:700;margin:14px 0 8px">Services</div>
+        ${services.length ? services.map((service, index) => `
+          <div class="card" style="padding:12px;margin-top:10px;border:1px solid var(--border)">
+            <div class="field"><label>Service Title</label><input id="adminEditServiceTitle_${index}" value="${esc(service.title || '')}"></div>
+            <div class="field"><label>Description</label><textarea id="adminEditServiceDescription_${index}" rows="3">${esc(service.description || '')}</textarea></div>
+            <div class="row">
+              <div class="field"><label>Rate</label><input id="adminEditServiceRate_${index}" type="number" min="0" value="${esc(service.rate || 0)}"></div>
+              <div class="field"><label>Location</label><input id="adminEditServiceLocation_${index}" value="${esc(service.location || '')}"></div>
+            </div>
+            <div class="field"><label>Availability</label><input id="adminEditServiceAvailability_${index}" value="${esc(service.availability || '')}"></div>
+          </div>
+        `).join('') : `<div class="small muted">No services yet.</div>`}
+      </div>
+    ` : ''}
+    ${user.role === 'employer' ? `
+      <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
+        <div style="font-weight:800;margin-bottom:10px">Business Details</div>
+        <div class="field"><label>Company / Business Name</label><input id="adminEditBusinessName" value="${esc(user.company || user.businessProfile?.name || '')}"></div>
+        <div class="field"><label>About</label><textarea id="adminEditBusinessAbout" rows="3">${esc(user.businessProfile?.about || user.about || '')}</textarea></div>
+      </div>
+    ` : ''}
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+      <button class="btn btn-blue" onclick="saveAdminUserEdit('${esc(user.id)}')">Save Changes</button>
+    </div>
+  `, '860px');
+}
+function saveAdminUserEdit(userId){
+  const users = getUsers();
+  const user = users.find(item => item.id === userId);
+  if (!user) return toast('User not found.');
+  const firstName = (document.getElementById('adminEditUserFirstName').value || '').trim();
+  const lastName = (document.getElementById('adminEditUserLastName').value || '').trim();
+  const email = (document.getElementById('adminEditUserEmail').value || '').trim().toLowerCase();
+  const phone = (document.getElementById('adminEditUserPhone').value || '').trim();
+  const publicName = (document.getElementById('adminEditUserPublicName').value || '').trim();
+  const city = (document.getElementById('adminEditUserCity').value || '').trim();
+  const address = (document.getElementById('adminEditUserAddress').value || '').trim();
+  const nextRole = document.getElementById('adminEditUserRoleValue').value || 'student';
+  const nextStatus = document.getElementById('adminEditUserStatusValue').value || 'active';
+  if (!firstName || !lastName || !email) return toast('First name, last name, and email are required.');
+  const duplicate = users.find(item => item.id !== user.id && String(item.email || '').toLowerCase() === email);
+  if (duplicate) return toast('That email is already in use.');
+  if (user.id === currentUser.id && nextRole !== 'admin') return toast('You cannot remove your own admin role.');
+  if (user.id === currentUser.id && nextStatus === 'suspended') return toast('You cannot suspend your own admin account.');
+  user.firstName = firstName;
+  user.lastName = lastName;
+  user.name = [firstName, lastName].filter(Boolean).join(' ').trim();
+  user.publicName = publicName || user.name;
+  user.email = email;
+  user.phone = phone;
+  user.city = city;
+  user.address = address;
+  user.status = nextStatus;
+  applyAdminRoleValue(user, nextRole);
+  if (user.role === 'employer') {
+    user.company = (document.getElementById('adminEditBusinessName') || {}).value || user.company || '';
+    user.businessProfile = Object.assign({}, user.businessProfile || {}, {
+      name: (document.getElementById('adminEditBusinessName') || {}).value || user.company || '',
+      about: (document.getElementById('adminEditBusinessAbout') || {}).value || user.about || '',
+      phone,
+      address,
+      city
+    });
+  }
+  const students = getStudents();
+  let student = students.find(profile => profile.userId === user.id);
+  if (!student && nextRole === 'student') {
+    student = {
+      id: uid('student'),
+      userId: user.id,
+      name: user.publicName || user.name,
+      school: '',
+      age: 16,
+      location: city ? (city.includes(',') ? city : `${city}, CA`) : '',
+      photo: user.photo || '',
+      profileImages: user.photo ? [user.photo] : [],
+      profileVideoLink: '',
+      emoji: user.emoji || '🎓',
+      title: 'Student Service',
+      tags: [],
+      services: [],
+      about: [],
+      whyHire: ['Friendly','Reliable','Motivated'],
+      highlights: [],
+      rate: 20,
+      reviews: [],
+      balance: 0,
+      availability: '',
+      status: 'active'
+    };
+    students.push(student);
+  }
+  if (student) {
+    student.name = user.publicName || user.name;
+    student.privateEmail = email;
+    student.phone = phone;
+    student.location = city ? (city.includes(',') ? city : `${city}, CA`) : student.location;
+    student.school = (document.getElementById('adminEditStudentSchool') || {}).value || student.school || '';
+    student.age = Number((document.getElementById('adminEditStudentAge') || {}).value || student.age || 16);
+    student.about = String((document.getElementById('adminEditStudentAbout') || {}).value || '').split('\n').map(line => line.trim()).filter(Boolean);
+    student.highlights = String((document.getElementById('adminEditStudentHighlights') || {}).value || '').split('\n').map(line => line.trim()).filter(Boolean);
+    student.profileVideoLink = (document.getElementById('adminEditStudentVideo') || {}).value || student.profileVideoLink || '';
+    const services = getRenderableStudentServices(student).map((service, index) => Object.assign({}, service, {
+      title:(document.getElementById(`adminEditServiceTitle_${index}`) || {}).value || service.title || '',
+      description:(document.getElementById(`adminEditServiceDescription_${index}`) || {}).value || service.description || '',
+      rate:Number((document.getElementById(`adminEditServiceRate_${index}`) || {}).value || service.rate || 0),
+      location:(document.getElementById(`adminEditServiceLocation_${index}`) || {}).value || service.location || '',
+      availability:(document.getElementById(`adminEditServiceAvailability_${index}`) || {}).value || service.availability || ''
+    })).filter(service => service.title || service.description || service.rate || service.location || service.availability);
+    student.services = services;
+    if (services[0]) {
+      student.title = services[0].title || student.title;
+      student.rate = Number(services[0].rate || student.rate || 20);
+      student.availability = services[0].availability || student.availability || '';
+    }
+  }
+  saveUsers(users);
+  saveStudents(students);
+  if (currentUser.id === user.id) setCurrentUser(user);
+  adminPendingUserAction = '';
+  closeModal();
+  logAdminAction('user_edited', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast('User updated.');
+  renderDashboard();
 }
 function renderAdminUsersResults(){
   const wrap = document.getElementById('admin-users-results');
   if (!wrap) return;
   const users = getFilteredAdminUsers();
+  if (adminSelectedUserId && !users.some(user => user.id === adminSelectedUserId)) {
+    adminSelectedUserId = '';
+    adminPendingUserAction = '';
+  }
   wrap.innerHTML = users.length ? `
     <div style="overflow:auto">
       <table style="width:100%;border-collapse:collapse;font-size:.92rem">
         <thead>
           <tr style="background:#f8fafc;text-align:left">
-            <th style="padding:12px;border-bottom:1px solid var(--border)">Name</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border);width:54px">Select</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">First Name</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Last Name</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Email</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Phone</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Role</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Status</th>
-            <th style="padding:12px;border-bottom:1px solid var(--border)">Date Joined</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Last Login</th>
-            <th style="padding:12px;border-bottom:1px solid var(--border)">Jobs/Projects Count</th>
-            <th style="padding:12px;border-bottom:1px solid var(--border)">Actions</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Login as User</th>
           </tr>
         </thead>
         <tbody>
           ${users.map(user => {
-            const counts = getUserJobsProjectsSummary(user);
-            const isSelfAdmin = user.id === currentUser.id;
+            const nameParts = splitAdminUserName(user);
             return `
-              <tr>
-                <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(user.name || 'User')}</td>
+              <tr onclick="selectAdminUser('${esc(user.id)}')" style="cursor:pointer;background:${adminSelectedUserId === user.id ? '#eff6ff' : 'transparent'}">
+                <td style="padding:12px;border-bottom:1px solid var(--border)"><input type="radio" name="adminUserSelection" ${adminSelectedUserId === user.id ? 'checked' : ''} onclick="event.stopPropagation();selectAdminUser('${esc(user.id)}')"></td>
+                <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(nameParts.firstName || '—')}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(nameParts.lastName || '—')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '—')}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.phone || '—')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(getUserRoleLabel(user))}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${roleStatusPill(user.status)}</td>
-                <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.createdAt)}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.lastLogin, true)}</td>
-                <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(counts.label)}</td>
-                <td style="padding:12px;border-bottom:1px solid var(--border)">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button class="btn btn-outline btn-sm" onclick="openAdminMessageModal('${esc(user.id)}')">Message</button>
-                    <button class="btn btn-outline btn-sm" onclick="startAdminImpersonation('${esc(user.id)}')">Login as User</button>
-                    <button class="btn btn-outline btn-sm" onclick="openAdminRoleModal('${esc(user.id)}')">Edit Role</button>
-                    <button class="btn btn-outline btn-sm" onclick="toggleAdminUserStatus('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>${user.status === 'suspended' ? 'Enable' : 'Disable'}</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${esc(user.id)}')" ${isSelfAdmin ? 'disabled' : ''}>Delete</button>
-                  </div>
-                </td>
+                <td style="padding:12px;border-bottom:1px solid var(--border)"><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();startAdminImpersonation('${esc(user.id)}')">Login as User</button></td>
               </tr>
             `;
           }).join('')}
@@ -4556,26 +4799,24 @@ function renderAdminUsersResults(){
       </table>
     </div>
   ` : `<div class="muted">No users match these filters.</div>`;
+  syncAdminUsersToolbar();
 }
 function renderAdminUsersSection(el){
-  const allUsers = getUsers().filter(user => !user.archived);
-  const activeCount = allUsers.filter(user => user.status !== 'suspended').length;
-  const suspendedCount = allUsers.filter(user => user.status === 'suspended').length;
   const logs = getAdminActionLog();
+  const totalDatabaseUsers = getUsers().filter(user => !user.archived).length;
   el.innerHTML = `
     <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
       <div>
         <div class="section-title" style="margin:0">Users</div>
-        <div class="small muted">Manage all platform users, roles, status, and direct admin actions.</div>
+        <div class="small muted">View all users, search and filter them, select one, then take action.</div>
       </div>
       <button class="btn btn-blue" onclick="openCreateAdminUserModal()">Create New User</button>
     </div>
-    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
-      <div class="card form-card"><div class="small muted">Total Users</div><div style="font-size:1.5rem;font-weight:800">${allUsers.length}</div></div>
-      <div class="card form-card"><div class="small muted">Active</div><div style="font-size:1.5rem;font-weight:800">${activeCount}</div></div>
-      <div class="card form-card"><div class="small muted">Suspended</div><div style="font-size:1.5rem;font-weight:800">${suspendedCount}</div></div>
-    </div>
     <div class="card form-card" style="margin-bottom:18px">
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Users in Current View</div><div id="admin-users-count" style="font-size:1.5rem;font-weight:800">0</div></div>
+        <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Users in Database</div><div style="font-size:1.5rem;font-weight:800">${totalDatabaseUsers}</div></div>
+      </div>
       <div class="row" style="align-items:end">
         <div class="field"><label>Search</label><input value="${esc(adminUsersQuery)}" placeholder="Search by name or email" oninput="adminUsersQuery=this.value;renderAdminUsersResults()"></div>
         <div class="field"><label>Role</label>
@@ -4587,12 +4828,19 @@ function renderAdminUsersSection(el){
             <option value="admin" ${adminUsersRoleFilter === 'admin' ? 'selected' : ''}>Admin</option>
           </select>
         </div>
-        <div class="field"><label>Status</label>
-          <select onchange="adminUsersStatusFilter=this.value;renderAdminUsersResults()">
-            <option value="all" ${adminUsersStatusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
-            <option value="active" ${adminUsersStatusFilter === 'active' ? 'selected' : ''}>Active</option>
-            <option value="suspended" ${adminUsersStatusFilter === 'suspended' ? 'selected' : ''}>Suspended</option>
+      </div>
+    </div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div class="split" style="align-items:end;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:800">Take Action</div>
+          <div class="small muted" id="admin-users-selected-label">Select one user to take action.</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+          <select id="admin-users-action-select" onchange="adminPendingUserAction=this.value;syncAdminUsersToolbar()" disabled style="min-width:220px">
+            <option value="">Take Action</option>
           </select>
+          <button class="btn btn-blue" id="admin-users-action-button" onclick="runAdminUserAction()" disabled>Apply Action</button>
         </div>
       </div>
     </div>
