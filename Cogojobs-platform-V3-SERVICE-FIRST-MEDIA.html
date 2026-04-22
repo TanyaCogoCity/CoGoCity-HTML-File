@@ -411,6 +411,7 @@ function normalizeBlogPostRecord(post){
     title: '',
     excerpt: '',
     content: '',
+    authorName: 'CoGo Team',
     image_id: '',
     featuredImage: '',
     entity_images: [],
@@ -2444,21 +2445,20 @@ function renderBlogArticle(slug){
     `;
     return;
   }
-  const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
+  const articleImage = getImageView((post.entity_images || [])[0] || '', 'full') || getImageView(post.image_id || post.featuredImage || '', 'full');
   const topMediaHtml = post.video_url
     ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
-    : featuredImage
-      ? `<img src="${esc(featuredImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
+    : articleImage
+      ? `<img src="${esc(articleImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
       : '';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
       <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog';renderPage()">Back to Blog</button>
       <div class="card form-card" style="margin-top:16px;padding:24px">
-        <div class="small muted" style="margin-bottom:10px">${esc(formatBlogDate(post.date))}</div>
+        <div class="small muted" style="margin-bottom:10px">${esc(formatBlogDate(post.date))}${post.authorName ? ` · By ${esc(post.authorName)}` : ''}</div>
         <h1 style="margin:0 0 18px;font-size:2rem;line-height:1.2">${esc(stripHtmlTags(post.title))}</h1>
         ${topMediaHtml}
-        ${(post.entity_images || []).length ? `<div style="margin-bottom:22px">${renderMediaCarousel(post.entity_images, 420)}</div>` : ''}
         <div class="blog-article-content" style="line-height:1.75;font-size:1rem">${formatArticleBodyHtml(post.content || '')}</div>
       </div>
     </div>
@@ -2544,6 +2544,13 @@ function parseVideoLink(url=''){
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
+  const embedOrigin = (() => {
+    try {
+      return location && location.origin && location.origin !== 'null' ? location.origin : 'https://raw.githack.com';
+    } catch (error) {
+      return 'https://raw.githack.com';
+    }
+  })();
   const parseYouTubeStart = () => {
     const raw = parsed.searchParams.get('t') || parsed.searchParams.get('start') || '';
     if (!raw) return 0;
@@ -2558,13 +2565,13 @@ function parseVideoLink(url=''){
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(embedOrigin)}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(embedOrigin)}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
@@ -5874,7 +5881,7 @@ function getAdminBlogEditorTitle(){
 }
 function createAdminBlogDraft(postId=''){
   const existing = postId !== '' ? getBlogPosts().find(post => String(post.id) === String(postId)) : null;
-  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', featuredImage:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
+  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', authorName:'CoGo Team', featuredImage:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
 }
 function syncAdminBlogDraftFromForm(){
   if (!adminBlogDraft) return;
@@ -5882,16 +5889,23 @@ function syncAdminBlogDraftFromForm(){
   const slugEl = document.getElementById('adminBlogSlug');
   const dateEl = document.getElementById('adminBlogDate');
   const excerptEl = document.getElementById('adminBlogExcerpt');
+  const authorEl = document.getElementById('adminBlogAuthor');
   const featuredEl = document.getElementById('adminBlogFeaturedImage');
+  const articleImageEl = document.getElementById('adminBlogArticleImage');
   const videoEl = document.getElementById('adminBlogVideoLink');
   const contentEl = document.getElementById('adminBlogContent');
   if (titleEl) adminBlogDraft.title = titleEl.value || '';
   if (slugEl) adminBlogDraft.slug = slugEl.value || '';
   if (dateEl && dateEl.value) adminBlogDraft.date = new Date(dateEl.value).toISOString();
   if (excerptEl) adminBlogDraft.excerpt = excerptEl.value || '';
+  if (authorEl) adminBlogDraft.authorName = authorEl.value || 'CoGo Team';
   if (featuredEl) {
     adminBlogDraft.featuredImage = featuredEl.value || '';
     adminBlogDraft.image_id = featuredEl.value || '';
+  }
+  if (articleImageEl) {
+    adminBlogDraft.entity_images = articleImageEl.value ? [articleImageEl.value] : [];
+    adminBlogDraft.images = [...adminBlogDraft.entity_images];
   }
   if (videoEl) adminBlogDraft.video_url = videoEl.value || '';
   if (contentEl) adminBlogDraft.content = contentEl.value || '';
@@ -5911,29 +5925,39 @@ function renderAdminBlogEditorHtml(){
   const post = adminBlogDraft || createAdminBlogDraft();
   const localDate = post.date ? formatDateTimeLocalInput(post.date) : formatDateTimeLocalInput(new Date().toISOString());
   const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
+  const articleImage = getImageView((post.entity_images || [])[0] || '', 'full');
   return `
-    <div class="row">
-      <div class="field"><label>Article Title</label><input id="adminBlogTitle" value="${esc(post.title || '')}" placeholder="Article title"></div>
-      <div class="field"><label>Slug</label><input id="adminBlogSlug" value="${esc(post.slug || '')}" placeholder="article-slug"></div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:12px">Article Details</div>
+      <div class="row">
+        <div class="field"><label>Title</label><input id="adminBlogTitle" value="${esc(post.title || '')}" placeholder="Article title"></div>
+        <div class="field"><label>Slug</label><input id="adminBlogSlug" value="${esc(post.slug || '')}" placeholder="article-slug"></div>
+      </div>
+      <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
+      <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
+      <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
+      <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
+      <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
+      <div style="margin:-6px 0 14px">${renderImageLibraryButton('setAdminBlogFeaturedImageFromLibrary')}</div>
+      <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
+      <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogFeaturedImage()">Remove Featured Image</button></div>
     </div>
-    <div class="small muted" style="margin-bottom:14px">Featured image is used for blog thumbnails. If a video is added, the full article page will show the video at the top instead of the image.</div>
-    <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
-    <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
-    <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
-    <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
-    <div style="margin:-6px 0 14px">${renderImageLibraryButton('setAdminBlogFeaturedImageFromLibrary')}</div>
-    <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
-    <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogFeaturedImage()">Remove Featured Image</button></div>
-    <div class="field"><label>Video Link</label><input id="adminBlogVideoLink" value="${esc(post.video_url || '')}" placeholder="https://youtube.com/... or direct video URL" oninput="previewAdminBlogVideoLink(this.value)"></div>
-    <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
-    <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.video_url || '', 'Article video')}</div>
-    <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
-    <div class="field"><label>Article Images (optional)</label><input type="file" multiple accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
-    <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
-    <div id="admin-blog-images-preview" style="margin-bottom:14px">${(post.entity_images || []).length ? renderImagePreviewHtml(post.entity_images || [], 120) : `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`}</div>
-    <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Clear Article Images</button></div>
-    <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
-    <div class="small muted" style="margin-bottom:16px">Tip: you can paste structured HTML, or just write normal text and the article page will format it into paragraphs.</div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:12px">Article Body</div>
+      <div class="small muted" style="margin-bottom:14px">The full article page shows either the article video or the article image at the top. If both exist, video is shown first.</div>
+      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc((post.entity_images || [])[0] || '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
+      <div class="field"><label>Or upload article image</label><input type="file" accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
+      <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
+      <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage((post.entity_images || [])[0] || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
+      <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
+      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.video_url || '')}" placeholder="https://youtube.com/... or direct video URL" oninput="previewAdminBlogVideoLink(this.value)"></div>
+      <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
+      <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.video_url || '', 'Article video')}</div>
+      <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
+      <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
+      <div class="field"><label>Article Author</label><input id="adminBlogAuthor" value="${esc(post.authorName || 'CoGo Team')}" placeholder="CoGo Team"></div>
+      <div class="small muted" style="margin-bottom:0">Tip: you can paste structured HTML, or just write normal text and the article page will format it into paragraphs.</div>
+    </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn btn-outline" type="button" onclick="cancelAdminBlogEditor()">Cancel</button>
       <button class="btn btn-outline" type="button" onclick="saveAdminBlogPost()">Save Article</button>
@@ -6013,21 +6037,32 @@ function clearAdminBlogImages(){
   adminBlogDraft.images = [];
   adminBlogDraft.entity_images = [];
   const el = document.getElementById('admin-blog-images-preview');
-  if (el) el.innerHTML = `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`;
+  const input = document.getElementById('adminBlogArticleImage');
+  if (input) input.value = '';
+  if (el) el.innerHTML = `<div class="small muted">No article image yet.</div>`;
+}
+function previewAdminBlogArticleImage(value){
+  if (adminBlogDraft) {
+    adminBlogDraft.images = value ? [value] : [];
+    adminBlogDraft.entity_images = [...adminBlogDraft.images];
+  }
+  const el = document.getElementById('admin-blog-images-preview');
+  if (!el) return;
+  el.innerHTML = value ? renderManagedImage(value, 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`;
 }
 function handleAdminBlogImagesUpload(input){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
   readImagesToDataUrls(input, (images) => {
-    adminBlogDraft.images = images;
-    adminBlogDraft.entity_images = [...images];
+    adminBlogDraft.images = images.length ? [images[0]] : [];
+    adminBlogDraft.entity_images = [...adminBlogDraft.images];
     reopenAdminBlogEditor();
-  }, 6);
+  }, 1);
 }
 function addAdminBlogImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
   syncAdminBlogDraftFromForm();
-  adminBlogDraft.images = addImageIdToList(adminBlogDraft.images || [], imageId, 6);
+  adminBlogDraft.images = imageId ? [imageId] : [];
   adminBlogDraft.entity_images = [...adminBlogDraft.images];
   reopenAdminBlogEditor();
 }
