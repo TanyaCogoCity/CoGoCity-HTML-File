@@ -2419,6 +2419,11 @@ function renderBlogArticle(slug){
     return;
   }
   const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
+  const topMediaHtml = post.video_url
+    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video')}</div>`
+    : featuredImage
+      ? `<img src="${esc(featuredImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
+      : '';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -2426,8 +2431,7 @@ function renderBlogArticle(slug){
       <div class="card form-card" style="margin-top:16px;padding:24px">
         <div class="small muted" style="margin-bottom:10px">${esc(formatBlogDate(post.date))}</div>
         <h1 style="margin:0 0 18px;font-size:2rem;line-height:1.2">${esc(stripHtmlTags(post.title))}</h1>
-        ${featuredImage ? `<img src="${esc(featuredImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">` : ''}
-        ${post.video_url ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video')}</div>` : ''}
+        ${topMediaHtml}
         ${(post.entity_images || []).length ? `<div style="margin-bottom:22px">${renderMediaCarousel(post.entity_images, 420)}</div>` : ''}
         <div class="blog-article-content" style="line-height:1.75;font-size:1rem">${formatArticleBodyHtml(post.content || '')}</div>
       </div>
@@ -2537,6 +2541,27 @@ function parseVideoLink(url=''){
   }
   return { type:'link', url:clean, label:clean };
 }
+function getVideoPosterUrl(video){
+  if (!video) return '';
+  if (video.type === 'youtube' && video.videoId) return `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
+  return '';
+}
+function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false){
+  const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
+  return `
+    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
+      <iframe src="${esc(src)}" title="${esc(label)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+    </div>
+  `;
+}
+function playEmbeddedVideo(containerId='', encodedUrl='', encodedLabel=''){
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  const embedUrl = decodeURIComponent(encodedUrl || '');
+  const label = decodeURIComponent(encodedLabel || 'Video preview');
+  if (!embedUrl) return;
+  wrap.innerHTML = renderEmbeddedVideoFrame(embedUrl, label, true);
+}
 function renderVideoPreviewHtml(url='', label='Video preview'){
   if (!url) return `<div class="small muted">No video link added yet.</div>`;
   const video = parseVideoLink(url);
@@ -2545,12 +2570,23 @@ function renderVideoPreviewHtml(url='', label='Video preview'){
     return `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><video controls playsinline preload="metadata" style="width:100%;max-width:420px;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
   }
   if (video.embedUrl) {
+    const posterUrl = getVideoPosterUrl(video);
+    const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    if (posterUrl) {
+      return `
+        <div style="max-width:420px">
+          <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
+          <div id="${containerId}" style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
+            <img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+            <button class="btn btn-blue btn-sm" type="button" onclick="playEmbeddedVideo('${esc(containerId)}','${esc(encodeURIComponent(video.embedUrl))}','${esc(encodeURIComponent(label))}')" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 10px 30px rgba(0,0,0,.25)">▶ Play Video</button>
+          </div>
+        </div>
+      `;
+    }
     return `
       <div style="max-width:420px">
         <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
-        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
-          <iframe src="${esc(video.embedUrl)}" title="${esc(label)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
-        </div>
+        ${renderEmbeddedVideoFrame(video.embedUrl, label)}
       </div>
     `;
   }
@@ -5840,6 +5876,7 @@ function renderAdminBlogEditorHtml(){
       <div class="field"><label>Article Title</label><input id="adminBlogTitle" value="${esc(post.title || '')}" placeholder="Article title"></div>
       <div class="field"><label>Slug</label><input id="adminBlogSlug" value="${esc(post.slug || '')}" placeholder="article-slug"></div>
     </div>
+    <div class="small muted" style="margin-bottom:14px">Featured image is used for blog thumbnails. If a video is added, the full article page will show the video at the top instead of the image.</div>
     <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
     <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
     <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
@@ -6298,10 +6335,27 @@ function deleteCurrentProfile(){
   toast('Profile deleted from public view.');
 }
 
+function initializePrototype(){
+  try {
+    seedData();
+    loadCurrentUser();
+    renderPage();
+  } catch (error) {
+    console.error('CoGo init error', error);
+    try {
+      clearPrototypeDataStores();
+      resetPrototypeRuntimeState();
+      seedData();
+      loadCurrentUser();
+      renderPage();
+    } catch (recoveryError) {
+      renderAppErrorState(recoveryError, location.hash || '#/');
+    }
+  }
+}
+
 // ---------- Init ----------
-seedData();
-loadCurrentUser();
-renderPage();
+initializePrototype();
 </script>
 </body>
 </html>
