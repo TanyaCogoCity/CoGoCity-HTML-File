@@ -227,6 +227,8 @@ let adminUsersRoleFilter = 'all';
 let adminUsersStatusFilter = 'all';
 let adminSelectedUserId = '';
 let adminPendingUserAction = '';
+let adminBlogQuery = '';
+let adminBlogDraft = null;
 let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
@@ -273,6 +275,38 @@ function getUsers(){
   return normalized;
 }
 function saveUsers(v){ ls('cogo_users', v.map(normalizeUserRecord)); }
+function normalizeBlogPostRecord(post){
+  const normalized = Object.assign({
+    id: uid('blog'),
+    date: new Date().toISOString(),
+    slug: '',
+    link: '',
+    title: '',
+    excerpt: '',
+    content: '',
+    featuredImage: '',
+    images: [],
+    videoLink: '',
+    status: 'published',
+    updatedAt: null
+  }, post || {});
+  normalized.images = Array.isArray(normalized.images) ? normalized.images : [];
+  return normalized;
+}
+function getBlogPosts(){
+  const stored = ls('cogo_blog_posts');
+  if (stored && stored.length) return stored.map(normalizeBlogPostRecord);
+  const seeded = BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, { status:'published', images:[], videoLink:'', updatedAt:post.date })));
+  ls('cogo_blog_posts', seeded);
+  return seeded;
+}
+function saveBlogPosts(posts){ ls('cogo_blog_posts', posts.map(normalizeBlogPostRecord)); }
+function getPublicBlogPosts(){
+  return getBlogPosts().filter(post => post.status !== 'draft').sort((a,b) => new Date(b.date) - new Date(a.date));
+}
+function slugifyBlogTitle(value=''){
+  return String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
+}
 function getAdminActionLog(){ return ls('cogo_admin_action_log') || []; }
 function saveAdminActionLog(v){ ls('cogo_admin_action_log', v); }
 function logAdminAction(action, meta={}){
@@ -1978,6 +2012,7 @@ function renderPage(){
 
 function renderHome(){
   const serviceCards = getHomepageOrderedServiceCards();
+  const publicBlogPosts = getPublicBlogPosts();
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <section class="hero">
@@ -2003,7 +2038,7 @@ function renderHome(){
         <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog';renderPage()">View All Articles</button>
       </div>
       <div class="grid" style="grid-template-columns:repeat(3,1fr)">
-        ${BLOG_POSTS.slice(0,3).map(renderBlogCard).join('')}
+        ${publicBlogPosts.slice(0,3).map(renderBlogCard).join('')}
       </div>
     </div>
   `;
@@ -2024,8 +2059,14 @@ function stripHtmlTags(html=''){
 function sanitizeArticleHtml(html=''){
   return String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+=("[^"]*"|'[^']*')/gi, '');
 }
+function formatArticleBodyHtml(content=''){
+  const raw = String(content || '').trim();
+  if (!raw) return '';
+  if (/<[a-z][\s\S]*>/i.test(raw)) return sanitizeArticleHtml(raw);
+  return raw.split(/\n\s*\n/).map(block => `<p>${esc(block).replace(/\n/g, '<br>')}</p>`).join('');
+}
 function getBlogPostBySlug(slug=''){
-  return BLOG_POSTS.find(post => post.slug === slug);
+  return getPublicBlogPosts().find(post => post.slug === slug);
 }
 function renderBlogCard(post){
   const excerpt = stripHtmlTags(post.excerpt || post.content || '').slice(0, 180);
@@ -2045,7 +2086,7 @@ function renderBlog(){
   const route = getRoute();
   const articleMatch = route.match(/^#\/blog\/([^?#]+)/);
   if (articleMatch) return renderBlogArticle(decodeURIComponent(articleMatch[1]));
-  const posts = [...BLOG_POSTS].sort((a,b) => new Date(b.date) - new Date(a.date));
+  const posts = getPublicBlogPosts();
   const featuredPost = posts[0];
   const remainingPosts = posts.slice(1);
   document.getElementById('app').innerHTML = `
@@ -2095,7 +2136,9 @@ function renderBlogArticle(slug){
         <div class="small muted" style="margin-bottom:10px">${esc(formatBlogDate(post.date))}</div>
         <h1 style="margin:0 0 18px;font-size:2rem;line-height:1.2">${esc(stripHtmlTags(post.title))}</h1>
         ${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="${esc(stripHtmlTags(post.title))}" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">` : ''}
-        <div class="blog-article-content" style="line-height:1.75;font-size:1rem">${sanitizeArticleHtml(post.content || '')}</div>
+        ${post.videoLink ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.videoLink, 'Article video')}</div>` : ''}
+        ${(post.images || []).length ? `<div style="margin-bottom:22px">${renderMediaCarousel(post.images, 420)}</div>` : ''}
+        <div class="blog-article-content" style="line-height:1.75;font-size:1rem">${formatArticleBodyHtml(post.content || '')}</div>
       </div>
     </div>
   `;
@@ -2998,7 +3041,7 @@ function renderDashboard(){
   if (!currentUser) return openLoginModal();
   if (!syncCurrentUserRecord()) return;
 
-  if (currentUser.role === 'admin' && !['admin','users','transactions','settings'].includes(dashSection)) {
+  if (currentUser.role === 'admin' && !['admin','users','blog_manager','transactions','settings'].includes(dashSection)) {
     dashSection = 'admin';
   }
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings'].includes(dashSection)) {
@@ -3015,6 +3058,7 @@ function renderDashboard(){
         ${currentUser.role === 'admin' ? `
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">🛡️ Admin Panel</a>
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">👥 Users</a>
+          <a href="#" class="${dashSection==='blog_manager'?'active':''}" onclick="dashSection='blog_manager';renderDashboard();return false;">📰 Blog Manager</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : currentUser.role === 'student' ? `
@@ -3041,6 +3085,7 @@ function renderDashboard(){
   if (currentUser.role === 'admin'){
     if (dashSection === 'admin') return renderAdminPanel(el);
     if (dashSection === 'users') return renderAdminUsersSection(el);
+    if (dashSection === 'blog_manager') return renderAdminBlogManager(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else if (currentUser.role === 'student'){
@@ -4977,6 +5022,195 @@ function renderAdminUsersSection(el){
     </div>
   `;
   renderAdminUsersResults();
+}
+
+function getFilteredAdminBlogPosts(){
+  const query = (adminBlogQuery || '').trim().toLowerCase();
+  return getBlogPosts().filter(post => {
+    const haystack = [post.title, post.slug, stripHtmlTags(post.excerpt), stripHtmlTags(post.content)].join(' ').toLowerCase();
+    return !query || haystack.includes(query);
+  }).sort((a,b) => new Date(b.date) - new Date(a.date));
+}
+function createAdminBlogDraft(postId=''){
+  const existing = postId ? getBlogPosts().find(post => post.id === postId) : null;
+  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'published', title:'', slug:'', excerpt:'', content:'', featuredImage:'', images:[], videoLink:'', updatedAt:new Date().toISOString() });
+}
+function syncAdminBlogDraftFromForm(){
+  if (!adminBlogDraft) return;
+  const titleEl = document.getElementById('adminBlogTitle');
+  const slugEl = document.getElementById('adminBlogSlug');
+  const statusEl = document.getElementById('adminBlogStatus');
+  const dateEl = document.getElementById('adminBlogDate');
+  const excerptEl = document.getElementById('adminBlogExcerpt');
+  const featuredEl = document.getElementById('adminBlogFeaturedImage');
+  const videoEl = document.getElementById('adminBlogVideoLink');
+  const contentEl = document.getElementById('adminBlogContent');
+  if (titleEl) adminBlogDraft.title = titleEl.value || '';
+  if (slugEl) adminBlogDraft.slug = slugEl.value || '';
+  if (statusEl) adminBlogDraft.status = statusEl.value || 'published';
+  if (dateEl && dateEl.value) adminBlogDraft.date = new Date(dateEl.value).toISOString();
+  if (excerptEl) adminBlogDraft.excerpt = excerptEl.value || '';
+  if (featuredEl) adminBlogDraft.featuredImage = featuredEl.value || '';
+  if (videoEl) adminBlogDraft.videoLink = videoEl.value || '';
+  if (contentEl) adminBlogDraft.content = contentEl.value || '';
+}
+function ensureUniqueBlogSlug(slug, postId=''){
+  const base = slugifyBlogTitle(slug) || `article-${Date.now()}`;
+  const posts = getBlogPosts();
+  let candidate = base;
+  let counter = 2;
+  while (posts.some(post => post.id !== postId && post.slug === candidate)) {
+    candidate = `${base}-${counter}`;
+    counter += 1;
+  }
+  return candidate;
+}
+function renderAdminBlogEditorHtml(){
+  const post = adminBlogDraft || createAdminBlogDraft();
+  const localDate = post.date ? new Date(post.date).toISOString().slice(0,16) : new Date().toISOString().slice(0,16);
+  return `
+    <div class="row">
+      <div class="field"><label>Article Title</label><input id="adminBlogTitle" value="${esc(post.title || '')}" placeholder="Article title"></div>
+      <div class="field"><label>Slug</label><input id="adminBlogSlug" value="${esc(post.slug || '')}" placeholder="article-slug"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Status</label>
+        <select id="adminBlogStatus">
+          <option value="published" ${post.status === 'published' ? 'selected' : ''}>Published</option>
+          <option value="draft" ${post.status === 'draft' ? 'selected' : ''}>Draft</option>
+        </select>
+      </div>
+      <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
+    </div>
+    <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
+    <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
+    <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
+    <div id="admin-blog-featured-preview" style="margin-bottom:14px">${post.featuredImage ? `<img src="${esc(post.featuredImage)}" alt="Featured image" style="width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)">` : `<div class="small muted">No featured image yet.</div>`}</div>
+    <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" onclick="clearAdminBlogFeaturedImage()">Remove Featured Image</button></div>
+    <div class="field"><label>Article Video Link (YouTube, Vimeo, Loom, or direct file)</label><input id="adminBlogVideoLink" value="${esc(post.videoLink || '')}" placeholder="https://youtube.com/..." oninput="previewAdminBlogVideoLink(this.value)"></div>
+    <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.videoLink || '', 'Article video')}</div>
+    <div class="field"><label>Article Images (optional)</label><input type="file" multiple accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
+    <div id="admin-blog-images-preview" style="margin-bottom:14px">${(post.images || []).length ? renderImagePreviewHtml(post.images || [], 120) : `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`}</div>
+    <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" onclick="clearAdminBlogImages()">Clear Article Images</button></div>
+    <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
+    <div class="small muted" style="margin-bottom:16px">Tip: you can paste structured HTML, or just write normal text and the article page will format it into paragraphs.</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+      ${post.slug ? `<button class="btn btn-outline" onclick="syncAdminBlogDraftFromForm();location.hash='#/blog/${esc(post.slug)}';closeModal();renderPage()">View Article</button>` : ''}
+      <button class="btn btn-blue" onclick="saveAdminBlogPost()">Save Article</button>
+    </div>
+  `;
+}
+function openAdminBlogEditor(postId=''){
+  adminBlogDraft = createAdminBlogDraft(postId);
+  openModal(postId ? 'Edit Blog Article' : 'Create New Blog Article', renderAdminBlogEditorHtml(), '920px');
+}
+function previewAdminBlogFeaturedImage(value){
+  if (adminBlogDraft) adminBlogDraft.featuredImage = value || '';
+  const el = document.getElementById('admin-blog-featured-preview');
+  if (!el) return;
+  el.innerHTML = value ? `<img src="${esc(value)}" alt="Featured image" style="width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)">` : `<div class="small muted">No featured image yet.</div>`;
+}
+function clearAdminBlogFeaturedImage(){
+  if (!adminBlogDraft) return;
+  adminBlogDraft.featuredImage = '';
+  const input = document.getElementById('adminBlogFeaturedImage');
+  if (input) input.value = '';
+  previewAdminBlogFeaturedImage('');
+}
+function handleAdminBlogFeaturedImageUpload(input){
+  if (!adminBlogDraft) return;
+  syncAdminBlogDraftFromForm();
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    adminBlogDraft.featuredImage = reader.result;
+    openModal(adminBlogDraft.slug ? 'Edit Blog Article' : 'Create New Blog Article', renderAdminBlogEditorHtml(), '920px');
+  };
+  reader.readAsDataURL(file);
+}
+function clearAdminBlogImages(){
+  if (!adminBlogDraft) return;
+  adminBlogDraft.images = [];
+  const el = document.getElementById('admin-blog-images-preview');
+  if (el) el.innerHTML = `<div class="small muted">Upload supporting article images here. They’ll show below the featured image on the article page.</div>`;
+}
+function handleAdminBlogImagesUpload(input){
+  if (!adminBlogDraft) return;
+  syncAdminBlogDraftFromForm();
+  readImagesToDataUrls(input, (images) => {
+    adminBlogDraft.images = images;
+    openModal(adminBlogDraft.slug ? 'Edit Blog Article' : 'Create New Blog Article', renderAdminBlogEditorHtml(), '920px');
+  }, 6);
+}
+function previewAdminBlogVideoLink(value){
+  if (adminBlogDraft) adminBlogDraft.videoLink = value || '';
+  const el = document.getElementById('admin-blog-video-preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Article video');
+}
+function saveAdminBlogPost(){
+  if (!adminBlogDraft) return;
+  syncAdminBlogDraftFromForm();
+  if (!adminBlogDraft.title.trim()) return toast('Article title is required.');
+  adminBlogDraft.slug = ensureUniqueBlogSlug(adminBlogDraft.slug || adminBlogDraft.title, adminBlogDraft.id);
+  if (!adminBlogDraft.excerpt.trim()) adminBlogDraft.excerpt = stripHtmlTags(adminBlogDraft.content || '').slice(0, 240);
+  adminBlogDraft.link = `#/blog/${adminBlogDraft.slug}`;
+  adminBlogDraft.updatedAt = new Date().toISOString();
+  const posts = getBlogPosts();
+  const index = posts.findIndex(post => post.id === adminBlogDraft.id);
+  if (index >= 0) posts[index] = adminBlogDraft;
+  else posts.unshift(adminBlogDraft);
+  saveBlogPosts(posts);
+  closeModal();
+  adminBlogDraft = null;
+  toast('Blog article saved.');
+  renderDashboard();
+}
+function deleteAdminBlogPost(postId){
+  const post = getBlogPosts().find(item => item.id === postId);
+  if (!post) return toast('Article not found.');
+  if (!confirm(`Delete "${stripHtmlTags(post.title)}"?`)) return;
+  saveBlogPosts(getBlogPosts().filter(item => item.id !== postId));
+  toast('Blog article deleted.');
+  renderDashboard();
+}
+function renderAdminBlogManager(el){
+  const posts = getFilteredAdminBlogPosts();
+  el.innerHTML = `
+    <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
+      <div>
+        <div class="section-title" style="margin:0">Blog Manager</div>
+        <div class="small muted">Create, edit, and manage blog articles with text, images, and video from the admin dashboard.</div>
+      </div>
+      <button class="btn btn-blue" onclick="openAdminBlogEditor()">Create New Article</button>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px">
+      <div class="card form-card"><div class="small muted">Total Articles</div><div style="font-size:1.5rem;font-weight:800">${getBlogPosts().length}</div></div>
+      <div class="card form-card"><div class="small muted">Published Articles</div><div style="font-size:1.5rem;font-weight:800">${getPublicBlogPosts().length}</div></div>
+    </div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div class="field" style="margin:0"><label>Search Articles</label><input value="${esc(adminBlogQuery)}" placeholder="Search by title, slug, or content" oninput="adminBlogQuery=this.value;renderDashboard()"></div>
+    </div>
+    <div class="card form-card">
+      ${posts.length ? posts.map(post => `
+        <div class="card item-card" style="margin-bottom:12px">
+          <div class="split">
+            <div>
+              <div style="font-weight:800;font-size:1.05rem">${esc(stripHtmlTags(post.title || 'Untitled Article'))}</div>
+              <div class="small muted" style="margin-top:6px">/${esc(post.slug || '')} · ${esc(formatBlogDate(post.date))} · ${esc(post.status === 'draft' ? 'Draft' : 'Published')}</div>
+              <div class="small muted" style="margin-top:8px">${esc(stripHtmlTags(post.excerpt || post.content || '').slice(0, 180))}${stripHtmlTags(post.excerpt || post.content || '').length > 180 ? '…' : ''}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog/${esc(post.slug)}';renderPage()" ${post.status === 'draft' ? 'disabled title="Publish this draft to view it on the public blog."' : ''}>View</button>
+              <button class="btn btn-outline btn-sm" onclick="openAdminBlogEditor('${esc(post.id)}')">Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteAdminBlogPost('${esc(post.id)}')">Delete</button>
+            </div>
+          </div>
+        </div>
+      `).join('') : `<div class="muted">No blog articles match this search.</div>`}
+    </div>
+  `;
 }
 
 // ---------- Settings ----------
