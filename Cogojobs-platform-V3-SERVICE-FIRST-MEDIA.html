@@ -161,8 +161,10 @@
     .small{font-size:.84rem}
     .blog-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
     .blog-featured{display:grid;grid-template-columns:1.2fr 1fr;gap:0;overflow:hidden}
-    .blog-featured img{width:100%;height:100%;min-height:320px;object-fit:cover;display:block}
-    .blog-card-image{width:100%;height:220px;object-fit:cover;display:block}
+    .blog-featured-media{position:relative;min-height:320px;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
+    .blog-featured-media img{width:100%;height:100%;object-fit:cover;display:block}
+    .blog-card-media{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
+    .blog-card-image{width:100%;height:100%;object-fit:cover;display:block}
     .blog-article-content img{max-width:100%;height:auto;border-radius:12px}
     .blog-article-content iframe,.blog-article-content video{width:100%;max-width:100%;min-height:420px;border:0;border-radius:12px;background:#000}
     .blog-article-content figure{margin:18px 0}
@@ -2356,12 +2358,37 @@ function formatArticleBodyHtml(content=''){
 function getBlogPostBySlug(slug=''){
   return getPublicBlogPosts().find(post => post.slug === slug);
 }
+function getBlogThumbnailView(post, variant='thumb'){
+  const sources = [
+    post.image_id,
+    post.featuredImage,
+    ...((Array.isArray(post.entity_images) ? post.entity_images : []).filter(Boolean)),
+    ...((Array.isArray(post.images) ? post.images : []).filter(Boolean))
+  ].filter(Boolean);
+  for (const source of sources) {
+    const image = getImageView(source, variant);
+    if (image && image.url) return image;
+  }
+  const video = parseVideoLink(post.video_url || '');
+  const posterUrl = getVideoPosterUrl(video);
+  return posterUrl ? { id:'', url:posterUrl, thumbnail_url:posterUrl, alt:stripHtmlTags(post.title || '') } : null;
+}
+function renderBlogThumbnail(post, variant='card'){
+  const image = getBlogThumbnailView(post, variant === 'featured' ? 'full' : 'thumb');
+  if (variant === 'featured') {
+    return image
+      ? `<div class="blog-featured-media"><img src="${esc(image.url)}" alt="${esc(post.title)}" loading="lazy"></div>`
+      : `<div class="blog-featured-media" style="display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:800">CoGo Blog</div>`;
+  }
+  return image
+    ? `<div class="blog-card-media"><img src="${esc(image.url)}" alt="${esc(post.title)}" class="blog-card-image" loading="lazy"></div>`
+    : `<div class="blog-card-media" style="display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`;
+}
 function renderBlogCard(post){
   const excerpt = stripHtmlTags(post.excerpt || post.content || '').slice(0, 180);
-  const image = getImageView(post.image_id || post.featuredImage || '', 'thumb');
   return `
     <article class="card profile-card" style="overflow:hidden">
-      ${image ? `<img src="${esc(image.url)}" alt="${esc(post.title)}" class="blog-card-image" loading="lazy">` : `<div style="height:220px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`}
+      ${renderBlogThumbnail(post, 'card')}
       <div class="profile-body">
         <div class="small muted" style="margin-bottom:8px">${esc(formatBlogDate(post.date))}</div>
         <div style="font-weight:800;font-size:1.08rem;line-height:1.4;margin-bottom:10px">${esc(stripHtmlTags(post.title))}</div>
@@ -2377,7 +2404,6 @@ function renderBlog(){
   if (articleMatch) return renderBlogArticle(decodeURIComponent(articleMatch[1]));
   const posts = getPublicBlogPosts();
   const featuredPost = posts[0];
-  const featuredImage = featuredPost ? getImageView(featuredPost.image_id || featuredPost.featuredImage || '', 'full') : null;
   const remainingPosts = posts.slice(1);
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -2388,7 +2414,7 @@ function renderBlog(){
     <div class="container">
       ${featuredPost ? `
         <div class="card blog-featured" style="margin-bottom:24px">
-          ${featuredImage ? `<img src="${esc(featuredImage.url)}" alt="${esc(featuredPost.title)}">` : `<div style="min-height:320px;background:linear-gradient(135deg,var(--navy),var(--blue));display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:800">CoGo Blog</div>`}
+          ${renderBlogThumbnail(featuredPost, 'featured')}
           <div style="padding:24px">
             <div class="small muted" style="margin-bottom:8px">Latest Article · ${esc(formatBlogDate(featuredPost.date))}</div>
             <div style="font-size:1.8rem;font-weight:800;line-height:1.2;margin-bottom:14px">${esc(stripHtmlTags(featuredPost.title))}</div>
@@ -2420,7 +2446,7 @@ function renderBlogArticle(slug){
   }
   const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
   const topMediaHtml = post.video_url
-    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video')}</div>`
+    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
     : featuredImage
       ? `<img src="${esc(featuredImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
       : '';
@@ -2518,17 +2544,27 @@ function parseVideoLink(url=''){
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
+  const parseYouTubeStart = () => {
+    const raw = parsed.searchParams.get('t') || parsed.searchParams.get('start') || '';
+    if (!raw) return 0;
+    if (/^\d+$/.test(raw)) return Number(raw);
+    const match = raw.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?/i);
+    if (!match) return 0;
+    return (Number(match[1] || 0) * 3600) + (Number(match[2] || 0) * 60) + Number(match[3] || 0);
+  };
   if (clean.startsWith('data:video/') || clean.startsWith('blob:')) return { type:'file', url:clean, label:'Video file' };
   const videoFile = clean.match(/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i);
   if (videoFile) return { type:'file', url:clean, label:'Video file' };
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube-nocookie.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    const start = parseYouTubeStart();
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube-nocookie.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    const start = parseYouTubeStart();
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
@@ -2550,7 +2586,7 @@ function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=f
   const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
   return `
     <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
-      <iframe src="${esc(src)}" title="${esc(label)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+      <iframe src="${esc(src)}" title="${esc(label)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
     </div>
   `;
 }
@@ -2562,35 +2598,39 @@ function playEmbeddedVideo(containerId='', encodedUrl='', encodedLabel=''){
   if (!embedUrl) return;
   wrap.innerHTML = renderEmbeddedVideoFrame(embedUrl, label, true);
 }
-function renderVideoPreviewHtml(url='', label='Video preview'){
+function renderVideoPreviewHtml(url='', label='Video preview', options={}){
   if (!url) return `<div class="small muted">No video link added yet.</div>`;
   const video = parseVideoLink(url);
   if (!video) return `<div class="small muted">No video link added yet.</div>`;
+  const maxWidth = options.maxWidth || '420px';
+  const showLabel = options.showLabel !== false;
+  const loading = options.loading === 'eager' ? 'eager' : 'lazy';
+  const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
   if (video.type === 'file') {
-    return `<div><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><video controls playsinline preload="metadata" style="width:100%;max-width:420px;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
+    return `<div style="max-width:${esc(maxWidth)}">${labelHtml}<video controls playsinline preload="metadata" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
   }
   if (video.embedUrl) {
     const posterUrl = getVideoPosterUrl(video);
     const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
     if (posterUrl) {
       return `
-        <div style="max-width:420px">
-          <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
+        <div style="max-width:${esc(maxWidth)}">
+          ${labelHtml}
           <div id="${containerId}" style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
-            <img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+            <img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
             <button class="btn btn-blue btn-sm" type="button" onclick="playEmbeddedVideo('${esc(containerId)}','${esc(encodeURIComponent(video.embedUrl))}','${esc(encodeURIComponent(label))}')" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 10px 30px rgba(0,0,0,.25)">▶ Play Video</button>
           </div>
         </div>
       `;
     }
     return `
-      <div style="max-width:420px">
-        <div class="small muted" style="margin-bottom:8px">${esc(label)}</div>
+      <div style="max-width:${esc(maxWidth)}">
+        ${labelHtml}
         ${renderEmbeddedVideoFrame(video.embedUrl, label)}
       </div>
     `;
   }
-  return `<div style="max-width:420px"><div class="small muted" style="margin-bottom:8px">${esc(label)}</div><div class="card form-card small">This video host can’t be embedded here right now. <a href="${esc(video.url)}" target="_blank" rel="noopener">Open video</a></div></div>`;
+  return `<div style="max-width:${esc(maxWidth)}">${labelHtml}<div class="card form-card small">This video host can’t be embedded here right now. <a href="${esc(video.url)}" target="_blank" rel="noopener">Open video</a></div></div>`;
 }
 function getHomepageSessionId(){
   let sessionId = '';
