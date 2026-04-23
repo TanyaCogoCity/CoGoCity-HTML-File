@@ -6206,13 +6206,30 @@ function persistAdminBlogPost(mode='draft'){
   closeModal();
   adminBlogDraft = null;
   toast(mode === 'publish' ? (statusLabel === 'Published' ? 'Article published.' : 'Article scheduled. It will publish on the selected date.') : 'Draft saved.');
-  renderDashboard();
+  dashSection = 'blog';
+  try {
+    renderDashboard();
+  } catch (error) {
+    console.error('Blog save render error', error);
+    location.hash = '#/dashboard';
+    renderPage();
+  }
 }
 function saveAdminBlogPost(){
-  persistAdminBlogPost('draft');
+  try {
+    persistAdminBlogPost('draft');
+  } catch (error) {
+    console.error('Save Article failed', error);
+    toast(`Save failed: ${(error && error.message) || 'Unknown error'}`);
+  }
 }
 function publishAdminBlogPost(){
-  persistAdminBlogPost('publish');
+  try {
+    persistAdminBlogPost('publish');
+  } catch (error) {
+    console.error('Publish Article failed', error);
+    toast(`Publish failed: ${(error && error.message) || 'Unknown error'}`);
+  }
 }
 function deleteAdminBlogPost(postId){
   const post = getBlogPosts().find(item => String(item.id) === String(postId));
