@@ -427,8 +427,7 @@ function normalizeBlogPostRecord(post){
   }, post || {});
   normalized.id = String(normalized.id || uid('blog'));
   normalized.featured_image = normalized.featured_image || normalized.image_id || normalized.featuredImage || '';
-  const featuredImageId = upsertImageRecord(normalized.featured_image, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' });
-  normalized.featured_image = getImageView(featuredImageId || normalized.featured_image || '', 'full')?.url || '';
+  normalized.featured_image = upsertImageRecord(normalized.featured_image, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' }) || '';
   normalized.image_id = normalized.featured_image;
   normalized.featuredImage = normalized.featured_image;
   if (!normalized.media_type) {
@@ -442,8 +441,7 @@ function normalizeBlogPostRecord(post){
     if (normalized.media_type === 'image') normalized.media_url = normalized.articleMediaImage || normalized.article_media || ((normalized.entity_images || [])[0] || '');
   }
   if (normalized.media_type === 'image') {
-    const articleMediaId = upsertImageRecord(normalized.media_url, { source:'article_media', entity_type:'article', entity_id: normalized.id || '' });
-    normalized.media_url = getImageView(articleMediaId || normalized.media_url || '', 'full')?.url || '';
+    normalized.media_url = upsertImageRecord(normalized.media_url, { source:'article_media', entity_type:'article', entity_id: normalized.id || '' }) || '';
     normalized.articleMediaImage = normalized.media_url;
   } else {
     normalized.articleMediaImage = '';
@@ -461,7 +459,11 @@ function normalizeBlogPostRecord(post){
 }
 function getBlogPosts(){
   const stored = ls('cogo_blog_posts');
-  if (Array.isArray(stored) && stored.length) return stored.map(normalizeBlogPostRecord);
+  if (Array.isArray(stored) && stored.length) {
+    const normalized = stored.map(normalizeBlogPostRecord);
+    if (JSON.stringify(normalized) !== JSON.stringify(stored)) ls('cogo_blog_posts', normalized);
+    return normalized;
+  }
   const seeded = BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, { status:'published', publishRequested:true, images:[], video_url:'', updatedAt:post.date })));
   ls('cogo_blog_posts', seeded);
   return seeded;
@@ -6007,7 +6009,7 @@ function renderAdminBlogEditorHtml(){
       <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
       <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
       <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
-      <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.featured_image || post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
+      <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(featuredImage ? featuredImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
       <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
       <div style="margin:-6px 0 14px">${renderImageLibraryButton('setAdminBlogFeaturedImageFromLibrary')}</div>
       <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.featured_image || post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
@@ -6016,7 +6018,7 @@ function renderAdminBlogEditorHtml(){
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Body</div>
       <div class="small muted" style="margin-bottom:14px">The full article page shows either the article video or the article image at the top. If both exist, video is shown first.</div>
-      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(post.media_type === 'image' ? (post.media_url || '') : '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
+      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(articleImage ? articleImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
       <div class="field"><label>Or upload article image</label><input type="file" accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
       <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
       <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.media_url || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
@@ -6076,7 +6078,7 @@ function handleAdminBlogFeaturedImageUpload(input){
   const reader = new FileReader();
   reader.onload = () => {
     const imageId = upsertImageRecord(reader.result, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' });
-    adminBlogDraft.featured_image = getImageView(imageId, 'full')?.url || reader.result;
+    adminBlogDraft.featured_image = imageId;
     adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
     adminBlogDraft.image_id = adminBlogDraft.featured_image;
     reopenAdminBlogEditor();
@@ -6086,7 +6088,7 @@ function handleAdminBlogFeaturedImageUpload(input){
 function setAdminBlogFeaturedImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
   syncAdminBlogDraftFromForm();
-  adminBlogDraft.featured_image = getImageView(imageId, 'full')?.url || imageId;
+  adminBlogDraft.featured_image = imageId;
   adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
   adminBlogDraft.image_id = adminBlogDraft.featured_image;
   reopenAdminBlogEditor();
@@ -6151,7 +6153,7 @@ function handleAdminBlogImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     const imageId = upsertImageRecord(images[0] || '', { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' });
     adminBlogDraft.media_type = imageId ? 'image' : '';
-    adminBlogDraft.media_url = getImageView(imageId, 'full')?.url || '';
+    adminBlogDraft.media_url = imageId || '';
     adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
     adminBlogDraft.video_url = '';
     reopenAdminBlogEditor();
@@ -6161,7 +6163,7 @@ function addAdminBlogImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
   syncAdminBlogDraftFromForm();
   adminBlogDraft.media_type = imageId ? 'image' : '';
-  adminBlogDraft.media_url = getImageView(imageId, 'full')?.url || imageId || '';
+  adminBlogDraft.media_url = imageId || '';
   adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
   adminBlogDraft.video_url = '';
   reopenAdminBlogEditor();
