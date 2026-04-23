@@ -2659,6 +2659,11 @@ function chooseStudentSignupAvatar(avatar){
 function parseVideoLink(url=''){
   const clean = (url || '').trim();
   if (!clean) return null;
+  const youTubeEmbedUrl = getYouTubeEmbedUrl(clean);
+  if (youTubeEmbedUrl) {
+    const videoId = youTubeEmbedUrl.split('/embed/')[1].split('?')[0] || '';
+    return { type:'youtube', url:clean, videoId, embedUrl:youTubeEmbedUrl, label:'YouTube video' };
+  }
   let parsed;
   try {
     parsed = new URL(clean);
@@ -2667,26 +2672,9 @@ function parseVideoLink(url=''){
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
-  const parseYouTubeStart = () => {
-    const raw = parsed.searchParams.get('t') || parsed.searchParams.get('start') || '';
-    if (!raw) return 0;
-    if (/^\d+$/.test(raw)) return Number(raw);
-    const match = raw.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?/i);
-    if (!match) return 0;
-    return (Number(match[1] || 0) * 3600) + (Number(match[2] || 0) * 60) + Number(match[3] || 0);
-  };
   if (clean.startsWith('data:video/') || clean.startsWith('blob:')) return { type:'file', url:clean, label:'Video file' };
   const videoFile = clean.match(/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i);
   if (videoFile) return { type:'file', url:clean, label:'Video file' };
-  if (host.includes('youtu.be')) {
-    const videoId = path.split('/').filter(Boolean)[0] || '';
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
-  }
-  if (host.includes('youtube.com')) {
-    const parts = path.split('/').filter(Boolean);
-    const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
-  }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
     return videoId ? { type:'vimeo', url:clean, videoId, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'link', url:clean, label:clean };
@@ -2697,6 +2685,22 @@ function parseVideoLink(url=''){
     return videoId ? { type:'loom', url:clean, videoId, embedUrl:`https://www.loom.com/embed/${videoId}`, label:'Loom video' } : { type:'link', url:clean, label:clean };
   }
   return { type:'link', url:clean, label:clean };
+}
+function getYouTubeEmbedUrl(url='') {
+  const clean = String(url || '').trim();
+  if (!clean) return null;
+  let videoId = null;
+  const watchMatch = clean.match(/[?&]v=([^&]+)/i);
+  if (watchMatch) videoId = watchMatch[1];
+  const shortMatch = clean.match(/youtu\.be\/([^?&#/]+)/i);
+  if (!videoId && shortMatch) videoId = shortMatch[1];
+  const embedMatch = clean.match(/embed\/([^?&#/]+)/i);
+  if (!videoId && embedMatch) videoId = embedMatch[1];
+  const shortsMatch = clean.match(/shorts\/([^?&#/]+)/i);
+  if (!videoId && shortsMatch) videoId = shortsMatch[1];
+  if (!videoId && /^[a-zA-Z0-9_-]{11}$/.test(clean)) videoId = clean;
+  if (!videoId) return null;
+  return `https://www.youtube.com/embed/${videoId}`;
 }
 function getVideoPosterUrl(video){
   if (!video) return '';
@@ -2792,6 +2796,14 @@ function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=f
     </div>
   `;
 }
+function loadYouTubeEmbed(containerId='', embedUrl='', watchUrl='', label='YouTube video'){
+  const wrap = document.getElementById(containerId);
+  if (!wrap || !embedUrl) return;
+  wrap.innerHTML = `
+    ${renderEmbeddedVideoFrame(embedUrl, label, true)}
+    ${watchUrl ? `<div class="small muted" style="margin-top:8px"><a href="${esc(watchUrl)}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
+  `;
+}
 function playEmbeddedVideo(containerId='', encodedUrl='', encodedLabel='', encodedType='', encodedVideoId=''){
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
@@ -2849,11 +2861,18 @@ function renderVideoPreviewHtml(url='', label='Video preview', options={}){
   if (video.embedUrl) {
     if (video.type === 'youtube') {
       const watchUrl = getVideoWatchUrl(video);
+      const posterUrl = getVideoPosterUrl(video);
+      const containerId = `video_${uid('youtube').replace(/[^a-zA-Z0-9_]/g, '')}`;
       return `
         <div style="max-width:${esc(maxWidth)}">
           ${labelHtml}
-          ${renderEmbeddedVideoFrame(video.embedUrl, label)}
-          ${watchUrl ? `<div class="small muted" style="margin-top:8px"><a href="${esc(watchUrl)}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
+          <div id="${containerId}">
+            <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadYouTubeEmbed('${esc(containerId)}','${esc(video.embedUrl)}','${esc(watchUrl)}','${esc(label)}')">
+              <img src="${esc(posterUrl || '')}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+              <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+            </div>
+            ${watchUrl ? `<div class="small muted" style="margin-top:8px"><a href="${esc(watchUrl)}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
+          </div>
         </div>
       `;
     }
