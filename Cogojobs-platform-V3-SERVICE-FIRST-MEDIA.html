@@ -1098,7 +1098,7 @@ function saveActiveModalDraft(){
   if (!modalBody) return;
   const values = {};
   modalBody.querySelectorAll('input, textarea, select').forEach(field => {
-    if (!field.id || field.type === 'file') return;
+    if (!field.id || field.type === 'file' || field.type === 'hidden') return;
     values[field.id] = field.type === 'checkbox' ? !!field.checked : field.value;
   });
   const store = getModalDraftStore();
@@ -1122,6 +1122,13 @@ function clearActiveModalDraft(){
   if (!activeModalDraftKey) return;
   const store = getModalDraftStore();
   delete store[activeModalDraftKey];
+  saveModalDraftStore(store);
+}
+function clearModalDraftByTitle(title=''){
+  const key = modalDraftKey(title);
+  if (!key) return;
+  const store = getModalDraftStore();
+  delete store[key];
   saveModalDraftStore(store);
 }
 function bindModalDraftAutosave(){
@@ -6042,6 +6049,7 @@ function renderAdminBlogEditorHtml(){
   `;
 }
 function reopenAdminBlogEditor(){
+  clearModalDraftByTitle(getAdminBlogEditorTitle());
   openModal(getAdminBlogEditorTitle(), renderAdminBlogEditorHtml(), '920px');
 }
 function openAdminBlogEditor(postId=''){
