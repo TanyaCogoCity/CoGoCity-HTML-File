@@ -2669,13 +2669,13 @@ function parseVideoLink(url=''){
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}${start ? `?start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&playsinline=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}${start ? `?start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube-nocookie.com/embed/${videoId}?rel=0&playsinline=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
@@ -2789,6 +2789,14 @@ function renderVideoPreviewHtml(url='', label='Video preview', options={}){
     `;
   }
   if (video.embedUrl) {
+    if (video.type === 'youtube') {
+      return `
+        <div style="max-width:${esc(maxWidth)}">
+          ${labelHtml}
+          ${renderEmbeddedVideoFrame(video.embedUrl, label)}
+        </div>
+      `;
+    }
     const posterUrl = getVideoPosterUrl(video);
     const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
     if (posterUrl) {
