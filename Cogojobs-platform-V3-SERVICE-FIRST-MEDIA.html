@@ -412,8 +412,11 @@ function normalizeBlogPostRecord(post){
     excerpt: '',
     content: '',
     authorName: 'CoGo Team',
+    featured_image: '',
     image_id: '',
     featuredImage: '',
+    media_type: '',
+    media_url: '',
     articleMediaImage: '',
     entity_images: [],
     images: [],
@@ -423,12 +426,31 @@ function normalizeBlogPostRecord(post){
     updatedAt: null
   }, post || {});
   normalized.id = String(normalized.id || uid('blog'));
-  if (!normalized.image_id && normalized.featuredImage) normalized.image_id = normalized.featuredImage;
-  normalized.image_id = upsertImageRecord(normalized.image_id, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' });
-  normalized.featuredImage = normalized.image_id || '';
-  if (!normalized.articleMediaImage && normalized.article_media) normalized.articleMediaImage = normalized.article_media;
-  if (!normalized.articleMediaImage && Array.isArray(normalized.entity_images) && normalized.entity_images[0]) normalized.articleMediaImage = normalized.entity_images[0];
-  normalized.articleMediaImage = upsertImageRecord(normalized.articleMediaImage, { source:'article_media', entity_type:'article', entity_id: normalized.id || '' });
+  normalized.featured_image = normalized.featured_image || normalized.image_id || normalized.featuredImage || '';
+  const featuredImageId = upsertImageRecord(normalized.featured_image, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' });
+  normalized.featured_image = getImageView(featuredImageId || normalized.featured_image || '', 'full')?.url || '';
+  normalized.image_id = normalized.featured_image;
+  normalized.featuredImage = normalized.featured_image;
+  if (!normalized.media_type) {
+    if (normalized.media_url && parseVideoLink(normalized.media_url)) normalized.media_type = parseVideoLink(normalized.media_url).type === 'file' || parseVideoLink(normalized.media_url).type === 'youtube' || parseVideoLink(normalized.media_url).embedUrl ? 'video' : normalized.media_type;
+    if (!normalized.media_type && (normalized.video_url || normalized.videoLink)) normalized.media_type = 'video';
+    if (!normalized.media_type && (normalized.articleMediaImage || normalized.article_media)) normalized.media_type = 'image';
+    if (!normalized.media_type && Array.isArray(normalized.entity_images) && normalized.entity_images[0]) normalized.media_type = 'image';
+  }
+  if (!normalized.media_url) {
+    if (normalized.media_type === 'video') normalized.media_url = normalized.video_url || normalized.videoLink || '';
+    if (normalized.media_type === 'image') normalized.media_url = normalized.articleMediaImage || normalized.article_media || ((normalized.entity_images || [])[0] || '');
+  }
+  if (normalized.media_type === 'image') {
+    const articleMediaId = upsertImageRecord(normalized.media_url, { source:'article_media', entity_type:'article', entity_id: normalized.id || '' });
+    normalized.media_url = getImageView(articleMediaId || normalized.media_url || '', 'full')?.url || '';
+    normalized.articleMediaImage = normalized.media_url;
+  } else {
+    normalized.articleMediaImage = '';
+  }
+  if (normalized.media_type !== 'video') normalized.video_url = '';
+  if (normalized.media_type === 'video' && !normalized.media_url) normalized.media_url = normalized.video_url || '';
+  normalized.video_url = normalized.media_type === 'video' ? normalized.media_url : '';
   const rawImages = Array.isArray(normalized.entity_images) && normalized.entity_images.length ? normalized.entity_images : normalized.images;
   normalized.entity_images = upsertImageRecords(rawImages, { source:'article_gallery', entity_type:'article', entity_id: normalized.id || '' });
   normalized.images = [...normalized.entity_images];
@@ -2364,7 +2386,7 @@ function getBlogPostBySlug(slug=''){
   return getPublicBlogPosts().find(post => post.slug === slug);
 }
 function getBlogThumbnailView(post, variant='thumb'){
-  const sources = [post.image_id, post.featuredImage].filter(Boolean);
+  const sources = [post.featured_image, post.image_id, post.featuredImage].filter(Boolean);
   for (const source of sources) {
     const image = getImageView(source, variant);
     if (image && image.url) return image;
@@ -2442,9 +2464,9 @@ function renderBlogArticle(slug){
     `;
     return;
   }
-  const articleImage = getImageView(post.articleMediaImage || (post.entity_images || [])[0] || '', 'full') || getImageView(post.image_id || post.featuredImage || '', 'full');
-  const topMediaHtml = post.video_url
-    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.video_url, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
+  const articleImage = getImageView(post.media_type === 'image' ? post.media_url : '', 'full');
+  const topMediaHtml = post.media_type === 'video' && post.media_url
+    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.media_url, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
     : articleImage
       ? `<img src="${esc(articleImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
       : '';
@@ -2541,13 +2563,6 @@ function parseVideoLink(url=''){
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
-  const embedOrigin = (() => {
-    try {
-      return location && location.origin && /^https?:/i.test(location.origin) ? location.origin : '';
-    } catch (error) {
-      return '';
-    }
-  })();
   const parseYouTubeStart = () => {
     const raw = parsed.searchParams.get('t') || parsed.searchParams.get('start') || '';
     if (!raw) return 0;
@@ -2562,13 +2577,13 @@ function parseVideoLink(url=''){
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1${embedOrigin ? `&origin=${encodeURIComponent(embedOrigin)}` : ''}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}${start ? `?start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
     const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&enablejsapi=1${embedOrigin ? `&origin=${encodeURIComponent(embedOrigin)}` : ''}${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}${start ? `?start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
@@ -2583,14 +2598,14 @@ function parseVideoLink(url=''){
 }
 function getVideoPosterUrl(video){
   if (!video) return '';
-  if (video.type === 'youtube' && video.videoId) return `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
+  if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   return '';
 }
 function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false){
   const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
   return `
     <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
-      <iframe src="${esc(src)}" title="${esc(label)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+      <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
     </div>
   `;
 }
@@ -5878,7 +5893,7 @@ function getAdminBlogEditorTitle(){
 }
 function createAdminBlogDraft(postId=''){
   const existing = postId !== '' ? getBlogPosts().find(post => String(post.id) === String(postId)) : null;
-  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', authorName:'CoGo Team', featuredImage:'', articleMediaImage:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
+  return normalizeBlogPostRecord(existing ? JSON.parse(JSON.stringify(existing)) : { id:uid('blog'), date:new Date().toISOString(), status:'draft', publishRequested:false, title:'', slug:'', excerpt:'', content:'', authorName:'CoGo Team', featured_image:'', media_type:'', media_url:'', images:[], video_url:'', updatedAt:new Date().toISOString() });
 }
 function syncAdminBlogDraftFromForm(){
   if (!adminBlogDraft) return;
@@ -5897,11 +5912,24 @@ function syncAdminBlogDraftFromForm(){
   if (excerptEl) adminBlogDraft.excerpt = excerptEl.value || '';
   if (authorEl) adminBlogDraft.authorName = authorEl.value || 'CoGo Team';
   if (featuredEl) {
-    adminBlogDraft.featuredImage = featuredEl.value || '';
-    adminBlogDraft.image_id = featuredEl.value || '';
+    adminBlogDraft.featured_image = featuredEl.value || '';
+    adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+    adminBlogDraft.image_id = adminBlogDraft.featured_image;
   }
-  if (articleImageEl) adminBlogDraft.articleMediaImage = articleImageEl.value || '';
-  if (videoEl) adminBlogDraft.video_url = videoEl.value || '';
+  const articleImageValue = articleImageEl ? (articleImageEl.value || '').trim() : '';
+  const videoValue = videoEl ? (videoEl.value || '').trim() : '';
+  if (videoValue) {
+    adminBlogDraft.media_type = 'video';
+    adminBlogDraft.media_url = videoValue;
+  } else if (articleImageValue) {
+    adminBlogDraft.media_type = 'image';
+    adminBlogDraft.media_url = articleImageValue;
+  } else {
+    adminBlogDraft.media_type = '';
+    adminBlogDraft.media_url = '';
+  }
+  adminBlogDraft.video_url = adminBlogDraft.media_type === 'video' ? adminBlogDraft.media_url : '';
+  adminBlogDraft.articleMediaImage = adminBlogDraft.media_type === 'image' ? adminBlogDraft.media_url : '';
   if (contentEl) adminBlogDraft.content = contentEl.value || '';
 }
 function ensureUniqueBlogSlug(slug, postId=''){
@@ -5918,8 +5946,8 @@ function ensureUniqueBlogSlug(slug, postId=''){
 function renderAdminBlogEditorHtml(){
   const post = adminBlogDraft || createAdminBlogDraft();
   const localDate = post.date ? formatDateTimeLocalInput(post.date) : formatDateTimeLocalInput(new Date().toISOString());
-  const featuredImage = getImageView(post.image_id || post.featuredImage || '', 'full');
-  const articleImage = getImageView(post.articleMediaImage || (post.entity_images || [])[0] || '', 'full');
+  const featuredImage = getImageView(post.featured_image || post.image_id || post.featuredImage || '', 'full');
+  const articleImage = getImageView(post.media_type === 'image' ? post.media_url : (post.articleMediaImage || ''), 'full');
   return `
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Details</div>
@@ -5930,23 +5958,23 @@ function renderAdminBlogEditorHtml(){
       <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
       <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
       <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
-      <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
+      <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(post.featured_image || post.image_id || post.featuredImage || '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
       <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
       <div style="margin:-6px 0 14px">${renderImageLibraryButton('setAdminBlogFeaturedImageFromLibrary')}</div>
-      <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
+      <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.featured_image || post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
       <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogFeaturedImage()">Remove Featured Image</button></div>
     </div>
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Body</div>
       <div class="small muted" style="margin-bottom:14px">The full article page shows either the article video or the article image at the top. If both exist, video is shown first.</div>
-      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(post.articleMediaImage || (post.entity_images || [])[0] || '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
+      <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(post.media_type === 'image' ? (post.media_url || '') : '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
       <div class="field"><label>Or upload article image</label><input type="file" accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
       <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
-      <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.articleMediaImage || (post.entity_images || [])[0] || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
+      <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.media_url || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
-      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.video_url || '')}" placeholder="https://youtube.com/... or direct video URL" oninput="previewAdminBlogVideoLink(this.value)"></div>
+      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? (post.media_url || '') : '')}" placeholder="https://youtube.com/watch?v=..." oninput="previewAdminBlogVideoLink(this.value)"></div>
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
-      <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.video_url || '', 'Article video')}</div>
+      <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? (post.media_url || '') : '', 'Article video')}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
       <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
       <div class="field"><label>Article Author</label><input id="adminBlogAuthor" value="${esc(post.authorName || 'CoGo Team')}" placeholder="CoGo Team"></div>
@@ -5972,8 +6000,9 @@ function cancelAdminBlogEditor(){
 }
 function previewAdminBlogFeaturedImage(value){
   if (adminBlogDraft) {
-    adminBlogDraft.featuredImage = value || '';
-    adminBlogDraft.image_id = value || '';
+    adminBlogDraft.featured_image = value || '';
+    adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+    adminBlogDraft.image_id = adminBlogDraft.featured_image;
   }
   const el = document.getElementById('admin-blog-featured-preview');
   if (!el) return;
@@ -5981,6 +6010,7 @@ function previewAdminBlogFeaturedImage(value){
 }
 function clearAdminBlogFeaturedImage(){
   if (!adminBlogDraft) return;
+  adminBlogDraft.featured_image = '';
   adminBlogDraft.featuredImage = '';
   adminBlogDraft.image_id = '';
   const input = document.getElementById('adminBlogFeaturedImage');
@@ -5994,8 +6024,10 @@ function handleAdminBlogFeaturedImageUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    adminBlogDraft.featuredImage = upsertImageRecord(reader.result, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' });
-    adminBlogDraft.image_id = adminBlogDraft.featuredImage;
+    const imageId = upsertImageRecord(reader.result, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' });
+    adminBlogDraft.featured_image = getImageView(imageId, 'full')?.url || reader.result;
+    adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+    adminBlogDraft.image_id = adminBlogDraft.featured_image;
     reopenAdminBlogEditor();
   };
   reader.readAsDataURL(file);
@@ -6003,12 +6035,17 @@ function handleAdminBlogFeaturedImageUpload(input){
 function setAdminBlogFeaturedImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
   syncAdminBlogDraftFromForm();
-  adminBlogDraft.featuredImage = imageId;
-  adminBlogDraft.image_id = imageId;
+  adminBlogDraft.featured_image = getImageView(imageId, 'full')?.url || imageId;
+  adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+  adminBlogDraft.image_id = adminBlogDraft.featured_image;
   reopenAdminBlogEditor();
 }
 function clearAdminBlogVideo(){
   if (!adminBlogDraft) return;
+  if (adminBlogDraft.media_type === 'video') {
+    adminBlogDraft.media_type = '';
+    adminBlogDraft.media_url = '';
+  }
   adminBlogDraft.video_url = '';
   const input = document.getElementById('adminBlogVideoLink');
   if (input) input.value = '';
@@ -6021,6 +6058,8 @@ function handleAdminBlogVideoUpload(input){
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
+    adminBlogDraft.media_type = 'video';
+    adminBlogDraft.media_url = reader.result;
     adminBlogDraft.video_url = reader.result;
     reopenAdminBlogEditor();
   };
@@ -6028,6 +6067,10 @@ function handleAdminBlogVideoUpload(input){
 }
 function clearAdminBlogImages(){
   if (!adminBlogDraft) return;
+  if (adminBlogDraft.media_type === 'image') {
+    adminBlogDraft.media_type = '';
+    adminBlogDraft.media_url = '';
+  }
   adminBlogDraft.articleMediaImage = '';
   const el = document.getElementById('admin-blog-images-preview');
   const input = document.getElementById('adminBlogArticleImage');
@@ -6035,7 +6078,16 @@ function clearAdminBlogImages(){
   if (el) el.innerHTML = `<div class="small muted">No article image yet.</div>`;
 }
 function previewAdminBlogArticleImage(value){
-  if (adminBlogDraft) adminBlogDraft.articleMediaImage = value || '';
+  if (adminBlogDraft) {
+    adminBlogDraft.media_type = value ? 'image' : '';
+    adminBlogDraft.media_url = value || '';
+    adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
+    adminBlogDraft.video_url = '';
+  }
+  const videoInput = document.getElementById('adminBlogVideoLink');
+  if (videoInput && value) videoInput.value = '';
+  const videoPreview = document.getElementById('admin-blog-video-preview');
+  if (videoPreview && value) videoPreview.innerHTML = renderVideoPreviewHtml('', 'Article video');
   const el = document.getElementById('admin-blog-images-preview');
   if (!el) return;
   el.innerHTML = value ? renderManagedImage(value, 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`;
@@ -6044,18 +6096,34 @@ function handleAdminBlogImagesUpload(input){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
   readImagesToDataUrls(input, (images) => {
-    adminBlogDraft.articleMediaImage = images[0] || '';
+    const imageId = upsertImageRecord(images[0] || '', { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' });
+    adminBlogDraft.media_type = imageId ? 'image' : '';
+    adminBlogDraft.media_url = getImageView(imageId, 'full')?.url || '';
+    adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
+    adminBlogDraft.video_url = '';
     reopenAdminBlogEditor();
   }, 1);
 }
 function addAdminBlogImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
   syncAdminBlogDraftFromForm();
-  adminBlogDraft.articleMediaImage = imageId || '';
+  adminBlogDraft.media_type = imageId ? 'image' : '';
+  adminBlogDraft.media_url = getImageView(imageId, 'full')?.url || imageId || '';
+  adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
+  adminBlogDraft.video_url = '';
   reopenAdminBlogEditor();
 }
 function previewAdminBlogVideoLink(value){
-  if (adminBlogDraft) adminBlogDraft.video_url = value || '';
+  if (adminBlogDraft) {
+    adminBlogDraft.media_type = value ? 'video' : '';
+    adminBlogDraft.media_url = value || '';
+    adminBlogDraft.video_url = adminBlogDraft.media_url;
+    adminBlogDraft.articleMediaImage = '';
+  }
+  const imageInput = document.getElementById('adminBlogArticleImage');
+  if (imageInput && value) imageInput.value = '';
+  const imagePreview = document.getElementById('admin-blog-images-preview');
+  if (imagePreview && value) imagePreview.innerHTML = `<div class="small muted">No article image yet.</div>`;
   const el = document.getElementById('admin-blog-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Article video');
 }
@@ -6068,10 +6136,13 @@ function persistAdminBlogPost(mode='draft'){
   adminBlogDraft.publishRequested = mode === 'publish';
   adminBlogDraft.status = getBlogPostStatus(adminBlogDraft);
   adminBlogDraft.link = `#/blog/${adminBlogDraft.slug}`;
-  adminBlogDraft.image_id = adminBlogDraft.featuredImage || adminBlogDraft.image_id || '';
-  adminBlogDraft.featuredImage = adminBlogDraft.image_id;
-  adminBlogDraft.articleMediaImage = adminBlogDraft.articleMediaImage || '';
-  adminBlogDraft.video_url = adminBlogDraft.video_url || '';
+  adminBlogDraft.featured_image = adminBlogDraft.featured_image || adminBlogDraft.featuredImage || adminBlogDraft.image_id || '';
+  adminBlogDraft.image_id = adminBlogDraft.featured_image;
+  adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+  adminBlogDraft.media_type = adminBlogDraft.media_type || '';
+  adminBlogDraft.media_url = adminBlogDraft.media_url || '';
+  adminBlogDraft.articleMediaImage = adminBlogDraft.media_type === 'image' ? adminBlogDraft.media_url : '';
+  adminBlogDraft.video_url = adminBlogDraft.media_type === 'video' ? adminBlogDraft.media_url : '';
   adminBlogDraft.updatedAt = new Date().toISOString();
   const posts = getBlogPosts();
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
