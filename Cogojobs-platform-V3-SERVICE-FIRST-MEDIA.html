@@ -2693,6 +2693,18 @@ function getVideoPosterUrl(video){
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   return '';
 }
+function getVideoMimeType(url=''){
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const dataMatch = raw.match(/^data:([^;,]+)[;,]/i);
+  if (dataMatch && /^video\//i.test(dataMatch[1] || '')) return dataMatch[1];
+  if (/\.mp4(\?|#|$)/i.test(raw)) return 'video/mp4';
+  if (/\.webm(\?|#|$)/i.test(raw)) return 'video/webm';
+  if (/\.(ogg|ogv)(\?|#|$)/i.test(raw)) return 'video/ogg';
+  if (/\.mov(\?|#|$)/i.test(raw)) return 'video/quicktime';
+  if (/\.m4v(\?|#|$)/i.test(raw)) return 'video/x-m4v';
+  return '';
+}
 let youTubeApiPromise = null;
 function ensureYouTubePlayerApi(){
   if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
@@ -2764,7 +2776,17 @@ function renderVideoPreviewHtml(url='', label='Video preview', options={}){
   const loading = options.loading === 'eager' ? 'eager' : 'lazy';
   const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
   if (video.type === 'file') {
-    return `<div style="max-width:${esc(maxWidth)}">${labelHtml}<video controls playsinline preload="metadata" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000"><source src="${esc(video.url)}"></video></div>`;
+    const mimeType = getVideoMimeType(video.url);
+    return `
+      <div style="max-width:${esc(maxWidth)}">
+        ${labelHtml}
+        <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
+          ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
+          <a href="${esc(video.url)}" target="_blank" rel="noopener">Open video</a>
+        </video>
+        <div class="small muted" style="margin-top:8px">If playback is blocked in this browser, open the video directly.</div>
+      </div>
+    `;
   }
   if (video.embedUrl) {
     const posterUrl = getVideoPosterUrl(video);
@@ -6221,7 +6243,12 @@ function handleAdminBlogVideoUpload(input){
     adminBlogDraft.media_type = 'video';
     adminBlogDraft.media_url = reader.result;
     adminBlogDraft.video_url = reader.result;
-    reopenAdminBlogEditor();
+    adminBlogDraft.articleMediaImage = '';
+    previewAdminBlogVideoLink(reader.result);
+    if (input) input.value = '';
+    if (file.type && !/^video\/(mp4|webm|ogg|quicktime|x-m4v)$/i.test(file.type)) {
+      toast('This video format may not play in every browser. MP4 or WebM is best.');
+    }
   };
   reader.readAsDataURL(file);
 }
