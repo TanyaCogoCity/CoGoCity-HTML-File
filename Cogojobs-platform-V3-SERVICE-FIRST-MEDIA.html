@@ -504,6 +504,8 @@ function normalizeBlogPostRecord(post){
     entity_images: [],
     images: [],
     video_url: '',
+    video_type: '',
+    video_id: '',
     status: 'published',
     publishRequested: true,
     updatedAt: null
@@ -531,6 +533,15 @@ function normalizeBlogPostRecord(post){
   }
   if (normalized.media_type !== 'video') normalized.video_url = '';
   if (normalized.media_type === 'video' && !normalized.media_url) normalized.media_url = normalized.video_url || '';
+  if (normalized.media_type === 'video') {
+    const videoState = normalizeVideoInputValue(normalized.media_url || normalized.video_url || '');
+    normalized.video_type = normalized.video_type || videoState.video_type || '';
+    normalized.video_id = normalized.video_id || videoState.video_id || '';
+    normalized.media_url = getGeneratedVideoUrl(normalized.video_type, normalized.video_id) || videoState.media_url || normalized.media_url || normalized.video_url || '';
+  } else {
+    normalized.video_type = '';
+    normalized.video_id = '';
+  }
   normalized.video_url = normalized.media_type === 'video' ? normalized.media_url : '';
   const rawImages = Array.isArray(normalized.entity_images) && normalized.entity_images.length ? normalized.entity_images : normalized.images;
   normalized.entity_images = upsertImageRecords(rawImages, { source:'article_gallery', entity_type:'article', entity_id: normalized.id || '' });
@@ -2557,8 +2568,9 @@ function renderBlogArticle(slug){
     return;
   }
   const articleImage = getImageView(post.media_type === 'image' ? post.media_url : '', 'full');
-  const topMediaHtml = post.media_type === 'video' && post.media_url
-    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(post.media_url, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
+  const articleVideoUrl = getBlogPostVideoUrl(post);
+  const topMediaHtml = post.media_type === 'video' && articleVideoUrl
+    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(articleVideoUrl, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
     : articleImage
       ? `<img src="${esc(articleImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
       : '';
@@ -2691,11 +2703,53 @@ function getVideoPosterUrl(video){
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   return '';
 }
+function getVideoWatchUrl(video){
+  if (!video) return '';
+  if (video.type === 'youtube' && video.videoId) return `https://www.youtube.com/watch?v=${video.videoId}`;
+  if (video.type === 'vimeo' && video.videoId) return `https://vimeo.com/${video.videoId}`;
+  if (video.type === 'loom' && video.videoId) return `https://www.loom.com/share/${video.videoId}`;
+  return video.url || '';
+}
+function getGeneratedVideoUrl(videoType='', videoId=''){
+  const type = String(videoType || '').trim();
+  const id = String(videoId || '').trim();
+  if (!type || !id) return '';
+  if (type === 'youtube') return `https://www.youtube.com/embed/${id}`;
+  if (type === 'vimeo') return `https://player.vimeo.com/video/${id}`;
+  if (type === 'loom') return `https://www.loom.com/embed/${id}`;
+  return '';
+}
 function normalizeVideoInputValue(value=''){
   const clean = String(value || '').trim();
-  if (!clean) return '';
+  if (!clean) return { video_type:'', video_id:'', media_url:'', input_url:'' };
   const video = parseVideoLink(clean);
-  return video && video.embedUrl ? video.embedUrl : clean;
+  if (!video) return { video_type:'', video_id:'', media_url:clean, input_url:clean };
+  if ((video.type === 'youtube' || video.type === 'vimeo' || video.type === 'loom') && video.videoId) {
+    return {
+      video_type: video.type,
+      video_id: video.videoId,
+      media_url: getGeneratedVideoUrl(video.type, video.videoId),
+      input_url: getVideoWatchUrl(video)
+    };
+  }
+  return {
+    video_type: video.type === 'file' ? 'upload' : (video.type || ''),
+    video_id: video.videoId || '',
+    media_url: clean,
+    input_url: clean
+  };
+}
+function getBlogPostVideoUrl(post){
+  if (!post) return '';
+  return getGeneratedVideoUrl(post.video_type, post.video_id) || post.media_url || post.video_url || '';
+}
+function getBlogPostVideoInputValue(post){
+  if (!post) return '';
+  if (post.video_type && post.video_id) {
+    const video = { type: post.video_type, videoId: post.video_id, url: getGeneratedVideoUrl(post.video_type, post.video_id) };
+    return getVideoWatchUrl(video) || video.url;
+  }
+  return post.media_url || post.video_url || '';
 }
 function getVideoMimeType(url=''){
   const raw = String(url || '').trim();
@@ -2794,10 +2848,12 @@ function renderVideoPreviewHtml(url='', label='Video preview', options={}){
   }
   if (video.embedUrl) {
     if (video.type === 'youtube') {
+      const watchUrl = getVideoWatchUrl(video);
       return `
         <div style="max-width:${esc(maxWidth)}">
           ${labelHtml}
           ${renderEmbeddedVideoFrame(video.embedUrl, label)}
+          ${watchUrl ? `<div class="small muted" style="margin-top:8px"><a href="${esc(watchUrl)}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
         </div>
       `;
     }
@@ -6101,11 +6157,13 @@ function syncAdminBlogDraftFromForm(){
   const articleImageValue = articleImageEl ? (articleImageEl.value || '').trim() : '';
   const articleImageStoredValue = articleImageStoredEl ? (articleImageStoredEl.value || '').trim() : '';
   const rawVideoValue = videoEl ? (videoEl.value || '').trim() : '';
-  const videoValue = normalizeVideoInputValue(rawVideoValue);
-  if (videoEl && rawVideoValue && videoValue !== rawVideoValue) videoEl.value = videoValue;
-  if (videoValue) {
+  const videoState = normalizeVideoInputValue(rawVideoValue);
+  if (videoEl && rawVideoValue && videoState.input_url && videoState.input_url !== rawVideoValue) videoEl.value = videoState.input_url;
+  if (videoState.media_url) {
     adminBlogDraft.media_type = 'video';
-    adminBlogDraft.media_url = videoValue;
+    adminBlogDraft.media_url = videoState.media_url;
+    adminBlogDraft.video_type = videoState.video_type || '';
+    adminBlogDraft.video_id = videoState.video_id || '';
   } else if (articleImageStoredValue || articleImageValue) {
     adminBlogDraft.media_type = 'image';
     adminBlogDraft.media_url = articleImageStoredValue || articleImageValue;
@@ -6114,6 +6172,10 @@ function syncAdminBlogDraftFromForm(){
     adminBlogDraft.media_url = '';
   }
   adminBlogDraft.video_url = adminBlogDraft.media_type === 'video' ? adminBlogDraft.media_url : '';
+  if (adminBlogDraft.media_type !== 'video') {
+    adminBlogDraft.video_type = '';
+    adminBlogDraft.video_id = '';
+  }
   adminBlogDraft.articleMediaImage = adminBlogDraft.media_type === 'image' ? adminBlogDraft.media_url : '';
   if (contentEl) adminBlogDraft.content = contentEl.value || '';
 }
@@ -6133,6 +6195,7 @@ function renderAdminBlogEditorHtml(){
   const localDate = post.date ? formatDateTimeLocalInput(post.date) : formatDateTimeLocalInput(new Date().toISOString());
   const featuredImage = getImageView(post.featured_image || post.image_id || post.featuredImage || '', 'full');
   const articleImage = getImageView(post.media_type === 'image' ? post.media_url : (post.articleMediaImage || ''), 'full');
+  const articleVideoUrl = getBlogPostVideoUrl(post);
   return `
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Details</div>
@@ -6158,9 +6221,9 @@ function renderAdminBlogEditorHtml(){
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminBlogArticleImageLibrary()">Select from Library</button></div>
       <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.media_url || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
-      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? (post.media_url || '') : '')}" placeholder="https://youtube.com/watch?v=..." oninput="previewAdminBlogVideoLink(this.value)"></div>
+      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? getBlogPostVideoInputValue(post) : '')}" placeholder="https://youtube.com/watch?v=..." oninput="previewAdminBlogVideoLink(this.value)"></div>
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
-      <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? (post.media_url || '') : '', 'Article video')}</div>
+      <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? articleVideoUrl : '', 'Article video')}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
       <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
       <div class="field"><label>Article Author</label><input id="adminBlogAuthor" value="${esc(post.authorName || 'CoGo Team')}" placeholder="CoGo Team"></div>
@@ -6243,6 +6306,8 @@ function clearAdminBlogVideo(){
     adminBlogDraft.media_url = '';
   }
   adminBlogDraft.video_url = '';
+  adminBlogDraft.video_type = '';
+  adminBlogDraft.video_id = '';
   const input = document.getElementById('adminBlogVideoLink');
   if (input) input.value = '';
   previewAdminBlogVideoLink('');
@@ -6257,6 +6322,8 @@ function handleAdminBlogVideoUpload(input){
     adminBlogDraft.media_type = 'video';
     adminBlogDraft.media_url = reader.result;
     adminBlogDraft.video_url = reader.result;
+    adminBlogDraft.video_type = 'upload';
+    adminBlogDraft.video_id = '';
     adminBlogDraft.articleMediaImage = '';
     previewAdminBlogVideoLink(reader.result);
     if (input) input.value = '';
@@ -6288,6 +6355,8 @@ function previewAdminBlogArticleImage(value){
     adminBlogDraft.media_url = value || '';
     adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
     adminBlogDraft.video_url = '';
+    adminBlogDraft.video_type = '';
+    adminBlogDraft.video_id = '';
   }
   const imageInput = document.getElementById('adminBlogArticleImage');
   const hidden = document.getElementById('adminBlogArticleImageValue');
@@ -6334,21 +6403,23 @@ function addAdminBlogImageFromLibrary(imageId){
   reopenAdminBlogEditor();
 }
 function previewAdminBlogVideoLink(value){
-  const normalizedValue = normalizeVideoInputValue(value);
+  const videoState = normalizeVideoInputValue(value);
   if (adminBlogDraft) {
-    adminBlogDraft.media_type = normalizedValue ? 'video' : '';
-    adminBlogDraft.media_url = normalizedValue || '';
+    adminBlogDraft.media_type = videoState.media_url ? 'video' : '';
+    adminBlogDraft.media_url = videoState.media_url || '';
     adminBlogDraft.video_url = adminBlogDraft.media_url;
+    adminBlogDraft.video_type = videoState.video_type || (adminBlogDraft.media_type === 'video' ? adminBlogDraft.video_type || '' : '');
+    adminBlogDraft.video_id = videoState.video_id || '';
     adminBlogDraft.articleMediaImage = '';
   }
   const videoInput = document.getElementById('adminBlogVideoLink');
-  if (videoInput && videoInput.value !== normalizedValue) videoInput.value = normalizedValue || '';
+  if (videoInput && videoInput.value !== (videoState.input_url || '')) videoInput.value = videoState.input_url || '';
   const imageInput = document.getElementById('adminBlogArticleImage');
-  if (imageInput && normalizedValue) imageInput.value = '';
+  if (imageInput && videoState.media_url) imageInput.value = '';
   const imagePreview = document.getElementById('admin-blog-images-preview');
-  if (imagePreview && normalizedValue) imagePreview.innerHTML = `<div class="small muted">No article image yet.</div>`;
+  if (imagePreview && videoState.media_url) imagePreview.innerHTML = `<div class="small muted">No article image yet.</div>`;
   const el = document.getElementById('admin-blog-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(normalizedValue || '', 'Article video');
+  if (el) el.innerHTML = renderVideoPreviewHtml(videoState.media_url || '', 'Article video');
 }
 function persistAdminBlogPost(mode='draft'){
   if (!adminBlogDraft) return;
@@ -6366,6 +6437,10 @@ function persistAdminBlogPost(mode='draft'){
   adminBlogDraft.media_url = adminBlogDraft.media_url || '';
   adminBlogDraft.articleMediaImage = adminBlogDraft.media_type === 'image' ? adminBlogDraft.media_url : '';
   adminBlogDraft.video_url = adminBlogDraft.media_type === 'video' ? adminBlogDraft.media_url : '';
+  if (adminBlogDraft.media_type !== 'video') {
+    adminBlogDraft.video_type = '';
+    adminBlogDraft.video_id = '';
+  }
   adminBlogDraft.updatedAt = new Date().toISOString();
   const posts = getBlogPosts();
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
