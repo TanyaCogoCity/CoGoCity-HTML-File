@@ -6144,6 +6144,8 @@ function clearAdminBlogImages(){
   if (el) el.innerHTML = `<div class="small muted">No article image yet.</div>`;
 }
 function previewAdminBlogArticleImage(value){
+  const image = getImageView(value, 'full');
+  const displayValue = image && image.url ? image.url : (value || '');
   if (adminBlogDraft) {
     adminBlogDraft.media_type = value ? 'image' : '';
     adminBlogDraft.media_url = value || '';
@@ -6152,7 +6154,7 @@ function previewAdminBlogArticleImage(value){
   }
   const imageInput = document.getElementById('adminBlogArticleImage');
   const hidden = document.getElementById('adminBlogArticleImageValue');
-  if (imageInput && imageInput.value !== value) imageInput.value = value || '';
+  if (imageInput && imageInput.value !== displayValue) imageInput.value = displayValue || '';
   if (hidden) hidden.value = value || '';
   const videoInput = document.getElementById('adminBlogVideoLink');
   if (videoInput && value) videoInput.value = '';
@@ -6165,14 +6167,25 @@ function previewAdminBlogArticleImage(value){
 function handleAdminBlogImagesUpload(input){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
-  readImagesToDataUrls(input, (images) => {
-    const imageId = upsertImageRecord(images[0] || '', { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' });
-    adminBlogDraft.media_type = imageId ? 'image' : '';
-    adminBlogDraft.media_url = imageId || '';
-    adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
-    adminBlogDraft.video_url = '';
-    reopenAdminBlogEditor();
-  }, 1);
+  const file = (input && input.files && input.files[0]) || null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const imageId = upsertImageRecord(reader.result, { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' });
+      adminBlogDraft.media_type = imageId ? 'image' : '';
+      adminBlogDraft.media_url = imageId || '';
+      adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
+      adminBlogDraft.video_url = '';
+      previewAdminBlogArticleImage(imageId || '');
+      if (input) input.value = '';
+    } catch (error) {
+      console.error('Article image upload failed', error);
+      toast(`Article image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    }
+  };
+  reader.onerror = () => toast('Article image upload failed.');
+  reader.readAsDataURL(file);
 }
 function addAdminBlogImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
@@ -6181,7 +6194,7 @@ function addAdminBlogImageFromLibrary(imageId){
   adminBlogDraft.media_url = imageId || '';
   adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
   adminBlogDraft.video_url = '';
-  reopenAdminBlogEditor();
+  previewAdminBlogArticleImage(imageId || '');
 }
 function previewAdminBlogVideoLink(value){
   if (adminBlogDraft) {
