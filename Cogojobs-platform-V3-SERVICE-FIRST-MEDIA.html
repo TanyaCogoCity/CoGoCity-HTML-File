@@ -2693,6 +2693,12 @@ function getVideoPosterUrl(video){
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   return '';
 }
+function normalizeVideoInputValue(value=''){
+  const clean = String(value || '').trim();
+  if (!clean) return '';
+  const video = parseVideoLink(clean);
+  return video && video.embedUrl ? video.embedUrl : clean;
+}
 function getVideoMimeType(url=''){
   const raw = String(url || '').trim();
   if (!raw) return '';
@@ -6096,7 +6102,9 @@ function syncAdminBlogDraftFromForm(){
   }
   const articleImageValue = articleImageEl ? (articleImageEl.value || '').trim() : '';
   const articleImageStoredValue = articleImageStoredEl ? (articleImageStoredEl.value || '').trim() : '';
-  const videoValue = videoEl ? (videoEl.value || '').trim() : '';
+  const rawVideoValue = videoEl ? (videoEl.value || '').trim() : '';
+  const videoValue = normalizeVideoInputValue(rawVideoValue);
+  if (videoEl && rawVideoValue && videoValue !== rawVideoValue) videoEl.value = videoValue;
   if (videoValue) {
     adminBlogDraft.media_type = 'video';
     adminBlogDraft.media_url = videoValue;
@@ -6328,18 +6336,21 @@ function addAdminBlogImageFromLibrary(imageId){
   reopenAdminBlogEditor();
 }
 function previewAdminBlogVideoLink(value){
+  const normalizedValue = normalizeVideoInputValue(value);
   if (adminBlogDraft) {
-    adminBlogDraft.media_type = value ? 'video' : '';
-    adminBlogDraft.media_url = value || '';
+    adminBlogDraft.media_type = normalizedValue ? 'video' : '';
+    adminBlogDraft.media_url = normalizedValue || '';
     adminBlogDraft.video_url = adminBlogDraft.media_url;
     adminBlogDraft.articleMediaImage = '';
   }
+  const videoInput = document.getElementById('adminBlogVideoLink');
+  if (videoInput && videoInput.value !== normalizedValue) videoInput.value = normalizedValue || '';
   const imageInput = document.getElementById('adminBlogArticleImage');
-  if (imageInput && value) imageInput.value = '';
+  if (imageInput && normalizedValue) imageInput.value = '';
   const imagePreview = document.getElementById('admin-blog-images-preview');
-  if (imagePreview && value) imagePreview.innerHTML = `<div class="small muted">No article image yet.</div>`;
+  if (imagePreview && normalizedValue) imagePreview.innerHTML = `<div class="small muted">No article image yet.</div>`;
   const el = document.getElementById('admin-blog-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Article video');
+  if (el) el.innerHTML = renderVideoPreviewHtml(normalizedValue || '', 'Article video');
 }
 function persistAdminBlogPost(mode='draft'){
   if (!adminBlogDraft) return;
