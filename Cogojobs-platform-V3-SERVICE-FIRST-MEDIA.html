@@ -2601,6 +2601,27 @@ function getVideoPosterUrl(video){
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   return '';
 }
+let youTubeApiPromise = null;
+function ensureYouTubePlayerApi(){
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (youTubeApiPromise) return youTubeApiPromise;
+  youTubeApiPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-youtube-iframe-api]');
+    const previousReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof previousReady === 'function') previousReady();
+      resolve(window.YT);
+    };
+    if (existing) return;
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.async = true;
+    script.dataset.youtubeIframeApi = 'true';
+    script.onerror = () => reject(new Error('Failed to load YouTube player API'));
+    document.head.appendChild(script);
+  });
+  return youTubeApiPromise;
+}
 function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false){
   const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
   return `
@@ -2609,12 +2630,37 @@ function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=f
     </div>
   `;
 }
-function playEmbeddedVideo(containerId='', encodedUrl='', encodedLabel=''){
+function playEmbeddedVideo(containerId='', encodedUrl='', encodedLabel='', encodedType='', encodedVideoId=''){
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
   const embedUrl = decodeURIComponent(encodedUrl || '');
   const label = decodeURIComponent(encodedLabel || 'Video preview');
+  const videoType = decodeURIComponent(encodedType || '');
+  const videoId = decodeURIComponent(encodedVideoId || '');
   if (!embedUrl) return;
+  if (videoType === 'youtube' && videoId) {
+    const playerId = `${containerId}_player`;
+    wrap.innerHTML = `
+      <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
+        <div id="${playerId}" style="position:absolute;inset:0;width:100%;height:100%"></div>
+      </div>
+    `;
+    ensureYouTubePlayerApi().then(YT => {
+      if (!YT || !YT.Player) throw new Error('YouTube player API unavailable');
+      new YT.Player(playerId, {
+        videoId,
+        width: '100%',
+        height: '100%',
+        playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+        events: {
+          onReady: event => event.target.playVideo()
+        }
+      });
+    }).catch(() => {
+      wrap.innerHTML = renderEmbeddedVideoFrame(embedUrl, label, true);
+    });
+    return;
+  }
   wrap.innerHTML = renderEmbeddedVideoFrame(embedUrl, label, true);
 }
 function renderVideoPreviewHtml(url='', label='Video preview', options={}){
@@ -2637,7 +2683,7 @@ function renderVideoPreviewHtml(url='', label='Video preview', options={}){
           ${labelHtml}
           <div id="${containerId}" style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
             <img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
-            <button class="btn btn-blue btn-sm" type="button" onclick="playEmbeddedVideo('${esc(containerId)}','${esc(encodeURIComponent(video.embedUrl))}','${esc(encodeURIComponent(label))}')" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 10px 30px rgba(0,0,0,.25)">▶ Play Video</button>
+            <button class="btn btn-blue btn-sm" type="button" onclick="playEmbeddedVideo('${esc(containerId)}','${esc(encodeURIComponent(video.embedUrl))}','${esc(encodeURIComponent(label))}','${esc(encodeURIComponent(video.type || ''))}','${esc(encodeURIComponent(video.videoId || ''))}')" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 10px 30px rgba(0,0,0,.25)">▶ Play Video</button>
           </div>
         </div>
       `;
@@ -5912,9 +5958,12 @@ function syncAdminBlogDraftFromForm(){
   if (excerptEl) adminBlogDraft.excerpt = excerptEl.value || '';
   if (authorEl) adminBlogDraft.authorName = authorEl.value || 'CoGo Team';
   if (featuredEl) {
-    adminBlogDraft.featured_image = featuredEl.value || '';
-    adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
-    adminBlogDraft.image_id = adminBlogDraft.featured_image;
+    const featuredValue = (featuredEl.value || '').trim();
+    if (featuredValue) {
+      adminBlogDraft.featured_image = featuredValue;
+      adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+      adminBlogDraft.image_id = adminBlogDraft.featured_image;
+    }
   }
   const articleImageValue = articleImageEl ? (articleImageEl.value || '').trim() : '';
   const videoValue = videoEl ? (videoEl.value || '').trim() : '';
@@ -5924,7 +5973,7 @@ function syncAdminBlogDraftFromForm(){
   } else if (articleImageValue) {
     adminBlogDraft.media_type = 'image';
     adminBlogDraft.media_url = articleImageValue;
-  } else {
+  } else if (!adminBlogDraft.media_url) {
     adminBlogDraft.media_type = '';
     adminBlogDraft.media_url = '';
   }
@@ -6004,6 +6053,8 @@ function previewAdminBlogFeaturedImage(value){
     adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
     adminBlogDraft.image_id = adminBlogDraft.featured_image;
   }
+  const input = document.getElementById('adminBlogFeaturedImage');
+  if (input && input.value !== value) input.value = value || '';
   const el = document.getElementById('admin-blog-featured-preview');
   if (!el) return;
   el.innerHTML = value ? renderManagedImage(value, 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`;
@@ -6084,6 +6135,8 @@ function previewAdminBlogArticleImage(value){
     adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
     adminBlogDraft.video_url = '';
   }
+  const imageInput = document.getElementById('adminBlogArticleImage');
+  if (imageInput && imageInput.value !== value) imageInput.value = value || '';
   const videoInput = document.getElementById('adminBlogVideoLink');
   if (videoInput && value) videoInput.value = '';
   const videoPreview = document.getElementById('admin-blog-video-preview');
