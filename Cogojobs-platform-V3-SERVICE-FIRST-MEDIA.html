@@ -2668,14 +2668,12 @@ function parseVideoLink(url=''){
   if (videoFile) return { type:'file', url:clean, label:'Video file' };
   if (host.includes('youtu.be')) {
     const videoId = path.split('/').filter(Boolean)[0] || '';
-    const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?rel=0&playsinline=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('youtube.com')) {
     const parts = path.split('/').filter(Boolean);
     const videoId = parsed.searchParams.get('v') || (parts[0] === 'shorts' ? parts[1] : '') || (parts[0] === 'embed' ? parts[1] : '');
-    const start = parseYouTubeStart();
-    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}?rel=0&playsinline=1${start ? `&start=${start}` : ''}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'youtube', url:clean, videoId, embedUrl:`https://www.youtube.com/embed/${videoId}`, label:'YouTube video' } : { type:'link', url:clean, label:clean };
   }
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
@@ -2736,7 +2734,7 @@ function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=f
   const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
   return `
     <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
-      <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+      <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
     </div>
   `;
 }
