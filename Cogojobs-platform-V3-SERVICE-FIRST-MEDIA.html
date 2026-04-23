@@ -310,6 +310,10 @@ function normalizeImageRecord(image){
     url: '',
     thumbnail_url: '',
     alt: '',
+    fingerprint: '',
+    original_name: '',
+    original_type: '',
+    original_size: 0,
     source: 'library',
     entity_type: '',
     entity_id: '',
@@ -321,6 +325,10 @@ function normalizeImageRecord(image){
   normalized.url = String(normalized.url || '').trim();
   normalized.thumbnail_url = String(normalized.thumbnail_url || normalized.thumb_url || normalized.url || '').trim() || normalized.url;
   normalized.alt = String(normalized.alt || '').trim();
+  normalized.fingerprint = String(normalized.fingerprint || '').trim();
+  normalized.original_name = String(normalized.original_name || '').trim();
+  normalized.original_type = String(normalized.original_type || '').trim();
+  normalized.original_size = Number(normalized.original_size || 0) || 0;
   normalized.updatedAt = normalized.updatedAt || new Date().toISOString();
   normalized.createdAt = normalized.createdAt || normalized.updatedAt;
   return normalized;
@@ -345,6 +353,76 @@ function findImageByUrl(url=''){
   if (!clean) return null;
   return getImages().find(image => image.url === clean || image.thumbnail_url === clean) || null;
 }
+function findImageByFingerprint(fingerprint=''){
+  const clean = String(fingerprint || '').trim();
+  if (!clean) return null;
+  return getImages().find(image => String(image.fingerprint || '') === clean) || null;
+}
+function buildUploadedImageFingerprint(file){
+  if (!file) return '';
+  return [
+    String(file.name || '').trim().toLowerCase(),
+    Number(file.size || 0),
+    Number(file.lastModified || 0),
+    String(file.type || '').trim().toLowerCase()
+  ].join('|');
+}
+function readFileAsDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result || '');
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
+    reader.readAsDataURL(file);
+  });
+}
+function optimizeImageDataUrlForStorage(dataUrl='', file=null){
+  return new Promise(resolve => {
+    const raw = String(dataUrl || '');
+    if (!raw || !/^data:image\//i.test(raw) || /^data:image\/(gif|svg\+xml)/i.test(raw)) return resolve(raw);
+    const shouldOptimize = raw.length > 350000 || Number(file && file.size || 0) > 250000;
+    if (!shouldOptimize || typeof document === 'undefined') return resolve(raw);
+    const img = new Image();
+    img.onload = () => {
+      const width = img.naturalWidth || img.width || 0;
+      const height = img.naturalHeight || img.height || 0;
+      if (!width || !height) return resolve(raw);
+      const maxDimension = 1600;
+      const scale = Math.min(1, maxDimension / Math.max(width, height));
+      const targetWidth = Math.max(1, Math.round(width * scale));
+      const targetHeight = Math.max(1, Math.round(height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(raw);
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      let next = raw;
+      try {
+        const keepPng = /^image\/png/i.test(String(file && file.type || '')) && raw.length < 450000 && scale === 1;
+        next = keepPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.82);
+      } catch (error) {
+        next = raw;
+      }
+      resolve(next && next.length < raw.length ? next : raw);
+    };
+    img.onerror = () => resolve(raw);
+    img.src = raw;
+  });
+}
+function prepareUploadedImageRecord(file, meta={}){
+  if (!file) return Promise.resolve('');
+  const fingerprint = buildUploadedImageFingerprint(file);
+  const existing = findImageByFingerprint(fingerprint);
+  if (existing) return Promise.resolve(existing.id);
+  return readFileAsDataUrl(file)
+    .then(dataUrl => optimizeImageDataUrlForStorage(dataUrl, file))
+    .then(dataUrl => upsertImageRecord(dataUrl, Object.assign({
+      fingerprint,
+      original_name: file.name || '',
+      original_type: file.type || '',
+      original_size: Number(file.size || 0) || 0
+    }, meta)));
+}
 function upsertImageRecord(value, meta={}){
   if (!value) return '';
   if (typeof value === 'object' && value.id && !value.url) return String(value.id);
@@ -357,6 +435,11 @@ function upsertImageRecord(value, meta={}){
   if (!raw) return '';
   if (isImageRecordId(raw)) return raw;
   if (!looksLikeImageSource(raw)) return raw;
+  const fingerprint = String(meta.fingerprint || '').trim();
+  if (fingerprint) {
+    const existingByFingerprint = findImageByFingerprint(fingerprint);
+    if (existingByFingerprint) return existingByFingerprint.id;
+  }
   const existing = findImageByUrl(raw);
   if (existing) return existing.id;
   const images = getImages();
@@ -2974,16 +3057,18 @@ function openReviewListModal(title, reviews=[]){
     </div>
   `, '620px');
 }
-function readImagesToDataUrls(input, callback, limit=3){
+function readImagesToDataUrls(input, callback, limit=3, meta={}){
   const allFiles = Array.from((input && input.files) || []);
   if (allFiles.length > limit) toast(`You can upload up to ${limit} images. The first ${limit} were kept.`);
   const files = allFiles.slice(0, limit);
   if (!files.length) return callback([]);
-  Promise.all(files.map(file => new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(upsertImageRecord(reader.result, { source:'upload' }));
-    reader.readAsDataURL(file);
-  }))).then(callback);
+  Promise.all(files.map(file => prepareUploadedImageRecord(file, Object.assign({ source:'upload' }, meta))))
+    .then(callback)
+    .catch(error => {
+      console.error('Image upload failed', error);
+      toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+      callback([]);
+    });
 }
 function renderImageLibraryButton(callbackName, label='Select from Library'){
   if (!canUseImageLibrary()) return '';
@@ -3035,18 +3120,22 @@ function selectAdminModalImageFromLibrary(imageId=''){
 function handleAdminModalSingleImageUpload(input, inputId='', previewId='', source='profile', alt='Image', emptyLabel='No image selected yet.'){
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const imageId = upsertImageRecord(reader.result, { source });
-    setAdminModalSingleImage(inputId, previewId, imageId, alt, emptyLabel);
-  };
-  reader.readAsDataURL(file);
+  prepareUploadedImageRecord(file, { source })
+    .then(imageId => {
+      setAdminModalSingleImage(inputId, previewId, imageId, alt, emptyLabel);
+      if (input) input.value = '';
+    })
+    .catch(error => {
+      console.error('Image upload failed', error);
+      toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    });
 }
 function handleAdminModalImageListUpload(input, inputId='', previewId='', source='gallery', limit=3){
   readImagesToDataUrls(input, (images) => {
     const taggedImages = upsertImageRecords(images, { source });
     setAdminModalImageList(inputId, previewId, taggedImages, limit);
-  }, limit);
+    if (input) input.value = '';
+  }, limit, { source });
 }
 function selectImageFromLibrary(callbackName, imageId){
   const fn = window[callbackName];
@@ -6020,7 +6109,7 @@ function renderAdminBlogEditorHtml(){
       <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
       <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(featuredImage ? featuredImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
       <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
-      <div style="margin:-6px 0 14px">${renderImageLibraryButton('setAdminBlogFeaturedImageFromLibrary')}</div>
+      <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminBlogFeaturedImageLibrary()">Select from Library</button></div>
       <div id="admin-blog-featured-preview" style="margin-bottom:14px">${featuredImage ? renderManagedImage(post.featured_image || post.image_id || post.featuredImage || '', 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`}</div>
       <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogFeaturedImage()">Remove Featured Image</button></div>
     </div>
@@ -6030,7 +6119,7 @@ function renderAdminBlogEditorHtml(){
       <input id="adminBlogArticleImageValue" type="hidden" value="${esc(post.media_type === 'image' ? (post.media_url || '') : '')}">
       <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(articleImage ? articleImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
       <div class="field"><label>Or upload article image</label><input type="file" accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
-      <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
+      <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminBlogArticleImageLibrary()">Select from Library</button></div>
       <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.media_url || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
       <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? (post.media_url || '') : '')}" placeholder="https://youtube.com/watch?v=..." oninput="previewAdminBlogVideoLink(this.value)"></div>
@@ -6086,19 +6175,26 @@ function handleAdminBlogFeaturedImageUpload(input){
   syncAdminBlogDraftFromForm();
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const imageId = upsertImageRecord(reader.result, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' });
-    adminBlogDraft.featured_image = imageId;
-    adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
-    adminBlogDraft.image_id = adminBlogDraft.featured_image;
-    reopenAdminBlogEditor();
-  };
-  reader.readAsDataURL(file);
+  prepareUploadedImageRecord(file, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' })
+    .then(imageId => {
+      adminBlogDraft.featured_image = imageId;
+      adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+      adminBlogDraft.image_id = adminBlogDraft.featured_image;
+      if (input) input.value = '';
+      reopenAdminBlogEditor();
+    })
+    .catch(error => {
+      console.error('Featured image upload failed', error);
+      toast(`Featured image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    });
+}
+function openAdminBlogFeaturedImageLibrary(){
+  if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
+  syncAdminBlogDraftFromForm();
+  openAdminImageLibrary('setAdminBlogFeaturedImageFromLibrary');
 }
 function setAdminBlogFeaturedImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
-  syncAdminBlogDraftFromForm();
   adminBlogDraft.featured_image = imageId;
   adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
   adminBlogDraft.image_id = adminBlogDraft.featured_image;
@@ -6169,32 +6265,32 @@ function handleAdminBlogImagesUpload(input){
   syncAdminBlogDraftFromForm();
   const file = (input && input.files && input.files[0]) || null;
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const imageId = upsertImageRecord(reader.result, { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' });
+  prepareUploadedImageRecord(file, { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' })
+    .then(imageId => {
       adminBlogDraft.media_type = imageId ? 'image' : '';
       adminBlogDraft.media_url = imageId || '';
       adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
       adminBlogDraft.video_url = '';
       previewAdminBlogArticleImage(imageId || '');
       if (input) input.value = '';
-    } catch (error) {
+    })
+    .catch(error => {
       console.error('Article image upload failed', error);
       toast(`Article image upload failed: ${(error && error.message) || 'Unknown error'}`);
-    }
-  };
-  reader.onerror = () => toast('Article image upload failed.');
-  reader.readAsDataURL(file);
+    });
+}
+function openAdminBlogArticleImageLibrary(){
+  if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
+  syncAdminBlogDraftFromForm();
+  openAdminImageLibrary('addAdminBlogImageFromLibrary');
 }
 function addAdminBlogImageFromLibrary(imageId){
   if (!adminBlogDraft) adminBlogDraft = createAdminBlogDraft();
-  syncAdminBlogDraftFromForm();
   adminBlogDraft.media_type = imageId ? 'image' : '';
   adminBlogDraft.media_url = imageId || '';
   adminBlogDraft.articleMediaImage = adminBlogDraft.media_url;
   adminBlogDraft.video_url = '';
-  previewAdminBlogArticleImage(imageId || '');
+  reopenAdminBlogEditor();
 }
 function previewAdminBlogVideoLink(value){
   if (adminBlogDraft) {
