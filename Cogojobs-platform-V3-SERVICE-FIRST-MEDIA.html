@@ -5952,6 +5952,7 @@ function syncAdminBlogDraftFromForm(){
   const authorEl = document.getElementById('adminBlogAuthor');
   const featuredEl = document.getElementById('adminBlogFeaturedImage');
   const articleImageEl = document.getElementById('adminBlogArticleImage');
+  const articleImageStoredEl = document.getElementById('adminBlogArticleImageValue');
   const videoEl = document.getElementById('adminBlogVideoLink');
   const contentEl = document.getElementById('adminBlogContent');
   if (titleEl) adminBlogDraft.title = titleEl.value || '';
@@ -5968,13 +5969,14 @@ function syncAdminBlogDraftFromForm(){
     }
   }
   const articleImageValue = articleImageEl ? (articleImageEl.value || '').trim() : '';
+  const articleImageStoredValue = articleImageStoredEl ? (articleImageStoredEl.value || '').trim() : '';
   const videoValue = videoEl ? (videoEl.value || '').trim() : '';
   if (videoValue) {
     adminBlogDraft.media_type = 'video';
     adminBlogDraft.media_url = videoValue;
-  } else if (articleImageValue) {
+  } else if (articleImageStoredValue || articleImageValue) {
     adminBlogDraft.media_type = 'image';
-    adminBlogDraft.media_url = articleImageValue;
+    adminBlogDraft.media_url = articleImageStoredValue || articleImageValue;
   } else if (!adminBlogDraft.media_url) {
     adminBlogDraft.media_type = '';
     adminBlogDraft.media_url = '';
@@ -6018,6 +6020,7 @@ function renderAdminBlogEditorHtml(){
     <div class="card form-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:12px">Article Body</div>
       <div class="small muted" style="margin-bottom:14px">The full article page shows either the article video or the article image at the top. If both exist, video is shown first.</div>
+      <input id="adminBlogArticleImageValue" type="hidden" value="${esc(post.media_type === 'image' ? (post.media_url || '') : '')}">
       <div class="field"><label>Article Image URL</label><input id="adminBlogArticleImage" value="${esc(articleImage ? articleImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogArticleImage(this.value)"></div>
       <div class="field"><label>Or upload article image</label><input type="file" accept="image/*" onchange="handleAdminBlogImagesUpload(this)"></div>
       <div style="margin:-6px 0 14px">${renderImageLibraryButton('addAdminBlogImageFromLibrary')}</div>
@@ -6127,7 +6130,9 @@ function clearAdminBlogImages(){
   adminBlogDraft.articleMediaImage = '';
   const el = document.getElementById('admin-blog-images-preview');
   const input = document.getElementById('adminBlogArticleImage');
+  const hidden = document.getElementById('adminBlogArticleImageValue');
   if (input) input.value = '';
+  if (hidden) hidden.value = '';
   if (el) el.innerHTML = `<div class="small muted">No article image yet.</div>`;
 }
 function previewAdminBlogArticleImage(value){
@@ -6138,7 +6143,9 @@ function previewAdminBlogArticleImage(value){
     adminBlogDraft.video_url = '';
   }
   const imageInput = document.getElementById('adminBlogArticleImage');
+  const hidden = document.getElementById('adminBlogArticleImageValue');
   if (imageInput && imageInput.value !== value) imageInput.value = value || '';
+  if (hidden) hidden.value = value || '';
   const videoInput = document.getElementById('adminBlogVideoLink');
   if (videoInput && value) videoInput.value = '';
   const videoPreview = document.getElementById('admin-blog-video-preview');
