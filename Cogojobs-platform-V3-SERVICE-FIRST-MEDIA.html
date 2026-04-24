@@ -48,65 +48,6 @@
     .btn-green{background:var(--green);color:#fff}
     .btn-outline{background:#fff;border:1.5px solid var(--navy);color:var(--navy)}
     .btn-danger{background:#fff;border:1.5px solid #dc2626;color:#dc2626}
-    .btn.secondary{background:#fff;border:1.5px solid var(--navy);color:var(--navy)}
-    .cogo-video-preview{
-      position:relative;
-      width:100%;
-      aspect-ratio:16 / 9;
-      background:#000;
-      border-radius:12px;
-      overflow:hidden;
-    }
-    .cogo-video-play{
-      position:relative;
-      width:100%;
-      height:100%;
-      border:0;
-      padding:0;
-      cursor:pointer;
-      background:#000;
-    }
-    .cogo-video-play img{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      display:block;
-      opacity:.95;
-    }
-    .cogo-video-play-button{
-      position:absolute;
-      top:50%;
-      left:50%;
-      transform:translate(-50%, -50%);
-      background:rgba(220, 38, 38, 0.95);
-      color:white;
-      width:58px;
-      height:58px;
-      border-radius:999px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:24px;
-      box-shadow:0 8px 20px rgba(0,0,0,.25);
-    }
-    .cogo-video-preview iframe,
-    .cogo-video-preview video{
-      width:100%;
-      height:100%;
-      border:0;
-      border-radius:12px;
-    }
-    .cogo-video-fallback{
-      position:absolute;
-      right:10px;
-      bottom:10px;
-      background:rgba(0,0,0,.7);
-      color:white;
-      padding:6px 10px;
-      border-radius:999px;
-      font-size:12px;
-      text-decoration:none;
-    }
     .link-btn{background:none;border:none;padding:0;color:var(--navy);font:inherit;font-weight:800;cursor:pointer;text-decoration:underline}
     .link-btn:hover{color:var(--blue)}
     main{min-height:calc(100vh - 64px)}
@@ -1640,7 +1581,7 @@ function renderStudentSignupStepContent(){
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupProfileImageFromLibrary')}</div>` : ''}
       ${renderSignupImageGallery(d.profileImages || [], 120)}
       <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupProfileVideo(this.value)"></div>
-      <div id="student-profile-video-preview">${renderVideoBlock(d, { label:'Profile video preview' })}</div>
+      <div id="student-profile-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video preview')}</div>
     </div>
   `;
   if (studentSignupStep === 5) return `
@@ -1672,7 +1613,7 @@ function renderStudentSignupStepContent(){
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderSignupImageGallery((d.serviceForm || {}).images || [], 120)}
       <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"></div>
-      <div id="student-service-video-preview">${renderVideoBlock(d.serviceForm || {}, { label:'Service video preview' })}</div>
+      <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}" oninput="syncStudentSignupServiceForm()"></div>
         <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA" oninput="syncStudentSignupServiceForm()"></div>
@@ -1826,7 +1767,7 @@ function selectStudentSignupPhotoFromLibrary(imageId){
 function previewStudentSignupProfileVideo(value){
   applyVideoState(studentSignupDraft, value || '');
   const el = document.getElementById('student-profile-video-preview');
-  if (el) el.innerHTML = renderVideoBlock(studentSignupDraft, { label:'Profile video preview' });
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentSignupDraft), 'Profile video preview');
 }
 function handleStudentSignupProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
@@ -1861,7 +1802,7 @@ function previewStudentSignupServiceVideo(value){
   syncStudentSignupServiceForm();
   applyVideoState(studentSignupDraft.serviceForm, value || '');
   const el = document.getElementById('student-service-video-preview');
-  if (el) el.innerHTML = renderVideoBlock(studentSignupDraft.serviceForm, { label:'Service video preview' });
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentSignupDraft.serviceForm), 'Service video preview');
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
@@ -1962,7 +1903,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
       <div style="margin-top:14px">${esc(service.description || '')}</div>
       <div style="margin-top:14px">${renderSignupImageGallery(service.images || [], 120)}</div>
-      <div style="margin-top:14px">${renderVideoBlock(service, { label:'Service video' })}</div>
+      <div style="margin-top:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
       <div style="margin-top:16px">${backButtonHtml}</div>
     </div>
   `;
@@ -1994,7 +1935,7 @@ function renderStudentSignupPreviewHtml(){
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(student.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoBlock(student, { label:'Profile video' })}
+      ${renderVideoPreviewHtml(getRenderableVideoUrl(student), 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.length ? services.map((service, index) => `
         <button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentSignupServicePreview(${index})">
@@ -2644,7 +2585,7 @@ function renderBlogArticle(slug){
   const articleImage = getImageView(post.media_type === 'image' ? post.media_url : '', 'full');
   const articleVideoUrl = getBlogPostVideoUrl(post);
   const topMediaHtml = post.media_type === 'video' && articleVideoUrl
-    ? `<div style="margin-bottom:22px">${renderVideoBlock(post, { maxWidth:'100%', showLabel:false, label:'Article video' })}</div>`
+    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(articleVideoUrl, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
     : articleImage
       ? `<img src="${esc(articleImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
       : '';
@@ -2730,116 +2671,116 @@ function chooseStudentSignupAvatar(avatar){
   studentSignupDraft.avatar = avatar || '';
   renderStudentSignupModal();
 }
-function parseVideoLink(url = '') {
+function parseVideo(url=''){
+  const clean = (url || '').trim();
+  if (!clean) return null;
+  const youTubeEmbedUrl = getYouTubeEmbedUrl(clean);
+  if (youTubeEmbedUrl) {
+    const videoId = youTubeEmbedUrl.split('/embed/')[1].split('?')[0] || '';
+    return { type:'youtube', id:videoId, videoId, url:clean, embedUrl:youTubeEmbedUrl, label:'YouTube video' };
+  }
+  if (clean.startsWith('data:video/') || clean.startsWith('blob:')) return { type:'upload', url:clean, label:'Video file' };
+  const videoFile = clean.match(/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i);
+  if (videoFile) return { type:'upload', url:clean, label:'Video file' };
+  let parsed;
+  try {
+    parsed = new URL(clean);
+  } catch (error) {
+    return { type:'external', url:clean, label:clean };
+  }
+  const host = parsed.hostname.replace(/^www\./, '');
+  const path = parsed.pathname || '';
+  if (host.includes('vimeo.com')) {
+    const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
+    return videoId ? { type:'vimeo', id:videoId, videoId, url:clean, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'external', url:clean, label:clean };
+  }
+  return { type:'external', url:clean, label:clean };
+}
+function parseVideoLink(url=''){
+  return parseVideo(url);
+}
+function getYouTubeEmbedUrl(url='') {
   const clean = String(url || '').trim();
   if (!clean) return null;
-
-  let match = clean.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube-nocookie\.com\/embed\/)([^&?/]+)/i);
-  if (match) {
-    return {
-      type: 'youtube',
-      id: match[1],
-      videoId: match[1],
-      url: clean,
-      originalUrl: clean,
-      embedUrl: `https://www.youtube.com/embed/${match[1]}`,
-      thumbnailUrl: `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`,
-      watchUrl: `https://www.youtube.com/watch?v=${match[1]}`
-    };
-  }
-
-  match = clean.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
-  if (match) {
-    return {
-      type: 'vimeo',
-      id: match[1],
-      videoId: match[1],
-      url: clean,
-      originalUrl: clean,
-      embedUrl: `https://player.vimeo.com/video/${match[1]}`,
-      thumbnailUrl: `https://vumbnail.com/${match[1]}.jpg`,
-      watchUrl: `https://vimeo.com/${match[1]}`
-    };
-  }
-
-  if (clean.startsWith('data:video/') || clean.startsWith('blob:') || /\.(mp4|webm|ogg)(\?|#|$)/i.test(clean)) {
-    return {
-      type: 'upload',
-      id: '',
-      videoId: '',
-      url: clean,
-      originalUrl: clean,
-      embedUrl: clean,
-      thumbnailUrl: '',
-      watchUrl: clean
-    };
-  }
-
-  return {
-    type: 'external',
-    id: '',
-    videoId: '',
-    url: clean,
-    originalUrl: clean,
-    embedUrl: '',
-    thumbnailUrl: '',
-    watchUrl: clean
-  };
+  let videoId = null;
+  const watchMatch = clean.match(/[?&]v=([^&]+)/i);
+  if (watchMatch) videoId = watchMatch[1];
+  const shortMatch = clean.match(/youtu\.be\/([^?&#/]+)/i);
+  if (!videoId && shortMatch) videoId = shortMatch[1];
+  const embedMatch = clean.match(/embed\/([^?&#/]+)/i);
+  if (!videoId && embedMatch) videoId = embedMatch[1];
+  const shortsMatch = clean.match(/shorts\/([^?&#/]+)/i);
+  if (!videoId && shortsMatch) videoId = shortsMatch[1];
+  if (!videoId && /^[a-zA-Z0-9_-]{11}$/.test(clean)) videoId = clean;
+  if (!videoId) return null;
+  return `https://www.youtube.com/embed/${videoId}`;
 }
-function parseVideo(url=''){
-  return parseVideoLink(url);
-}
-function getGeneratedVideoUrl(videoType = '', videoId = '') {
-  if (videoType === 'youtube' && videoId) return `https://www.youtube.com/embed/${videoId}`;
-  if (videoType === 'vimeo' && videoId) return `https://player.vimeo.com/video/${videoId}`;
+function getVideoPosterUrl(video){
+  if (!video) return '';
+  if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
+  if (video.type === 'vimeo' && video.videoId) return `https://vumbnail.com/${video.videoId}.jpg`;
   return '';
 }
-function normalizeVideoInputValue(url = '') {
-  const parsed = parseVideoLink(url);
-  if (!parsed) {
-    return { media_url: '', video_url: '', video_type: '', video_id: '', input_url: '' };
-  }
-
-  return {
-    media_url: parsed.embedUrl || parsed.originalUrl,
-    video_url: parsed.embedUrl || parsed.originalUrl,
-    video_type: parsed.type,
-    video_id: parsed.id || '',
-    input_url: parsed.watchUrl || parsed.originalUrl
-  };
+function getVideoWatchUrl(video){
+  if (!video) return '';
+  if (video.type === 'youtube' && video.videoId) return `https://www.youtube.com/watch?v=${video.videoId}`;
+  if (video.type === 'vimeo' && video.videoId) return `https://vimeo.com/${video.videoId}`;
+  return video.url || '';
 }
-function applyVideoState(record, url = '') {
-  const state = normalizeVideoInputValue(url);
-  if (!record) return state;
-
-  record.video_type = state.video_type;
-  record.video_id = state.video_id;
-  record.video_url = state.video_url;
-  record.media_url = state.media_url;
-
-  return record;
+function getGeneratedVideoUrl(videoType='', videoId=''){
+  const type = String(videoType || '').trim();
+  const id = String(videoId || '').trim();
+  if (!type || !id) return '';
+  if (type === 'youtube') return `https://www.youtube.com/embed/${id}`;
+  if (type === 'vimeo') return `https://player.vimeo.com/video/${id}`;
+  return '';
 }
-function getRenderableVideoUrl(record = {}) {
+function getRenderableVideoUrl(record){
   if (!record) return '';
-
+  return getGeneratedVideoUrl(record.video_type, record.video_id) || record.video_url || '';
+}
+function getEditableVideoInputValue(record){
+  if (!record) return '';
   if (record.video_type && record.video_id) {
-    return getGeneratedVideoUrl(record.video_type, record.video_id);
+    return getVideoWatchUrl({ type:record.video_type, videoId:record.video_id, id:record.video_id, url:getRenderableVideoUrl(record) }) || getRenderableVideoUrl(record);
   }
-
-  return record.video_url || record.media_url || '';
+  return record.video_url || '';
 }
-function getEditableVideoInputValue(record = {}) {
-  if (!record) return '';
-  const parsed = parseVideoLink(getRenderableVideoUrl(record) || record.video_url || record.media_url || '');
-  return (parsed && parsed.watchUrl) || record.video_url || record.media_url || '';
+function applyVideoState(target, value=''){
+  const state = normalizeVideoInputValue(value);
+  if (!target) return state;
+  target.video_type = state.video_type || '';
+  target.video_id = state.video_id || '';
+  target.video_url = state.media_url || '';
+  return state;
+}
+function normalizeVideoInputValue(value=''){
+  const clean = String(value || '').trim();
+  if (!clean) return { video_type:'', video_id:'', media_url:'', input_url:'' };
+  const video = parseVideoLink(clean);
+  if (!video) return { video_type:'', video_id:'', media_url:clean, input_url:clean };
+  if ((video.type === 'youtube' || video.type === 'vimeo') && video.videoId) {
+    return {
+      video_type: video.type,
+      video_id: video.videoId,
+      media_url: getGeneratedVideoUrl(video.type, video.videoId),
+      input_url: getVideoWatchUrl(video)
+    };
+  }
+  return {
+    video_type: video.type || '',
+    video_id: video.videoId || '',
+    media_url: clean,
+    input_url: clean
+  };
 }
 function getBlogPostVideoUrl(post){
   if (!post) return '';
-  return getRenderableVideoUrl({ video_type: post.video_type || '', video_id: post.video_id || '', video_url: post.video_url || '', media_url: post.media_url || '' });
+  return getRenderableVideoUrl({ video_type: post.video_type || '', video_id: post.video_id || '', video_url: post.media_url || post.video_url || '' });
 }
 function getBlogPostVideoInputValue(post){
   if (!post) return '';
-  return getEditableVideoInputValue({ video_type: post.video_type || '', video_id: post.video_id || '', video_url: post.video_url || '', media_url: post.media_url || '' });
+  return getEditableVideoInputValue({ video_type: post.video_type || '', video_id: post.video_id || '', video_url: post.media_url || post.video_url || '' });
 }
 function getVideoMimeType(url=''){
   const raw = String(url || '').trim();
@@ -2853,89 +2794,125 @@ function getVideoMimeType(url=''){
   if (/\.m4v(\?|#|$)/i.test(raw)) return 'video/x-m4v';
   return '';
 }
-function renderVideoBlock(urlOrRecord, options = {}) {
-  const rawUrl = typeof urlOrRecord === 'string'
-    ? urlOrRecord
-    : getRenderableVideoUrl(urlOrRecord);
-
-  const parsed = parseVideoLink(rawUrl);
-  if (!parsed) return '';
-
-  const height = options.height || 315;
-  const maxWidth = options.maxWidth || '';
-  const showLabel = options.showLabel !== false;
-  const label = options.label || 'Video preview';
-  const wrapperStart = maxWidth ? `<div style="max-width:${esc(maxWidth)}">` : '<div>';
-  const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
-
-  if (parsed.type === 'youtube' || parsed.type === 'vimeo') {
+function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false, allow='autoplay; encrypted-media; picture-in-picture; web-share'){
+  const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
+  return `
+    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
+      <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="${esc(allow)}" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+    </div>
+  `;
+}
+function getVideoPlayerHtml(video=null, label='Video preview'){
+  if (!video) return '';
+  const videoId = video.videoId || video.id || '';
+  if (video.type === 'youtube' && videoId) {
     return `
-      ${wrapperStart}
+      ${renderEmbeddedVideoFrame(`https://www.youtube.com/embed/${videoId}`, label, true, 'autoplay; encrypted-media; picture-in-picture; web-share')}
+      <div class="small muted" style="margin-top:8px"><a href="https://www.youtube.com/watch?v=${esc(videoId)}" target="_blank" rel="noopener">Watch on YouTube</a></div>
+    `;
+  }
+  if (video.type === 'vimeo' && videoId) {
+    return renderEmbeddedVideoFrame(`https://player.vimeo.com/video/${videoId}`, label, true, 'autoplay; fullscreen; picture-in-picture');
+  }
+  if (video.type === 'upload' && video.url) {
+    const mimeType = getVideoMimeType(video.url);
+    return `
+      <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
+        ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
+      </video>
+    `;
+  }
+  if (video.type === 'external' && video.url) {
+    return `<div class="card form-card small"><a href="${esc(video.url)}" target="_blank" rel="noopener">Watch Video</a></div>`;
+  }
+  return '';
+}
+function loadVideoPlayer(videoOrContainerId='', encodedVideo='', label='Video preview'){
+  if (videoOrContainerId && typeof videoOrContainerId === 'object' && !Array.isArray(videoOrContainerId)) {
+    const wrap = document.getElementById(String(encodedVideo || 'video-container'));
+    if (!wrap) return;
+    wrap.innerHTML = getVideoPlayerHtml(videoOrContainerId, label);
+    return;
+  }
+  const wrap = document.getElementById(videoOrContainerId);
+  if (!wrap) return;
+  let video = null;
+  try {
+    video = JSON.parse(decodeURIComponent(encodedVideo || ''));
+  } catch (error) {
+    video = null;
+  }
+  if (!video) return;
+  wrap.innerHTML = getVideoPlayerHtml(video, label);
+}
+function renderVideo(video=null, containerId='video-container', options={}){
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!video) {
+    container.innerHTML = '';
+    return;
+  }
+  const label = options.label || 'Video preview';
+  const loading = options.loading === 'eager' ? 'eager' : 'lazy';
+  const posterUrl = getVideoPosterUrl(video);
+  if (video.type === 'external') {
+    container.innerHTML = getVideoPlayerHtml(video, label);
+    return;
+  }
+  const encodedVideo = encodeURIComponent(JSON.stringify(video));
+  container.innerHTML = `
+    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+      ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+    </div>
+    ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
+  `;
+}
+function renderVideoPreviewHtml(videoValue='', label='Video preview', options={}){
+  const video = typeof videoValue === 'string'
+    ? parseVideo(videoValue)
+    : (videoValue && typeof videoValue === 'object'
+      ? Object.assign({}, videoValue, { videoId: videoValue.videoId || videoValue.id || '', id: videoValue.id || videoValue.videoId || '' })
+      : null);
+  if (!video) return `<div class="small muted">No video link added yet.</div>`;
+  const maxWidth = options.maxWidth || '420px';
+  const showLabel = options.showLabel !== false;
+  const loading = options.loading === 'eager' ? 'eager' : 'lazy';
+  const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
+  if (video.type === 'upload') {
+    const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const encodedVideo = encodeURIComponent(JSON.stringify(video));
+    return `
+      <div style="max-width:${esc(maxWidth)}">
         ${labelHtml}
-        <div class="cogo-video-preview" data-video-type="${esc(parsed.type)}" data-video-id="${esc(parsed.id)}">
-          <button class="cogo-video-play" type="button" onclick="loadCogoVideo(this)">
-            <img src="${esc(parsed.thumbnailUrl)}" alt="Video preview" loading="lazy">
-            <span class="cogo-video-play-button">▶</span>
-          </button>
-          <a class="cogo-video-fallback" href="${esc(parsed.watchUrl)}" target="_blank" rel="noopener">Watch video</a>
+        <div id="${containerId}">
+          <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">Uploaded Video</div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+          </div>
+        </div>
+        <div class="small muted" style="margin-top:8px">If playback is blocked in this browser, open the video directly.</div>
+      </div>
+    `;
+  }
+  if (video.type === 'youtube' || video.type === 'vimeo') {
+    const posterUrl = getVideoPosterUrl(video);
+    const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const encodedVideo = encodeURIComponent(JSON.stringify(video));
+    return `
+      <div style="max-width:${esc(maxWidth)}">
+        ${labelHtml}
+        <div id="${containerId}">
+          <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+            <img src="${esc(posterUrl || '')}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+          </div>
+          ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
         </div>
       </div>
     `;
   }
-
-  if (parsed.type === 'upload') {
-    const mimeType = getVideoMimeType(parsed.originalUrl);
-    return `
-      ${wrapperStart}
-        ${labelHtml}
-        <video controls width="100%" style="border-radius:12px;background:#000;max-height:${esc(height)}px;">
-          <source src="${esc(parsed.originalUrl)}"${mimeType ? ` type="${esc(mimeType)}"` : ''}>
-          Your browser does not support this video.
-        </video>
-      </div>
-    `;
-  }
-
-  return `
-    ${wrapperStart}
-      ${labelHtml}
-      <a href="${esc(parsed.watchUrl)}" target="_blank" rel="noopener" class="btn secondary">Watch video</a>
-    </div>
-  `;
-}
-function loadCogoVideo(button) {
-  const wrapper = button.closest('.cogo-video-preview');
-  if (!wrapper) return;
-
-  const type = wrapper.dataset.videoType;
-  const id = wrapper.dataset.videoId;
-
-  let src = '';
-  if (type === 'youtube') {
-    src = `https://www.youtube.com/embed/${id}?autoplay=1`;
-  }
-
-  if (type === 'vimeo') {
-    src = `https://player.vimeo.com/video/${id}?autoplay=1`;
-  }
-
-  if (!src) return;
-
-  wrapper.innerHTML = `
-    <iframe
-      width="100%"
-      height="315"
-      src="${esc(src)}"
-      title="Video player"
-      frameborder="0"
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-      allowfullscreen
-      referrerpolicy="strict-origin-when-cross-origin">
-    </iframe>
-  `;
-}
-function renderVideoPreviewHtml(videoValue='', label='Video preview', options={}){
-  return renderVideoBlock(videoValue, Object.assign({}, options, { label }));
+  return `<div style="max-width:${esc(maxWidth)}">${labelHtml}${getVideoPlayerHtml(video, label) || `<div class="card form-card small">This video host can’t be embedded here right now.</div>`}</div>`;
 }
 function getHomepageSessionId(){
   let sessionId = '';
@@ -3546,7 +3523,7 @@ function openProfile(studentId){
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(s.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoBlock(s, { label:'Profile video' })}
+      ${renderVideoPreviewHtml(getRenderableVideoUrl(s), 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.map((service, index) => {
         const summary = getServiceReviewSummary(s, service, index);
@@ -4120,7 +4097,7 @@ function renderStudentProfile(el){
           <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(profile.profileImages || [], 120)}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoBlock(profile, { label:'Profile video' })}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(getRenderableVideoUrl(profile), 'Profile video')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">⭐ ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
       ` : ''}
@@ -4156,7 +4133,7 @@ function renderStudentServiceManagerCard(service, index){
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
           <div style="margin-top:10px">${renderSignupImageGallery(service.images || [], 120)}</div>
-          <div style="margin-top:10px">${renderVideoBlock(service, { label:'Service video' })}</div>
+          <div style="margin-top:10px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="openStudentServiceForm(${index})">Edit</button>
@@ -4228,7 +4205,7 @@ function openStudentProfileForm(profileId=''){
     ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentProfileImageFromLibrary')}</div>` : ''}
     <div id="student-profile-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentProfileImagesBuffer, 120)}</div>
     <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(getEditableVideoInputValue(studentProfileDraft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentProfileVideoLink(this.value)"></div>
-    <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoBlock(studentProfileDraft, { label:'Profile video' })}</div>
+    <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(studentProfileDraft), 'Profile video')}</div>
     <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profile.id)}')">Save Profile</button>
   `, '720px');
 }
@@ -4288,7 +4265,7 @@ function addStudentProfileImageFromLibrary(imageId){
 function previewStudentProfileVideoLink(value){
   if (studentProfileDraft) applyVideoState(studentProfileDraft, value || '');
   const el = document.getElementById('student-profile-video-preview');
-  if (el) el.innerHTML = renderVideoBlock(studentProfileDraft || {}, { label:'Profile video' });
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentProfileDraft || {}), 'Profile video');
 }
 function createStudentServiceFormDraft(profile, existing=null){
   return {
@@ -4337,7 +4314,7 @@ function addStudentServiceImageFromLibrary(imageId){
 function previewStudentServiceVideoLink(value){
   if (studentServiceDraft) applyVideoState(studentServiceDraft, value || '');
   const el = document.getElementById('student-service-video-preview');
-  if (el) el.innerHTML = renderVideoBlock(studentServiceDraft || {}, { label:'Service video' });
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentServiceDraft || {}), 'Service video');
 }
 function openStudentServiceForm(serviceIndex=''){
   const profile = currentStudentProfile();
@@ -4356,7 +4333,7 @@ function openStudentServiceForm(serviceIndex=''){
     ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentServiceImageFromLibrary')}</div>` : ''}
     <div id="student-service-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentServiceImagesBuffer, 120)}</div>
     <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(getEditableVideoInputValue(studentServiceDraft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentServiceVideoLink(this.value)"></div>
-    <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoBlock(studentServiceDraft, { label:'Service video' })}</div>
+    <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(studentServiceDraft), 'Service video')}</div>
     <div class="row">
       <div class="field"><label>Rate</label><input id="studentServiceRate" type="number" min="1" value="${esc(studentServiceDraft.rate || profile.rate || 20)}"></div>
       <div class="field"><label>Availability</label><input id="studentServiceAvailability" value="${esc(studentServiceDraft.availability || profile.availability || '')}"></div>
@@ -6307,7 +6284,7 @@ function renderAdminBlogEditorHtml(){
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
       <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? getBlogPostVideoInputValue(post) : '')}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewAdminBlogVideoLink(this.value)"></div>
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
-      <div id="admin-blog-video-preview" style="margin-bottom:14px">${post.media_type === 'video' ? renderVideoBlock(post, { label:'Article video' }) : ''}</div>
+      <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? articleVideoUrl : '', 'Article video')}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
       <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
       <div class="field"><label>Article Author</label><input id="adminBlogAuthor" value="${esc(post.authorName || 'CoGo Team')}" placeholder="CoGo Team"></div>
@@ -6449,7 +6426,7 @@ function previewAdminBlogArticleImage(value){
   const videoInput = document.getElementById('adminBlogVideoLink');
   if (videoInput && value) videoInput.value = '';
   const videoPreview = document.getElementById('admin-blog-video-preview');
-  if (videoPreview && value) videoPreview.innerHTML = renderVideoBlock('', { label:'Article video' });
+  if (videoPreview && value) videoPreview.innerHTML = renderVideoPreviewHtml('', 'Article video');
   const el = document.getElementById('admin-blog-images-preview');
   if (!el) return;
   el.innerHTML = value ? renderManagedImage(value, 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`;
@@ -6503,7 +6480,7 @@ function previewAdminBlogVideoLink(value){
   const imagePreview = document.getElementById('admin-blog-images-preview');
   if (imagePreview && videoState.media_url) imagePreview.innerHTML = `<div class="small muted">No article image yet.</div>`;
   const el = document.getElementById('admin-blog-video-preview');
-  if (el) el.innerHTML = renderVideoBlock(adminBlogDraft || value || '', { label:'Article video' });
+  if (el) el.innerHTML = renderVideoPreviewHtml(videoState.media_url || '', 'Article video');
 }
 function persistAdminBlogPost(mode='draft'){
   if (!adminBlogDraft) return;
