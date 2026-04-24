@@ -2668,7 +2668,7 @@ function parseVideo(url=''){
   try {
     parsed = new URL(clean);
   } catch (error) {
-    return { type:'link', url:clean, label:clean };
+    return { type:'external', url:clean, label:clean };
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
@@ -2677,14 +2677,9 @@ function parseVideo(url=''){
   if (videoFile) return { type:'file', url:clean, label:'Video file' };
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
-    return videoId ? { type:'vimeo', url:clean, videoId, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'link', url:clean, label:clean };
+    return videoId ? { type:'vimeo', url:clean, videoId, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'external', url:clean, label:clean };
   }
-  if (host.includes('loom.com')) {
-    const parts = path.split('/').filter(Boolean);
-    const videoId = parts[1] || parts[0] || '';
-    return videoId ? { type:'loom', url:clean, videoId, embedUrl:`https://www.loom.com/embed/${videoId}`, label:'Loom video' } : { type:'link', url:clean, label:clean };
-  }
-  return { type:'link', url:clean, label:clean };
+  return { type:'external', url:clean, label:clean };
 }
 function parseVideoLink(url=''){
   return parseVideo(url);
@@ -2715,7 +2710,6 @@ function getVideoWatchUrl(video){
   if (!video) return '';
   if (video.type === 'youtube' && video.videoId) return `https://www.youtube.com/watch?v=${video.videoId}`;
   if (video.type === 'vimeo' && video.videoId) return `https://vimeo.com/${video.videoId}`;
-  if (video.type === 'loom' && video.videoId) return `https://www.loom.com/share/${video.videoId}`;
   return video.url || '';
 }
 function getGeneratedVideoUrl(videoType='', videoId=''){
@@ -2724,7 +2718,6 @@ function getGeneratedVideoUrl(videoType='', videoId=''){
   if (!type || !id) return '';
   if (type === 'youtube') return `https://www.youtube.com/embed/${id}`;
   if (type === 'vimeo') return `https://player.vimeo.com/video/${id}`;
-  if (type === 'loom') return `https://www.loom.com/embed/${id}`;
   return '';
 }
 function normalizeVideoInputValue(value=''){
@@ -2732,7 +2725,7 @@ function normalizeVideoInputValue(value=''){
   if (!clean) return { video_type:'', video_id:'', media_url:'', input_url:'' };
   const video = parseVideoLink(clean);
   if (!video) return { video_type:'', video_id:'', media_url:clean, input_url:clean };
-  if ((video.type === 'youtube' || video.type === 'vimeo' || video.type === 'loom') && video.videoId) {
+  if ((video.type === 'youtube' || video.type === 'vimeo') && video.videoId) {
     return {
       video_type: video.type,
       video_id: video.videoId,
@@ -2741,7 +2734,7 @@ function normalizeVideoInputValue(value=''){
     };
   }
   return {
-    video_type: video.type === 'file' ? 'upload' : (video.type || ''),
+    video_type: video.type === 'file' ? 'upload' : (video.type === 'external' ? 'external' : (video.type || '')),
     video_id: video.videoId || '',
     media_url: clean,
     input_url: clean
