@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
   <title>CoGo City Test Flow</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -516,7 +518,7 @@ function normalizeBlogPostRecord(post){
   normalized.image_id = normalized.featured_image;
   normalized.featuredImage = normalized.featured_image;
   if (!normalized.media_type) {
-    if (normalized.media_url && parseVideoLink(normalized.media_url)) normalized.media_type = parseVideoLink(normalized.media_url).type === 'file' || parseVideoLink(normalized.media_url).type === 'youtube' || parseVideoLink(normalized.media_url).embedUrl ? 'video' : normalized.media_type;
+    if (normalized.media_url && parseVideoLink(normalized.media_url)) normalized.media_type = parseVideoLink(normalized.media_url).type === 'upload' || parseVideoLink(normalized.media_url).type === 'youtube' || parseVideoLink(normalized.media_url).embedUrl ? 'video' : normalized.media_type;
     if (!normalized.media_type && (normalized.video_url || normalized.videoLink)) normalized.media_type = 'video';
     if (!normalized.media_type && (normalized.articleMediaImage || normalized.article_media)) normalized.media_type = 'image';
     if (!normalized.media_type && Array.isArray(normalized.entity_images) && normalized.entity_images[0]) normalized.media_type = 'image';
@@ -579,6 +581,8 @@ function normalizeStudentRecord(student){
     profile_image_id: '',
     profileImages: [],
     video_url: '',
+    video_type: '',
+    video_id: '',
     services: []
   }, student || {});
   if (!normalized.profile_image_id && normalized.photo) normalized.profile_image_id = normalized.photo;
@@ -591,6 +595,7 @@ function normalizeStudentRecord(student){
   normalized.photo = normalized.profile_image_id || '';
   if (!normalized.video_url && normalized.profileVideoLink) normalized.video_url = normalized.profileVideoLink;
   delete normalized.profileVideoLink;
+  applyVideoState(normalized, getRenderableVideoUrl(normalized) || normalized.video_url || '');
   normalized.services = (Array.isArray(normalized.services) ? normalized.services : []).map((service, index) => normalizeStudentServiceRecord(normalized, service, index));
   return normalized;
 }
@@ -1452,8 +1457,10 @@ function createDefaultStudentSignupDraft(){
     experience:'',
     profileImages:[],
     video_url:'',
+    video_type:'',
+    video_id:'',
     services:[],
-    serviceForm:{ title:'', description:'', images:[], video_url:'', rate:'20', location:'', availability:'' },
+    serviceForm:{ title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location:'', availability:'' },
     email:'',
     phone:'',
     address:'',
@@ -1493,7 +1500,7 @@ function getStudentSignupSuggestions(){
 function openStudentSignupWorkflow(step=1){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupStep = step;
-  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location:'', availability:'' };
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location:'', availability:'' };
   renderStudentSignupModal();
 }
 function renderStudentSignupModal(){
@@ -1573,8 +1580,8 @@ function renderStudentSignupStepContent(){
       <div class="field"><label>Profile Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupProfileImagesUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupProfileImageFromLibrary')}</div>` : ''}
       ${renderSignupImageGallery(d.profileImages || [], 120)}
-      <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(d.video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupProfileVideo(this.value)"></div>
-      <div id="student-profile-video-preview">${renderVideoPreviewHtml(d.video_url || '', 'Profile video preview')}</div>
+      <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupProfileVideo(this.value)"></div>
+      <div id="student-profile-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video preview')}</div>
     </div>
   `;
   if (studentSignupStep === 5) return `
@@ -1605,8 +1612,8 @@ function renderStudentSignupStepContent(){
       <div class="field"><label>Add Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderSignupImageGallery((d.serviceForm || {}).images || [], 120)}
-      <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc((d.serviceForm || {}).video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentSignupServiceVideo(this.value)"></div>
-      <div id="student-service-video-preview">${renderVideoPreviewHtml((d.serviceForm || {}).video_url || '', 'Service video preview')}</div>
+      <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"></div>
+      <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}" oninput="syncStudentSignupServiceForm()"></div>
         <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA" oninput="syncStudentSignupServiceForm()"></div>
@@ -1685,14 +1692,14 @@ function saveStudentSignupStep(step){
   }
   if (step === 4){
     const videoUrl = (document.getElementById('studentFlowProfileVideoLink').value || '').trim();
-    studentSignupDraft.video_url = videoUrl;
+    applyVideoState(studentSignupDraft, videoUrl);
     return true;
   }
   if (step === 5){
     syncStudentSignupServiceForm();
     const services = studentSignupDraft.services || [];
     const form = studentSignupDraft.serviceForm || {};
-    const hasDraftValues = !!(form.title || form.description || form.video_url || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
+    const hasDraftValues = !!(form.title || form.description || getRenderableVideoUrl(form) || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
     if (!services.length && hasDraftValues) {
       const draftRate = Number(form.rate || 0);
       if (!form.title || !form.description || !draftRate || !form.location || !form.availability) return toast('Please complete all required service fields.'), false;
@@ -1702,6 +1709,8 @@ function saveStudentSignupStep(step){
         description: form.description,
         images: form.images || [],
         video_url: form.video_url || '',
+        video_type: form.video_type || '',
+        video_id: form.video_id || '',
         rate: draftRate,
         location: form.location,
         availability: form.availability,
@@ -1709,7 +1718,7 @@ function saveStudentSignupStep(step){
       };
       studentSignupDraft.services.push(service);
       studentSignupEditingServiceIndex = null;
-      studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+      studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
     }
     if (!(studentSignupDraft.services || []).length) return toast('Please save at least one service before continuing.'), false;
     return true;
@@ -1756,9 +1765,9 @@ function selectStudentSignupPhotoFromLibrary(imageId){
   renderStudentSignupModal();
 }
 function previewStudentSignupProfileVideo(value){
-  studentSignupDraft.video_url = value || '';
+  applyVideoState(studentSignupDraft, value || '');
   const el = document.getElementById('student-profile-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.video_url, 'Profile video preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentSignupDraft), 'Profile video preview');
 }
 function handleStudentSignupProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
@@ -1775,7 +1784,7 @@ function addStudentSignupProfileImageFromLibrary(imageId){
 }
 function syncStudentSignupServiceForm(){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
-  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location:'', availability:'' };
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location:'', availability:'' };
   const titleEl = document.getElementById('studentFlowServiceTitle');
   const descriptionEl = document.getElementById('studentFlowServiceDescription');
   const videoEl = document.getElementById('studentFlowServiceVideoLink');
@@ -1784,16 +1793,16 @@ function syncStudentSignupServiceForm(){
   const availabilityEl = document.getElementById('studentFlowServiceAvailability');
   if (titleEl) studentSignupDraft.serviceForm.title = (titleEl.value || '').trim();
   if (descriptionEl) studentSignupDraft.serviceForm.description = (descriptionEl.value || '').trim();
-  if (videoEl) studentSignupDraft.serviceForm.video_url = (videoEl.value || '').trim();
+  if (videoEl) applyVideoState(studentSignupDraft.serviceForm, (videoEl.value || '').trim());
   if (rateEl) studentSignupDraft.serviceForm.rate = rateEl.value || '20';
   if (locationEl) studentSignupDraft.serviceForm.location = (locationEl.value || '').trim();
   if (availabilityEl) studentSignupDraft.serviceForm.availability = (availabilityEl.value || '').trim();
 }
 function previewStudentSignupServiceVideo(value){
   syncStudentSignupServiceForm();
-  studentSignupDraft.serviceForm.video_url = value || '';
+  applyVideoState(studentSignupDraft.serviceForm, value || '');
   const el = document.getElementById('student-service-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(studentSignupDraft.serviceForm.video_url, 'Service video preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentSignupDraft.serviceForm), 'Service video preview');
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
@@ -1809,14 +1818,14 @@ function addStudentSignupServiceImageFromLibrary(imageId){
 }
 function startNewStudentSignupService(){
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
   renderStudentSignupModal();
 }
 function editStudentSignupService(index){
   const service = (studentSignupDraft.services || [])[index];
   if (!service) return;
   studentSignupEditingServiceIndex = index;
-  studentSignupDraft.serviceForm = Object.assign({ images:[], video_url:'' }, service);
+  studentSignupDraft.serviceForm = Object.assign({ images:[], video_url:'', video_type:'', video_id:'' }, service);
   studentSignupStep = 5;
   renderStudentSignupModal();
 }
@@ -1843,6 +1852,8 @@ function saveStudentSignupService(){
     description,
     images: (studentSignupDraft.serviceForm || {}).images || [],
     video_url: videoUrl,
+    video_type: form.video_type || '',
+    video_id: form.video_id || '',
     rate,
     location,
     availability,
@@ -1851,7 +1862,7 @@ function saveStudentSignupService(){
   if (studentSignupEditingServiceIndex !== null) studentSignupDraft.services[studentSignupEditingServiceIndex] = service;
   else studentSignupDraft.services.push(service);
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
   toast('Service saved.');
   renderStudentSignupModal();
 }
@@ -1868,10 +1879,12 @@ function buildStudentSignupPreviewStudent(){
     photo:d.photo || ((d.profileImages || [])[0]) || '',
     profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
     video_url:d.video_url || '',
+    video_type:d.video_type || '',
+    video_id:d.video_id || '',
     emoji:d.avatar || '🎓',
     title:primaryService.title || 'Student Service',
     tags:[],
-    services:(d.services || []).map(s => Object.assign({ images:[], video_url:'', reviews:[] }, s)),
+    services:(d.services || []).map(s => Object.assign({ images:[], video_url:'', video_type:'', video_id:'', reviews:[] }, s)),
     about:d.about ? [d.about] : [],
     whyHire:[],
     highlights:d.experience ? [d.experience] : [],
@@ -1890,7 +1903,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
       <div style="margin-top:14px">${esc(service.description || '')}</div>
       <div style="margin-top:14px">${renderSignupImageGallery(service.images || [], 120)}</div>
-      <div style="margin-top:14px">${renderVideoPreviewHtml(service.video_url || '', 'Service video')}</div>
+      <div style="margin-top:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
       <div style="margin-top:16px">${backButtonHtml}</div>
     </div>
   `;
@@ -1922,7 +1935,7 @@ function renderStudentSignupPreviewHtml(){
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(student.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoPreviewHtml(student.video_url || '', 'Profile video')}
+      ${renderVideoPreviewHtml(getRenderableVideoUrl(student), 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.length ? services.map((service, index) => `
         <button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentSignupServicePreview(${index})">
@@ -1984,10 +1997,12 @@ function publishStudentSignupProfile(){
     profile_image_id:d.photo || ((d.profileImages || [])[0]) || '',
     profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
     video_url:d.video_url || '',
+    video_type:d.video_type || '',
+    video_id:d.video_id || '',
     emoji:d.avatar || '🎓',
     title:primaryService.title || 'Student Service',
     tags:[],
-    services:(d.services || []).map(s => Object.assign({ images:[], video_url:'', reviews:[] }, s)),
+    services:(d.services || []).map(s => Object.assign({ images:[], video_url:'', video_type:'', video_id:'', reviews:[] }, s)),
     about:[d.about],
     whyHire:['Friendly','Reliable','Motivated'],
     highlights:[d.experience],
@@ -2662,8 +2677,11 @@ function parseVideo(url=''){
   const youTubeEmbedUrl = getYouTubeEmbedUrl(clean);
   if (youTubeEmbedUrl) {
     const videoId = youTubeEmbedUrl.split('/embed/')[1].split('?')[0] || '';
-    return { type:'youtube', url:clean, videoId, embedUrl:youTubeEmbedUrl, label:'YouTube video' };
+    return { type:'youtube', id:videoId, videoId, url:clean, embedUrl:youTubeEmbedUrl, label:'YouTube video' };
   }
+  if (clean.startsWith('data:video/') || clean.startsWith('blob:')) return { type:'upload', url:clean, label:'Video file' };
+  const videoFile = clean.match(/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i);
+  if (videoFile) return { type:'upload', url:clean, label:'Video file' };
   let parsed;
   try {
     parsed = new URL(clean);
@@ -2672,12 +2690,9 @@ function parseVideo(url=''){
   }
   const host = parsed.hostname.replace(/^www\./, '');
   const path = parsed.pathname || '';
-  if (clean.startsWith('data:video/') || clean.startsWith('blob:')) return { type:'file', url:clean, label:'Video file' };
-  const videoFile = clean.match(/\.(mp4|webm|ogg|mov|m4v)(\?|#|$)/i);
-  if (videoFile) return { type:'file', url:clean, label:'Video file' };
   if (host.includes('vimeo.com')) {
     const videoId = path.split('/').filter(Boolean).find(part => /^\d+$/.test(part)) || '';
-    return videoId ? { type:'vimeo', url:clean, videoId, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'external', url:clean, label:clean };
+    return videoId ? { type:'vimeo', id:videoId, videoId, url:clean, embedUrl:`https://player.vimeo.com/video/${videoId}`, label:'Vimeo video' } : { type:'external', url:clean, label:clean };
   }
   return { type:'external', url:clean, label:clean };
 }
@@ -2720,6 +2735,25 @@ function getGeneratedVideoUrl(videoType='', videoId=''){
   if (type === 'vimeo') return `https://player.vimeo.com/video/${id}`;
   return '';
 }
+function getRenderableVideoUrl(record){
+  if (!record) return '';
+  return getGeneratedVideoUrl(record.video_type, record.video_id) || record.video_url || '';
+}
+function getEditableVideoInputValue(record){
+  if (!record) return '';
+  if (record.video_type && record.video_id) {
+    return getVideoWatchUrl({ type:record.video_type, videoId:record.video_id, id:record.video_id, url:getRenderableVideoUrl(record) }) || getRenderableVideoUrl(record);
+  }
+  return record.video_url || '';
+}
+function applyVideoState(target, value=''){
+  const state = normalizeVideoInputValue(value);
+  if (!target) return state;
+  target.video_type = state.video_type || '';
+  target.video_id = state.video_id || '';
+  target.video_url = state.media_url || '';
+  return state;
+}
 function normalizeVideoInputValue(value=''){
   const clean = String(value || '').trim();
   if (!clean) return { video_type:'', video_id:'', media_url:'', input_url:'' };
@@ -2734,7 +2768,7 @@ function normalizeVideoInputValue(value=''){
     };
   }
   return {
-    video_type: video.type === 'file' ? 'upload' : (video.type === 'external' ? 'external' : (video.type || '')),
+    video_type: video.type || '',
     video_id: video.videoId || '',
     media_url: clean,
     input_url: clean
@@ -2742,15 +2776,11 @@ function normalizeVideoInputValue(value=''){
 }
 function getBlogPostVideoUrl(post){
   if (!post) return '';
-  return getGeneratedVideoUrl(post.video_type, post.video_id) || post.media_url || post.video_url || '';
+  return getRenderableVideoUrl({ video_type: post.video_type || '', video_id: post.video_id || '', video_url: post.media_url || post.video_url || '' });
 }
 function getBlogPostVideoInputValue(post){
   if (!post) return '';
-  if (post.video_type && post.video_id) {
-    const video = { type: post.video_type, videoId: post.video_id, url: getGeneratedVideoUrl(post.video_type, post.video_id) };
-    return getVideoWatchUrl(video) || video.url;
-  }
-  return post.media_url || post.video_url || '';
+  return getEditableVideoInputValue({ video_type: post.video_type || '', video_id: post.video_id || '', video_url: post.media_url || post.video_url || '' });
 }
 function getVideoMimeType(url=''){
   const raw = String(url || '').trim();
@@ -2764,28 +2794,7 @@ function getVideoMimeType(url=''){
   if (/\.m4v(\?|#|$)/i.test(raw)) return 'video/x-m4v';
   return '';
 }
-let youTubeApiPromise = null;
-function ensureYouTubePlayerApi(){
-  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
-  if (youTubeApiPromise) return youTubeApiPromise;
-  youTubeApiPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-youtube-iframe-api]');
-    const previousReady = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (typeof previousReady === 'function') previousReady();
-      resolve(window.YT);
-    };
-    if (existing) return;
-    const script = document.createElement('script');
-    script.src = 'https://www.youtube.com/iframe_api';
-    script.async = true;
-    script.dataset.youtubeIframeApi = 'true';
-    script.onerror = () => reject(new Error('Failed to load YouTube player API'));
-    document.head.appendChild(script);
-  });
-  return youTubeApiPromise;
-}
-function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false, allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'){
+function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false, allow='autoplay; encrypted-media; picture-in-picture; web-share'){
   const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
   return `
     <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
@@ -2793,8 +2802,39 @@ function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=f
     </div>
   `;
 }
-function loadVideoPlayer(containerId='', encodedVideo='', label='Video preview'){
-  const wrap = document.getElementById(containerId);
+function getVideoPlayerHtml(video=null, label='Video preview'){
+  if (!video) return '';
+  const videoId = video.videoId || video.id || '';
+  if (video.type === 'youtube' && videoId) {
+    return `
+      ${renderEmbeddedVideoFrame(`https://www.youtube.com/embed/${videoId}`, label, true, 'autoplay; encrypted-media; picture-in-picture; web-share')}
+      <div class="small muted" style="margin-top:8px"><a href="https://www.youtube.com/watch?v=${esc(videoId)}" target="_blank" rel="noopener">Watch on YouTube</a></div>
+    `;
+  }
+  if (video.type === 'vimeo' && videoId) {
+    return renderEmbeddedVideoFrame(`https://player.vimeo.com/video/${videoId}`, label, true, 'autoplay; fullscreen; picture-in-picture');
+  }
+  if (video.type === 'upload' && video.url) {
+    const mimeType = getVideoMimeType(video.url);
+    return `
+      <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
+        ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
+      </video>
+    `;
+  }
+  if (video.type === 'external' && video.url) {
+    return `<div class="card form-card small"><a href="${esc(video.url)}" target="_blank" rel="noopener">Watch Video</a></div>`;
+  }
+  return '';
+}
+function loadVideoPlayer(videoOrContainerId='', encodedVideo='', label='Video preview'){
+  if (videoOrContainerId && typeof videoOrContainerId === 'object' && !Array.isArray(videoOrContainerId)) {
+    const wrap = document.getElementById(String(encodedVideo || 'video-container'));
+    if (!wrap) return;
+    wrap.innerHTML = getVideoPlayerHtml(videoOrContainerId, label);
+    return;
+  }
+  const wrap = document.getElementById(videoOrContainerId);
   if (!wrap) return;
   let video = null;
   try {
@@ -2803,47 +2843,54 @@ function loadVideoPlayer(containerId='', encodedVideo='', label='Video preview')
     video = null;
   }
   if (!video) return;
-  if (video.type === 'youtube' && video.videoId) {
-    wrap.innerHTML = `
-      ${renderEmbeddedVideoFrame(`https://www.youtube.com/embed/${video.videoId}`, label, true, 'autoplay; encrypted-media; picture-in-picture; web-share')}
-      <div class="small muted" style="margin-top:8px"><a href="https://www.youtube.com/watch?v=${esc(video.videoId)}" target="_blank" rel="noopener">Watch on YouTube</a></div>
-    `;
-    return;
-  }
-  if (video.type === 'vimeo' && video.videoId) {
-    wrap.innerHTML = renderEmbeddedVideoFrame(`https://player.vimeo.com/video/${video.videoId}`, label, true, 'autoplay; fullscreen; picture-in-picture');
-    return;
-  }
-  if (video.type === 'file' && video.url) {
-    const mimeType = getVideoMimeType(video.url);
-    wrap.innerHTML = `
-      <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
-        ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
-      </video>
-    `;
-    return;
-  }
-  if (video.url) {
-    wrap.innerHTML = `<div class="card form-card small"><a href="${esc(video.url)}" target="_blank" rel="noopener">Watch Video</a></div>`;
-  }
+  wrap.innerHTML = getVideoPlayerHtml(video, label);
 }
-function renderVideoPreviewHtml(url='', label='Video preview', options={}){
-  if (!url) return `<div class="small muted">No video link added yet.</div>`;
-  const video = parseVideo(url);
+function renderVideo(video=null, containerId='video-container', options={}){
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!video) {
+    container.innerHTML = '';
+    return;
+  }
+  const label = options.label || 'Video preview';
+  const loading = options.loading === 'eager' ? 'eager' : 'lazy';
+  const posterUrl = getVideoPosterUrl(video);
+  if (video.type === 'external') {
+    container.innerHTML = getVideoPlayerHtml(video, label);
+    return;
+  }
+  const encodedVideo = encodeURIComponent(JSON.stringify(video));
+  container.innerHTML = `
+    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+      ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+    </div>
+    ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
+  `;
+}
+function renderVideoPreviewHtml(videoValue='', label='Video preview', options={}){
+  const video = typeof videoValue === 'string'
+    ? parseVideo(videoValue)
+    : (videoValue && typeof videoValue === 'object'
+      ? Object.assign({}, videoValue, { videoId: videoValue.videoId || videoValue.id || '', id: videoValue.id || videoValue.videoId || '' })
+      : null);
   if (!video) return `<div class="small muted">No video link added yet.</div>`;
   const maxWidth = options.maxWidth || '420px';
   const showLabel = options.showLabel !== false;
   const loading = options.loading === 'eager' ? 'eager' : 'lazy';
   const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
-  if (video.type === 'file') {
-    const mimeType = getVideoMimeType(video.url);
+  if (video.type === 'upload') {
+    const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const encodedVideo = encodeURIComponent(JSON.stringify(video));
     return `
       <div style="max-width:${esc(maxWidth)}">
         ${labelHtml}
-        <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
-          ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
-          <a href="${esc(video.url)}" target="_blank" rel="noopener">Open video</a>
-        </video>
+        <div id="${containerId}">
+          <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">Uploaded Video</div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+          </div>
+        </div>
         <div class="small muted" style="margin-top:8px">If playback is blocked in this browser, open the video directly.</div>
       </div>
     `;
@@ -2865,7 +2912,7 @@ function renderVideoPreviewHtml(url='', label='Video preview', options={}){
       </div>
     `;
   }
-  return `<div style="max-width:${esc(maxWidth)}">${labelHtml}<div class="card form-card small">This video host can’t be embedded here right now. <a href="${esc(video.url)}" target="_blank" rel="noopener">Open video</a></div></div>`;
+  return `<div style="max-width:${esc(maxWidth)}">${labelHtml}${getVideoPlayerHtml(video, label) || `<div class="card form-card small">This video host can’t be embedded here right now.</div>`}</div>`;
 }
 function getHomepageSessionId(){
   let sessionId = '';
@@ -3060,6 +3107,8 @@ function normalizeStudentServiceRecord(student, service, index=0){
       entity_images: [],
       images: [],
       video_url: '',
+      video_type: '',
+      video_id: '',
       rate: baseRate,
       location: baseLocation,
       availability: baseAvailability,
@@ -3075,6 +3124,8 @@ function normalizeStudentServiceRecord(student, service, index=0){
     entity_images: [],
     images: [],
     video_url: '',
+    video_type: '',
+    video_id: '',
     rate: baseRate,
     location: baseLocation,
     availability: baseAvailability,
@@ -3093,6 +3144,7 @@ function normalizeStudentServiceRecord(student, service, index=0){
   record.images = [...record.entity_images];
   if (!record.video_url && record.videoLink) record.video_url = record.videoLink;
   delete record.videoLink;
+  applyVideoState(record, getRenderableVideoUrl(record) || record.video_url || '');
   if (!Array.isArray(record.reviews)) record.reviews = [];
   if (!record.user_id) record.user_id = student.userId || student.id || '';
   record.category_id = record.category_id || record.categoryId || (Array.isArray(record.tags) && record.tags[0]) || (Array.isArray(student.tags) && student.tags[0]) || 'general';
@@ -3380,6 +3432,8 @@ function getRenderableStudentServices(student){
     entity_images: student.profileImages || [],
     images: student.profileImages || [],
     video_url: student.video_url || '',
+    video_type: student.video_type || '',
+    video_id: student.video_id || '',
     reviews: student.reviews || []
   }];
 }
@@ -3469,7 +3523,7 @@ function openProfile(studentId){
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(s.profileImages || [], 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoPreviewHtml(s.video_url || '', 'Profile video')}
+      ${renderVideoPreviewHtml(getRenderableVideoUrl(s), 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.map((service, index) => {
         const summary = getServiceReviewSummary(s, service, index);
@@ -4043,7 +4097,7 @@ function renderStudentProfile(el){
           <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(profile.profileImages || [], 120)}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(profile.video_url || '', 'Profile video')}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(getRenderableVideoUrl(profile), 'Profile video')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">⭐ ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
       ` : ''}
@@ -4079,7 +4133,7 @@ function renderStudentServiceManagerCard(service, index){
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr · ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
           <div style="margin-top:10px">${renderSignupImageGallery(service.images || [], 120)}</div>
-          <div style="margin-top:10px">${renderVideoPreviewHtml(service.video_url || '', 'Service video')}</div>
+          <div style="margin-top:10px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="openStudentServiceForm(${index})">Edit</button>
@@ -4101,7 +4155,9 @@ function createStudentProfileFormDraft(profile){
     about: (profile.about || []).join('\n'),
     highlights: (profile.highlights || []).join('\n'),
     profileImages: Array.isArray(profile.profileImages) ? [...profile.profileImages] : [],
-    video_url: profile.video_url || ''
+    video_url: profile.video_url || '',
+    video_type: profile.video_type || '',
+    video_id: profile.video_id || ''
   };
 }
 function syncStudentProfileDraftFromForm(){
@@ -4123,7 +4179,7 @@ function syncStudentProfileDraftFromForm(){
   if (emailEl) studentProfileDraft.email = (emailEl.value || '').trim();
   if (aboutEl) studentProfileDraft.about = aboutEl.value || '';
   if (highlightsEl) studentProfileDraft.highlights = highlightsEl.value || '';
-  if (videoEl) studentProfileDraft.video_url = (videoEl.value || '').trim();
+  if (videoEl) applyVideoState(studentProfileDraft, (videoEl.value || '').trim());
   studentProfileDraft.profileImages = [...studentProfileImagesBuffer];
 }
 function openStudentProfileForm(profileId=''){
@@ -4148,8 +4204,8 @@ function openStudentProfileForm(profileId=''){
     <div class="field"><label>Profile Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentProfileImagesUpload(this)"></div>
     ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentProfileImageFromLibrary')}</div>` : ''}
     <div id="student-profile-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentProfileImagesBuffer, 120)}</div>
-    <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(studentProfileDraft.video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentProfileVideoLink(this.value)"></div>
-    <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(studentProfileDraft.video_url || '', 'Profile video')}</div>
+    <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(getEditableVideoInputValue(studentProfileDraft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentProfileVideoLink(this.value)"></div>
+    <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(studentProfileDraft), 'Profile video')}</div>
     <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profile.id)}')">Save Profile</button>
   `, '720px');
 }
@@ -4174,6 +4230,8 @@ function saveStudentProfileForm(profileId=''){
   profile.photo = profile.profileImages[0] || '';
   profile.profile_image_id = profile.photo || '';
   profile.video_url = draft.video_url || '';
+  profile.video_type = draft.video_type || '';
+  profile.video_id = draft.video_id || '';
   profile.updatedAt = new Date().toISOString();
   if (user) {
     user.name = draft.name;
@@ -4205,9 +4263,9 @@ function addStudentProfileImageFromLibrary(imageId){
   openStudentProfileForm(activeStudentProfileFormId);
 }
 function previewStudentProfileVideoLink(value){
-  if (studentProfileDraft) studentProfileDraft.video_url = value || '';
+  if (studentProfileDraft) applyVideoState(studentProfileDraft, value || '');
   const el = document.getElementById('student-profile-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Profile video');
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentProfileDraft || {}), 'Profile video');
 }
 function createStudentServiceFormDraft(profile, existing=null){
   return {
@@ -4216,6 +4274,8 @@ function createStudentServiceFormDraft(profile, existing=null){
     description: existing?.description || '',
     images: Array.isArray(existing?.images) ? [...existing.images] : [],
     video_url: existing?.video_url || '',
+    video_type: existing?.video_type || '',
+    video_id: existing?.video_id || '',
     rate: existing?.rate || profile.rate || 20,
     availability: existing?.availability || profile.availability || '',
     location: existing?.location || profile.location || ''
@@ -4231,7 +4291,7 @@ function syncStudentServiceDraftFromForm(){
   const locationEl = document.getElementById('studentServiceLocation');
   if (titleEl) studentServiceDraft.title = (titleEl.value || '').trim();
   if (descriptionEl) studentServiceDraft.description = (descriptionEl.value || '').trim();
-  if (videoEl) studentServiceDraft.video_url = (videoEl.value || '').trim();
+  if (videoEl) applyVideoState(studentServiceDraft, (videoEl.value || '').trim());
   if (rateEl) studentServiceDraft.rate = rateEl.value || 0;
   if (availabilityEl) studentServiceDraft.availability = (availabilityEl.value || '').trim();
   if (locationEl) studentServiceDraft.location = (locationEl.value || '').trim();
@@ -4252,9 +4312,9 @@ function addStudentServiceImageFromLibrary(imageId){
   openStudentServiceForm(activeStudentServiceFormIndex);
 }
 function previewStudentServiceVideoLink(value){
-  if (studentServiceDraft) studentServiceDraft.video_url = value || '';
+  if (studentServiceDraft) applyVideoState(studentServiceDraft, value || '');
   const el = document.getElementById('student-service-video-preview');
-  if (el) el.innerHTML = renderVideoPreviewHtml(value || '', 'Service video');
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentServiceDraft || {}), 'Service video');
 }
 function openStudentServiceForm(serviceIndex=''){
   const profile = currentStudentProfile();
@@ -4272,8 +4332,8 @@ function openStudentServiceForm(serviceIndex=''){
     <div class="field"><label>Images (optional, 1–3)</label><input type="file" multiple accept="image/*" onchange="handleStudentServiceImagesUpload(this)"></div>
     ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentServiceImageFromLibrary')}</div>` : ''}
     <div id="student-service-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentServiceImagesBuffer, 120)}</div>
-    <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(studentServiceDraft.video_url || '')}" placeholder="https://youtube.com/... or https://loom.com/..." oninput="previewStudentServiceVideoLink(this.value)"></div>
-    <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(studentServiceDraft.video_url || '', 'Service video')}</div>
+    <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(getEditableVideoInputValue(studentServiceDraft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentServiceVideoLink(this.value)"></div>
+    <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(studentServiceDraft), 'Service video')}</div>
     <div class="row">
       <div class="field"><label>Rate</label><input id="studentServiceRate" type="number" min="1" value="${esc(studentServiceDraft.rate || profile.rate || 20)}"></div>
       <div class="field"><label>Availability</label><input id="studentServiceAvailability" value="${esc(studentServiceDraft.availability || profile.availability || '')}"></div>
@@ -4305,6 +4365,8 @@ function saveStudentServiceForm(serviceIndex=''){
     images: [...studentServiceImagesBuffer],
     entity_images: [...studentServiceImagesBuffer],
     video_url: videoUrl,
+    video_type: draft.video_type || '',
+    video_id: draft.video_id || '',
     rate,
     availability,
     location: location || profile.location || '',
@@ -5684,7 +5746,7 @@ function createAdminUserEditDraft(userId){
   if (!user) return null;
   const nameParts = splitAdminUserName(user);
   const student = getStudentByUserId(user.id);
-  const services = student ? getRenderableStudentServices(student).map(service => Object.assign({ images:[], video_url:'', reviews:[] }, service)) : [];
+  const services = student ? getRenderableStudentServices(student).map(service => Object.assign({ images:[], video_url:'', video_type:'', video_id:'', reviews:[] }, service)) : [];
   const photo = user.photo || user.profile_image_id || student?.profile_image_id || '';
   return {
     userId: user.id,
@@ -5708,6 +5770,8 @@ function createAdminUserEditDraft(userId){
       highlights: (student.highlights || []).join('\n'),
       profileImages: Array.isArray(student.profileImages) && student.profileImages.length ? [...student.profileImages] : (photo ? [photo] : []),
       video_url: student.video_url || '',
+      video_type: student.video_type || '',
+      video_id: student.video_id || '',
       services
     } : null
   };
@@ -5742,17 +5806,20 @@ function syncAdminUserEditDraftFromForm(){
     adminUserEditDraft.student.about = document.getElementById('adminEditStudentAbout').value || '';
     adminUserEditDraft.student.highlights = document.getElementById('adminEditStudentHighlights').value || '';
     adminUserEditDraft.student.profileImages = parseJsonArray((document.getElementById('adminEditStudentProfileImages') || {}).value || '[]');
-    adminUserEditDraft.student.video_url = (document.getElementById('adminEditStudentVideo').value || '').trim();
-    adminUserEditDraft.student.services = (adminUserEditDraft.student.services || []).map((service, index) => Object.assign({}, service, {
-      title:(document.getElementById(`adminEditServiceTitle_${index}`) || {}).value || service.title || '',
-      description:(document.getElementById(`adminEditServiceDescription_${index}`) || {}).value || service.description || '',
-      images:parseJsonArray((document.getElementById(`adminEditServiceImages_${index}`) || {}).value || '[]'),
-      entity_images:parseJsonArray((document.getElementById(`adminEditServiceImages_${index}`) || {}).value || '[]'),
-      video_url:(document.getElementById(`adminEditServiceVideo_${index}`) || {}).value || service.video_url || '',
-      rate:Number((document.getElementById(`adminEditServiceRate_${index}`) || {}).value || service.rate || 0),
-      location:(document.getElementById(`adminEditServiceLocation_${index}`) || {}).value || service.location || '',
-      availability:(document.getElementById(`adminEditServiceAvailability_${index}`) || {}).value || service.availability || ''
-    }));
+    applyVideoState(adminUserEditDraft.student, (document.getElementById('adminEditStudentVideo').value || '').trim());
+    adminUserEditDraft.student.services = (adminUserEditDraft.student.services || []).map((service, index) => {
+      const nextService = Object.assign({}, service, {
+        title:(document.getElementById(`adminEditServiceTitle_${index}`) || {}).value || service.title || '',
+        description:(document.getElementById(`adminEditServiceDescription_${index}`) || {}).value || service.description || '',
+        images:parseJsonArray((document.getElementById(`adminEditServiceImages_${index}`) || {}).value || '[]'),
+        entity_images:parseJsonArray((document.getElementById(`adminEditServiceImages_${index}`) || {}).value || '[]'),
+        rate:Number((document.getElementById(`adminEditServiceRate_${index}`) || {}).value || service.rate || 0),
+        location:(document.getElementById(`adminEditServiceLocation_${index}`) || {}).value || service.location || '',
+        availability:(document.getElementById(`adminEditServiceAvailability_${index}`) || {}).value || service.availability || ''
+      });
+      applyVideoState(nextService, (document.getElementById(`adminEditServiceVideo_${index}`) || {}).value || nextService.video_url || '');
+      return nextService;
+    });
   }
 }
 function setAdminUserEditDraftValue(path='', value){
@@ -5847,7 +5914,7 @@ function openAdminUserEditModal(userId){
         <div id="admin-edit-student-profile-images-preview" style="margin-bottom:12px">${renderSignupImageGallery(studentProfileImages, 120)}</div>
         <div class="field"><label>Upload Profile Images</label><input type="file" multiple accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditStudentProfileImages','admin-edit-student-profile-images-preview','profile_gallery',3)"></div>
         <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.profileImages',3)">Select from Library</button></div>
-        <div class="field"><label>Profile Video Link</label><input id="adminEditStudentVideo" value="${esc(draft.student.video_url || '')}"></div>
+        <div class="field"><label>Profile Video Link</label><input id="adminEditStudentVideo" value="${esc(getEditableVideoInputValue(draft.student || {}))}"></div>
         <div style="font-weight:700;margin:14px 0 8px">Services</div>
         ${services.length ? services.map((service, index) => `
           <div class="card" style="padding:12px;margin-top:10px;border:1px solid var(--border)">
@@ -5857,7 +5924,7 @@ function openAdminUserEditModal(userId){
             <div id="admin-edit-service-images-preview_${index}" style="margin-bottom:12px">${renderSignupImageGallery(service.images || [], 120)}</div>
             <div class="field"><label>Upload Service Images</label><input type="file" multiple accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditServiceImages_${index}','admin-edit-service-images-preview_${index}','service',3)"></div>
             <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.services.${index}.images',3)">Select from Library</button></div>
-            <div class="field"><label>Video Link</label><input id="adminEditServiceVideo_${index}" value="${esc(service.video_url || '')}"></div>
+            <div class="field"><label>Video Link</label><input id="adminEditServiceVideo_${index}" value="${esc(getEditableVideoInputValue(service || {}))}"></div>
             <div class="row">
               <div class="field"><label>Rate</label><input id="adminEditServiceRate_${index}" type="number" min="0" value="${esc(service.rate || 0)}"></div>
               <div class="field"><label>Location</label><input id="adminEditServiceLocation_${index}" value="${esc(service.location || '')}"></div>
@@ -5942,6 +6009,8 @@ function saveAdminUserEdit(userId){
       photo: user.photo || '',
       profileImages: user.photo ? [user.photo] : [],
       video_url: '',
+      video_type: '',
+      video_id: '',
       emoji: user.emoji || '🎓',
       title: 'Student Service',
       tags: [],
@@ -5973,12 +6042,16 @@ function saveAdminUserEdit(userId){
     student.photo = profileImages[0] || user.photo || '';
     student.profile_image_id = student.photo || '';
     student.video_url = draft.student?.video_url || student.video_url || '';
+    student.video_type = draft.student?.video_type || student.video_type || '';
+    student.video_id = draft.student?.video_id || student.video_id || '';
     user.photo = student.photo || user.photo || '';
     user.profile_image_id = user.photo || '';
     const services = (draft.student?.services || getRenderableStudentServices(student)).map(service => Object.assign({}, service, {
       images:[...(service.images || [])],
       entity_images:[...(service.images || service.entity_images || [])],
-      video_url:service.video_url || ''
+      video_url:service.video_url || '',
+      video_type:service.video_type || '',
+      video_id:service.video_id || ''
     })).filter(service => service.title || service.description || service.rate || service.location || service.availability);
     student.services = services;
     if (services[0]) {
@@ -6209,7 +6282,7 @@ function renderAdminBlogEditorHtml(){
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminBlogArticleImageLibrary()">Select from Library</button></div>
       <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.media_url || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
-      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? getBlogPostVideoInputValue(post) : '')}" placeholder="https://youtube.com/watch?v=..." oninput="previewAdminBlogVideoLink(this.value)"></div>
+      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? getBlogPostVideoInputValue(post) : '')}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewAdminBlogVideoLink(this.value)"></div>
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
       <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? articleVideoUrl : '', 'Article video')}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
