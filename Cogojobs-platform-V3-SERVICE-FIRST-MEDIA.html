@@ -146,7 +146,25 @@
     .thread-list,.thread-view{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
     .thread{padding:14px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer}
     .thread:hover{background:var(--light)}
-    .thread.unread{background:#EFF6FF;border-left:3px solid #ef4444}
+    .thread.unread{
+      background:#dbeafe;
+      border-left:6px solid #2563eb;
+      box-shadow:inset 0 0 0 1px rgba(37,99,235,.22);
+    }
+    .thread.unread .thread-title{font-weight:900;color:#1e3a8a}
+    .thread.unread .thread-preview{font-weight:800;color:#0f172a}
+    .thread-unread-badge{
+      display:inline-flex;
+      align-items:center;
+      padding:2px 8px;
+      border-radius:999px;
+      background:#2563eb;
+      color:#fff;
+      font-size:.72rem;
+      font-weight:900;
+      letter-spacing:.02em;
+      margin-left:6px;
+    }
     .thread-view{display:flex;flex-direction:column;min-height:480px}
     .messages{padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:420px}
     .bubble{max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.4}
@@ -167,15 +185,27 @@
     .blog-featured-media img{width:100%;height:100%;object-fit:cover;display:block}
     .blog-card-media{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
     .blog-card-image{width:100%;height:100%;object-fit:cover;display:block}
+    .blog-video-frame{width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;margin:18px 0}
+    .blog-video-frame iframe{width:100%;height:100%;border:0;display:block}
     .blog-article-content img{max-width:100%;height:auto;border-radius:12px}
     .blog-article-content iframe,.blog-article-content video{width:100%;max-width:100%;min-height:420px;border:0;border-radius:12px;background:#000}
     .blog-article-content figure{margin:18px 0}
     .blog-article-content figcaption{margin-top:8px;color:var(--gray);font-size:.84rem}
     .blog-article-content p,.blog-article-content ul,.blog-article-content ol{margin:16px 0}
     .blog-article-content h2,.blog-article-content h3,.blog-article-content h4{margin-top:28px}
+    .workshop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .workshop-card{overflow:hidden}
+    .workshop-cover{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
+    .workshop-cover img{width:100%;height:100%;object-fit:cover;display:block}
+    .workshop-meta{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+    .workshop-chip{font-size:.76rem;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#1e3a8a;font-weight:700}
+    .workshop-price-badge{position:absolute;top:10px;right:10px;background:rgba(17,24,39,.92);color:#fff;padding:6px 10px;border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.02em;z-index:2}
+    .workshop-detail-media{position:relative;aspect-ratio:16/9;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;margin-bottom:16px}
+    .workshop-detail-media img,.workshop-detail-media iframe{width:100%;height:100%;object-fit:cover;border:0;display:block}
+    .workshop-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     @media (max-width: 900px){
       .profiles-grid{grid-template-columns:repeat(2,1fr)}
-      .blog-grid,.blog-featured{grid-template-columns:1fr}
+      .blog-grid,.blog-featured,.workshop-grid{grid-template-columns:1fr}
       .dashboard{flex-direction:column}
       .sidebar{width:100%;display:flex;overflow:auto;padding:10px}
       .sidebar a{white-space:nowrap}
@@ -183,7 +213,7 @@
     }
     @media (max-width: 640px){
       .profiles-grid{grid-template-columns:1fr}
-      .blog-grid{grid-template-columns:1fr}
+      .blog-grid,.workshop-grid{grid-template-columns:1fr}
       .row{grid-template-columns:1fr}
       .nav-links{display:none}
       .hero h1{font-size:1.9rem}
@@ -196,6 +226,7 @@
     <a class="logo" href="#/">CoGo<span>City</span></a>
     <div class="nav-links">
       <a href="#/" id="nav-home">Browse Students</a>
+      <a href="#/workshops" id="nav-workshops">Workshop & Classes</a>
       <a href="#/community" id="nav-community">Community</a>
       <a href="#/blog" id="nav-blog">Blog</a>
       <a href="#/dashboard" id="nav-dashboard">Dashboard</a>
@@ -238,8 +269,13 @@ let adminModalImageLibraryTarget = null;
 let studentProfileTab = 'all';
 let studentProfileQuery = '';
 let employerProfileTab = 'all';
+let workshopsDashboardTab = 'my_workshops';
+let workshopDraft = null;
 let activeModalDraftKey = null;
 let mediaCarouselState = {};
+let openPostCommentId = '';
+let workshopPayoutProcessorStarted = false;
+let connectivityHandlersAttached = false;
 let studentProfileImagesBuffer = [];
 let studentServiceImagesBuffer = [];
 let activeStudentProfileFormId = '';
@@ -255,11 +291,19 @@ const BLOG_POSTS = [{"id":12941,"date":"2025-11-03T23:15:53","slug":"can-interna
 
 
 // ---------- Storage ----------
+const transientStorageFallback = {};
 function ls(key, value){
   if (value === undefined) {
-    try { return JSON.parse(localStorage.getItem(key)); } catch(e){ return null; }
+    try { return JSON.parse(localStorage.getItem(key)); } catch(e){
+      return Object.prototype.hasOwnProperty.call(transientStorageFallback, key) ? transientStorageFallback[key] : null;
+    }
   }
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    transientStorageFallback[key] = value;
+    console.warn('Storage write failed. Falling back to in-memory cache for key:', key, error);
+  }
 }
 function uid(prefix='id'){
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
@@ -316,6 +360,7 @@ function normalizeImageRecord(image){
     original_name: '',
     original_type: '',
     original_size: 0,
+    storage_provider: 'cloudinary',
     source: 'library',
     entity_type: '',
     entity_id: '',
@@ -331,6 +376,7 @@ function normalizeImageRecord(image){
   normalized.original_name = String(normalized.original_name || '').trim();
   normalized.original_type = String(normalized.original_type || '').trim();
   normalized.original_size = Number(normalized.original_size || 0) || 0;
+  normalized.storage_provider = String(normalized.storage_provider || 'cloudinary').trim() || 'cloudinary';
   normalized.updatedAt = normalized.updatedAt || new Date().toISOString();
   normalized.createdAt = normalized.createdAt || normalized.updatedAt;
   return normalized;
@@ -505,6 +551,7 @@ function normalizeBlogPostRecord(post){
     articleMediaImage: '',
     entity_images: [],
     images: [],
+    videoUrl: '',
     video_url: '',
     video_type: '',
     video_id: '',
@@ -517,14 +564,15 @@ function normalizeBlogPostRecord(post){
   normalized.featured_image = upsertImageRecord(normalized.featured_image, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' }) || '';
   normalized.image_id = normalized.featured_image;
   normalized.featuredImage = normalized.featured_image;
+  if (!normalized.videoUrl) normalized.videoUrl = normalized.video_url || normalized.videoLink || '';
   if (!normalized.media_type) {
     if (normalized.media_url && parseVideoLink(normalized.media_url)) normalized.media_type = parseVideoLink(normalized.media_url).type === 'upload' || parseVideoLink(normalized.media_url).type === 'youtube' || parseVideoLink(normalized.media_url).embedUrl ? 'video' : normalized.media_type;
-    if (!normalized.media_type && (normalized.video_url || normalized.videoLink)) normalized.media_type = 'video';
+    if (!normalized.media_type && (normalized.videoUrl || normalized.video_url || normalized.videoLink)) normalized.media_type = 'video';
     if (!normalized.media_type && (normalized.articleMediaImage || normalized.article_media)) normalized.media_type = 'image';
     if (!normalized.media_type && Array.isArray(normalized.entity_images) && normalized.entity_images[0]) normalized.media_type = 'image';
   }
   if (!normalized.media_url) {
-    if (normalized.media_type === 'video') normalized.media_url = normalized.video_url || normalized.videoLink || '';
+    if (normalized.media_type === 'video') normalized.media_url = normalized.video_url || normalized.videoUrl || normalized.videoLink || '';
     if (normalized.media_type === 'image') normalized.media_url = normalized.articleMediaImage || normalized.article_media || ((normalized.entity_images || [])[0] || '');
   }
   if (normalized.media_type === 'image') {
@@ -534,21 +582,23 @@ function normalizeBlogPostRecord(post){
     normalized.articleMediaImage = '';
   }
   if (normalized.media_type !== 'video') normalized.video_url = '';
-  if (normalized.media_type === 'video' && !normalized.media_url) normalized.media_url = normalized.video_url || '';
+  if (normalized.media_type === 'video' && !normalized.media_url) normalized.media_url = normalized.video_url || normalized.videoUrl || '';
   if (normalized.media_type === 'video') {
-    const videoState = normalizeVideoInputValue(normalized.media_url || normalized.video_url || '');
+    const videoState = normalizeVideoInputValue(normalized.media_url || normalized.videoUrl || normalized.video_url || '');
     normalized.video_type = normalized.video_type || videoState.video_type || '';
     normalized.video_id = normalized.video_id || videoState.video_id || '';
-    normalized.media_url = getGeneratedVideoUrl(normalized.video_type, normalized.video_id) || videoState.media_url || normalized.media_url || normalized.video_url || '';
+    normalized.media_url = getGeneratedVideoUrl(normalized.video_type, normalized.video_id) || videoState.media_url || normalized.media_url || normalized.videoUrl || normalized.video_url || '';
   } else {
     normalized.video_type = '';
     normalized.video_id = '';
   }
   normalized.video_url = normalized.media_type === 'video' ? normalized.media_url : '';
+  if (!normalized.videoUrl) normalized.videoUrl = normalized.video_url;
   const rawImages = Array.isArray(normalized.entity_images) && normalized.entity_images.length ? normalized.entity_images : normalized.images;
   normalized.entity_images = upsertImageRecords(rawImages, { source:'article_gallery', entity_type:'article', entity_id: normalized.id || '' });
   normalized.images = [...normalized.entity_images];
   if (!normalized.video_url && normalized.videoLink) normalized.video_url = normalized.videoLink;
+  if (!normalized.videoUrl && normalized.videoLink) normalized.videoUrl = normalized.videoLink;
   delete normalized.videoLink;
   if (post && post.publishRequested == null) normalized.publishRequested = normalized.status !== 'draft';
   return normalized;
@@ -627,16 +677,84 @@ function getStudents(){
   return normalized;
 }
 function saveStudents(v){ ls('cogo_students', ensureArray(v).map(normalizeStudentRecord)); }
-function getPosts(){ return ls('cogo_posts') || []; }
-function savePosts(v){ ls('cogo_posts', v); }
+function normalizeCommunityComment(comment){
+  const normalized = Object.assign({
+    id: uid('pc'),
+    userId: '',
+    userName: 'User',
+    content: '',
+    createdAt: new Date().toISOString()
+  }, comment || {});
+  normalized.id = String(normalized.id || uid('pc'));
+  normalized.userId = String(normalized.userId || '').trim();
+  normalized.userName = String(normalized.userName || 'User');
+  normalized.content = String(normalized.content || '').trim();
+  normalized.createdAt = normalized.createdAt || new Date().toISOString();
+  return normalized;
+}
+function normalizePostRecord(post){
+  const normalized = Object.assign({
+    id: uid('p'),
+    authorId: '',
+    authorName: 'User',
+    authorEmoji: '👤',
+    content: '',
+    isJob: false,
+    createdAt: new Date().toISOString(),
+    likes: [],
+    comments: [],
+    shares: 0
+  }, post || {});
+  normalized.likes = ensureArray(normalized.likes).map(id => String(id || '').trim()).filter(Boolean);
+  normalized.comments = ensureArray(normalized.comments).map(normalizeCommunityComment).filter(item => item.content);
+  normalized.shares = Number(normalized.shares || 0);
+  return normalized;
+}
+function getPosts(){
+  const posts = ensureArray(ls('cogo_posts'));
+  const normalized = posts.map(normalizePostRecord);
+  if (JSON.stringify(posts) !== JSON.stringify(normalized)) ls('cogo_posts', normalized);
+  return normalized;
+}
+function savePosts(v){ ls('cogo_posts', ensureArray(v).map(normalizePostRecord)); }
 function getApplications(){ return ls('cogo_applications') || []; }
 function saveApplications(v){ ls('cogo_applications', v); }
 function getBookings(){ return ls('cogo_bookings') || []; }
 function saveBookings(v){ ls('cogo_bookings', v); }
 function getProjects(){ return ls('cogo_projects') || []; }
 function saveProjects(v){ ls('cogo_projects', v); }
-function getMessages(){ return ls('cogo_messages') || []; }
-function saveMessages(v){ ls('cogo_messages', v); }
+function normalizeMessageRecord(message){
+  const normalized = Object.assign({
+    id: uid('m'),
+    fromId: '',
+    fromName: 'User',
+    toId: '',
+    toName: 'User',
+    content: '',
+    projectId: null,
+    postId: null,
+    applicationId: null,
+    workshop_id: null,
+    thread_id: '',
+    thread_label: '',
+    message_type: 'user',
+    system_category: '',
+    createdAt: new Date().toISOString(),
+    read: false
+  }, message || {});
+  const derivedSystem = String(normalized.fromId || '') === 'system_cogo'
+    || String(normalized.fromName || '') === 'CoGo Team'
+    || String(normalized.thread_id || '').startsWith('system:');
+  normalized.message_type = normalized.message_type === 'system' || derivedSystem ? 'system' : 'user';
+  return normalized;
+}
+function getMessages(){
+  const messages = ensureArray(ls('cogo_messages'));
+  const normalized = messages.map(normalizeMessageRecord);
+  if (JSON.stringify(messages) !== JSON.stringify(normalized)) ls('cogo_messages', normalized);
+  return normalized;
+}
+function saveMessages(v){ ls('cogo_messages', ensureArray(v).map(normalizeMessageRecord)); }
 function getNotifications(id){ return ls('cogo_notifs_' + id) || []; }
 function saveNotifications(id, data){ ls('cogo_notifs_' + id, data); }
 function getPaymentLogs(){ return ls('cogo_payment_logs') || []; }
@@ -653,6 +771,10 @@ function getPaymentSettings(){
 function savePaymentSettings(v){ ls('cogo_payment_settings', v); }
 function getTransactions(){ return ls('cogo_transactions') || []; }
 function saveTransactions(v){ ls('cogo_transactions', v); }
+function isWorkshopTransaction(tx){
+  const title = String((tx && tx.job_title) || '').toLowerCase();
+  return title.startsWith('workshop:') || title.startsWith('workshop refund:') || title.startsWith('workshop payout:');
+}
 
 // ---------- Seed ----------
 function migrateLegacyData(){
@@ -1109,10 +1231,71 @@ function attemptEscrowAuthorization(application, escrowAmount){
 function getProjectForUsers(userIdA, userIdB){
   return getProjects().find(p => [p.employerId, p.studentUserId].includes(userIdA) && [p.employerId, p.studentUserId].includes(userIdB) && p.status !== 'completed') || null;
 }
+function getProjectRolePaymentData(project){
+  const hours = Number(project.actualHours || project.estimatedHours || 0);
+  const rate = Number(project.rate || 0);
+  const fallback = calculateCommissionBreakdown(hours, rate);
+  const workTotal = Number(project.finalSubtotal ?? project.estimatedTotal ?? fallback.workTotal);
+  const employerFee = Number(project.employerPlatformFee ?? project.estimatedEmployerPlatformFee ?? fallback.employerCommissionAmount);
+  const studentFee = Number(project.studentPlatformFee ?? project.estimatedStudentPlatformFee ?? fallback.studentCommissionAmount);
+  const studentPayout = Number(project.studentPayout ?? project.estimatedStudentPayout ?? fallback.studentPayout);
+  const employerTotal = Number(project.finalTotal ?? project.estimatedEmployerTotal ?? fallback.employerTotal);
+  return { hours, rate, workTotal, employerFee, studentFee, studentPayout, employerTotal };
+}
+function renderProjectPaymentSection(project){
+  const payment = getProjectRolePaymentData(project);
+  if (currentUser.role === 'student') {
+    return `
+      <div class="small">Hourly rate: <strong>$${esc(money(payment.rate))}/hr</strong></div>
+      <div class="small">Hours worked: <strong>${esc(payment.hours)} hrs</strong></div>
+      <div class="small">Total earned: <strong>$${esc(money(payment.workTotal))}</strong></div>
+      <div class="small">Platform fee deducted: <strong>-$${esc(money(payment.studentFee))}</strong></div>
+      <div class="small">Final payout amount: <strong>$${esc(money(payment.studentPayout))}</strong></div>
+    `;
+  }
+  if (currentUser.role === 'employer') {
+    return `
+      <div class="small">Service cost: <strong>$${esc(money(payment.workTotal))}</strong></div>
+      <div class="small">Platform fee: <strong>$${esc(money(payment.employerFee))}</strong></div>
+      <div class="small">Total charged: <strong>$${esc(money(payment.employerTotal))}</strong></div>
+    `;
+  }
+  return `
+    <div class="small">Service cost: <strong>$${esc(money(payment.workTotal))}</strong></div>
+    <div class="small">Employer fee: <strong>$${esc(money(payment.employerFee))}</strong></div>
+    <div class="small">Student deduction: <strong>$${esc(money(payment.studentFee))}</strong></div>
+    <div class="small">Payout: <strong>$${esc(money(payment.studentPayout))}</strong></div>
+    <div class="small">Total charged: <strong>$${esc(money(payment.employerTotal))}</strong></div>
+  `;
+}
+function getProjectSystemMessages(projectId=''){
+  if (!projectId) return [];
+  return getMessages()
+    .filter(message => message.message_type === 'system' && String(message.projectId || '') === String(projectId))
+    .filter(message => message.toId === currentUser.id || message.fromId === currentUser.id || message.toId === 'broadcast')
+    .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+function renderProjectSystemUpdates(projectId=''){
+  const updates = getProjectSystemMessages(projectId).slice(0, 5);
+  if (!updates.length) return `<div class="small muted">No system payment updates yet.</div>`;
+  return updates.map(update => `
+    <div class="contract-box small" style="margin-top:8px">
+      <div style="font-weight:800;color:#1e3a8a">CoGo Team</div>
+      <div style="margin-top:6px">${esc(update.content || '')}</div>
+      <div class="muted small" style="margin-top:6px">${timeAgo(update.createdAt)}</div>
+    </div>
+  `).join('');
+}
+function containsRestrictedPaymentChatContent(text=''){
+  const value = String(text || '').toLowerCase();
+  if (!value) return false;
+  return /(platform fee|commission|payout|escrow|refund|charged|payment released|payment received|funds secured|final payout|net earnings)/.test(value);
+}
 function attachMessagesToProject(projectId, employerId, studentUserId){
   const messages = getMessages();
   let changed = false;
   messages.forEach(m => {
+    if (m.message_type === 'system') return;
     const betweenUsers = (m.fromId === employerId && m.toId === studentUserId) || (m.fromId === studentUserId && m.toId === employerId);
     if (betweenUsers && !m.projectId) {
       m.projectId = projectId;
@@ -1266,6 +1449,7 @@ function renderNav(){
   const nav = document.getElementById('nav-actions');
   const route = getRoute();
   document.getElementById('nav-home').classList.toggle('active', route === '#/' || route === '');
+  document.getElementById('nav-workshops').classList.toggle('active', route === '#/workshops' || route.startsWith('#/workshops/'));
   document.getElementById('nav-community').classList.toggle('active', route === '#/community');
   document.getElementById('nav-blog').classList.toggle('active', route === '#/blog' || route.startsWith('#/blog/'));
   document.getElementById('nav-dashboard').classList.toggle('active', route === '#/dashboard');
@@ -1354,7 +1538,7 @@ function runNotifAction(id){
     goDashboard();
   } else if (action.type === 'thread') {
     dashSection = 'messages';
-    activeThreadUserId = action.userId;
+    activeThreadUserId = action.threadKey || action.userId;
     goDashboard();
   }
 }
@@ -1376,6 +1560,7 @@ function openLoginModal(tab='signin'){
           <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
           <button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>
         </div>
+        <div style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="openPasswordResetModal()">Forgot Password?</button></div>
         <div class="small muted" style="margin-top:10px">Reset restores the seeded test users, passwords, and sample data for this browser.</div>
       </div>
       <div style="height:14px"></div>
@@ -1443,6 +1628,38 @@ function doLogin(){
   toast(`Welcome back, ${firstName(user.name)}!`);
   location.hash = '#/';
   renderPage();
+}
+function openPasswordResetModal(){
+  openModal('Reset Password', `
+    <div class="card form-card">
+      <div class="small muted" style="margin-bottom:10px">Enter your account email and choose a new password.</div>
+      <div class="field"><label>Email</label><input id="resetEmail" type="email" placeholder="you@example.com"></div>
+      <div class="field"><label>New Password</label><input id="resetNewPassword" type="password" placeholder="At least 6 characters"></div>
+      <div class="field"><label>Confirm New Password</label><input id="resetConfirmPassword" type="password" placeholder="Repeat password"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openLoginModal('signin')">Back to Sign In</button>
+        <button class="btn btn-blue" onclick="submitPasswordReset()">Reset Password</button>
+      </div>
+    </div>
+  `, '620px');
+}
+function submitPasswordReset(){
+  const email = String((document.getElementById('resetEmail') || {}).value || '').trim().toLowerCase();
+  const nextPassword = String((document.getElementById('resetNewPassword') || {}).value || '');
+  const confirmPassword = String((document.getElementById('resetConfirmPassword') || {}).value || '');
+  if (!email) return toast('Please enter your email.');
+  if (!nextPassword || nextPassword.length < 6) return toast('New password must be at least 6 characters.');
+  if (nextPassword !== confirmPassword) return toast('Passwords do not match.');
+  const users = getUsers();
+  const user = users.find(item => String(item.email || '').toLowerCase() === email);
+  if (!user) return toast('No account found with that email.');
+  user.password = nextPassword;
+  saveUsers(users);
+  if (currentUser && currentUser.id === user.id) setCurrentUser(user);
+  toast('Password reset successful. You can sign in now.');
+  openLoginModal('signin');
+  const loginEmail = document.getElementById('loginEmail');
+  if (loginEmail) loginEmail.value = email;
 }
 const STUDENT_AVATAR_OPTIONS = ['🎓','📚','💻','🎨','🎵','⚽','🧠','🚲','📷','🛠️','🌟','🎬','🧑‍🍳','🧪'];
 function createDefaultStudentSignupDraft(){
@@ -2368,7 +2585,7 @@ function clearPrototypeDataStores(){
   [
     'cogo_users','cogo_students','cogo_images','cogo_blog_posts','cogo_current_user','cogo_admin_impersonation','cogo_active_student_profile',
     'cogo_posts','cogo_applications','cogo_bookings','cogo_projects','cogo_messages','cogo_payment_logs','cogo_finance','cogo_payment_settings',
-    'cogo_transactions','cogo_notifications','cogo_seeded_v3'
+    'cogo_transactions','cogo_notifications','cogo_seeded_v3','cogo_workshops','cogo_workshop_registrations'
   ].forEach(key => {
     try { localStorage.removeItem(key); } catch (error) {}
   });
@@ -2385,6 +2602,8 @@ function resetPrototypeRuntimeState(){
   adminPendingUserAction = '';
   adminBlogQuery = '';
   adminBlogDraft = null;
+  workshopDraft = null;
+  workshopsDashboardTab = 'my_workshops';
   adminUserEditDraft = null;
   studentProfileDraft = null;
   studentServiceDraft = null;
@@ -2423,8 +2642,10 @@ function renderAppErrorState(error, route=''){
 function renderPage(){
   try {
     if (!syncCurrentUserRecord()) return;
+    processWorkshopPayouts();
     renderNav();
     const route = getRoute();
+    if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
     if (route === '#/community') return renderCommunity();
     if (route === '#/dashboard') return renderDashboard();
     if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
@@ -2494,11 +2715,85 @@ function stripHtmlTags(html=''){
 function sanitizeArticleHtml(html=''){
   return String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+=("[^"]*"|'[^']*')/gi, '');
 }
+function isStandaloneAnchorNode(anchor){
+  if (!anchor || !anchor.parentElement) return false;
+  const meaningfulNodes = Array.from(anchor.parentElement.childNodes).filter(node => {
+    if (node.nodeType === 3) return (node.textContent || '').trim() !== '';
+    return true;
+  });
+  return meaningfulNodes.length === 1 && meaningfulNodes[0] === anchor;
+}
+function normalizeArticleVideoEmbedUrl(value=''){
+  const normalized = normalizeVideoInputValue(value);
+  if (!normalized || !normalized.media_url) return '';
+  if (!['youtube', 'vimeo', 'upload'].includes(normalized.video_type || '')) return '';
+  return normalized.media_url;
+}
+function extractEmbeddableVideoUrlFromText(text=''){
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const direct = normalizeArticleVideoEmbedUrl(raw);
+  if (direct) return direct;
+  const matches = raw.match(/https?:\/\/[^\s<>"')]+/gi) || [];
+  for (const candidate of matches) {
+    const embedUrl = normalizeArticleVideoEmbedUrl(candidate);
+    if (embedUrl) return embedUrl;
+  }
+  return '';
+}
+function enrichArticleHtmlWithEmbeddedVideos(html=''){
+  const source = String(html || '').trim();
+  if (!source) return '';
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = source;
+  wrapper.querySelectorAll('iframe[src]').forEach(frame => {
+    const src = String(frame.getAttribute('src') || '').trim();
+    const embedUrl = normalizeArticleVideoEmbedUrl(src);
+    if (!embedUrl) return;
+    frame.setAttribute('src', embedUrl);
+    frame.setAttribute('allowfullscreen', '');
+    if (!frame.getAttribute('allow')) frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; web-share');
+    if (!frame.getAttribute('loading')) frame.setAttribute('loading', 'lazy');
+    if (!frame.getAttribute('referrerpolicy')) frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+  });
+  wrapper.querySelectorAll('a[href]').forEach(anchor => {
+    const href = String(anchor.getAttribute('href') || '').trim();
+    const embedUrl = normalizeArticleVideoEmbedUrl(href);
+    if (!embedUrl) return;
+    const replacement = document.createElement('div');
+    replacement.innerHTML = renderVideoPreviewHtml(embedUrl, 'Article video', { maxWidth:'100%', showLabel:false });
+    const node = replacement.firstElementChild;
+    if (!node) return;
+    if (isStandaloneAnchorNode(anchor)) anchor.parentElement.replaceWith(node);
+    else anchor.replaceWith(node);
+  });
+  wrapper.querySelectorAll('.wp-block-embed__wrapper, figure.wp-block-embed p, p, div').forEach(node => {
+    if (!(node instanceof HTMLElement)) return;
+    if (node.querySelector('iframe,video,a,blockquote,ul,ol,img')) return;
+    const text = String(node.textContent || '').trim();
+    if (!text) return;
+    const embedUrl = extractEmbeddableVideoUrlFromText(text);
+    if (!embedUrl) return;
+    const replacement = document.createElement('div');
+    replacement.innerHTML = renderVideoPreviewHtml(embedUrl, 'Article video', { maxWidth:'100%', showLabel:false });
+    const rendered = replacement.firstElementChild;
+    if (!rendered) return;
+    const figureWrap = node.closest('figure.wp-block-embed');
+    if (figureWrap) figureWrap.replaceWith(rendered);
+    else node.replaceWith(rendered);
+  });
+  return wrapper.innerHTML;
+}
 function formatArticleBodyHtml(content=''){
   const raw = String(content || '').trim();
   if (!raw) return '';
-  if (/<[a-z][\s\S]*>/i.test(raw)) return sanitizeArticleHtml(raw);
-  return raw.split(/\n\s*\n/).map(block => `<p>${esc(block).replace(/\n/g, '<br>')}</p>`).join('');
+  if (/<[a-z][\s\S]*>/i.test(raw)) return enrichArticleHtmlWithEmbeddedVideos(sanitizeArticleHtml(raw));
+  return raw.split(/\n\s*\n/).map(block => {
+    const text = String(block || '').trim();
+    const embedUrl = extractEmbeddableVideoUrlFromText(text);
+    if (embedUrl) return renderVideoPreviewHtml(embedUrl, 'Article video', { maxWidth:'100%', showLabel:false });
+    return `<p>${esc(block).replace(/\n/g, '<br>')}</p>`;
+  }).join('');
 }
 function getBlogPostBySlug(slug=''){
   return getPublicBlogPosts().find(post => post.slug === slug);
@@ -2583,12 +2878,13 @@ function renderBlogArticle(slug){
     return;
   }
   const articleImage = getImageView(post.media_type === 'image' ? post.media_url : '', 'full');
-  const articleVideoUrl = getBlogPostVideoUrl(post);
-  const topMediaHtml = post.media_type === 'video' && articleVideoUrl
-    ? `<div style="margin-bottom:22px">${renderVideoPreviewHtml(articleVideoUrl, 'Article video', { maxWidth:'100%', showLabel:false, loading:'eager' })}</div>`
-    : articleImage
-      ? `<img src="${esc(articleImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
-      : '';
+  const persistedVideoUrl = (post.videoUrl || post.video_url || '').trim();
+  const videoFrameHtml = persistedVideoUrl
+    ? `<div style="margin:18px 0">${renderVideoPreviewHtml(persistedVideoUrl, 'Article video', { maxWidth:'100%', showLabel:false })}</div>`
+    : '';
+  const topMediaHtml = !persistedVideoUrl && articleImage
+    ? `<img src="${esc(articleImage.url)}" alt="${esc(stripHtmlTags(post.title))}" loading="eager" style="width:100%;max-height:420px;object-fit:cover;border-radius:16px;border:1px solid var(--border);margin-bottom:22px">`
+    : '';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -2597,11 +2893,817 @@ function renderBlogArticle(slug){
         <div class="small muted" style="margin-bottom:10px">${esc(formatBlogDate(post.date))}${post.authorName ? ` · By ${esc(post.authorName)}` : ''}</div>
         <h1 style="margin:0 0 18px;font-size:2rem;line-height:1.2">${esc(stripHtmlTags(post.title))}</h1>
         ${topMediaHtml}
+        ${videoFrameHtml}
         <div class="blog-article-content" style="line-height:1.75;font-size:1rem">${formatArticleBodyHtml(post.content || '')}</div>
       </div>
     </div>
   `;
 }
+
+// ---------- Workshops ----------
+const WORKSHOP_SEED = [
+  {
+    id:'ws_seed_1',
+    title:'Start Your First Business',
+    description:'A practical starter class for students who want to launch their first small business. We cover idea validation, pricing basics, and first customer outreach.',
+    host_id:'u_employer_test',
+    date_time:new Date(Date.now() + 1000 * 60 * 60 * 24 * 4).toISOString(),
+    duration:'90 min',
+    format:'in_person',
+    location:'Danville Community Center',
+    online_url:'',
+    price:25,
+    capacity:12,
+    status:'active',
+    images:[],
+    video_url:'https://www.youtube.com/watch?v=7rzYDM6vMtI',
+    included:['Workbook template','Q&A session','Action checklist'],
+    created_at:new Date().toISOString()
+  },
+  {
+    id:'ws_seed_2',
+    title:'Social Media Basics for Student Services',
+    description:'Learn how to set up a clean profile, post service examples, and attract local clients without paid ads.',
+    host_id:'u_neighbor_test',
+    date_time:new Date(Date.now() + 1000 * 60 * 60 * 24 * 9).toISOString(),
+    duration:'75 min',
+    format:'online',
+    location:'',
+    online_url:'https://meet.google.com/example',
+    price:15,
+    capacity:20,
+    status:'active',
+    images:[],
+    video_url:'',
+    included:['Posting checklist','Caption examples'],
+    created_at:new Date().toISOString()
+  }
+];
+function normalizeWorkshopRecord(workshop){
+  const normalized = Object.assign({
+    id: uid('ws'),
+    title: '',
+    description: '',
+    host_id: '',
+    date_time: '',
+    duration: '',
+    format: 'in_person',
+    location: '',
+    online_url: '',
+    price: 0,
+    capacity: '',
+    status: 'draft',
+    images: [],
+    video_url: '',
+    included: [],
+    created_at: new Date().toISOString(),
+    completed_at: '',
+    payout_due_at: '',
+    payout_processed: false
+  }, workshop || {});
+  normalized.id = String(normalized.id || uid('ws'));
+  normalized.title = String(normalized.title || '').trim();
+  normalized.description = String(normalized.description || '').trim();
+  normalized.host_id = String(normalized.host_id || '').trim();
+  normalized.date_time = normalized.date_time ? new Date(normalized.date_time).toISOString() : '';
+  normalized.duration = String(normalized.duration || '').trim();
+  normalized.format = normalized.format === 'online' ? 'online' : 'in_person';
+  normalized.location = String(normalized.location || '').trim();
+  normalized.online_url = String(normalized.online_url || '').trim();
+  normalized.price = Number(normalized.price || 0) || 0;
+  normalized.capacity = normalized.capacity === '' ? '' : (Number(normalized.capacity || 0) || 0);
+  normalized.status = ['draft','active','canceled','completed'].includes(normalized.status) ? normalized.status : 'draft';
+  normalized.images = upsertImageRecords(normalized.images || [], { source:'workshop', entity_type:'workshop', entity_id: normalized.id }).slice(0,3);
+  const videoState = normalizeVideoInputValue(normalized.video_url || '');
+  normalized.video_url = (videoState.video_type === 'youtube' || videoState.video_type === 'vimeo') ? videoState.input_url : '';
+  normalized.included = ensureArray(normalized.included).map(item => String(item || '').trim()).filter(Boolean);
+  normalized.created_at = normalized.created_at || new Date().toISOString();
+  normalized.completed_at = normalized.completed_at ? new Date(normalized.completed_at).toISOString() : '';
+  normalized.payout_due_at = normalized.payout_due_at ? new Date(normalized.payout_due_at).toISOString() : '';
+  normalized.payout_processed = !!normalized.payout_processed;
+  return normalized;
+}
+function getWorkshops(){
+  const stored = ensureArray(ls('cogo_workshops'));
+  if (stored.length) {
+    const normalized = stored.map(normalizeWorkshopRecord);
+    if (JSON.stringify(normalized) !== JSON.stringify(stored)) ls('cogo_workshops', normalized);
+    return normalized;
+  }
+  const seeded = WORKSHOP_SEED.map(normalizeWorkshopRecord);
+  ls('cogo_workshops', seeded);
+  return seeded;
+}
+function saveWorkshops(workshops){ ls('cogo_workshops', ensureArray(workshops).map(normalizeWorkshopRecord)); }
+function normalizeWorkshopRegistration(registration){
+  const normalized = Object.assign({
+    id: uid('wr'),
+    workshop_id: '',
+    user_id: '',
+    payment_id: '',
+    status: 'registered',
+    created_at: new Date().toISOString()
+  }, registration || {});
+  normalized.id = String(normalized.id || uid('wr'));
+  normalized.workshop_id = String(normalized.workshop_id || '').trim();
+  normalized.user_id = String(normalized.user_id || '').trim();
+  normalized.payment_id = String(normalized.payment_id || '').trim();
+  normalized.status = ['registered','refunded','attended'].includes(normalized.status) ? normalized.status : 'registered';
+  normalized.created_at = normalized.created_at || new Date().toISOString();
+  return normalized;
+}
+function getWorkshopRegistrations(){
+  const stored = ensureArray(ls('cogo_workshop_registrations'));
+  const normalized = stored.map(normalizeWorkshopRegistration);
+  if (JSON.stringify(normalized) !== JSON.stringify(stored)) ls('cogo_workshop_registrations', normalized);
+  return normalized;
+}
+function saveWorkshopRegistrations(items){ ls('cogo_workshop_registrations', ensureArray(items).map(normalizeWorkshopRegistration)); }
+function getWorkshopById(workshopId=''){ return getWorkshops().find(workshop => String(workshop.id) === String(workshopId)); }
+function getWorkshopHostName(workshop){
+  const host = getUserById(workshop && workshop.host_id);
+  if (!host) return 'CoGo Host';
+  const parts = String(host.name || host.publicName || 'Host').split(' ').filter(Boolean);
+  const first = parts[0] || 'Host';
+  const lastInitial = (parts[1] || 'H').slice(0,1).toUpperCase();
+  return `${first} ${lastInitial}.`;
+}
+function getWorkshopRegistrationsFor(workshopId=''){
+  return getWorkshopRegistrations().filter(item => String(item.workshop_id) === String(workshopId));
+}
+function getWorkshopRegisteredCount(workshopId=''){
+  return getWorkshopRegistrationsFor(workshopId).filter(item => ['registered','attended'].includes(item.status)).length;
+}
+function getWorkshopSpotsLeft(workshop){
+  if (!workshop || workshop.capacity === '' || Number(workshop.capacity || 0) <= 0) return null;
+  return Math.max(0, Number(workshop.capacity || 0) - getWorkshopRegisteredCount(workshop.id));
+}
+function formatWorkshopDateTime(value=''){
+  if (!value) return 'Date TBD';
+  return new Date(value).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+}
+function workshopSummaryDescription(workshop){
+  const text = String(workshop.description || '').trim();
+  return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+}
+function workshopCanRegister(workshop){
+  if (!workshop || workshop.status !== 'active') return false;
+  const spotsLeft = getWorkshopSpotsLeft(workshop);
+  if (spotsLeft !== null && spotsLeft <= 0) return false;
+  return true;
+}
+function getWorkshopCoverImage(workshop, variant='thumb'){
+  return getImageView((workshop && ensureArray(workshop.images)[0]) || '', variant);
+}
+function getWorkshopPriceLabel(workshop){
+  const price = Number(workshop && workshop.price || 0) || 0;
+  return price <= 0 ? 'FREE' : `$${money(price)}`;
+}
+function getWorkshopPublicItems(){
+  return getWorkshops()
+    .filter(workshop => workshop.status === 'active')
+    .sort((a,b) => new Date(a.date_time || 0) - new Date(b.date_time || 0));
+}
+function renderWorkshopCard(workshop){
+  const cover = getWorkshopCoverImage(workshop, 'thumb');
+  const spotsLeft = getWorkshopSpotsLeft(workshop);
+  return `
+    <article class="card workshop-card" style="cursor:pointer" onclick="location.hash='#/workshops/${esc(workshop.id)}';renderPage()">
+      <div class="workshop-cover">
+        <div class="workshop-price-badge">${esc(getWorkshopPriceLabel(workshop))}</div>
+        ${cover ? `<img src="${esc(cover.url)}" alt="${esc(workshop.title)}" loading="lazy">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;letter-spacing:.02em">Workshop</div>`}
+      </div>
+      <div class="profile-body">
+        <div style="font-weight:800;font-size:1.05rem;line-height:1.35">${esc(workshop.title)}</div>
+        <div class="small muted" style="margin-top:6px">Instructor: ${esc(getWorkshopHostName(workshop))}</div>
+        <div class="small muted" style="margin-top:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(workshopSummaryDescription(workshop))}</div>
+        <div class="workshop-meta">
+          <span class="workshop-chip">${esc(formatWorkshopDateTime(workshop.date_time))}</span>
+          <span class="workshop-chip">${workshop.format === 'online' ? 'Online' : 'In-person'}</span>
+          ${workshop.format === 'in_person' && workshop.location ? `<span class="workshop-chip">${esc(workshop.location)}</span>` : ''}
+          ${spotsLeft !== null ? `<span class="workshop-chip">${esc(spotsLeft)} spot${spotsLeft === 1 ? '' : 's'} left</span>` : ''}
+        </div>
+        <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();location.hash='#/workshops/${esc(workshop.id)}';renderPage()">View Details</button>
+          <button class="btn btn-blue btn-sm" ${workshopCanRegister(workshop) ? '' : 'disabled'} onclick="event.stopPropagation();openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+function renderWorkshopsPage(){
+  const route = getRoute();
+  const detailMatch = route.match(/^#\/workshops\/([^?#]+)/);
+  if (detailMatch) return renderWorkshopDetailPage(decodeURIComponent(detailMatch[1]));
+  const items = getWorkshopPublicItems();
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <section class="hero">
+      <h1>Workshops & Classes Near You</h1>
+      <p>Discover practical workshops, register in seconds, and track your classes from your dashboard.</p>
+    </section>
+    <div class="container">
+      <div class="workshop-grid">
+        ${items.length ? items.map(renderWorkshopCard).join('') : `<div class="card form-card muted">No workshops published yet.</div>`}
+      </div>
+    </div>
+  `;
+}
+function renderWorkshopDetailPage(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) {
+    document.getElementById('app').innerHTML = `
+      ${renderUserIdentityBanner()}
+      <div class="container">
+        <div class="card form-card">
+          <div class="section-title">Workshop not found</div>
+          <button class="btn btn-outline" onclick="location.hash='#/workshops';renderPage()">Back to Workshops</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  const cover = getWorkshopCoverImage(workshop, 'full');
+  const included = ensureArray(workshop.included);
+  const spotsLeft = getWorkshopSpotsLeft(workshop);
+  const host = getUserById(workshop.host_id);
+  const mediaHtml = workshop.video_url
+    ? renderVideoPreviewHtml(workshop.video_url, 'Workshop video', { maxWidth:'100%', showLabel:false })
+    : cover
+      ? `<div class="workshop-detail-media"><img src="${esc(cover.url)}" alt="${esc(workshop.title)}" loading="lazy"></div>`
+      : '';
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="container" style="max-width:960px">
+      <button class="btn btn-outline btn-sm" onclick="location.hash='#/workshops';renderPage()">Back to Workshops</button>
+      <div class="card form-card" style="margin-top:16px">
+        <div class="small muted" style="margin-bottom:8px">${esc(formatWorkshopDateTime(workshop.date_time))}</div>
+        <h1 style="margin:0 0 14px">${esc(workshop.title)}</h1>
+        ${mediaHtml}
+        <div class="workshop-meta" style="margin-top:14px">
+          <span class="workshop-chip">${workshop.format === 'online' ? 'Online' : 'In-person'}</span>
+          <span class="workshop-chip">$${esc(money(workshop.price || 0))}</span>
+          <span class="workshop-chip">${esc(workshop.duration || 'Duration TBD')}</span>
+          ${spotsLeft !== null ? `<span class="workshop-chip">${esc(spotsLeft)} spot${spotsLeft === 1 ? '' : 's'} left</span>` : ''}
+        </div>
+        <p style="line-height:1.75">${esc(workshop.description)}</p>
+        <div class="card form-card" style="margin-top:12px;background:#f8fafc">
+          <div style="font-weight:800;margin-bottom:8px">Instructor</div>
+          <div class="small">${esc(getWorkshopHostName(workshop))}</div>
+          ${host ? `<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="openWorkshopHostProfile('${esc(host.id)}')">View Profile</button>` : ''}
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div class="card form-card">
+            <div style="font-weight:800;margin-bottom:8px">Format & Location</div>
+            <div class="small">${workshop.format === 'online' ? 'Online class' : 'In-person class'}</div>
+            <div class="small muted" style="margin-top:6px">${esc(workshop.format === 'online' ? (workshop.online_url || 'Online link shared after registration') : (workshop.location || 'Location TBD'))}</div>
+          </div>
+          <div class="card form-card">
+            <div style="font-weight:800;margin-bottom:8px">Capacity</div>
+            <div class="small">${workshop.capacity === '' ? 'Flexible' : `${esc(workshop.capacity)} seats`}</div>
+            <div class="small muted" style="margin-top:6px">${spotsLeft === null ? 'No set limit' : `${esc(spotsLeft)} remaining`}</div>
+          </div>
+        </div>
+        <div class="card form-card" style="margin-top:12px">
+          <div style="font-weight:800;margin-bottom:8px">What’s Included</div>
+          ${included.length ? `<ul style="margin:0;padding-left:18px">${included.map(item => `<li style="margin:6px 0">${esc(item)}</li>`).join('')}</ul>` : `<div class="small muted">Details will be shared by the host.</div>`}
+        </div>
+        <div class="card form-card" style="margin-top:12px">
+          <div style="font-weight:800;margin-bottom:8px">Reviews</div>
+          <div class="small muted">Reviews are coming soon.</div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-blue" ${workshopCanRegister(workshop) ? '' : 'disabled'} onclick="openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
+          ${currentUser && currentUser.id === workshop.host_id ? `<button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Manage</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function openWorkshopHostProfile(userId=''){
+  const user = getUserById(userId);
+  if (!user) return toast('Host profile not found.');
+  openModal('Instructor Profile', `
+    <div class="card form-card">
+      <div style="font-weight:800;font-size:1.1rem">${esc(user.publicName || user.name)}</div>
+      <div class="small muted" style="margin-top:6px">${esc(user.city || extractCity(user.address || ''))}</div>
+      <div style="margin-top:10px">${esc(user.about || 'Instructor on CoGo City')}</div>
+      ${currentUser && currentUser.id !== user.id ? `<button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="closeModal();activeThreadUserId='${esc(user.id)}';dashSection='messages';goDashboard()">Message Instructor</button>` : ''}
+    </div>
+  `, '560px');
+}
+function openWorkshopRegistrationFlow(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) return toast('Workshop not found.');
+  if (!currentUser) return openLoginModal();
+  if (currentUser.role === 'admin') return toast('Admin accounts cannot register for workshops.');
+  if (currentUser.id === workshop.host_id) return toast('You cannot register for your own workshop.');
+  if (!workshopCanRegister(workshop)) return toast('This workshop is full or unavailable.');
+  const existing = getWorkshopRegistrationsFor(workshop.id).find(item => item.user_id === currentUser.id && item.status !== 'refunded');
+  if (existing) return toast('You are already registered for this workshop.');
+  const paymentMethod = getEmployerPaymentMethod(currentUser.id);
+  openModal('Workshop Registration', `
+    <div class="card form-card" style="margin-bottom:14px">
+      <div style="font-weight:800">${esc(workshop.title)}</div>
+      <div class="small muted" style="margin-top:6px">${esc(formatWorkshopDateTime(workshop.date_time))}</div>
+      <div class="small" style="margin-top:10px">Price: <strong>$${esc(money(workshop.price || 0))}</strong></div>
+      <div class="small">Total: <strong>$${esc(money(workshop.price || 0))}</strong></div>
+    </div>
+    <div class="card form-card" style="margin-bottom:14px">
+      <div style="font-weight:800;margin-bottom:8px">Payment</div>
+      <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="radio" name="workshopPmMode" value="saved" ${paymentMethod ? 'checked' : ''} ${paymentMethod ? '' : 'disabled'}> Use saved card ${paymentMethod ? `(${esc(paymentMethod.brand)} •••• ${esc(paymentMethod.last4)})` : '(none available)'}</label>
+      <label class="small" style="display:flex;gap:8px;align-items:center"><input type="radio" name="workshopPmMode" value="new" ${paymentMethod ? '' : 'checked'}> Add new card</label>
+      <div class="row" style="margin-top:10px">
+        <div class="field"><label>Card Brand</label><input id="workshopPmBrand" value="Visa"></div>
+        <div class="field"><label>Last 4</label><input id="workshopPmLast4" maxlength="4" value="4242"></div>
+      </div>
+      <div class="small muted">Test mode: payment success is simulated. Stripe-ready fields are captured for future integration.</div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-blue" onclick="completeWorkshopRegistration('${esc(workshop.id)}')">Pay & Reserve Spot</button>
+    </div>
+  `, '680px');
+}
+function completeWorkshopRegistration(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop || !currentUser) return;
+  const mode = (document.querySelector('input[name=\"workshopPmMode\"]:checked') || {}).value || 'saved';
+  const users = getUsers();
+  const user = users.find(item => item.id === currentUser.id);
+  if (!user) return;
+  if (mode === 'new' || !getEmployerPaymentMethod(currentUser.id)) {
+    const brand = String((document.getElementById('workshopPmBrand') || {}).value || 'Visa').trim() || 'Visa';
+    const last4 = String((document.getElementById('workshopPmLast4') || {}).value || '').replace(/\D/g, '').slice(-4);
+    if (last4.length !== 4) return toast('Please enter a valid card last 4.');
+    user.paymentMethod = { status:'valid', brand, last4 };
+    user.paymentSetupComplete = true;
+    saveUsers(users);
+    currentUser = getUserById(currentUser.id) || currentUser;
+  }
+  const registrations = getWorkshopRegistrations();
+  registrations.unshift(normalizeWorkshopRegistration({
+    id: uid('wr'),
+    workshop_id: workshop.id,
+    user_id: currentUser.id,
+    payment_id: `pi_${uid('mock')}`,
+    status: 'registered',
+    created_at: new Date().toISOString()
+  }));
+  saveWorkshopRegistrations(registrations);
+  const transactions = getTransactions();
+  const txId = uid('tx');
+  const nowIso = new Date().toISOString();
+  transactions.unshift({
+    id: txId,
+    transaction_id: txId,
+    student_id: currentUser.id,
+    student_name: currentUser.publicName || currentUser.name,
+    employer_id: workshop.host_id,
+    employer_name: getWorkshopHostName(workshop),
+    job_title: `Workshop: ${workshop.title}`,
+    total_amount: Number(workshop.price || 0),
+    payout_amount: Number(workshop.price || 0) * 0.7,
+    status: 'processing',
+    status_history: ['processing'],
+    date_charged: nowIso,
+    date_completed: nowIso,
+    created_at: nowIso
+  });
+  saveTransactions(transactions);
+  sendInboxMessage(workshop.host_id, getWorkshopHostName(workshop), `${currentUser.publicName || currentUser.name} registered for "${workshop.title}".`, null, currentUser, {
+    postId: workshop.id,
+    workshop_id: workshop.id,
+    thread_id: `workshop:${workshop.id}`,
+    thread_label: `Workshop: ${workshop.title}`
+  });
+  closeModal();
+  toast('Registration successful. Payment simulated and spot reserved.');
+  renderPage();
+}
+function renderWorkshopsDashboardSection(el){
+  const workshops = getWorkshops();
+  const registrations = getWorkshopRegistrations();
+  const myWorkshops = workshops.filter(item => item.host_id === currentUser.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const myRegistrations = registrations.filter(item => item.user_id === currentUser.id).map(item => ({ registration:item, workshop:getWorkshopById(item.workshop_id) })).filter(item => item.workshop);
+  el.innerHTML = `
+    <div class="split" style="align-items:flex-start;margin-bottom:14px;gap:12px">
+      <div>
+        <div class="section-title" style="margin:0">Workshops & Classes</div>
+        <div class="small muted">Create and manage workshops, or track classes you’ve joined.</div>
+      </div>
+      ${currentUser.role !== 'admin' ? `<button class="btn btn-blue" onclick="openWorkshopEditor()">Create Workshop</button>` : ''}
+    </div>
+    <div class="workshop-tabs">
+      <button class="pill ${workshopsDashboardTab==='my_workshops' ? 'active' : ''}" onclick="workshopsDashboardTab='my_workshops';renderDashboard()">My Workshops (${myWorkshops.length})</button>
+      <button class="pill ${workshopsDashboardTab==='my_registrations' ? 'active' : ''}" onclick="workshopsDashboardTab='my_registrations';renderDashboard()">My Registrations (${myRegistrations.length})</button>
+    </div>
+    <div class="card form-card">
+      ${workshopsDashboardTab === 'my_workshops'
+        ? (myWorkshops.length ? myWorkshops.map(workshop => {
+            const count = getWorkshopRegisteredCount(workshop.id);
+            const spotsLeft = getWorkshopSpotsLeft(workshop);
+            return `
+              <div class="item-card card" style="margin-bottom:12px">
+                <div class="split" style="gap:12px;align-items:flex-start">
+                  <div>
+                    <div style="font-weight:800">${esc(workshop.title)}</div>
+                    <div class="small muted" style="margin-top:6px">${esc(formatWorkshopDateTime(workshop.date_time))} · ${workshop.format === 'online' ? 'Online' : esc(workshop.location || 'In-person')}</div>
+                    <div class="small muted" style="margin-top:6px">Status: ${esc(workshop.status)} · Participants: ${esc(count)}${spotsLeft !== null ? ` · Spots left: ${esc(spotsLeft)}` : ''}</div>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-outline btn-sm" onclick="location.hash='#/workshops/${esc(workshop.id)}';renderPage()">View</button>
+                    <button class="btn btn-outline btn-sm" onclick="openWorkshopEditor('${esc(workshop.id)}')">Edit</button>
+                    <button class="btn btn-blue btn-sm" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Manage</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('') : `<div class="muted">No workshops created yet.</div>`)
+        : (myRegistrations.length ? myRegistrations.map(item => `
+            <div class="item-card card" style="margin-bottom:12px">
+              <div class="split" style="gap:12px;align-items:flex-start">
+                <div>
+                  <div style="font-weight:800">${esc(item.workshop.title)}</div>
+                  <div class="small muted" style="margin-top:6px">${esc(formatWorkshopDateTime(item.workshop.date_time))}</div>
+                  <div class="small muted" style="margin-top:6px">Registration status: ${esc(item.registration.status)}</div>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="location.hash='#/workshops/${esc(item.workshop.id)}';renderPage()">View</button>
+              </div>
+            </div>
+          `).join('') : `<div class="muted">No registrations yet.</div>`)}
+    </div>
+  `;
+}
+function createWorkshopDraft(workshopId=''){
+  const existing = workshopId ? getWorkshopById(workshopId) : null;
+  return normalizeWorkshopRecord(existing ? JSON.parse(JSON.stringify(existing)) : {
+    id: uid('ws'),
+    host_id: currentUser ? currentUser.id : '',
+    title: '',
+    description: '',
+    date_time: '',
+    duration: '',
+    format: 'in_person',
+    location: '',
+    online_url: '',
+    price: 0,
+    capacity: '',
+    status: 'draft',
+    images: [],
+    video_url: '',
+    included: [],
+    created_at: new Date().toISOString()
+  });
+}
+function syncWorkshopDraftFromForm(){
+  if (!workshopDraft) return;
+  const dateRaw = (document.getElementById('workshopDateTime') || {}).value || '';
+  workshopDraft.title = ((document.getElementById('workshopTitle') || {}).value || '').trim();
+  workshopDraft.description = ((document.getElementById('workshopDescription') || {}).value || '').trim();
+  workshopDraft.date_time = dateRaw ? new Date(dateRaw).toISOString() : '';
+  workshopDraft.duration = ((document.getElementById('workshopDuration') || {}).value || '').trim();
+  workshopDraft.format = ((document.getElementById('workshopFormat') || {}).value || 'in_person') === 'online' ? 'online' : 'in_person';
+  workshopDraft.location = ((document.getElementById('workshopLocation') || {}).value || '').trim();
+  workshopDraft.online_url = ((document.getElementById('workshopOnlineUrl') || {}).value || '').trim();
+  workshopDraft.price = Number((document.getElementById('workshopPrice') || {}).value || 0) || 0;
+  const capacityRaw = ((document.getElementById('workshopCapacity') || {}).value || '').trim();
+  workshopDraft.capacity = capacityRaw ? (Number(capacityRaw) || 0) : '';
+  const videoRaw = ((document.getElementById('workshopVideoUrl') || {}).value || '').trim();
+  const videoState = normalizeVideoInputValue(videoRaw);
+  workshopDraft.video_url = (videoState.video_type === 'youtube' || videoState.video_type === 'vimeo') ? videoState.input_url : '';
+  workshopDraft.included = ((document.getElementById('workshopIncluded') || {}).value || '')
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean);
+  persistWorkshopEditorCache();
+}
+function getWorkshopDraftCacheKey(){
+  const userId = currentUser && currentUser.id ? currentUser.id : 'guest';
+  return `cogo_workshop_draft_${userId}`;
+}
+function persistWorkshopEditorCache(){
+  if (!workshopDraft) return;
+  ls(getWorkshopDraftCacheKey(), workshopDraft);
+}
+function clearWorkshopEditorCache(){
+  ls(getWorkshopDraftCacheKey(), null);
+}
+function openWorkshopEditor(workshopId=''){
+  if (!currentUser || currentUser.role === 'admin') return toast('Only host accounts can create workshops.');
+  if (workshopId !== '__current__' || !workshopDraft) {
+    if (!workshopId) {
+      const cached = ls(getWorkshopDraftCacheKey());
+      workshopDraft = cached ? normalizeWorkshopRecord(cached) : createWorkshopDraft(workshopId);
+    } else {
+      workshopDraft = createWorkshopDraft(workshopId);
+    }
+  }
+  const coverViews = getImageViews(workshopDraft.images || [], 'thumb');
+  const dateLocal = workshopDraft.date_time ? formatDateTimeLocalInput(workshopDraft.date_time) : '';
+  openModal(workshopId ? 'Edit Workshop' : 'Create Workshop', `
+    <div class="card form-card">
+      <div class="row">
+        <div class="field"><label>Title *</label><input id="workshopTitle" value="${esc(workshopDraft.title)}"></div>
+        <div class="field"><label>Date & Time *</label><input id="workshopDateTime" type="datetime-local" value="${esc(dateLocal)}"></div>
+      </div>
+      <div class="field"><label>Description *</label><textarea id="workshopDescription" rows="5">${esc(workshopDraft.description)}</textarea></div>
+      <div class="row">
+        <div class="field"><label>Duration *</label><input id="workshopDuration" value="${esc(workshopDraft.duration)}" placeholder="90 min"></div>
+        <div class="field"><label>Format *</label><select id="workshopFormat"><option value="in_person" ${workshopDraft.format === 'in_person' ? 'selected' : ''}>In-person</option><option value="online" ${workshopDraft.format === 'online' ? 'selected' : ''}>Online</option></select></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Location (if in-person)</label><input id="workshopLocation" value="${esc(workshopDraft.location)}"></div>
+        <div class="field"><label>Online Link (if online)</label><input id="workshopOnlineUrl" value="${esc(workshopDraft.online_url)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Price *</label><input id="workshopPrice" type="number" min="0" step="0.01" value="${esc(workshopDraft.price)}"></div>
+        <div class="field"><label>Capacity (optional)</label><input id="workshopCapacity" type="number" min="1" value="${esc(workshopDraft.capacity)}"></div>
+      </div>
+      <div class="field"><label>Included (one item per line)</label><textarea id="workshopIncluded" rows="4">${esc((workshopDraft.included || []).join('\n'))}</textarea></div>
+      <div class="field"><label>Workshop Images (1-3)</label><input type="file" multiple accept="image/*" onchange="handleWorkshopImagesUpload(this)"></div>
+      ${coverViews.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${coverViews.map((image, index) => `<div style="position:relative">${renderManagedImage(image.id || image.url, 'Workshop image', 'width:88px;height:88px;border-radius:12px;object-fit:cover;border:1px solid var(--border)', 'thumb')}<button class="btn btn-danger btn-sm" style="position:absolute;top:4px;right:4px;padding:2px 6px" onclick="removeWorkshopImage(${index})">×</button></div>`).join('')}</div>` : `<div class="small muted" style="margin-bottom:10px">No workshop images uploaded yet.</div>`}
+      <div class="field"><label>Optional Video URL (YouTube/Vimeo only)</label><input id="workshopVideoUrl" value="${esc(workshopDraft.video_url)}" placeholder="https://youtube.com/..."></div>
+      <div style="margin-bottom:12px">${workshopDraft.video_url ? renderVideoPreviewHtml(workshopDraft.video_url, 'Workshop video') : `<div class="small muted">No video URL added.</div>`}</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-outline" onclick="persistWorkshopDraft('draft')">Save as Draft</button>
+        <button class="btn btn-blue" onclick="persistWorkshopDraft('active')">Publish</button>
+      </div>
+    </div>
+  `, '860px');
+}
+function handleWorkshopImagesUpload(input){
+  if (!workshopDraft) return;
+  syncWorkshopDraftFromForm();
+  const files = Array.from((input && input.files) || []).slice(0, 3);
+  if (!files.length) return;
+  Promise.all(files.map(file => prepareUploadedImageRecord(file, { source:'workshop', entity_type:'workshop', entity_id: workshopDraft.id })))
+    .then(imageIds => {
+      workshopDraft.images = [...new Set([...(workshopDraft.images || []), ...imageIds.filter(Boolean)])].slice(0,3);
+      if (input) input.value = '';
+      openWorkshopEditor('__current__');
+    })
+    .catch(error => {
+      console.error('Workshop image upload failed', error);
+      toast('Image upload failed.');
+    });
+}
+function removeWorkshopImage(index=0){
+  if (!workshopDraft) return;
+  syncWorkshopDraftFromForm();
+  workshopDraft.images = ensureArray(workshopDraft.images).filter((_, idx) => idx !== index);
+  openWorkshopEditor('__current__');
+}
+function persistWorkshopDraft(mode='draft'){
+  if (!workshopDraft) return;
+  syncWorkshopDraftFromForm();
+  const isPublish = mode === 'active';
+  if (!workshopDraft.title || !workshopDraft.description || !workshopDraft.date_time || !workshopDraft.duration) return toast('Please complete all required fields.');
+  if (workshopDraft.format === 'in_person' && !workshopDraft.location) return toast('Location is required for in-person workshops.');
+  if (workshopDraft.format === 'online' && !workshopDraft.online_url) return toast('Online link is required for online workshops.');
+  if (isPublish && !(workshopDraft.images || []).length) return toast('Please add at least one image before publishing.');
+  workshopDraft.host_id = workshopDraft.host_id || currentUser.id;
+  workshopDraft.status = isPublish ? 'active' : 'draft';
+  const workshops = getWorkshops();
+  const index = workshops.findIndex(item => item.id === workshopDraft.id);
+  if (index >= 0) workshops[index] = normalizeWorkshopRecord(workshopDraft);
+  else workshops.unshift(normalizeWorkshopRecord(workshopDraft));
+  saveWorkshops(workshops);
+  clearWorkshopEditorCache();
+  closeModal();
+  workshopDraft = null;
+  toast(isPublish ? 'Workshop published.' : 'Workshop saved as draft.');
+  dashSection = 'workshops';
+  renderDashboard();
+}
+function openWorkshopManageModal(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) return toast('Workshop not found.');
+  if (!currentUser || currentUser.id !== workshop.host_id) return toast('Only the host can manage this workshop.');
+  const rows = getWorkshopRegistrationsFor(workshop.id);
+  openModal('Manage Workshop', `
+    <div class="card form-card" style="margin-bottom:12px">
+      <div style="font-weight:800">${esc(workshop.title)}</div>
+      <div class="small muted" style="margin-top:6px">${esc(formatWorkshopDateTime(workshop.date_time))} · ${workshop.status}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-outline btn-sm" onclick="openWorkshopEditor('${esc(workshop.id)}')">Edit Workshop</button>
+        <button class="btn btn-outline btn-sm" onclick="openWorkshopBroadcastModal('${esc(workshop.id)}')">Broadcast Message</button>
+        <button class="btn btn-blue btn-sm" onclick="markWorkshopCompleted('${esc(workshop.id)}')">Mark Completed</button>
+        <button class="btn btn-danger btn-sm" onclick="openWorkshopCancelModal('${esc(workshop.id)}')">Cancel Event</button>
+      </div>
+    </div>
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:10px">Participants</div>
+      ${rows.length ? rows.map(row => {
+        const user = getUserById(row.user_id);
+        return `
+          <div class="item-card card" style="margin-bottom:10px">
+            <div class="split" style="gap:10px;align-items:flex-start">
+              <div>
+                <div style="font-weight:700">${esc((user && (user.publicName || user.name)) || 'Participant')}</div>
+                <div class="small muted">Status: ${esc(row.status)}</div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <select onchange="updateWorkshopRegistrationStatus('${esc(row.id)}', this.value)" class="btn btn-outline btn-sm" style="height:36px">
+                  <option value="registered" ${row.status === 'registered' ? 'selected' : ''}>Registered</option>
+                  <option value="attended" ${row.status === 'attended' ? 'selected' : ''}>Attended</option>
+                  <option value="refunded" ${row.status === 'refunded' ? 'selected' : ''}>Refunded</option>
+                </select>
+                <button class="btn btn-outline btn-sm" onclick="openWorkshopMessageParticipant('${esc(workshop.id)}','${esc(row.user_id)}')">Message</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('') : `<div class="small muted">No registrations yet.</div>`}
+    </div>
+  `, '860px');
+}
+function updateWorkshopRegistrationStatus(registrationId='', status='registered'){
+  const rows = getWorkshopRegistrations();
+  const row = rows.find(item => item.id === registrationId);
+  if (!row) return;
+  row.status = ['registered','attended','refunded'].includes(status) ? status : 'registered';
+  saveWorkshopRegistrations(rows);
+  toast('Participant status updated.');
+}
+function openWorkshopBroadcastModal(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) return;
+  openModal('Broadcast to Participants', `
+    <div class="card form-card">
+      <div class="small muted" style="margin-bottom:10px">Message all registered participants for "${esc(workshop.title)}".</div>
+      <textarea id="workshopBroadcastMessage" rows="5" placeholder="Write your message..."></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
+        <button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Back</button>
+        <button class="btn btn-blue" onclick="sendWorkshopBroadcast('${esc(workshop.id)}')">Send</button>
+      </div>
+    </div>
+  `, '680px');
+}
+function sendWorkshopBroadcast(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) return;
+  const content = ((document.getElementById('workshopBroadcastMessage') || {}).value || '').trim();
+  if (!content) return toast('Please write a message.');
+  if (!blockTextCheck(content)) return;
+  const recipients = getWorkshopRegistrationsFor(workshop.id).filter(item => item.status !== 'refunded');
+  recipients.forEach(item => {
+    const user = getUserById(item.user_id);
+    if (user) sendInboxMessage(user.id, user.name, `[Workshop: ${workshop.title}] ${content}`, null, currentUser, {
+      workshop_id: workshop.id,
+      thread_id: `workshop:${workshop.id}`,
+      thread_label: `Workshop: ${workshop.title}`
+    });
+  });
+  toast('Broadcast sent.');
+  openWorkshopManageModal(workshop.id);
+}
+function openWorkshopMessageParticipant(workshopId='', userId=''){
+  const workshop = getWorkshopById(workshopId);
+  const user = getUserById(userId);
+  if (!workshop || !user) return;
+  openModal('Message Participant', `
+    <div class="card form-card">
+      <div class="small muted" style="margin-bottom:10px">To: ${esc(user.publicName || user.name)}</div>
+      <textarea id="workshopParticipantMessage" rows="5" placeholder="Write your message..."></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
+        <button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Back</button>
+        <button class="btn btn-blue" onclick="sendWorkshopParticipantMessage('${esc(workshop.id)}','${esc(user.id)}')">Send</button>
+      </div>
+    </div>
+  `, '620px');
+}
+function sendWorkshopParticipantMessage(workshopId='', userId=''){
+  const workshop = getWorkshopById(workshopId);
+  const user = getUserById(userId);
+  const content = ((document.getElementById('workshopParticipantMessage') || {}).value || '').trim();
+  if (!workshop || !user || !content) return toast('Please write a message.');
+  if (!blockTextCheck(content)) return;
+  sendInboxMessage(user.id, user.name, `[Workshop: ${workshop.title}] ${content}`, null, currentUser, {
+    workshop_id: workshop.id,
+    thread_id: `workshop:${workshop.id}`,
+    thread_label: `Workshop: ${workshop.title}`
+  });
+  toast('Message sent.');
+  openWorkshopManageModal(workshop.id);
+}
+function openWorkshopCancelModal(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) return;
+  openModal('Cancel Workshop', `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:10px">Canceling will mark the event as canceled and automatically refund all registered participants.</div>
+      <textarea id="workshopCancelReason" rows="5" placeholder="Required: explain why this event is canceled..."></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
+        <button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Back</button>
+        <button class="btn btn-danger" onclick="cancelWorkshopEvent('${esc(workshop.id)}')">Cancel Event & Refund</button>
+      </div>
+    </div>
+  `, '700px');
+}
+function cancelWorkshopEvent(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  if (!workshop) return;
+  const reason = ((document.getElementById('workshopCancelReason') || {}).value || '').trim();
+  if (!reason) return toast('Cancellation message is required.');
+  const workshops = getWorkshops();
+  const target = workshops.find(item => item.id === workshop.id);
+  if (!target) return;
+  target.status = 'canceled';
+  saveWorkshops(workshops);
+  const rows = getWorkshopRegistrations();
+  const transactions = getTransactions();
+  const nowIso = new Date().toISOString();
+  rows.forEach(row => {
+    if (row.workshop_id !== workshop.id || row.status === 'refunded') return;
+    row.status = 'refunded';
+    const attendee = getUserById(row.user_id);
+    if (attendee) sendInboxMessage(attendee.id, attendee.name, `[Workshop: ${workshop.title}] Event canceled. Refund issued. Host message: ${reason}`, null, currentUser, {
+      workshop_id: workshop.id,
+      thread_id: `workshop:${workshop.id}`,
+      thread_label: `Workshop: ${workshop.title}`
+    });
+    const txId = uid('tx');
+    transactions.unshift({
+      id: txId,
+      transaction_id: txId,
+      student_id: row.user_id,
+      student_name: attendee ? (attendee.publicName || attendee.name) : 'User',
+      employer_id: workshop.host_id,
+      employer_name: getWorkshopHostName(workshop),
+      job_title: `Workshop Refund: ${workshop.title}`,
+      total_amount: -Math.abs(Number(workshop.price || 0)),
+      payout_amount: 0,
+      status: 'refunded',
+      status_history: ['refunded'],
+      date_paid: nowIso,
+      date_completed: nowIso,
+      created_at: nowIso
+    });
+  });
+  saveWorkshopRegistrations(rows);
+  saveTransactions(transactions);
+  toast('Workshop canceled and refunds simulated.');
+  openWorkshopManageModal(workshop.id);
+}
+function markWorkshopCompleted(workshopId=''){
+  const workshops = getWorkshops();
+  const workshop = workshops.find(item => item.id === workshopId);
+  if (!workshop) return;
+  workshop.status = 'completed';
+  workshop.completed_at = new Date().toISOString();
+  workshop.payout_due_at = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+  workshop.payout_processed = false;
+  saveWorkshops(workshops);
+  toast('Workshop marked completed. Payout split (70/30) scheduled in simulation after 24h.');
+  openWorkshopManageModal(workshop.id);
+}
+function processWorkshopPayouts(){
+  const workshops = getWorkshops();
+  let changed = false;
+  let transactionsChanged = false;
+  const transactions = getTransactions();
+  const finance = getFinance();
+  workshops.forEach(workshop => {
+    if (workshop.status !== 'completed' || workshop.payout_processed) return;
+    const dueAt = workshop.payout_due_at ? new Date(workshop.payout_due_at).getTime() : 0;
+    if (!dueAt || Date.now() < dueAt) return;
+    const paidRegistrations = getWorkshopRegistrationsFor(workshop.id).filter(item => item.status !== 'refunded');
+    const gross = Number(workshop.price || 0) * paidRegistrations.length;
+    const hostPayout = Number((gross * 0.7).toFixed(2));
+    const platformShare = Number((gross * 0.3).toFixed(2));
+    const txId = uid('tx');
+    const nowIso = new Date().toISOString();
+    transactions.unshift({
+      id: txId,
+      transaction_id: txId,
+      student_id: workshop.host_id,
+      student_name: getWorkshopHostName(workshop),
+      employer_id: workshop.host_id,
+      employer_name: getWorkshopHostName(workshop),
+      job_title: `Workshop Payout: ${workshop.title}`,
+      total_amount: gross,
+      payout_amount: hostPayout,
+      status: 'paid',
+      status_history: ['processing','paid'],
+      date_paid: nowIso,
+      date_completed: nowIso,
+      created_at: nowIso
+    });
+    finance.cogoCommission = Number(finance.cogoCommission || 0) + platformShare;
+    finance.completedProjects = Number(finance.completedProjects || 0) + 1;
+    workshop.payout_processed = true;
+    changed = true;
+    transactionsChanged = true;
+  });
+  if (changed) saveWorkshops(workshops);
+  if (transactionsChanged) {
+    saveTransactions(transactions);
+    saveFinance(finance);
+  }
+}
+
 function renderStudentAvatar(student, size=54, extraStyle=''){
   const image = student.profile_image_id || student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
   if (image) return renderManagedImage(image, student.name || 'Student', `width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}`, 'thumb');
@@ -2715,6 +3817,15 @@ function getYouTubeEmbedUrl(url='') {
   if (!videoId) return null;
   return `https://www.youtube.com/embed/${videoId}`;
 }
+function getVideoEmbedUrl(url){
+  if (!url) return '';
+  const raw = String(url).trim();
+  const youtube = raw.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([^&?/]+)/);
+  if (youtube) return `https://www.youtube-nocookie.com/embed/${youtube[1]}`;
+  const vimeo = raw.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  return raw;
+}
 function getVideoPosterUrl(video){
   if (!video) return '';
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
@@ -2731,7 +3842,7 @@ function getGeneratedVideoUrl(videoType='', videoId=''){
   const type = String(videoType || '').trim();
   const id = String(videoId || '').trim();
   if (!type || !id) return '';
-  if (type === 'youtube') return `https://www.youtube.com/embed/${id}`;
+  if (type === 'youtube') return `https://www.youtube-nocookie.com/embed/${id}`;
   if (type === 'vimeo') return `https://player.vimeo.com/video/${id}`;
   return '';
 }
@@ -2795,10 +3906,22 @@ function getVideoMimeType(url=''){
   return '';
 }
 function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=false, allow='autoplay; encrypted-media; picture-in-picture; web-share'){
-  const src = autoplay ? `${embedUrl}${embedUrl.includes('?') ? '&' : '?'}autoplay=1` : embedUrl;
+  let src = String(embedUrl || '').trim();
+  if (!src) return '';
+  const addParam = (key, value) => {
+    if (src.includes(`${key}=`)) return;
+    src += `${src.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;
+  };
+  if (autoplay) addParam('autoplay', '1');
+  if (/youtube(-nocookie)?\.com\/embed\//i.test(src)) {
+    addParam('rel', '0');
+    addParam('modestbranding', '1');
+    addParam('playsinline', '1');
+    if (typeof location !== 'undefined' && /^https?:/i.test(location.origin || '')) addParam('origin', location.origin);
+  }
   return `
     <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
-      <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="${esc(allow)}" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+      <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="${esc(allow)}" allowfullscreen referrerpolicy="origin" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
     </div>
   `;
 }
@@ -2806,13 +3929,34 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
   if (!video) return '';
   const videoId = video.videoId || video.id || '';
   if (video.type === 'youtube' && videoId) {
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+    const posterUrl = getVideoPosterUrl(video) || '';
+    const containerId = `video_${uid('inline').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const encodedVideo = encodeURIComponent(JSON.stringify({ type:'youtube', videoId, id:videoId, url:embedUrl }));
     return `
-      ${renderEmbeddedVideoFrame(`https://www.youtube.com/embed/${videoId}`, label, true, 'autoplay; encrypted-media; picture-in-picture; web-share')}
-      <div class="small muted" style="margin-top:8px"><a href="https://www.youtube.com/watch?v=${esc(videoId)}" target="_blank" rel="noopener">Watch on YouTube</a></div>
+      <div id="${containerId}">
+        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+          ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : ''}
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+        </div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Tap play to load video in this page.</div>
     `;
   }
   if (video.type === 'vimeo' && videoId) {
-    return renderEmbeddedVideoFrame(`https://player.vimeo.com/video/${videoId}`, label, true, 'autoplay; fullscreen; picture-in-picture');
+    const embedUrl = `https://player.vimeo.com/video/${videoId}`;
+    const posterUrl = getVideoPosterUrl(video) || '';
+    const containerId = `video_${uid('inline').replace(/[^a-zA-Z0-9_]/g, '')}`;
+    const encodedVideo = encodeURIComponent(JSON.stringify({ type:'vimeo', videoId, id:videoId, url:embedUrl }));
+    return `
+      <div id="${containerId}">
+        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+          ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : ''}
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(37,99,235,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
+        </div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Tap play to load video in this page.</div>
+    `;
   }
   if (video.type === 'upload' && video.url) {
     const mimeType = getVideoMimeType(video.url);
@@ -2823,7 +3967,7 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
     `;
   }
   if (video.type === 'external' && video.url) {
-    return `<div class="card form-card small"><a href="${esc(video.url)}" target="_blank" rel="noopener">Watch Video</a></div>`;
+    return `<div class="card form-card small"><a href="${esc(video.url)}">Watch Video</a></div>`;
   }
   return '';
 }
@@ -2865,7 +4009,7 @@ function renderVideo(video=null, containerId='video-container', options={}){
       ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
       <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
     </div>
-    ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
+    ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}">Watch on YouTube</a></div>` : ''}
   `;
 }
 function renderVideoPreviewHtml(videoValue='', label='Video preview', options={}){
@@ -2877,40 +4021,9 @@ function renderVideoPreviewHtml(videoValue='', label='Video preview', options={}
   if (!video) return `<div class="small muted">No video link added yet.</div>`;
   const maxWidth = options.maxWidth || '420px';
   const showLabel = options.showLabel !== false;
-  const loading = options.loading === 'eager' ? 'eager' : 'lazy';
   const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
-  if (video.type === 'upload') {
-    const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
-    const encodedVideo = encodeURIComponent(JSON.stringify(video));
-    return `
-      <div style="max-width:${esc(maxWidth)}">
-        ${labelHtml}
-        <div id="${containerId}">
-          <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
-            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">Uploaded Video</div>
-            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
-          </div>
-        </div>
-        <div class="small muted" style="margin-top:8px">If playback is blocked in this browser, open the video directly.</div>
-      </div>
-    `;
-  }
-  if (video.type === 'youtube' || video.type === 'vimeo') {
-    const posterUrl = getVideoPosterUrl(video);
-    const containerId = `video_${uid('preview').replace(/[^a-zA-Z0-9_]/g, '')}`;
-    const encodedVideo = encodeURIComponent(JSON.stringify(video));
-    return `
-      <div style="max-width:${esc(maxWidth)}">
-        ${labelHtml}
-        <div id="${containerId}">
-          <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
-            <img src="${esc(posterUrl || '')}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
-            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">▶</div>
-          </div>
-          ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}" target="_blank" rel="noopener">Watch on YouTube</a></div>` : ''}
-        </div>
-      </div>
-    `;
+  if (video.type === 'upload' || video.type === 'youtube' || video.type === 'vimeo') {
+    return `<div style="max-width:${esc(maxWidth)}">${labelHtml}${getVideoPlayerHtml(video, label)}</div>`;
   }
   return `<div style="max-width:${esc(maxWidth)}">${labelHtml}${getVideoPlayerHtml(video, label) || `<div class="card form-card small">This video host can’t be embedded here right now.</div>`}</div>`;
 }
@@ -3613,28 +4726,29 @@ function renderCommunity(){
 function togglePostComposer(){
   const wrap = document.getElementById('post-composer-wrap');
   if (wrap.innerHTML.trim()){
+    ls('cogo_draft_post', null);
     wrap.innerHTML = '';
     return;
   }
+  const draft = ls('cogo_draft_post') || {};
   const canCreateJobPost = currentUser && ['employer','neighbor'].includes(currentUser.role);
   wrap.innerHTML = `
     <div class="card form-card" style="margin-bottom:16px">
       <div class="field">
-        <label>Your post</label>
-        <textarea id="postContent" placeholder="Share something with the community..."></textarea>
+        <label>Your post</label><textarea id="postContent" placeholder="Share something with the community..." oninput="savePostComposerDraft()">${esc(draft.content || '')}</textarea>
       </div>
       ${canCreateJobPost ? `
         <div class="field">
-          <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
+          <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields();savePostComposerDraft()" style="width:auto;margin-right:8px" ${draft.isJob ? 'checked' : ''}>This is a Job Opportunity</label>
         </div>
-        <div id="jobFields" class="hidden">
-          <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="e.g. Event Helper This Saturday"></div>
-          <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..."></textarea></div>
+        <div id="jobFields" class="${draft.isJob ? '' : 'hidden'}">
+          <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="e.g. Event Helper This Saturday" value="${esc(draft.jobTitle || '')}" oninput="savePostComposerDraft()"></div>
+          <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..." oninput="savePostComposerDraft()">${esc(draft.description || '')}</textarea></div>
           <div class="row">
-            <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20"></div>
-            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5"></div>
+            <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20" value="${esc(draft.rate || '')}" oninput="savePostComposerDraft()"></div>
+            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5" value="${esc(draft.hoursNeeded || '')}" oninput="savePostComposerDraft()"></div>
           </div>
-          <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA"></div>
+          <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA" value="${esc(draft.location || '')}" oninput="savePostComposerDraft()"></div>
         </div>
       ` : ''}
       <div class="warning" style="margin:10px 0">Phone numbers and email addresses are blocked until work is confirmed.</div>
@@ -3644,6 +4758,18 @@ function togglePostComposer(){
       </div>
     </div>
   `;
+}
+function savePostComposerDraft(){
+  const draft = {
+    content: String((document.getElementById('postContent') || {}).value || ''),
+    isJob: !!((document.getElementById('postIsJob') || {}).checked),
+    jobTitle: String((document.getElementById('jobTitle') || {}).value || ''),
+    description: String((document.getElementById('jobDescription') || {}).value || ''),
+    rate: String((document.getElementById('jobRate') || {}).value || ''),
+    hoursNeeded: String((document.getElementById('jobHours') || {}).value || ''),
+    location: String((document.getElementById('jobLocation') || {}).value || '')
+  };
+  ls('cogo_draft_post', draft);
 }
 function toggleJobFields(){
   document.getElementById('jobFields').classList.toggle('hidden', !document.getElementById('postIsJob').checked);
@@ -3663,6 +4789,8 @@ function submitPost(){
     isJob,
     createdAt: new Date().toISOString(),
     likes: [],
+    comments: [],
+    shares: 0,
     status: isJob ? 'open' : undefined,
     application_count: isJob ? 0 : undefined
   };
@@ -3680,6 +4808,7 @@ function submitPost(){
   const posts = getPosts();
   posts.unshift(post);
   savePosts(posts);
+  ls('cogo_draft_post', null);
   toast('Posted successfully.');
   renderCommunity();
 }
@@ -3690,6 +4819,8 @@ function renderPost(p){
   const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen;
   const canManage = currentUser && currentUser.id === p.authorId;
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
+  const comments = ensureArray(p.comments);
+  const commentsOpen = openPostCommentId === p.id;
   return `
     <div class="card post-card" id="post-${esc(p.id)}" style="${p.isJob ? 'border-left:4px solid var(--orange)' : ''}">
       <div class="post-header">
@@ -3715,12 +4846,56 @@ function renderPost(p){
       ` : ''}
       <div class="post-footer">
         <button class="btn btn-outline btn-sm" onclick="toggleLike('${esc(p.id)}')">${liked ? '❤️ Liked' : '🤍 Like'} (${(p.likes||[]).length})</button>
+        <button class="btn btn-outline btn-sm" onclick="sharePost('${esc(p.id)}')">↗ Share (${esc(Number(p.shares || 0))})</button>
+        <button class="btn btn-outline btn-sm" onclick="togglePostComments('${esc(p.id)}')">💬 Comment (${esc(comments.length)})</button>
         ${p.isJob && currentUser && currentUser.role === 'student' ? `<button class="btn ${jobIsOpen ? 'btn-blue' : 'btn-outline'} btn-sm" style="${jobIsOpen ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${jobIsOpen ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${jobIsOpen ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>` : ''}
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
+      <div style="margin-top:10px;${commentsOpen ? '' : 'display:none'}">
+        ${comments.length ? comments.map(comment => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(comment.userName || 'User')}</div><div class="muted small">${timeAgo(comment.createdAt)}</div><div style="margin-top:6px">${esc(comment.content || '')}</div></div>`).join('') : `<div class="small muted">No comments yet.</div>`}
+        ${currentUser ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="postCommentInput_${esc(p.id)}" placeholder="Write a comment..." style="flex:1"><button class="btn btn-blue btn-sm" onclick="addPostComment('${esc(p.id)}')">Post</button></div>` : `<div class="small muted" style="margin-top:8px">Sign in to comment.</div>`}
+      </div>
     </div>
   `;
+}
+function togglePostComments(postId){
+  openPostCommentId = openPostCommentId === postId ? '' : postId;
+  renderCommunity();
+}
+function addPostComment(postId){
+  if (!currentUser) return openLoginModal();
+  const input = document.getElementById(`postCommentInput_${postId}`);
+  const content = String((input || {}).value || '').trim();
+  if (!content) return toast('Please enter a comment.');
+  if (!blockTextCheck(content)) return;
+  const posts = getPosts();
+  const post = posts.find(item => item.id === postId);
+  if (!post) return;
+  post.comments = ensureArray(post.comments);
+  post.comments.push(normalizeCommunityComment({
+    id: uid('pc'),
+    userId: currentUser.id,
+    userName: currentUser.publicName || currentUser.name,
+    content,
+    createdAt: new Date().toISOString()
+  }));
+  savePosts(posts);
+  renderCommunity();
+}
+function sharePost(postId){
+  const posts = getPosts();
+  const post = posts.find(item => item.id === postId);
+  if (!post) return;
+  post.shares = Number(post.shares || 0) + 1;
+  savePosts(posts);
+  const shareUrl = `${location.origin}${location.pathname}#post-${post.id}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(shareUrl).then(() => toast('Post link copied.')).catch(() => toast('Post shared.'));
+  } else {
+    toast('Post shared.');
+  }
+  renderCommunity();
 }
 function toggleLike(postId){
   if (!currentUser) return openLoginModal();
@@ -3812,8 +4987,9 @@ function submitApplication(postId){
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
     return toast("You’ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
   }
+  const applicationId = uid('app');
   apps.push({
-    id: uid('app'),
+    id: applicationId,
     postId,
     jobTitle: p.jobTitle,
     employerId: p.authorId,
@@ -3833,6 +5009,19 @@ function submitApplication(postId){
     createdAt: new Date().toISOString()
   });
   saveApplications(apps);
+  sendInboxMessage(
+    p.authorId,
+    p.authorName,
+    `New application for "${p.jobTitle}": ${msg}`,
+    null,
+    currentUser,
+    {
+      postId: postId,
+      applicationId,
+      thread_id: `application:${applicationId}`,
+      thread_label: `Job Application: ${p.jobTitle}`
+    }
+  );
   syncCommunityJobApplicationCounts(apps);
   pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   closeModal();
@@ -3927,13 +5116,13 @@ function renderDashboard(){
   if (!currentUser) return openLoginModal();
   if (!syncCurrentUserRecord()) return;
 
-  if (currentUser.role === 'admin' && !['admin','users','blog_manager','images','transactions','settings'].includes(dashSection)) {
+  if (currentUser.role === 'admin' && !['admin','users','blog_manager','images','messages','transactions','settings','workshops'].includes(dashSection)) {
     dashSection = 'admin';
   }
-  if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings'].includes(dashSection)) {
+  if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings','workshops'].includes(dashSection)) {
     dashSection = 'profile';
   }
-  if (currentUser.role === 'employer' && !['profile','myposts','applicants_projects','messages','transactions','settings'].includes(dashSection)) {
+  if (currentUser.role === 'employer' && !['profile','myposts','applicants_projects','messages','transactions','settings','workshops'].includes(dashSection)) {
     dashSection = 'profile';
   }
 
@@ -3946,6 +5135,8 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">👥 Users</a>
           <a href="#" class="${dashSection==='blog_manager'?'active':''}" onclick="dashSection='blog_manager';renderDashboard();return false;">📰 Blog Manager</a>
           <a href="#" class="${dashSection==='images'?'active':''}" onclick="dashSection='images';renderDashboard();return false;">🖼️ Images</a>
+          <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
+          <a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">🧑‍🏫 Workshops & Classes</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : currentUser.role === 'student' ? `
@@ -3953,6 +5144,7 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='jobs_bookings'?'active':''}" onclick="dashSection='jobs_bookings';renderDashboard();return false;">📋 Jobs & Bookings</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
+          <a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">🧑‍🏫 Workshops & Classes</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 My Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         ` : `
@@ -3960,6 +5152,7 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">📢 My Posts</a>
           <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">📋 Applicants & Projects</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">💬 Messages</a>
+          <a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">🧑‍🏫 Workshops & Classes</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">💳 My Transactions</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">⚙️ Settings</a>
         `}
@@ -3974,6 +5167,8 @@ function renderDashboard(){
     if (dashSection === 'users') return renderAdminUsersSection(el);
     if (dashSection === 'blog_manager') return renderAdminBlogManager(el);
     if (dashSection === 'images') return renderAdminImagesSection(el);
+    if (dashSection === 'messages') return renderMessages(el);
+    if (dashSection === 'workshops') return renderWorkshopsDashboardSection(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else if (currentUser.role === 'student'){
@@ -3981,6 +5176,7 @@ function renderDashboard(){
     if (dashSection === 'jobs_bookings') return renderStudentJobsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
     if (dashSection === 'myposts') return renderMyPosts(el);
+    if (dashSection === 'workshops') return renderWorkshopsDashboardSection(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   } else {
@@ -3988,6 +5184,7 @@ function renderDashboard(){
     if (dashSection === 'myposts') return renderMyPosts(el);
     if (dashSection === 'applicants_projects') return renderEmployerApplicantsBookings(el);
     if (dashSection === 'messages') return renderMessages(el);
+    if (dashSection === 'workshops') return renderWorkshopsDashboardSection(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   }
@@ -4450,7 +5647,7 @@ function renderStudentAppCard(a){
     actions.push(`<button class="btn btn-green btn-sm" onclick="acceptOffer('${esc(a.id)}')">Accept</button>`);
     actions.push(`<button class="btn btn-danger btn-sm" onclick="declineOffer('${esc(a.id)}')">Decline</button>`);
   }
-  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.employerId)}')">Message</button>`);
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openApplicationThread('${esc(a.id)}')">Message</button>`);
   return `
     <div class="card item-card">
       <div class="split">
@@ -4501,31 +5698,36 @@ function declineOffer(appId){
 }
 function renderStudentProjectCard(p){
  const actions = [];
- if (p.status === 'in_progress'){
-    actions.push(`<button class="btn btn-blue btn-sm" onclick="openSubmitCompletion('${esc(p.id)}')">Project Completed</button>`);
- }
- const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
- const finalBreakdown = p.actualHours ? calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0) : null;
- const finalInvoiceSummary = finalBreakdown
-   ? `<div style="margin-top:8px">${renderStudentCommissionBreakdownHtml(finalBreakdown, 'Actual')}</div>`
-   : '';
-  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.employerId)}')">Message</button>`);
+ if (p.status === 'in_progress') actions.push(`<button class="btn btn-blue btn-sm" onclick="openSubmitCompletion('${esc(p.id)}')">Project Completed</button>`);
+ actions.push(`<button class="btn btn-outline btn-sm" onclick="openProjectJobChat('${esc(p.id)}','${esc(p.employerId)}')">Open Job Chat</button>`);
   return `
   <div class="card item-card">
       <div class="split">
       <div>
         <div style="font-weight:800">${esc(p.jobTitle)}</div>
         <div class="muted small">Employer: ${esc(p.employerName)}</div>
-        <div style="margin-top:8px">${renderStudentCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(p.studentServiceTitle)}</div>` : ''}
-        ${p.changeRequestNote ? `<div class="warning" style="margin-top:10px">Employer requested changes: ${esc(p.changeRequestNote)}</div>` : ''}
-        ${p.status === 'completed' ? `<div class="warning" style="margin-top:10px">You can view this transaction in the My Transactions section of your Dashboard.</div>` : ''}
-        ${finalInvoiceSummary}
-        ${p.contractHtml ? `<div class="contract-box small">${p.contractHtml}</div>` : ''}
+        <div class="card form-card" style="margin-top:10px;background:#fff">
+          <div style="font-weight:800">Messages</div>
+          <div class="small muted" style="margin-top:6px">User-to-user job communication only.</div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
+        </div>
+        <div class="card form-card" style="margin-top:10px;background:#fff">
+          <div style="font-weight:800">Project Details</div>
+          <div class="small" style="margin-top:6px">Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
+          <div class="small">Location: ${esc(p.location || 'TBD')}</div>
+          ${p.contractHtml ? `<div class="contract-box small">${p.contractHtml}</div>` : ''}
+          ${p.changeRequestNote ? `<div class="warning" style="margin-top:10px">Employer requested changes: ${esc(p.changeRequestNote)}</div>` : ''}
+        </div>
+        <div class="card form-card" style="margin-top:10px;background:#fff">
+          <div style="font-weight:800">Payment & Transactions</div>
+          ${renderProjectPaymentSection(p)}
+          <div style="font-weight:800;margin-top:10px">System Updates</div>
+          ${renderProjectSystemUpdates(p.id)}
+        </div>
       </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(p.status)}
-          <div style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
         </div>
       </div>
     </div>
@@ -4615,6 +5817,7 @@ function submitFinalInvoice(projectId){
   saveProjects(pList);
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. Platform Fee (${formatPercent(breakdown.employerCommissionPct)}): $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, Platform Fee $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
+  sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after Platform Fee: $${money(studentPayout)}.`, p.id);
   closeModal();
   toast('Final invoice submitted for employer approval.');
   renderDashboard();
@@ -4789,7 +5992,7 @@ function renderEmployerAppCard(a){
   const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community feed application';
   const job = getApplicationJobPost(a);
   const actions = [];
-  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(a.studentUserId)}')">Message</button>`);
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openApplicationThread('${esc(a.id)}')">Message</button>`);
   if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
   if (canDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" onclick="openDeclineApplicantModal('${esc(a.id)}')">Decline</button>`);
   else if (shouldDisableDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" disabled title="Decline is only available while the job is open and the applicant has not been accepted.">Decline</button>`);
@@ -4999,6 +6202,7 @@ function startProject(appId){
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${formatPercent(estimatedBreakdown.studentCommissionPct)} Platform Fee is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. Platform fee: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
   sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your Platform Fee is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
   employerTab = 'projects';
   toast('Project started successfully');
@@ -5009,30 +6213,27 @@ function renderEmployerProjectCard(p){
   if (p.status === 'accepted' || p.status === 'funded') actions.push(`<button class="btn btn-blue btn-sm" onclick="activateProject('${esc(p.id)}')">Start Project</button>`);
   if (p.status === 'awaiting_employer_approval') actions.push(`<button class="btn btn-blue btn-sm" onclick="openEmployerApproval('${esc(p.id)}')">Review Final Invoice</button>`);
   if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
-  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message</button>`);
-  const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
-  const finalBreakdown = p.actualHours ? calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0) : null;
-  const invoiceSummary = finalBreakdown
-    ? `<div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(finalBreakdown, 'Actual')}</div>`
-    : '';
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message Student</button>`);
 
   return `
     <div class="card item-card">
       <div class="split">
       <div>
         <div style="font-weight:800">${esc(p.jobTitle)}</div>
-        <div class="muted small">Student: ${esc(p.studentName)} · Rate: $${esc(p.rate)}/hr</div>
+        <div class="muted small">Student: ${renderMessagePartnerName(p.studentUserId, p.studentName)} · Rate: $${esc(p.rate)}/hr</div>
+        <div class="small muted" style="margin-top:4px">Click the student name to open profile.</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(p.studentServiceTitle)}</div>` : ''}
-        <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
-        <div class="small muted" style="margin-top:6px">Escrow held: $${esc(money(p.escrowAmount || p.estimatedEmployerTotal || estimatedBreakdown.employerTotal))} · Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
-        ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
-        ${invoiceSummary}
-        <div class="contract-box small">${p.contractHtml}</div>
-        ${p.status === 'completed' ? `<div class="warning" style="margin-top:10px">You can view this transaction in the My Transactions section of your Dashboard.</div>` : ''}
+        <div class="card form-card" style="margin-top:10px;background:#fff">
+          <div style="font-weight:800">Project Details</div>
+          <div class="small">Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
+          <div class="small">Location: ${esc(p.location || 'TBD')}</div>
+          ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
+          <div class="contract-box small">${p.contractHtml}</div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(p.status)}
-          <div style="display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
         </div>
       </div>
     </div>
@@ -5312,6 +6513,20 @@ function openThread(userId){
   activeThreadUserId = userId;
   renderDashboard();
 }
+function openApplicationThread(applicationId=''){
+  const application = getApplications().find(item => item.id === applicationId);
+  if (!application) return;
+  const partnerId = currentUser.id === application.studentUserId ? application.employerId : application.studentUserId;
+  if (!partnerId) return;
+  dashSection = 'messages';
+  activeThreadUserId = `${partnerId}::application:${application.id}`;
+  renderDashboard();
+}
+function openProjectJobChat(projectId='', userId=''){
+  dashSection = 'messages';
+  activeThreadUserId = `${userId}::project:${projectId}`;
+  renderDashboard();
+}
 function openMessagePartnerProfile(userId){
   const student = getStudentByUserId(userId);
   if (!student) return;
@@ -5322,6 +6537,10 @@ function renderMessagePartnerName(userId, name, compact=false){
   if (!student) return `<span>${esc(name)}</span>`;
   return `<button class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" onclick="event.stopPropagation();openMessagePartnerProfile('${esc(userId)}')">${esc(name)}</button>`;
 }
+function getDirectThreadId(userA='', userB=''){
+  const parts = [String(userA || '').trim(), String(userB || '').trim()].filter(Boolean).sort();
+  return `dm:${parts.join(':')}`;
+}
 function renderMessages(el){
   const all = getMessages();
   const me = currentUser.id;
@@ -5330,30 +6549,40 @@ function renderMessages(el){
   all.forEach(m => {
     const partnerId = m.fromId === me ? m.toId : (m.toId === me ? m.fromId : null);
     if (!partnerId) return;
-    if (!threads[partnerId] || new Date(m.createdAt) > new Date(threads[partnerId].createdAt)) {
-      threads[partnerId] = {
+    const isSystemWithCogo = String(partnerId) === 'system_cogo' && String(m.message_type || '') === 'system';
+    const threadId = isSystemWithCogo
+      ? 'system:cogo'
+      : String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+    const threadKey = `${partnerId}::${threadId}`;
+    if (!threads[threadKey] || new Date(m.createdAt) > new Date(threads[threadKey].createdAt)) {
+      threads[threadKey] = {
+        threadKey,
         partnerId,
+        threadId,
+        threadLabel: isSystemWithCogo ? 'CoGo Team Updates' : (m.thread_label || ''),
         partnerName: m.fromId === me ? m.toName : m.fromName,
         preview: m.content,
         createdAt: m.createdAt,
         unread: 0
       };
     }
-    if (m.toId === me && !m.read) threads[partnerId].unread++;
+    if (m.toId === me && !m.read) threads[threadKey].unread++;
   });
 
   const threadList = Object.values(threads).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
-
-  if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].partnerId;
+  if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].threadKey;
+  if (activeThreadUserId && !threadList.some(t => t.threadKey === activeThreadUserId)) activeThreadUserId = threadList[0] ? threadList[0].threadKey : null;
 
   el.innerHTML = `
     <div class="section-title">Messages</div>
+    <div class="small muted" style="margin-bottom:10px">User-to-user communication and CoGo Team system/admin updates appear here in separate threads.</div>
     <div class="msg-shell">
       <div class="thread-list">
         ${threadList.length ? threadList.map(t => `
-          <div class="thread ${t.unread ? 'unread' : ''}" onclick="activeThreadUserId='${esc(t.partnerId)}';renderDashboard()">
-            <div style="display:flex;align-items:center;gap:6px;font-weight:800">${renderMessagePartnerName(t.partnerId, t.partnerName, true)} ${t.unread ? `<span style="color:#ef4444">•</span>` : ''}</div>
-            <div class="muted small">${esc(t.preview.slice(0,60))}</div>
+          <div class="thread ${t.unread ? 'unread' : ''}" onclick="activeThreadUserId='${esc(t.threadKey)}';renderDashboard()">
+            <div class="thread-title" style="display:flex;align-items:center;gap:6px;font-weight:800">${renderMessagePartnerName(t.partnerId, t.partnerName, true)} ${t.threadId && t.threadId.startsWith('system:') ? `<span class="thread-unread-badge" style="background:#1e3a8a">CoGo Team</span>` : ''} ${t.unread ? `<span class="thread-unread-badge">NEW${t.unread > 1 ? ` (${t.unread})` : ''}</span>` : ''}</div>
+            ${t.threadLabel ? `<div class="small muted" style="margin-top:4px">${esc(t.threadLabel)}</div>` : ''}
+            <div class="thread-preview muted small">${esc(t.preview.slice(0,80))}</div>
           </div>
         `).join('') : `<div class="form-card muted">No messages yet.</div>`}
       </div>
@@ -5364,12 +6593,37 @@ function renderMessages(el){
   `;
 }
 function renderThreadView(userId){
-  const partner = getUserById(userId) || { id:userId, name:'User' };
-  const activeProject = getProjectForUsers(currentUser.id, userId);
+  const tokenParts = String(userId || '').split('::');
+  const partnerId = tokenParts[0] || userId;
+  const threadId = tokenParts[1] || getDirectThreadId(currentUser.id, partnerId);
+  const isCogoPartner = String(partnerId) === 'system_cogo';
+  const isSystemThread = threadId.startsWith('system:');
+  const isUnifiedCogoSystemThread = isCogoPartner && threadId === 'system:cogo';
+  const partner = getUserById(partnerId) || { id:partnerId, name:'User' };
+  const activeProject = threadId.startsWith('project:')
+    ? getProjects().find(project => String(project.id) === String(threadId.replace('project:','')))
+    : (threadId.startsWith('system:project:')
+        ? getProjects().find(project => String(project.id) === String(threadId.replace('system:project:','')))
+        : getProjectForUsers(currentUser.id, partnerId));
   const all = getMessages();
+  const threadMessages = all.filter(m => {
+    if (!((m.fromId === currentUser.id && m.toId === partnerId) || (m.fromId === partnerId && m.toId === currentUser.id))) return false;
+    if (isUnifiedCogoSystemThread) {
+      return String(m.message_type || '') === 'system' || String(m.thread_id || '').startsWith('system:');
+    }
+    const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+    return msgThreadId === threadId;
+  });
+  const threadLabel = isUnifiedCogoSystemThread
+    ? 'CoGo Team Updates'
+    : ((threadMessages.find(m => m.thread_label) || {}).thread_label || '');
   let changed = false;
   all.forEach(m => {
-    if (m.toId === currentUser.id && m.fromId === userId && !m.read){
+    const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+    const shouldMarkRead = isUnifiedCogoSystemThread
+      ? (m.toId === currentUser.id && m.fromId === partnerId && (String(m.message_type || '') === 'system' || msgThreadId.startsWith('system:')))
+      : (m.toId === currentUser.id && m.fromId === partnerId && msgThreadId === threadId);
+    if (shouldMarkRead && !m.read){
       m.read = true;
       changed = true;
     }
@@ -5379,21 +6633,10 @@ function renderThreadView(userId){
     renderNav();
   }
 
-  const partnerMsgs = all
-    .filter(m => (m.fromId === currentUser.id && m.toId === userId) || (m.fromId === userId && m.toId === currentUser.id));
-  const msgs = partnerMsgs.sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
-  const projectBreakdown = activeProject
-    ? calculateCommissionBreakdown(activeProject.actualHours || activeProject.estimatedHours || 0, activeProject.rate || 0)
-    : null;
-  const projectBreakdownHtml = !activeProject || !projectBreakdown
-    ? ''
-    : currentUser.role === 'student'
-      ? `<div class="card" style="padding:12px 14px;margin:0 12px 10px;background:#f8fafc;border:1px solid var(--border)">${renderStudentCommissionBreakdownHtml(projectBreakdown, activeProject.actualHours ? 'Actual' : 'Estimated')}<div class="small muted" style="margin-top:6px">Work Total, Platform Fee, and final payout stay visible here for transparency.</div></div>`
-      : `<div class="card" style="padding:12px 14px;margin:0 12px 10px;background:#f8fafc;border:1px solid var(--border)">${renderEmployerCommissionBreakdownHtml(projectBreakdown, activeProject.actualHours ? 'Actual' : 'Estimated')}<div class="small muted" style="margin-top:6px">Work Total, Platform Fee, and final payment stay visible here for transparency.</div></div>`;
+  const msgs = threadMessages.sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
 
   return `
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${renderMessagePartnerName(partner.id, partner.name)}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Active project: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
-    ${projectBreakdownHtml}
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${renderMessagePartnerName(partner.id, partner.name)}${threadLabel ? `<div class="muted small" style="font-weight:600;margin-top:4px">${esc(threadLabel)}</div>` : ''}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Active project: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
     <div class="messages" id="messages-box">
       ${msgs.length ? msgs.map(m => `
         <div class="bubble ${m.fromId === currentUser.id ? 'mine' : 'theirs'}">
@@ -5402,15 +6645,20 @@ function renderThreadView(userId){
         </div>
       `).join('') : `<div class="muted small">No messages yet. Say hello.</div>`}
     </div>
-    <div class="msg-compose">
-      <input id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}">
-      <button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button>
-    </div>
+    ${isSystemThread
+      ? `<div class="msg-compose"><div class="small muted">This is a CoGo Team system thread. Updates from admin/system appear here.</div></div>`
+      : `<div class="msg-compose"><input id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}"><button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button></div>`}
   `;
 }
 function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
   const sender = fromUser || currentUser || {};
+  const messageType = meta.message_type || 'user';
+  if (messageType === 'user' && containsRestrictedPaymentChatContent(content)) {
+    toast('Payment details are sent automatically by CoGo Team. Keep chat focused on job scope and timing.');
+    return false;
+  }
   const msgs = getMessages();
+  const fallbackThreadId = meta.workshop_id ? `workshop:${meta.workshop_id}` : (projectId ? `project:${projectId}` : getDirectThreadId(sender.id || currentUser?.id, toId));
   msgs.push({
     id: uid('m'),
     fromId: sender.id || currentUser?.id,
@@ -5421,10 +6669,16 @@ function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, 
     projectId,
     postId: meta.postId || null,
     applicationId: meta.applicationId || null,
+    workshop_id: meta.workshop_id || null,
+    thread_id: meta.thread_id || fallbackThreadId,
+    thread_label: meta.thread_label || '',
+    message_type: messageType,
+    system_category: meta.system_category || '',
     createdAt: new Date().toISOString(),
     read: false
   });
   saveMessages(msgs);
+  return true;
 }
 function sendMessageToActive(){
   if (!activeThreadUserId) return;
@@ -5432,14 +6686,45 @@ function sendMessageToActive(){
   const content = (input.value || '').trim();
   if (!content) return;
   if (!blockTextCheck(content)) return;
-  const partner = getUserById(activeThreadUserId) || { id:activeThreadUserId, name:'User' };
-  const activeProject = getProjectForUsers(currentUser.id, partner.id);
-  sendInboxMessage(partner.id, partner.name, content, activeProject ? activeProject.id : null);
+  const parts = String(activeThreadUserId || '').split('::');
+  const partnerId = parts[0] || activeThreadUserId;
+  const threadId = parts[1] || getDirectThreadId(currentUser.id, partnerId);
+  const partner = getUserById(partnerId) || { id:partnerId, name:'User' };
+  const existing = getMessages().find(m => {
+    const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+    return ((m.fromId === currentUser.id && m.toId === partnerId) || (m.fromId === partnerId && m.toId === currentUser.id)) && msgThreadId === threadId;
+  });
+  const activeProject = threadId.startsWith('project:')
+    ? getProjects().find(project => String(project.id) === String(threadId.replace('project:','')))
+    : getProjectForUsers(currentUser.id, partner.id);
+  const nextThreadLabel = existing && existing.thread_label
+    ? existing.thread_label
+    : (threadId.startsWith('project:') ? 'Job Chat' : '');
+  sendInboxMessage(partner.id, partner.name, content, activeProject ? activeProject.id : null, currentUser, {
+    thread_id: threadId,
+    thread_label: nextThreadLabel
+  });
   input.value = '';
   renderDashboard();
 }
 function sendSystemMessage(toId, toName, content, projectId=null){
-  sendInboxMessage(toId, toName, content, projectId);
+  const systemThreadId = 'system:cogo';
+  const systemThreadLabel = 'CoGo Team Updates';
+  sendInboxMessage(toId, toName, content, projectId, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
+    thread_id: systemThreadId,
+    thread_label: systemThreadLabel,
+    message_type: 'system',
+    system_category: 'system'
+  });
+  const admins = getUsers().filter(user => user.role === 'admin' && String(user.id || '') !== String(toId || ''));
+  admins.forEach(adminUser => {
+    sendInboxMessage(adminUser.id, adminUser.name, `[To ${toName}] ${content}`, projectId, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
+      thread_id: systemThreadId,
+      thread_label: systemThreadLabel,
+      message_type: 'system',
+      system_category: 'system'
+    });
+  });
 }
 
 function renderAdminPanel(el){
@@ -6200,7 +7485,7 @@ function syncAdminBlogDraftFromForm(){
   const featuredEl = document.getElementById('adminBlogFeaturedImage');
   const articleImageEl = document.getElementById('adminBlogArticleImage');
   const articleImageStoredEl = document.getElementById('adminBlogArticleImageValue');
-  const videoEl = document.getElementById('adminBlogVideoLink');
+  const videoEl = document.getElementById('blog-video-url') || document.getElementById('adminBlogVideoLink');
   const contentEl = document.getElementById('adminBlogContent');
   if (titleEl) adminBlogDraft.title = titleEl.value || '';
   if (slugEl) adminBlogDraft.slug = slugEl.value || '';
@@ -6233,6 +7518,7 @@ function syncAdminBlogDraftFromForm(){
     adminBlogDraft.media_url = '';
   }
   adminBlogDraft.video_url = adminBlogDraft.media_type === 'video' ? adminBlogDraft.media_url : '';
+  adminBlogDraft.videoUrl = rawVideoValue;
   if (adminBlogDraft.media_type !== 'video') {
     adminBlogDraft.video_type = '';
     adminBlogDraft.video_id = '';
@@ -6282,7 +7568,7 @@ function renderAdminBlogEditorHtml(){
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminBlogArticleImageLibrary()">Select from Library</button></div>
       <div id="admin-blog-images-preview" style="margin-bottom:14px">${articleImage ? renderManagedImage(post.media_url || '', 'Article image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No article image yet.</div>`}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogImages()">Remove Article Image</button></div>
-      <div class="field"><label>Article Video Link</label><input id="adminBlogVideoLink" value="${esc(post.media_type === 'video' ? getBlogPostVideoInputValue(post) : '')}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewAdminBlogVideoLink(this.value)"></div>
+      <div class="field"><label>Article Video Link</label><input id="blog-video-url" value="${esc(post.videoUrl || (post.media_type === 'video' ? getBlogPostVideoInputValue(post) : ''))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewAdminBlogVideoLink(this.value)"></div>
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
       <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? articleVideoUrl : '', 'Article video')}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
@@ -6369,7 +7655,7 @@ function clearAdminBlogVideo(){
   adminBlogDraft.video_url = '';
   adminBlogDraft.video_type = '';
   adminBlogDraft.video_id = '';
-  const input = document.getElementById('adminBlogVideoLink');
+  const input = document.getElementById('blog-video-url') || document.getElementById('adminBlogVideoLink');
   if (input) input.value = '';
   previewAdminBlogVideoLink('');
 }
@@ -6423,7 +7709,7 @@ function previewAdminBlogArticleImage(value){
   const hidden = document.getElementById('adminBlogArticleImageValue');
   if (imageInput && imageInput.value !== displayValue) imageInput.value = displayValue || '';
   if (hidden) hidden.value = value || '';
-  const videoInput = document.getElementById('adminBlogVideoLink');
+  const videoInput = document.getElementById('blog-video-url') || document.getElementById('adminBlogVideoLink');
   if (videoInput && value) videoInput.value = '';
   const videoPreview = document.getElementById('admin-blog-video-preview');
   if (videoPreview && value) videoPreview.innerHTML = renderVideoPreviewHtml('', 'Article video');
@@ -6473,7 +7759,7 @@ function previewAdminBlogVideoLink(value){
     adminBlogDraft.video_id = videoState.video_id || '';
     adminBlogDraft.articleMediaImage = '';
   }
-  const videoInput = document.getElementById('adminBlogVideoLink');
+  const videoInput = document.getElementById('blog-video-url') || document.getElementById('adminBlogVideoLink');
   if (videoInput && videoInput.value !== (videoState.input_url || '')) videoInput.value = videoState.input_url || '';
   const imageInput = document.getElementById('adminBlogArticleImage');
   if (imageInput && videoState.media_url) imageInput.value = '';
@@ -6485,6 +7771,7 @@ function previewAdminBlogVideoLink(value){
 function persistAdminBlogPost(mode='draft'){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
+  adminBlogDraft.videoUrl = (document.getElementById('blog-video-url') || { value:'' }).value.trim();
   if (!adminBlogDraft.title.trim()) return toast('Article title is required.');
   adminBlogDraft.slug = ensureUniqueBlogSlug(adminBlogDraft.slug || adminBlogDraft.title, adminBlogDraft.id);
   if (!adminBlogDraft.excerpt.trim()) adminBlogDraft.excerpt = stripHtmlTags(adminBlogDraft.content || '').slice(0, 240);
@@ -6636,9 +7923,10 @@ function formatTransactionDate(value){
 }
 function getCurrentUserTransactions(){
   const all = getTransactions();
-  if (currentUser.role === 'admin') return all;
-  if (currentUser.role === 'employer') return all.filter(tx => tx.employer_id === currentUser.id);
-  return all.filter(tx => tx.student_id === currentUser.id);
+  const nonWorkshop = all.filter(tx => !isWorkshopTransaction(tx));
+  if (currentUser.role === 'admin') return nonWorkshop;
+  if (currentUser.role === 'employer') return nonWorkshop.filter(tx => tx.employer_id === currentUser.id);
+  return nonWorkshop.filter(tx => tx.student_id === currentUser.id);
 }
 function renderTransactionsPanel(){
   const wrap = document.getElementById('transactions-panel');
@@ -6665,9 +7953,11 @@ function renderTransactionsPanel(){
       </div>
       <div id="transactions-summary"></div>
       <div id="transactions-results"></div>
+      <div id="workshop-transactions-results"></div>
     </div>
   `;
   renderTransactionsResults();
+  renderWorkshopTransactionsResults();
 }
 function renderTransactionsResults(){
   const summaryWrap = document.getElementById('transactions-summary');
@@ -6687,6 +7977,7 @@ function renderTransactionsResults(){
       tx.platform_fee_total,
       tx.hourly_rate,
       tx.hours_worked,
+      formatTransactionDate(tx.date_charged),
       formatTransactionDate(tx.date_completed),
       formatTransactionDate(tx.date_paid)
     ].join(' ').toLowerCase();
@@ -6717,9 +8008,10 @@ function renderTransactionsResults(){
     </div>
   `;
 
+  const dateHeader = isAdmin ? 'Date Processed' : (isEmployer ? 'Date Charged' : 'Date Paid');
   const tableHead = isAdmin ? `
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
-        <th style="padding:10px 8px">Date Completed</th>
+        <th style="padding:10px 8px">${dateHeader}</th>
         <th style="padding:10px 8px">Job Title</th>
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
@@ -6728,7 +8020,7 @@ function renderTransactionsResults(){
       </tr>
     ` : isEmployer ? `
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
-        <th style="padding:10px 8px">Date Completed</th>
+        <th style="padding:10px 8px">${dateHeader}</th>
         <th style="padding:10px 8px">Job Title</th>
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
@@ -6738,7 +8030,7 @@ function renderTransactionsResults(){
       </tr>
     ` : `
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
-        <th style="padding:10px 8px">Date Completed</th>
+        <th style="padding:10px 8px">${dateHeader}</th>
         <th style="padding:10px 8px">Job Title</th>
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
@@ -6758,9 +8050,14 @@ function renderTransactionsResults(){
       : isEmployer
         ? `$${esc(Number(tx.total_amount || 0).toFixed(2))}`
         : `$${esc(Number(tx.payout_amount || 0).toFixed(2))}`;
+    const txDate = isEmployer
+      ? (tx.date_charged || tx.date_paid || tx.date_completed || tx.created_at || '')
+      : (isAdmin
+          ? (tx.date_paid || tx.date_charged || tx.date_completed || tx.created_at || '')
+          : (tx.date_paid || tx.date_completed || tx.date_charged || tx.created_at || ''));
     return `
       <tr style="border-bottom:1px solid var(--border)">
-        <td style="padding:12px 8px">${esc(formatTransactionDate(tx.date_completed))}</td>
+        <td style="padding:12px 8px">${esc(formatTransactionDate(txDate))}</td>
         <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
         <td style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
@@ -6779,6 +8076,81 @@ function renderTransactionsResults(){
       </table>
     </div>
   ` : `<div class="muted">No transactions yet.</div>`;
+}
+function parseWorkshopDurationMinutes(duration=''){
+  const raw = String(duration || '').toLowerCase().trim();
+  if (!raw) return 0;
+  const hourMatch = raw.match(/(\d+(?:\.\d+)?)\s*h/);
+  const minuteMatch = raw.match(/(\d+)\s*m/);
+  if (hourMatch) return Math.round(Number(hourMatch[1]) * 60) + (minuteMatch ? Number(minuteMatch[1]) : 0);
+  if (minuteMatch) return Number(minuteMatch[1]) || 0;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+function formatWorkshopEndDate(workshop){
+  if (!workshop) return 'TBD';
+  const completedAt = workshop.completed_at ? new Date(workshop.completed_at) : null;
+  if (completedAt && !Number.isNaN(completedAt.getTime())) {
+    return completedAt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  }
+  const start = workshop.date_time ? new Date(workshop.date_time) : null;
+  if (!start || Number.isNaN(start.getTime())) return 'TBD';
+  const minutes = parseWorkshopDurationMinutes(workshop.duration);
+  const end = minutes > 0 ? new Date(start.getTime() + minutes * 60000) : start;
+  return end.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+function renderWorkshopTransactionsResults(){
+  const wrap = document.getElementById('workshop-transactions-results');
+  if (!wrap || !currentUser) return;
+  const workshops = getWorkshops();
+  const registrations = getWorkshopRegistrations();
+  const isAdmin = currentUser.role === 'admin';
+  const isHost = currentUser.role === 'employer';
+  let rows = [];
+  if (isAdmin) {
+    rows = workshops.map(workshop => {
+      const activeRegs = registrations.filter(item => item.workshop_id === workshop.id && item.status !== 'refunded');
+      const participants = activeRegs.length;
+      const total = Number(workshop.price || 0) * participants;
+      const commission = total * 0.3;
+      return { workshop, participants, total, commission };
+    }).filter(item => item.participants > 0 || Number(item.workshop.price || 0) > 0);
+  } else if (isHost) {
+    rows = workshops.filter(workshop => workshop.host_id === currentUser.id).map(workshop => {
+      const activeRegs = registrations.filter(item => item.workshop_id === workshop.id && item.status !== 'refunded');
+      const participants = activeRegs.length;
+      const totalEarned = Number(workshop.price || 0) * participants * 0.7;
+      return { workshop, participants, totalEarned };
+    });
+  } else {
+    rows = registrations.filter(item => item.user_id === currentUser.id).map(item => {
+      const workshop = workshops.find(w => w.id === item.workshop_id);
+      if (!workshop) return null;
+      const participants = registrations.filter(reg => reg.workshop_id === workshop.id && reg.status !== 'refunded').length;
+      const totalPaid = item.status === 'refunded' ? 0 : Number(workshop.price || 0);
+      return { workshop, participants, totalPaid };
+    }).filter(Boolean);
+  }
+  rows.sort((a,b) => new Date((b.workshop && (b.workshop.completed_at || b.workshop.date_time)) || 0) - new Date((a.workshop && (a.workshop.completed_at || a.workshop.date_time)) || 0));
+  const headerHtml = isAdmin
+    ? `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total</th><th style="padding:10px 8px">Commissions</th></tr>`
+    : isHost
+      ? `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total Earned</th></tr>`
+      : `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total Paid</th></tr>`;
+  const bodyHtml = rows.map(row => {
+    const workshop = row.workshop;
+    return isAdmin
+      ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td style="padding:12px 8px">$${esc(money(row.total || 0))}</td><td style="padding:12px 8px">$${esc(money(row.commission || 0))}</td></tr>`
+      : isHost
+        ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td style="padding:12px 8px">$${esc(money(row.totalEarned || 0))}</td></tr>`
+        : `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td style="padding:12px 8px">$${esc(money(row.totalPaid || 0))}</td></tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div class="card form-card" style="margin-top:16px">
+      <div class="section-title" style="margin:0 0 10px">Workshops & Classes Transactions</div>
+      ${rows.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:.92rem"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table></div>` : `<div class="muted">No workshop transactions yet.</div>`}
+    </div>
+  `;
 }
 function renderTransactionsSection(el){
   el.innerHTML = `<div id="transactions-panel"></div>`;
@@ -6843,11 +8215,35 @@ function deleteCurrentProfile(){
   signOut();
   toast('Profile deleted from public view.');
 }
+function startWorkshopPayoutProcessor(){
+  if (workshopPayoutProcessorStarted) return;
+  workshopPayoutProcessorStarted = true;
+  window.setInterval(() => {
+    try { processWorkshopPayouts(); } catch (error) { console.error('Workshop payout processor error', error); }
+  }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      try { processWorkshopPayouts(); } catch (error) { console.error('Workshop payout processor visibility error', error); }
+    }
+  });
+}
+function attachConnectivityHandlers(){
+  if (connectivityHandlersAttached) return;
+  connectivityHandlersAttached = true;
+  window.addEventListener('offline', () => {
+    toast('You are offline. Drafts stay saved locally until connection returns.');
+  });
+  window.addEventListener('online', () => {
+    toast('Connection restored.');
+  });
+}
 
 function initializePrototype(){
   try {
     seedData();
     loadCurrentUser();
+    startWorkshopPayoutProcessor();
+    attachConnectivityHandlers();
     renderPage();
   } catch (error) {
     console.error('CoGo init error', error);
@@ -6856,6 +8252,8 @@ function initializePrototype(){
       resetPrototypeRuntimeState();
       seedData();
       loadCurrentUser();
+      startWorkshopPayoutProcessor();
+      attachConnectivityHandlers();
       renderPage();
     } catch (recoveryError) {
       renderAppErrorState(recoveryError, location.hash || '#/');
