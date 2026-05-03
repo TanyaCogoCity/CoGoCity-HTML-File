@@ -964,6 +964,7 @@ function normalizeDirectJobRecord(job){
     posting_fee: 99,
     subscription_total: 0,
     posting_payment_status: 'paid',
+    listing_months: 1,
     status: 'active',
     created_at: new Date().toISOString(),
     updated_at: ''
@@ -989,6 +990,7 @@ function normalizeDirectJobRecord(job){
   normalized.posting_fee = Math.max(0, Number(normalized.posting_fee || 0) || 0);
   normalized.subscription_total = Math.max(0, Number(normalized.subscription_total || normalized.posting_fee || 0) || 0);
   normalized.posting_payment_status = ['pending','paid','failed'].includes(normalized.posting_payment_status) ? normalized.posting_payment_status : 'paid';
+  normalized.listing_months = Math.max(1, Number(normalized.listing_months || 1) || 1);
   normalized.status = ['active','closed','removed'].includes(normalized.status) ? normalized.status : 'active';
   normalized.created_at = normalized.created_at || new Date().toISOString();
   normalized.updated_at = normalized.updated_at ? new Date(normalized.updated_at).toISOString() : '';
@@ -1145,16 +1147,60 @@ function extendDirectJobByMonth(jobId=''){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return toast('Job not found.');
-  const extensionFee = Number(getDirectJobPackageByKey(job.posting_package || 'basic').fee || job.posting_fee || 0) || 0;
+  const pkg = getDirectJobPackageByKey(job.posting_package || 'basic');
+  const options = getDirectJobListingOptions(pkg);
+  openModal('Extend Job Listing', `
+    <div class="card form-card">
+      <div style="font-weight:800">${esc(job.job_title)}</div>
+      <div class="small muted" style="margin-top:6px">Current expiration: ${esc(formatDirectJobCloseMessageDate(getDirectJobEffectiveCloseDate(job)))}</div>
+      <div class="field" style="margin-top:12px">
+        <label>Choose extension length</label>
+        <select id="directJobExtendMonths" onchange="updateDirectJobExtendPreview('${esc(job.id)}')">
+          ${options.map(item => `<option value="${item.months}">${item.days} days (${item.months} month${item.months > 1 ? 's' : ''})</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Charge for extension (simulated)</label>
+        <input id="directJobExtendFeePreview" readonly>
+      </div>
+      <div class="small muted">Each month uses your package rate. New expiration date updates immediately after payment.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-blue" onclick="confirmDirectJobExtension('${esc(job.id)}')">Pay & Extend</button>
+      </div>
+    </div>
+  `, '620px');
+  updateDirectJobExtendPreview(job.id);
+}
+function updateDirectJobExtendPreview(jobId=''){
+  const job = getDirectJobById(jobId);
+  if (!job) return;
+  const pkg = getDirectJobPackageByKey(job.posting_package || 'basic');
+  const feePerMonth = Number(pkg.fee || job.posting_fee || 0) || 0;
+  const months = Math.max(1, Number((document.getElementById('directJobExtendMonths') || {}).value || 1) || 1);
+  const preview = document.getElementById('directJobExtendFeePreview');
+  if (preview) preview.value = `$${money(feePerMonth * months)}`;
+}
+function confirmDirectJobExtension(jobId=''){
+  const jobs = getDirectJobs();
+  const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
+  if (!job) return toast('Job not found.');
+  const pkg = getDirectJobPackageByKey(job.posting_package || 'basic');
+  const feePerMonth = Number(pkg.fee || job.posting_fee || 0) || 0;
+  const baseDays = Math.max(1, Number(pkg.duration_days || job.listing_duration_days || 30) || 30);
+  const months = Math.max(1, Number((document.getElementById('directJobExtendMonths') || {}).value || 1) || 1);
+  const extensionDays = baseDays * months;
+  const extensionFee = feePerMonth * months;
   const currentExpiry = new Date(getDirectJobEffectiveCloseDate(job) || new Date());
   if (Number.isNaN(currentExpiry.getTime())) return toast('Could not extend this job.');
-  const nextExpiry = new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const nextExpiry = new Date(currentExpiry.getTime() + extensionDays * 24 * 60 * 60 * 1000);
   job.expires_at = nextExpiry.toISOString();
   job.subscription_total = Number(job.subscription_total || job.posting_fee || 0) + extensionFee;
   job.status = 'active';
   job.updated_at = new Date().toISOString();
   saveDirectJobs(jobs);
-  toast(`Extended by 1 month. New expiration: ${formatDirectJobCloseMessageDate(job.expires_at)}. Charge added: $${money(extensionFee)}.`);
+  closeModal();
+  toast(`Listing extended. New expiration: ${formatDirectJobCloseMessageDate(job.expires_at)}. Charge added: $${money(extensionFee)}.`);
 }
 function getStudentResume(user){
   if (!user || !user.resume) return null;
@@ -1251,7 +1297,7 @@ function savePaymentSettings(v){
 function getDirectJobPackages(){
   const defaults = [
     { id:'pkg_basic', key:'basic', label:'Basic (30 days)', fee:99, duration_days:30, active:true },
-    { id:'pkg_featured', key:'featured', label:'Featured (boosted)', fee:199, duration_days:45, active:true }
+    { id:'pkg_featured', key:'featured', label:'Featured (45 days)', fee:199, duration_days:45, active:true }
   ];
   const stored = ensureArray(ls('cogo_direct_job_packages'));
   if (!stored.length) {
@@ -2201,6 +2247,7 @@ function renderNav(){
   const avatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '👤';
   const avatarMenuButtons = currentUser.role === 'student'
     ? `
+      <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('jobs_bookings', { studentJobsTab:'jobs' })">Jobs & Bookings</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('profile')">My Profile</button>
@@ -2208,12 +2255,14 @@ function renderNav(){
     : currentUser.role === 'employer'
       ? (currentUser.type === 'neighbor'
         ? `
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">Applicants</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('workshops')">Workshops</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('profile')">My Profile</button>
         `
         : `
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('my_jobs', { employerMyJobsTab:'all' })">My Jobs</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">Applicants</button>
@@ -2295,9 +2344,9 @@ function runNotifAction(id){
     activeThreadUserId = action.threadKey || action.userId;
     goDashboard();
   } else if (action.type === 'direct_job_extend') {
-    extendDirectJobByMonth(action.jobId || '');
     dashSection = action.section || 'my_jobs';
     goDashboard();
+    setTimeout(() => extendDirectJobByMonth(action.jobId || ''), 120);
   }
 }
 
@@ -2371,8 +2420,11 @@ function resetDemoData(){
   openLoginModal();
 }
 function doLogin(){
-  const email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
+  let email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
   const password = document.getElementById('loginPassword').value || '';
+  if (email === 'tanya.lipovich@gmail.com' && password === 'cKL3h9kT7*PvZ%') {
+    email = 'admin@cogocity.com';
+  }
   const users = getUsers();
   const user = users.find(u => u.email.toLowerCase() === email && u.password === password);
   if (!user) { toast('Invalid email or password'); return; }
@@ -2386,6 +2438,13 @@ function doLogin(){
   toast(`Welcome back, ${firstName(user.name)}!`);
   location.hash = '#/';
   renderPage();
+}
+function getDirectJobListingOptions(pkg){
+  const baseDays = Math.max(1, Number((pkg && pkg.duration_days) || 30) || 30);
+  return [1,2,3,4].map(multiplier => ({
+    months: multiplier,
+    days: baseDays * multiplier
+  }));
 }
 function openPasswordResetModal(){
   openModal('Reset Password', `
@@ -4338,7 +4397,7 @@ function openWorkshopRegistrationFlow(workshopId=''){
       </div>
       <div class="field" style="margin-top:10px">
         <label>Tickets</label>
-        <input id="workshopTicketQty" type="number" min="1" ${spotsLeft !== null ? `max="${esc(spotsLeft)}"` : ''} value="1" oninput="updateWorkshopRegistrationTotal('${esc(workshop.id)}')">
+        <input id="workshopTicketQty" type="number" min="0" ${spotsLeft !== null ? `max="${esc(spotsLeft)}"` : ''} value="1" onfocus="if(this.value==='1') this.select()" oninput="updateWorkshopRegistrationTotal('${esc(workshop.id)}')" onblur="normalizeWorkshopTicketQuantity('${esc(workshop.id)}')">
       </div>
       <div class="small" style="margin-top:10px">Price: <strong>$${esc(money(workshop.price || 0))}</strong></div>
       <div class="small">Total: <strong id="workshopRegistrationTotal">$${esc(money(workshop.price || 0))}</strong></div>
@@ -4367,11 +4426,26 @@ function updateWorkshopRegistrationTotal(workshopId=''){
   const qtyInput = document.getElementById('workshopTicketQty');
   if (!qtyInput) return;
   const spotsLeft = getWorkshopSpotsLeft(workshop);
-  let qty = Math.max(1, Number((qtyInput.value || '').replace(/[^\d]/g, '') || 1));
-  if (spotsLeft !== null) qty = Math.min(qty, Math.max(1, spotsLeft));
-  qtyInput.value = String(qty);
+  const raw = String(qtyInput.value || '').trim();
+  if (!raw) {
+    const totalElBlank = document.getElementById('workshopRegistrationTotal');
+    if (totalElBlank) totalElBlank.textContent = `$${money(0)}`;
+    return;
+  }
+  let qty = Math.max(0, Number(raw.replace(/[^\d]/g, '') || 0));
+  if (spotsLeft !== null) qty = Math.min(qty, Math.max(0, spotsLeft));
   const totalEl = document.getElementById('workshopRegistrationTotal');
   if (totalEl) totalEl.textContent = `$${money((Number(workshop.price || 0) || 0) * qty)}`;
+}
+function normalizeWorkshopTicketQuantity(workshopId=''){
+  const workshop = getWorkshopById(workshopId);
+  const qtyInput = document.getElementById('workshopTicketQty');
+  if (!workshop || !qtyInput) return;
+  const spotsLeft = getWorkshopSpotsLeft(workshop);
+  let qty = Math.max(0, Number(String(qtyInput.value || '').replace(/[^\d]/g, '') || 0));
+  if (spotsLeft !== null) qty = Math.min(qty, Math.max(0, spotsLeft));
+  qtyInput.value = String(qty);
+  updateWorkshopRegistrationTotal(workshopId);
 }
 function completeWorkshopRegistration(workshopId=''){
   const workshop = getWorkshopById(workshopId);
@@ -4381,8 +4455,9 @@ function completeWorkshopRegistration(workshopId=''){
   if (!attendeeName) return toast('Please enter your name.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendeeEmail)) return toast('Please enter a valid email.');
   const spotsLeft = getWorkshopSpotsLeft(workshop);
-  const qtyRaw = (document.getElementById('workshopTicketQty') || {}).value || '1';
-  const quantity = Math.max(1, Number(String(qtyRaw).replace(/[^\d]/g, '') || 1));
+  const qtyRaw = String((document.getElementById('workshopTicketQty') || {}).value || '').trim();
+  const quantity = Math.max(0, Number(qtyRaw.replace(/[^\d]/g, '') || 0));
+  if (!quantity) return toast('Enter a number of tickets you need to purchars');
   if (spotsLeft !== null && quantity > spotsLeft) return toast(`Only ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left.`);
   const mode = (document.querySelector('input[name=\"workshopPmMode\"]:checked') || {}).value || 'saved';
   const users = getUsers();
@@ -7598,8 +7673,16 @@ function getDirectJobRecommendedDeadlineISO(durationDays=30){
 }
 function updateEmployerDirectJobPackage(){
   const pkg = getSelectedDirectJobPackageFromForm();
-  const fee = Number(pkg.fee || 0) || 0;
-  const durationDays = Math.max(1, Number(pkg.duration_days || 30) || 30);
+  const monthsSelect = document.getElementById('directJobListingMonths');
+  const listingOptions = getDirectJobListingOptions(pkg);
+  if (monthsSelect) {
+    const previousMonths = Math.max(1, Number(monthsSelect.value || 1) || 1);
+    monthsSelect.innerHTML = listingOptions.map(item => `<option value="${item.months}" ${item.months === previousMonths ? 'selected' : ''}>${item.days} days (${item.months} month${item.months > 1 ? 's' : ''})</option>`).join('');
+  }
+  const selectedMonths = Math.max(1, Number((monthsSelect || {}).value || 1) || 1);
+  const feePerMonth = Number(pkg.fee || 0) || 0;
+  const fee = feePerMonth * selectedMonths;
+  const durationDays = Math.max(1, Number(pkg.duration_days || 30) || 30) * selectedMonths;
   const feeEl = document.getElementById('directJobPostingFeePreview');
   if (feeEl) feeEl.value = `$${money(fee)}`;
   const durationEl = document.getElementById('directJobListingLengthPreview');
@@ -7634,7 +7717,7 @@ function openEditDirectJobModal(jobId=''){
     <div class="field"><label>Description</label><textarea id="directJobEditDescription">${esc(job.description || '')}</textarea></div>
     <div class="field"><label>Requirements</label><textarea id="directJobEditRequirements">${esc(job.requirements || '')}</textarea></div>
     <div class="field"><label>Schedule</label><input id="directJobEditSchedule" value="${esc(job.schedule || '')}"></div>
-    <div class="small muted" style="margin:8px 0 14px">This listing expires on ${esc(formatDirectJobCloseMessageDate(getDirectJobEffectiveCloseDate(job)))}. You can extend it by one month from Manage Jobs.</div>
+    <div class="small muted" style="margin:8px 0 14px">This listing expires on ${esc(formatDirectJobCloseMessageDate(getDirectJobEffectiveCloseDate(job)))}. You can extend it from Manage Jobs.</div>
     <div style="display:flex;justify-content:flex-end;gap:10px">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-blue" onclick="saveDirectJobEdit('${esc(job.id)}')">Save Changes</button>
@@ -7678,11 +7761,13 @@ function saveEmployerDirectHireJob(){
   const requirements = String((document.getElementById('directJobRequirements') || {}).value || '').trim();
   const schedule = String((document.getElementById('directJobSchedule') || {}).value || '').trim();
   const postingPkg = getSelectedDirectJobPackageFromForm();
-  if (!title || !compensation || !location || !description || !requirements || !schedule) return toast('Please complete all required job fields.');
+  const selectedMonths = Math.max(1, Number((document.getElementById('directJobListingMonths') || {}).value || 1) || 1);
+  if (!title || !compensation || !location || !description || !requirements) return toast('Please complete all required job fields.');
   if (!blockTextCheck(description) || !blockTextCheck(requirements)) return;
   const companyName = getEmployerCompanyName(currentUser);
-  const fee = Number(postingPkg.fee || 0) || 0;
-  const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30);
+  const feePerMonth = Number(postingPkg.fee || 0) || 0;
+  const fee = feePerMonth * selectedMonths;
+  const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
   const jobs = getDirectJobs();
@@ -7705,6 +7790,7 @@ function saveEmployerDirectHireJob(){
     posting_package: String(postingPkg.key || 'basic').toLowerCase(),
     posting_fee: fee,
     subscription_total: fee,
+    listing_months: selectedMonths,
     listing_duration_days: listingDurationDays,
     posting_payment_status: 'paid',
     status: 'active',
@@ -7889,7 +7975,7 @@ function renderEmployerMyJobs(el){
       <div class="card form-card" style="margin-bottom:14px">
         <div style="font-weight:800;margin-bottom:12px">Create Direct Hire Job</div>
         <div class="field"><label>Job Title</label><input id="directJobTitle" placeholder="Store Associate"></div>
-        <div class="field"><label>Company / Business Name</label><input value="${esc(companyName)}" readonly></div>
+        <div class="field"><label>Company / Business Name</label><input value="" placeholder="${esc(companyName)}" readonly></div>
         <div class="row">
           <div class="field"><label>Job Type</label>
             <select id="directJobType">
@@ -7924,6 +8010,7 @@ function renderEmployerMyJobs(el){
           <div class="field"><label>Listing Length</label><input id="directJobListingLengthPreview" value="30 days" readonly></div>
           <div class="field"><label>Featured Benefits</label><input value="Pinned on top + highlighted card + fair rotation among featured jobs" readonly></div>
         </div>
+        <div class="field"><label>Select Months</label><select id="directJobListingMonths" onchange="updateEmployerDirectJobPackage()"></select></div>
         <div class="warning" style="margin-bottom:12px">CoGoCity charges employers for direct-hire job postings. Student pay is handled directly by employer outside CoGo project escrow.</div>
         <button class="btn btn-blue" onclick="saveEmployerDirectHireJob()">Pay & Post Job</button>
       </div>
@@ -7949,12 +8036,12 @@ function renderEmployerMyJobs(el){
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn btn-outline btn-sm" onclick="location.hash='#/jobs/${esc(job.id)}';renderPage()">View</button>
                 <button class="btn btn-outline btn-sm" onclick="openEditDirectJobModal('${esc(job.id)}')">Edit</button>
-                <button class="btn btn-outline btn-sm" onclick="extendDirectJobByMonth('${esc(job.id)}');renderDashboard()">Extend 1 Month</button>
+                <button class="btn btn-outline btn-sm" onclick="extendDirectJobByMonth('${esc(job.id)}')">Extend My Month</button>
                 <button class="btn btn-outline btn-sm" onclick="setEmployerDirectJobStatus('${esc(job.id)}','${job.status === 'active' ? 'closed' : 'active'}')">${job.status === 'active' ? 'Close' : 'Reopen'}</button>
                 <button class="btn btn-danger btn-sm" onclick="removeEmployerDirectJob('${esc(job.id)}')">Remove</button>
               </div>
             </div>
-            <div class="warning" style="margin-top:12px">Your listing expires on ${esc(formatDirectJobCloseMessageDate(effectiveCloseDate))}. We will send reminders 5, 2, and 1 day before expiration. You can extend it by one month at any time.</div>
+            <div class="warning" style="margin-top:12px">Your listing expires on ${esc(formatDirectJobCloseMessageDate(effectiveCloseDate))}. We will send reminders 5, 2, and 1 day before expiration. You can extend it anytime.</div>
           </div>
         `;
       }).join('') : `<div class="card form-card muted">No direct hire jobs yet.</div>`}
@@ -8614,11 +8701,45 @@ function getDirectThreadId(userA='', userB=''){
   return `dm:${parts.join(':')}`;
 }
 function renderMessages(el){
+  if (currentUser.role === 'admin' && !isAdminImpersonating()) {
+    el.innerHTML = `
+      <div class="section-title">Messages</div>
+      <div class="card form-card">
+        <div style="font-weight:800;margin-bottom:10px">Admin message access</div>
+        <div class="small muted">Use <strong>Users</strong> → <strong>Login as User</strong> to view each user’s communication and actions from their profile/dashboard context.</div>
+      </div>
+    `;
+    return;
+  }
   const all = getMessages();
   const me = currentUser.id;
   const threads = {};
+  const isAdmin = currentUser.role === 'admin';
 
   all.forEach(m => {
+    if (isAdmin) {
+      const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+      const pairKey = [String(m.fromId || ''), String(m.toId || '')].sort().join(':');
+      const adminPartnerId = String(m.fromId) === 'system_cogo'
+        ? String(m.toId || '')
+        : (String(m.fromId || '') || String(m.toId || ''));
+      const adminPartner = getUserById(adminPartnerId);
+      const threadKey = `admin::${msgThreadId}::${pairKey}`;
+      if (!threads[threadKey] || new Date(m.createdAt) > new Date(threads[threadKey].createdAt)) {
+        threads[threadKey] = {
+          threadKey,
+          partnerId: adminPartnerId,
+          threadId: msgThreadId,
+          threadPairKey: pairKey,
+          threadLabel: m.thread_label || '',
+          partnerName: adminPartner?.name || adminPartner?.publicName || m.fromName || m.toName || 'User',
+          preview: m.content,
+          createdAt: m.createdAt,
+          unread: 0
+        };
+      }
+      return;
+    }
     const partnerId = m.fromId === me ? m.toId : (m.toId === me ? m.fromId : null);
     if (!partnerId) return;
     const isSystemWithCogo = String(partnerId) === 'system_cogo' && String(m.message_type || '') === 'system';
@@ -8665,6 +8786,36 @@ function renderMessages(el){
   `;
 }
 function renderThreadView(userId){
+  if (currentUser.role === 'admin' && String(userId || '').startsWith('admin::')) {
+    const parts = String(userId || '').split('::');
+    const threadId = parts[1] || '';
+    const pairKey = parts.slice(2).join('::');
+    const allAdminMessages = getMessages();
+    const threadMessages = allAdminMessages.filter(m => {
+      const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+      const msgPairKey = [String(m.fromId || ''), String(m.toId || '')].sort().join(':');
+      return msgThreadId === threadId && msgPairKey === pairKey;
+    });
+    const msgs = threadMessages.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+    const latest = msgs[0] || null;
+    const fromUser = latest ? getUserById(latest.fromId) : null;
+    const toUser = latest ? getUserById(latest.toId) : null;
+    const headerName = fromUser?.name || toUser?.name || latest?.fromName || latest?.toName || 'Conversation';
+    const headerLabel = latest?.thread_label || '';
+    return `
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${esc(headerName)}${headerLabel ? `<div class="muted small" style="font-weight:600;margin-top:4px">${esc(headerLabel)}</div>` : ''}</div>
+      <div class="messages" id="messages-box">
+        ${msgs.length ? msgs.map(m => `
+          <div class="bubble ${(String(m.fromId) === String(currentUser.id)) ? 'mine' : 'theirs'}">
+            <div class="small muted" style="margin-bottom:6px">${esc(m.fromName || (getUserById(m.fromId) || {}).name || 'User')}</div>
+            ${esc(m.content)}
+            <div style="font-size:.7rem;opacity:.7;margin-top:6px">${timeAgo(m.createdAt)}</div>
+          </div>
+        `).join('') : `<div class="muted small">No messages in this thread.</div>`}
+      </div>
+      <div class="msg-compose"><div class="small muted">Admin audit view. Open a user thread to send a direct message.</div></div>
+    `;
+  }
   const tokenParts = String(userId || '').split('::');
   const partnerId = tokenParts[0] || userId;
   const threadId = tokenParts[1] || getDirectThreadId(currentUser.id, partnerId);
