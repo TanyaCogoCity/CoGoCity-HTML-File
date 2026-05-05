@@ -1515,9 +1515,7 @@ function migrateLegacyData(){
 }
 function seedData(){
   if (ls('cogo_seeded_v3')) {
-    saveUsers(getUsers());
-    saveStudents(getStudents());
-    saveBlogPosts(getBlogPosts());
+    migrateLegacyData();
     return;
   }
   if (ensureArray(ls('cogo_users')).length || ensureArray(ls('cogo_students')).length) {
