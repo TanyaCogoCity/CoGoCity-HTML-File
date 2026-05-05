@@ -522,16 +522,7 @@ function normalizeUserRecord(user){
   if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
   if (!normalized.status) normalized.status = normalized.archived ? 'archived' : 'active';
   if (!Object.prototype.hasOwnProperty.call(normalized, 'lastLogin')) normalized.lastLogin = null;
-  // Neighbors are stored as employer-role accounts with type="neighbor" so the
-  // existing hiring/dashboard/payment flows keep working, while preserving a
-  // clear account type for UI and future backend migration.
-  if (normalized.role === 'neighbor') {
-    normalized.role = 'employer';
-    normalized.type = 'neighbor';
-  }
   if (normalized.role === 'employer' && !normalized.type) normalized.type = 'business';
-  if (normalized.type === 'neighbor') normalized.accountType = 'neighbor';
-  if (normalized.type === 'business') normalized.accountType = 'employer';
   return normalized;
 }
 function getUsers(){
@@ -2591,12 +2582,12 @@ function renderStudentSignupStepContent(){
   const d = studentSignupDraft;
   if (studentSignupStep === 1) return `
     <div class="card form-card">
-      <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name" oninput="syncStudentSignupBasicDraft()" onchange="syncStudentSignupBasicDraft()"></div>
+      <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name"></div>
       <div class="row">
-        <div class="field"><label>Age</label><input id="studentFlowAge" type="number" min="13" max="25" value="${esc(d.age)}" placeholder="17" oninput="syncStudentSignupBasicDraft()" onchange="syncStudentSignupBasicDraft()"></div>
-        <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name" oninput="syncStudentSignupBasicDraft()" onchange="syncStudentSignupBasicDraft()"></div>
+        <div class="field"><label>Age</label><input id="studentFlowAge" type="number" min="13" max="25" value="${esc(d.age)}" placeholder="17"></div>
+        <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name"></div>
       </div>
-      <div class="field"><label>City</label><input id="studentFlowCity" value="${esc(d.city)}" placeholder="Danville" oninput="syncStudentSignupBasicDraft()" onchange="syncStudentSignupBasicDraft()"></div>
+      <div class="field"><label>City</label><input id="studentFlowCity" value="${esc(d.city)}" placeholder="Danville"></div>
     </div>
   `;
   if (studentSignupStep === 2) return `
@@ -2710,25 +2701,13 @@ function renderStudentSignupFooter(){
   if (studentSignupStep === 8) return `${prev}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Create Password</button>`;
   return `${prev}<button class="btn btn-blue" onclick="goStudentSignupStep(${studentSignupStep + 1})">Next</button>`;
 }
-function syncStudentSignupBasicDraft(){
-  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
-  const nameEl = document.getElementById('studentFlowName');
-  const ageEl = document.getElementById('studentFlowAge');
-  const schoolEl = document.getElementById('studentFlowSchool');
-  const cityEl = document.getElementById('studentFlowCity');
-  if (nameEl) studentSignupDraft.name = (nameEl.value || '').trim();
-  if (ageEl) studentSignupDraft.age = Number(ageEl.value || 0) || '';
-  if (schoolEl) studentSignupDraft.school = (schoolEl.value || '').trim();
-  if (cityEl) studentSignupDraft.city = (cityEl.value || '').trim();
-}
 function saveStudentSignupStep(step){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   if (step === 1){
-    syncStudentSignupBasicDraft();
-    const name = String(studentSignupDraft.name || '').trim();
-    const age = Number(studentSignupDraft.age || 0);
-    const school = String(studentSignupDraft.school || '').trim();
-    const city = String(studentSignupDraft.city || '').trim();
+    const name = (document.getElementById('studentFlowName').value || '').trim();
+    const age = Number(document.getElementById('studentFlowAge').value || 0);
+    const school = (document.getElementById('studentFlowSchool').value || '').trim();
+    const city = (document.getElementById('studentFlowCity').value || '').trim();
     if (!name || !age || !school || !city) return toast('Please complete name, age, school, and city.'), false;
     if (age < 13 || age > 25) return toast('Student signup is for ages 13 to 25.'), false;
     Object.assign(studentSignupDraft, { name, age, school, city });
@@ -3363,7 +3342,6 @@ function publishEmployerSignupProfile(){
     publicName:`${d.firstName} ${lastInitial}.`,
     role:'employer',
     type:employerSignupMode === 'employer' ? 'business' : 'neighbor',
-    accountType:employerSignupMode === 'employer' ? 'employer' : 'neighbor',
     emoji:d.avatar || (employerSignupMode === 'employer' ? '🏢' : '🏠'),
     photo:d.photo || '',
     about:d.about || '',
@@ -3489,10 +3467,6 @@ function renderPage(){
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
     if (route === '#/community') return renderCommunity();
-    if (route.startsWith('#post-')) {
-      const postId = String(route.replace('#post-', '') || '').trim();
-      return renderCommunity(postId);
-    }
     if (route === '#/dashboard') return renderDashboard();
     if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
     const result = renderHome();
@@ -3515,53 +3489,6 @@ function renderPage(){
 function renderHome(){
   const serviceCards = getHomepageOrderedServiceCards();
   const publicBlogPosts = getPublicBlogPosts();
-  const heroByRole = (() => {
-    if (!currentUser) {
-      return {
-        headline: 'Local Students. Real Work. Real Opportunities.',
-        tagline: 'Students—list your services and start earning. Businesses and neighbors—hire reliable help from your community.',
-        actions: `
-          <button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>
-        `
-      };
-    }
-    if (currentUser.role === 'student') {
-      return {
-        headline: 'Build Your Experience While You Earn',
-        tagline: 'Find real opportunities, work with real clients, and grow your skills along the way.',
-        actions: `
-          <button class="btn btn-blue" onclick="goToAddService()">Add a Service</button>
-          <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/jobs';renderPage()">Find Jobs</button>
-        `
-      };
-    }
-    if (currentUser.role === 'employer' && currentUser.type === 'neighbor') {
-      return {
-        headline: 'Reliable Help From Students Nearby',
-        tagline: 'Browse student services or post a quick task and get it done without the hassle.',
-        actions: `
-          <button class="btn btn-blue" onclick="location.hash='#/';renderPage()">Book a Student</button>
-          <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Post a Quick Gig</button>
-        `
-      };
-    }
-    if (currentUser.role === 'employer') {
-      return {
-        headline: 'Find Help Fast. Hire Local Students.',
-        tagline: 'Book students for quick tasks or post a job and get matched with the right candidates.',
-        actions: `
-          <button class="btn btn-blue" onclick="location.hash='#/';renderPage()">Book a Student</button>
-          <button class="btn btn-outline" style="background:#fff" onclick="goToPostJob()">Post a Job</button>
-          <button class="link-btn" style="font-weight:700" onclick="location.hash='#/community';renderPage()">Post a quick gig instead</button>
-        `
-      };
-    }
-    return {
-      headline: 'Local Students. Real Work. Real Opportunities.',
-      tagline: 'Students—list your services and start earning. Businesses and neighbors—hire reliable help from your community.',
-      actions: ''
-    };
-  })();
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('home', {
@@ -3569,10 +3496,8 @@ function renderHome(){
       body:'Test the full CoGo City student, employer, and neighbor flow in one file: profiles, community feed, applications, offers, projects, hours, invoices, messages, and approvals.'
     })}
     <section class="hero" style="padding-top:0">
-      <h1>${esc(heroByRole.headline)}</h1>
-      <p>${esc(heroByRole.tagline)}</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-        ${heroByRole.actions}
+        ${!currentUser ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>` : ''}
         <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Feed</button>
         <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/blog';renderPage()">Read the Blog</button>
       </div>
@@ -4017,41 +3942,17 @@ function renderDirectJobDetailPage(jobId=''){
     </div>
   `;
 }
-function updateDirectJobResumeSummary(message='', isError=false){
-  const summary = document.getElementById('direct-job-resume-summary');
-  if (summary) summary.innerHTML = `<div class="small ${isError ? 'danger' : ''}">${message || '<span class="muted">No resume uploaded yet.</span>'}</div>`;
-}
 function handleDirectJobResumeUpload(input){
   const file = input && input.files && input.files[0];
-  if (!file) return updateDirectJobResumeSummary('', false);
-  const allowed = ['pdf','doc','docx','txt','rtf'];
-  const ext = String(file.name || '').split('.').pop().toLowerCase();
-  if (!allowed.includes(ext)) {
-    if (input) input.value = '';
-    updateDirectJobResumeSummary('Please upload a PDF, Word, TXT, or RTF resume.', true);
-    return toast('Unsupported resume file type.');
-  }
-  if (file.size && file.size > 5 * 1024 * 1024) {
-    if (input) input.value = '';
-    updateDirectJobResumeSummary('Resume file is too large. Please upload a file under 5 MB.', true);
-    return toast('Resume file is too large.');
-  }
-  const draftJobId = directJobApplyDraft && directJobApplyDraft.jobId;
+  if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     directJobApplyDraft = Object.assign({}, directJobApplyDraft || {}, {
-      jobId: draftJobId || (directJobApplyDraft && directJobApplyDraft.jobId) || '',
       fileName: file.name || 'resume',
-      dataUrl: String(reader.result || ''),
-      useSavedResume: false
+      dataUrl: String(reader.result || '')
     });
-    const savedToggle = document.getElementById('directJobUseSavedResume');
-    if (savedToggle) savedToggle.checked = false;
-    updateDirectJobResumeSummary(`Selected resume: <strong>${esc(directJobApplyDraft.fileName)}</strong>`);
-  };
-  reader.onerror = () => {
-    updateDirectJobResumeSummary('Resume upload failed. Please try again.', true);
-    toast('Resume upload failed.');
+    const summary = document.getElementById('direct-job-resume-summary');
+    if (summary) summary.innerHTML = `<div class="small">Selected resume: <strong>${esc(directJobApplyDraft.fileName)}</strong></div>`;
   };
   reader.readAsDataURL(file);
 }
@@ -4077,8 +3978,8 @@ function openDirectJobApplyModal(jobId=''){
       <div class="small muted" style="margin-top:6px">Compensation: ${esc(formatDirectJobCompensation(job))}</div>
     </div>
     <div class="warning" style="margin-bottom:12px">Resume is required for direct-hire applications.</div>
-    ${savedResume ? `<label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input id="directJobUseSavedResume" type="checkbox" checked onchange="if(directJobApplyDraft) directJobApplyDraft.useSavedResume=this.checked;updateDirectJobResumeSummary(this.checked ? 'Saved resume selected.' : 'Upload a new resume below.')"> Use saved resume: ${esc(savedResume.fileName)}</label>` : ''}
-    <div class="field"><label>Upload Resume (${savedResume ? 'optional if using saved resume' : 'required'})</label><input type="file" accept=".pdf,.doc,.docx,.txt,.rtf" onchange="handleDirectJobResumeUpload(this)"></div>
+    ${savedResume ? `<label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input id="directJobUseSavedResume" type="checkbox" checked onchange="directJobApplyDraft.useSavedResume=this.checked"> Use saved resume: ${esc(savedResume.fileName)}</label>` : ''}
+    <div class="field"><label>Upload Resume (${savedResume ? 'optional if using saved resume' : 'required'})</label><input type="file" accept=\".pdf,.doc,.docx,.txt,.rtf\" onchange="handleDirectJobResumeUpload(this)"></div>
     <div id="direct-job-resume-summary" style="margin:-4px 0 12px">${savedResume ? `<div class="small">Saved resume selected: <strong>${esc(savedResume.fileName)}</strong></div>` : '<div class="small muted">No resume uploaded yet.</div>'}</div>
     <div class="field"><label>Message to Employer</label><textarea id="directJobApplicationMessage" placeholder="Share why you're a great fit for this role."></textarea></div>
     <div style="display:flex;justify-content:flex-end;gap:10px">
@@ -4090,9 +3991,6 @@ function openDirectJobApplyModal(jobId=''){
 function submitDirectJobApplication(jobId=''){
   const job = getDirectJobById(jobId);
   if (!job || !currentUser) return;
-  if (currentUser.role !== 'student') return toast('Only students can apply to direct hire jobs.');
-  if (job.status !== 'active') return toast('This job is not available.');
-  if (!directJobApplyDraft || String(directJobApplyDraft.jobId || '') !== String(job.id || '')) return toast('Please reopen the application form and try again.');
   const message = String((document.getElementById('directJobApplicationMessage') || {}).value || '').trim();
   if (!message) return toast('Please add a message for the employer.');
   if (!blockTextCheck(message)) return;
@@ -4448,7 +4346,7 @@ function renderWorkshopDetailPage(workshopId=''){
         </div>
         <div class="card form-card" style="margin-top:12px">
           <div style="font-weight:800;margin-bottom:8px">Reviews</div>
-          <div class="small muted">Workshop reviews are not enabled in this prototype yet. Attended registrations and host messages are tracked from the workshop dashboard.</div>
+          <div class="small muted">Reviews are coming soon.</div>
         </div>
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-blue" ${workshopCanRegister(workshop) ? '' : 'disabled'} onclick="openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
@@ -4559,7 +4457,7 @@ function completeWorkshopRegistration(workshopId=''){
   const spotsLeft = getWorkshopSpotsLeft(workshop);
   const qtyRaw = String((document.getElementById('workshopTicketQty') || {}).value || '').trim();
   const quantity = Math.max(0, Number(qtyRaw.replace(/[^\d]/g, '') || 0));
-  if (!quantity) return toast('Enter the number of tickets you need to purchase.');
+  if (!quantity) return toast('Enter a number of tickets you need to purchars');
   if (spotsLeft !== null && quantity > spotsLeft) return toast(`Only ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left.`);
   const mode = (document.querySelector('input[name=\"workshopPmMode\"]:checked') || {}).value || 'saved';
   const users = getUsers();
@@ -4993,8 +4891,8 @@ function openWorkshopEditor(workshopId=''){
         <div class="field"><label>Capacity (optional)</label><input id="workshopCapacity" type="number" min="1" value="${esc(workshopDraft.capacity)}"></div>
       </div>
       <div class="field"><label>Included (one item per line)</label><textarea id="workshopIncluded" rows="4">${esc((workshopDraft.included || []).join('\n'))}</textarea></div>
-      <div class="field"><label>Workshop Images (optional, up to 3)</label><input type="file" multiple accept="image/*" onchange="handleWorkshopImagesUpload(this)"></div>
-      ${coverViews.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${coverViews.map((image, index) => `<div style="position:relative">${renderManagedImage(image.id || image.url, 'Workshop image', 'width:88px;height:88px;border-radius:12px;object-fit:cover;border:1px solid var(--border)', 'thumb')}<button class="btn btn-danger btn-sm" style="position:absolute;top:4px;right:4px;padding:2px 6px" onclick="removeWorkshopImage(${index})">×</button></div>`).join('')}</div>` : `<div class="small muted" style="margin-bottom:10px">No image uploaded. Published workshops will use the default workshop cover.</div>`}
+      <div class="field"><label>Workshop Images (1-3)</label><input type="file" multiple accept="image/*" onchange="handleWorkshopImagesUpload(this)"></div>
+      ${coverViews.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${coverViews.map((image, index) => `<div style="position:relative">${renderManagedImage(image.id || image.url, 'Workshop image', 'width:88px;height:88px;border-radius:12px;object-fit:cover;border:1px solid var(--border)', 'thumb')}<button class="btn btn-danger btn-sm" style="position:absolute;top:4px;right:4px;padding:2px 6px" onclick="removeWorkshopImage(${index})">×</button></div>`).join('')}</div>` : `<div class="small muted" style="margin-bottom:10px">No workshop images uploaded yet.</div>`}
       <div class="field"><label>Optional Video URL (YouTube/Vimeo only)</label><input id="workshopVideoUrl" value="${esc(workshopDraft.video_url)}" placeholder="https://youtube.com/..."></div>
       <div style="margin-bottom:12px">${workshopDraft.video_url ? renderVideoPreviewHtml(workshopDraft.video_url, 'Workshop video') : `<div class="small muted">No video URL added.</div>`}</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
@@ -5039,7 +4937,7 @@ function persistWorkshopDraft(mode='draft'){
   if (!workshopDraft.title || !workshopDraft.description || !workshopDraft.date_time || !workshopDraft.duration) return toast('Please complete all required fields.');
   if (workshopDraft.format === 'in_person' && !workshopDraft.location) return toast('Location is required for in-person workshops.');
   if (workshopDraft.format === 'online' && !workshopDraft.online_url) return toast('Online link is required for online workshops.');
-  workshopDraft.images = ensureArray(workshopDraft.images).slice(0, 3);
+  if (isPublish && !(workshopDraft.images || []).length) return toast('Please add at least one image before publishing.');
   workshopDraft.host_id = workshopDraft.host_id || currentUser.id;
   workshopDraft.status = isPublish ? 'active' : 'draft';
   const workshops = getWorkshops();
@@ -6355,7 +6253,7 @@ function getCommunityFeedStatusLabel(post){
 function isCommunityFeedJobOpen(post){
   return post.status === 'open' || post.status === 'pending';
 }
-function renderCommunity(focusPostId=''){
+function renderCommunity(){
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -6372,15 +6270,6 @@ function renderCommunity(focusPostId=''){
       ${posts.map(renderPost).join('')}
     </div>
   `;
-  if (focusPostId) {
-    setTimeout(() => {
-      const node = document.getElementById(`post-${focusPostId}`);
-      if (!node) return;
-      node.scrollIntoView({ behavior:'smooth', block:'center' });
-      node.style.boxShadow = '0 0 0 3px rgba(37,99,235,.24)';
-      setTimeout(() => { node.style.boxShadow = ''; }, 1500);
-    }, 80);
-  }
 }
 function getPostComposerDraft(){
   const draft = Object.assign({
@@ -6590,7 +6479,7 @@ function renderPost(p){
       </div>
       <div style="margin-top:10px;${commentsOpen ? '' : 'display:none'}">
         ${comments.length ? comments.map(comment => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(comment.userName || 'User')}</div><div class="muted small">${timeAgo(comment.createdAt)}</div><div style="margin-top:6px">${esc(comment.content || '')}</div></div>`).join('') : `<div class="small muted">No comments yet.</div>`}
-        ${currentUser ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="postCommentInput_${esc(p.id)}" placeholder="Write a comment..." style="flex:1" onkeydown="handlePostCommentKeydown(event,'${esc(p.id)}')"><button class="btn btn-blue btn-sm" onclick="addPostComment('${esc(p.id)}')">Post</button></div>` : `<div class="small muted" style="margin-top:8px">Sign in to comment.</div>`}
+        ${currentUser ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="postCommentInput_${esc(p.id)}" placeholder="Write a comment..." style="flex:1"><button class="btn btn-blue btn-sm" onclick="addPostComment('${esc(p.id)}')">Post</button></div>` : `<div class="small muted" style="margin-top:8px">Sign in to comment.</div>`}
       </div>
     </div>
   `;
@@ -6598,11 +6487,6 @@ function renderPost(p){
 function togglePostComments(postId){
   openPostCommentId = openPostCommentId === postId ? '' : postId;
   renderCommunity();
-}
-function handlePostCommentKeydown(event, postId){
-  if (!event || event.key !== 'Enter' || event.shiftKey) return;
-  event.preventDefault();
-  addPostComment(postId);
 }
 function addPostComment(postId){
   if (!currentUser) return openLoginModal();
@@ -7877,11 +7761,10 @@ function saveEmployerDirectHireJob(){
   const requirements = String((document.getElementById('directJobRequirements') || {}).value || '').trim();
   const schedule = String((document.getElementById('directJobSchedule') || {}).value || '').trim();
   const postingPkg = getSelectedDirectJobPackageFromForm();
-  const companyOverride = String((document.getElementById('directJobCompany') || {}).value || '').trim();
   const selectedMonths = Math.max(1, Number((document.getElementById('directJobListingMonths') || {}).value || 1) || 1);
   if (!title || !compensation || !location || !description || !requirements) return toast('Please complete all required job fields.');
   if (!blockTextCheck(description) || !blockTextCheck(requirements)) return;
-  const companyName = companyOverride || getEmployerCompanyName(currentUser);
+  const companyName = getEmployerCompanyName(currentUser);
   const feePerMonth = Number(postingPkg.fee || 0) || 0;
   const fee = feePerMonth * selectedMonths;
   const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
@@ -8092,7 +7975,7 @@ function renderEmployerMyJobs(el){
       <div class="card form-card" style="margin-bottom:14px">
         <div style="font-weight:800;margin-bottom:12px">Create Direct Hire Job</div>
         <div class="field"><label>Job Title</label><input id="directJobTitle" placeholder="Store Associate"></div>
-        <div class="field"><label>Company / Business Name</label><input id="directJobCompany" value="" placeholder="${esc(companyName)}"></div>
+        <div class="field"><label>Company / Business Name</label><input value="" placeholder="${esc(companyName)}" readonly></div>
         <div class="row">
           <div class="field"><label>Job Type</label>
             <select id="directJobType">
