@@ -24,7 +24,7 @@
       --radius:16px;
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,sans-serif;background:var(--bg);color:var(--dark)}
+    body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;background:var(--bg);color:var(--dark)}
     a{color:inherit}
     button,input,textarea,select{font:inherit}
     nav{
@@ -2967,7 +2967,7 @@ function renderStudentSignupPreviewHtml(){
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       <div class="small">${esc((student.highlights || [])[0] || '')}</div>
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
-      ${renderSignupImageGallery(student.profileImages || [], 120)}
+      ${renderSignupImageGallery(getStudentProfileImageList(student), 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
       ${renderVideoPreviewHtml(getRenderableVideoUrl(student), 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
@@ -5285,6 +5285,12 @@ function renderSignupImageGallery(images=[], size=120){
   if (!images.length) return `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They‚Äôll appear in a carousel on your preview, profile, and service views.</div>`;
   return `<div style="margin-bottom:14px">${renderMediaCarousel(images, size)}</div>`;
 }
+function getStudentProfileImageList(student={}){
+  const images = Array.isArray(student.profileImages) ? student.profileImages.filter(Boolean) : [];
+  const primary = student.profile_image_id || student.photo || '';
+  if (primary && !images.some(image => String(image) === String(primary))) images.unshift(primary);
+  return images.slice(0, 3);
+}
 function renderStudentAvatarOptions(selected=''){
   return `<div style="display:flex;flex-wrap:wrap;gap:10px">${STUDENT_AVATAR_OPTIONS.map(avatar => `
     <button type="button" class="btn ${avatar === selected ? 'btn-blue' : 'btn-outline'} btn-sm" style="min-width:48px;height:48px;padding:0;font-size:1.35rem" onclick="chooseStudentSignupAvatar('${avatar}')">${avatar}</button>
@@ -6178,7 +6184,7 @@ function openProfile(studentId){
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       ${(s.highlights||[]).map(p => `<div class="small">‚Ä¢ ${esc(p)}</div>`).join('')}
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
-      ${renderSignupImageGallery(s.profileImages || [], 120)}
+      ${renderSignupImageGallery(getStudentProfileImageList(s), 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
       ${renderVideoPreviewHtml(getRenderableVideoUrl(s), 'Profile video')}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
@@ -6985,7 +6991,7 @@ function renderStudentProfile(el){
           </div>
           <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(profile.profileImages || [], 120)}</div></div>
+          <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(getStudentProfileImageList(profile), 120)}</div></div>
           <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(getRenderableVideoUrl(profile), 'Profile video')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">‚≠ê ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
@@ -8712,6 +8718,15 @@ function renderMyPosts(el){
     <div class="section-title">My Posts</div>
     <div class="card form-card">
       <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..." oninput="syncJobDescriptionFromPost()"></textarea></div>
+      <div class="field">
+        <label>Post Images (optional, up to 5)</label>
+        <input type="file" multiple accept="image/*" onchange="handleEmpPostImagesUpload(this)">
+        <input type="hidden" id="empPostImagesValue" value="[]">
+      </div>
+      <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
+      <div class="field"><label>Post Video Link (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"></div>
+      <div class="field"><label>Or upload a video (optional)</label><input type="file" accept="video/*" onchange="handleEmpPostVideoUpload(this)"></div>
+      <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       ${canCreateJobs ? `
         <div class="field">
           <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
@@ -8726,7 +8741,7 @@ function renderMyPosts(el){
           <div class="field"><label>Location</label><input id="empJobLocation"></div>
         </div>
       ` : ''}
-      <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post</button>
+      <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post to Feed</button>
     </div>
     <div style="height:16px"></div>
     <div class="subtabs">
