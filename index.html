@@ -382,6 +382,8 @@ let employerMyJobsTab = 'all';
 let directJobApplyDraft = null;
 const PLATFORM_FEE_RATE = 0.15;
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 10;
+const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
+const PAYMENT_PROVIDER_MODE = 'mock_stripe_ready';
 const STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
 const BACKEND_MIGRATION = {
@@ -1287,12 +1289,79 @@ function getPaymentSettings(){
   const saved = ls('cogo_payment_settings') || {};
   return {
     studentCommissionPct: Number(saved.studentCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT),
-    employerCommissionPct: Number(saved.employerCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT)
+    employerCommissionPct: Number(saved.employerCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT),
+    workshopCommissionPct: Number(saved.workshopCommissionPct ?? DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT),
+    providerMode: saved.providerMode || PAYMENT_PROVIDER_MODE
   };
 }
 function savePaymentSettings(v){
-  ls('cogo_payment_settings', v);
-  syncEntityToBackend('payment_settings', [v]);
+  const normalized = Object.assign(getPaymentSettings(), v || {});
+  ls('cogo_payment_settings', normalized);
+  syncEntityToBackend('payment_settings', [normalized]);
+}
+function getMockPaymentId(prefix){
+  return `${prefix}_${uid('mock')}`;
+}
+function createMockPaymentEvent(kind='', data={}){
+  const now = new Date().toISOString();
+  const settings = getPaymentSettings();
+  const amount = Number(data.amount || 0) || 0;
+  const event = Object.assign({
+    id: uid('payevt'),
+    provider: STRIPE_ENABLED ? 'stripe' : 'mock',
+    provider_mode: STRIPE_ENABLED ? 'stripe_live_adapter' : settings.providerMode,
+    kind: String(kind || 'payment'),
+    amount,
+    currency: 'usd',
+    status: data.status || 'succeeded',
+    stripe_ready: true,
+    stripe_customer_id: data.stripe_customer_id || getMockPaymentId('cus'),
+    stripe_payment_intent_id: data.stripe_payment_intent_id || (amount ? getMockPaymentId('pi') : ''),
+    stripe_charge_id: data.stripe_charge_id || (amount ? getMockPaymentId('ch') : ''),
+    stripe_transfer_id: data.stripe_transfer_id || '',
+    stripe_refund_id: data.stripe_refund_id || '',
+    created_at: now,
+    createdAt: now
+  }, data || {});
+  logPaymentEvent(event);
+  return event;
+}
+function mockChargePayment(data={}){
+  const amount = Number(data.amount || 0) || 0;
+  if (amount < 0) return { success:false, reason:'invalid_amount' };
+  if (!TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS && data.user_id && !hasValidPaymentMethod(data.user_id)) {
+    return { success:false, reason:'missing_or_invalid_payment_method' };
+  }
+  return { success:true, event:createMockPaymentEvent('charge', Object.assign({ status:'succeeded' }, data)) };
+}
+function mockHoldPayment(data={}){
+  const result = mockChargePayment(Object.assign({ status:'held' }, data));
+  if (result.success && result.event) result.event.status = 'held';
+  return result;
+}
+function mockRefundPayment(data={}){
+  return { success:true, event:createMockPaymentEvent('refund', Object.assign({}, data || {}, {
+    amount: -Math.abs(Number(data.amount || 0) || 0),
+    status:'succeeded',
+    stripe_refund_id: data.stripe_refund_id || getMockPaymentId('re')
+  })) };
+}
+function mockTransferPayout(data={}){
+  return { success:true, event:createMockPaymentEvent('transfer', Object.assign({
+    status:'paid',
+    stripe_payment_intent_id: data.stripe_payment_intent_id || '',
+    stripe_charge_id: data.stripe_charge_id || '',
+    stripe_transfer_id: data.stripe_transfer_id || getMockPaymentId('tr')
+  }, data)) };
+}
+function calculateWorkshopPayment(price=0, quantity=1){
+  const settings = getPaymentSettings();
+  const qty = Math.max(1, Number(quantity || 1) || 1);
+  const gross = Number(((Number(price || 0) || 0) * qty).toFixed(2));
+  const platformPct = Number(settings.workshopCommissionPct || DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT);
+  const platformFee = Number((gross * platformPct / 100).toFixed(2));
+  const hostPayout = Number((gross - platformFee).toFixed(2));
+  return { quantity: qty, gross, platformPct, platformFee, hostPayout };
 }
 function getDirectJobPackages(){
   const defaults = [
@@ -1948,10 +2017,29 @@ function attemptEscrowAuthorization(application, escrowAmount){
       if (currentUser && currentUser.id === user.id) setCurrentUser(user);
     }
   }
-  const provider = STRIPE_ENABLED ? 'stripe' : 'placeholder';
-  const mode = STRIPE_ENABLED ? 'stripe_manual_capture' : (TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS ? 'placeholder_test_success' : 'placeholder_success');
-  logPaymentEvent({ applicationId: application.id, employerId: application.employerId, amount: escrowAmount, status: 'held', mode, provider });
-  return { success:true, escrowStatus:'held', provider };
+  const provider = STRIPE_ENABLED ? 'stripe' : 'mock';
+  const mode = STRIPE_ENABLED ? 'stripe_manual_capture' : PAYMENT_PROVIDER_MODE;
+  const hold = mockHoldPayment({
+    amount: escrowAmount,
+    user_id: application.employerId,
+    applicationId: application.id,
+    employerId: application.employerId,
+    studentUserId: application.studentUserId,
+    job_title: application.jobTitle,
+    escrow_status: 'held',
+    mode,
+    provider
+  });
+  if (!hold.success) return hold;
+  return {
+    success:true,
+    escrowStatus:'held',
+    provider,
+    mode,
+    paymentIntentId: hold.event.stripe_payment_intent_id,
+    chargeId: hold.event.stripe_charge_id,
+    paymentEventId: hold.event.id
+  };
 }
 function getProjectForUsers(userIdA, userIdB){
   return getProjects().find(p => [p.employerId, p.studentUserId].includes(userIdA) && [p.employerId, p.studentUserId].includes(userIdB) && p.status !== 'completed') || null;
@@ -4187,6 +4275,14 @@ function normalizeWorkshopRegistration(registration){
     payment_mode: 'saved',
     refunded_at: '',
     quantity: 1,
+    total_amount: 0,
+    platform_fee: 0,
+    host_payout: 0,
+    platform_fee_percent: DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT,
+    escrow_status: 'held',
+    payout_status: 'pending_completion',
+    stripe_charge_id: '',
+    stripe_transfer_id: '',
     status: 'registered',
     created_at: new Date().toISOString()
   }, registration || {});
@@ -4208,6 +4304,14 @@ function normalizeWorkshopRegistration(registration){
   normalized.payment_mode = normalized.payment_mode === 'new' ? 'new' : 'saved';
   normalized.refunded_at = normalized.refunded_at ? new Date(normalized.refunded_at).toISOString() : '';
   normalized.quantity = Math.max(1, Number(normalized.quantity || 1) || 1);
+  normalized.total_amount = Math.max(0, Number(normalized.total_amount || 0) || 0);
+  normalized.platform_fee = Math.max(0, Number(normalized.platform_fee || 0) || 0);
+  normalized.host_payout = Math.max(0, Number(normalized.host_payout || 0) || 0);
+  normalized.platform_fee_percent = Math.max(0, Number(normalized.platform_fee_percent || DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT) || 0);
+  normalized.escrow_status = ['held','released','refunded','none'].includes(normalized.escrow_status) ? normalized.escrow_status : 'held';
+  normalized.payout_status = ['pending_completion','scheduled','paid','refunded','none'].includes(normalized.payout_status) ? normalized.payout_status : 'pending_completion';
+  normalized.stripe_charge_id = String(normalized.stripe_charge_id || '').trim();
+  normalized.stripe_transfer_id = String(normalized.stripe_transfer_id || '').trim();
   normalized.status = ['registered','refunded','attended'].includes(normalized.status) ? normalized.status : 'registered';
   normalized.created_at = normalized.created_at || new Date().toISOString();
   return normalized;
@@ -4512,6 +4616,16 @@ function completeWorkshopRegistration(workshopId=''){
     saveUsers(users);
     currentUser = getUserById(currentUser.id) || currentUser;
   }
+  const paymentTotals = calculateWorkshopPayment(workshop.price || 0, quantity);
+  const charge = mockHoldPayment({
+    amount: paymentTotals.gross,
+    user_id: currentUser.id,
+    workshop_id: workshop.id,
+    host_id: workshop.host_id,
+    kind_detail: 'workshop_registration_hold',
+    job_title: `Workshop: ${workshop.title}`
+  });
+  if (!charge.success) return toast('Payment could not be verified. Please update your payment method.');
   const registrations = getWorkshopRegistrations();
   const existing = registrations.find(item => String(item.workshop_id) === String(workshop.id) && String(item.user_id) === String(currentUser.id) && item.status !== 'refunded');
   if (existing) {
@@ -4520,18 +4634,33 @@ function completeWorkshopRegistration(workshopId=''){
     existing.attendee_name = attendeeName;
     existing.attendee_email = attendeeEmail;
     existing.payment_mode = mode === 'new' ? 'new' : 'saved';
+    existing.total_amount = Number((Number(existing.total_amount || 0) + paymentTotals.gross).toFixed(2));
+    existing.platform_fee = Number((Number(existing.platform_fee || 0) + paymentTotals.platformFee).toFixed(2));
+    existing.host_payout = Number((Number(existing.host_payout || 0) + paymentTotals.hostPayout).toFixed(2));
+    existing.platform_fee_percent = paymentTotals.platformPct;
+    existing.escrow_status = 'held';
+    existing.payout_status = 'pending_completion';
+    existing.payment_id = charge.event.stripe_payment_intent_id;
+    existing.stripe_payment_intent_id = charge.event.stripe_payment_intent_id;
+    existing.stripe_charge_id = charge.event.stripe_charge_id;
   } else {
-    const paymentIntentId = `pi_${uid('mock')}`;
     registrations.unshift(normalizeWorkshopRegistration({
       id: uid('wr'),
       workshop_id: workshop.id,
       user_id: currentUser.id,
-      payment_id: paymentIntentId,
-      stripe_payment_intent_id: paymentIntentId,
+      payment_id: charge.event.stripe_payment_intent_id,
+      stripe_payment_intent_id: charge.event.stripe_payment_intent_id,
+      stripe_charge_id: charge.event.stripe_charge_id,
       attendee_name: attendeeName,
       attendee_email: attendeeEmail,
       payment_mode: mode === 'new' ? 'new' : 'saved',
       quantity,
+      total_amount: paymentTotals.gross,
+      platform_fee: paymentTotals.platformFee,
+      host_payout: paymentTotals.hostPayout,
+      platform_fee_percent: paymentTotals.platformPct,
+      escrow_status: 'held',
+      payout_status: 'pending_completion',
       status: 'registered',
       created_at: new Date().toISOString()
     }));
@@ -4540,7 +4669,7 @@ function completeWorkshopRegistration(workshopId=''){
   const transactions = getTransactions();
   const txId = uid('tx');
   const nowIso = new Date().toISOString();
-  const totalAmount = (Number(workshop.price || 0) || 0) * quantity;
+  const totalAmount = paymentTotals.gross;
   transactions.unshift({
     id: txId,
     transaction_id: txId,
@@ -4551,9 +4680,12 @@ function completeWorkshopRegistration(workshopId=''){
     job_title: `Workshop: ${workshop.title}`,
     total_amount: totalAmount,
     payment_mode: mode === 'new' ? 'new' : 'saved',
-    stripe_payment_intent_id: `pi_${uid('mock')}`,
+    stripe_payment_intent_id: charge.event.stripe_payment_intent_id,
+    stripe_charge_id: charge.event.stripe_charge_id,
     escrow_status: 'funds_secured',
-    payout_amount: totalAmount * 0.7,
+    platform_fee_percent: paymentTotals.platformPct,
+    platform_fee: paymentTotals.platformFee,
+    payout_amount: paymentTotals.hostPayout,
     status: 'processing',
     status_history: ['processing'],
     date_charged: nowIso,
@@ -4569,7 +4701,7 @@ function completeWorkshopRegistration(workshopId=''){
   });
   pushNotif(workshop.host_id, `${currentUser.publicName || currentUser.name} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for "${workshop.title}".`, { type:'dashboard', section:'workshops' });
   closeModal();
-  toast('Registration successful. Payment simulated and spot reserved.');
+  toast('Registration successful. Payment verified and funds held for this class.');
   renderPage();
 }
 function canRequestWorkshopRefund(workshop){
@@ -4588,12 +4720,21 @@ function requestWorkshopRefund(registrationId=''){
   if (!workshop) return toast('Workshop not found.');
   if (registration.status === 'refunded') return toast('This registration is already refunded.');
   if (!canRequestWorkshopRefund(workshop)) return toast('Refund is only available up to 2 days before class.');
+  const quantity = Math.max(1, Number(registration.quantity || 1) || 1);
+  const refundAmount = (Number(registration.total_amount || 0) || ((Number(workshop.price || 0) || 0) * quantity));
+  const refund = mockRefundPayment({
+    amount: refundAmount,
+    user_id: currentUser.id,
+    workshop_id: workshop.id,
+    kind_detail: 'workshop_refund',
+    stripe_payment_intent_id: registration.stripe_payment_intent_id || registration.payment_id || ''
+  });
   registration.status = 'refunded';
   registration.refunded_at = new Date().toISOString();
-  registration.stripe_refund_id = `re_${uid('mock')}`;
+  registration.stripe_refund_id = refund.event ? refund.event.stripe_refund_id : getMockPaymentId('re');
+  registration.escrow_status = 'refunded';
+  registration.payout_status = 'refunded';
   saveWorkshopRegistrations(registrations);
-  const quantity = Math.max(1, Number(registration.quantity || 1) || 1);
-  const refundAmount = (Number(workshop.price || 0) || 0) * quantity;
   const txId = uid('tx');
   const nowIso = new Date().toISOString();
   const transactions = getTransactions();
@@ -5232,9 +5373,18 @@ function processWorkshopPayouts(){
     if (!dueAt || Date.now() < dueAt) return;
     const paidRegistrations = getWorkshopRegistrationsFor(workshop.id).filter(item => item.status !== 'refunded');
     const paidTickets = paidRegistrations.reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1) || 1), 0);
-    const gross = Number(workshop.price || 0) * paidTickets;
-    const hostPayout = Number((gross * 0.7).toFixed(2));
-    const platformShare = Number((gross * 0.3).toFixed(2));
+    const registeredGross = paidRegistrations.reduce((sum, item) => sum + Number(item.total_amount || 0), 0);
+    const totals = calculateWorkshopPayment(workshop.price || 0, paidTickets);
+    const gross = Number((registeredGross || totals.gross).toFixed(2));
+    const platformShare = Number((gross * (totals.platformPct / 100)).toFixed(2));
+    const hostPayout = Number((gross - platformShare).toFixed(2));
+    const transfer = mockTransferPayout({
+      amount: hostPayout,
+      user_id: workshop.host_id,
+      workshop_id: workshop.id,
+      kind_detail: 'workshop_host_payout',
+      job_title: `Workshop Payout: ${workshop.title}`
+    });
     const txId = uid('tx');
     const nowIso = new Date().toISOString();
     transactions.unshift({
@@ -5247,15 +5397,28 @@ function processWorkshopPayouts(){
       job_title: `Workshop Payout: ${workshop.title}`,
       total_amount: gross,
       payout_amount: hostPayout,
+      platform_fee_percent: totals.platformPct,
+      platform_fee: platformShare,
+      stripe_transfer_id: transfer.event ? transfer.event.stripe_transfer_id : '',
       status: 'paid',
-      status_history: ['processing','paid'],
+      status_history: ['funds_held','class_completed','paid'],
       date_paid: nowIso,
       date_completed: nowIso,
       created_at: nowIso
     });
     finance.cogoCommission = Number(finance.cogoCommission || 0) + platformShare;
     finance.completedProjects = Number(finance.completedProjects || 0) + 1;
+    const allRegistrations = getWorkshopRegistrations();
+    allRegistrations.forEach(reg => {
+      if (String(reg.workshop_id) === String(workshop.id) && reg.status !== 'refunded') {
+        reg.escrow_status = 'released';
+        reg.payout_status = 'paid';
+        reg.stripe_transfer_id = transfer.event ? transfer.event.stripe_transfer_id : '';
+      }
+    });
+    saveWorkshopRegistrations(allRegistrations);
     workshop.payout_processed = true;
+    workshop.stripe_transfer_id = transfer.event ? transfer.event.stripe_transfer_id : '';
     changed = true;
     transactionsChanged = true;
   });
@@ -7887,9 +8050,18 @@ function saveEmployerDirectHireJob(){
   const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
+  const listingCharge = mockChargePayment({
+    amount: fee,
+    user_id: currentUser.id,
+    employer_id: currentUser.id,
+    kind_detail: 'direct_job_listing_subscription',
+    job_title: title
+  });
+  if (!listingCharge.success) return toast('Listing payment could not be verified. Please update your payment method.');
   const jobs = getDirectJobs();
+  const directJobId = uid('djob');
   jobs.unshift({
-    id: uid('djob'),
+    id: directJobId,
     employer_id: currentUser.id,
     employer_name: currentUser.publicName || currentUser.name,
     company_name: companyName,
@@ -7910,12 +8082,45 @@ function saveEmployerDirectHireJob(){
     listing_months: selectedMonths,
     listing_duration_days: listingDurationDays,
     posting_payment_status: 'paid',
+    payment_provider: STRIPE_ENABLED ? 'stripe' : 'mock',
+    payment_provider_mode: PAYMENT_PROVIDER_MODE,
+    stripe_payment_intent_id: listingCharge.event ? listingCharge.event.stripe_payment_intent_id : '',
+    stripe_charge_id: listingCharge.event ? listingCharge.event.stripe_charge_id : '',
+    payment_status: 'captured',
+    payout_status: 'not_applicable',
     status: 'active',
     created_at: createdAt,
     updated_at: new Date().toISOString()
   });
   saveDirectJobs(jobs);
-  toast(`Job posted. Listing payment of $${money(fee)} captured (simulated).`);
+  const txId = uid('tx');
+  const transactions = getTransactions();
+  transactions.unshift({
+    id: txId,
+    transaction_id: txId,
+    job_id: directJobId,
+    employer_id: currentUser.id,
+    employerName: currentUser.publicName || currentUser.name,
+    job_title: `Job Posting: ${title}`,
+    total_amount: fee,
+    payout_amount: 0,
+    platform_fee: fee,
+    platform_fee_total: fee,
+    payment_type: 'direct_job_listing',
+    posting_package: String(postingPkg.key || 'basic').toLowerCase(),
+    listing_months: selectedMonths,
+    stripe_payment_intent_id: listingCharge.event ? listingCharge.event.stripe_payment_intent_id : '',
+    stripe_charge_id: listingCharge.event ? listingCharge.event.stripe_charge_id : '',
+    escrow_status: 'not_applicable',
+    status: 'paid',
+    status_history: ['payment_verified','listing_active'],
+    date_charged: createdAt,
+    date_completed: createdAt,
+    date_paid: createdAt,
+    created_at: createdAt
+  });
+  saveTransactions(transactions);
+  toast(`Job posted. Listing payment of $${money(fee)} verified and captured.`);
   employerMyJobsTab = 'manage';
   renderDashboard();
 }
@@ -8455,7 +8660,13 @@ function startProject(appId){
     projectSnapshot,
     escrowAmount: estimatedEmployerTotal,
     escrowStatus: paymentAttempt.escrowStatus || 'held',
-    escrowProvider: paymentAttempt.provider || 'placeholder',
+    escrowProvider: paymentAttempt.provider || 'mock',
+    paymentProviderMode: paymentAttempt.mode || PAYMENT_PROVIDER_MODE,
+    stripe_payment_intent_id: paymentAttempt.paymentIntentId || '',
+    stripe_charge_id: paymentAttempt.chargeId || '',
+    payment_event_id: paymentAttempt.paymentEventId || '',
+    payment_status: 'held',
+    payout_status: 'pending_completion',
     status: 'in_progress',
     contractHtml,
     createdAt: new Date().toISOString()
@@ -8602,6 +8813,41 @@ function approveFinalInvoice(projectId){
 
   const baseline = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0).employerTotal;
   const diff = Number((p.finalTotal - baseline).toFixed(2));
+  if (diff > 0) {
+    const extraCharge = mockChargePayment({
+      amount: diff,
+      user_id: p.employerId,
+      project_id: p.id,
+      kind_detail: 'project_final_invoice_adjustment',
+      job_title: p.jobTitle
+    });
+    p.reconciliation_payment_intent_id = extraCharge.success && extraCharge.event ? extraCharge.event.stripe_payment_intent_id : '';
+    p.reconciliation_status = extraCharge.success ? 'additional_charge_captured' : 'additional_charge_failed';
+  } else if (diff < 0) {
+    const refund = mockRefundPayment({
+      amount: Math.abs(diff),
+      user_id: p.employerId,
+      project_id: p.id,
+      kind_detail: 'project_final_invoice_refund',
+      job_title: p.jobTitle,
+      stripe_payment_intent_id: p.stripe_payment_intent_id || ''
+    });
+    p.reconciliation_refund_id = refund.event ? refund.event.stripe_refund_id : '';
+    p.reconciliation_status = 'partial_refund_processed';
+  } else {
+    p.reconciliation_status = 'no_adjustment_needed';
+  }
+  const payoutTransfer = mockTransferPayout({
+    amount: p.studentPayout,
+    user_id: p.studentUserId,
+    project_id: p.id,
+    kind_detail: 'project_student_payout',
+    job_title: p.jobTitle,
+    stripe_payment_intent_id: p.stripe_payment_intent_id || ''
+  });
+  p.stripe_transfer_id = payoutTransfer.event ? payoutTransfer.event.stripe_transfer_id : '';
+  p.payment_status = 'completed';
+  p.payout_status = 'released';
   p.reconciliation = diff === 0
     ? `Final invoice approved at $${p.finalTotal}.`
     : diff < 0
@@ -8643,7 +8889,14 @@ function approveFinalInvoice(projectId){
     platform_fee: Number(p.studentPlatformFee || 0),
     payout_amount: Number(p.studentPayout || 0),
     status: 'paid',
-    status_history: ['processing','paid'],
+    status_history: ['funds_secured','final_invoice_approved','paid'],
+    stripe_payment_intent_id: p.stripe_payment_intent_id || '',
+    stripe_charge_id: p.stripe_charge_id || '',
+    stripe_transfer_id: p.stripe_transfer_id || '',
+    reconciliation_status: p.reconciliation_status || '',
+    reconciliation_payment_intent_id: p.reconciliation_payment_intent_id || '',
+    reconciliation_refund_id: p.reconciliation_refund_id || '',
+    escrow_status: 'released',
     date_started: p.createdAt || now,
     date_completed: p.completedAt || now,
     date_paid: now
@@ -9100,7 +9353,8 @@ function renderAdminPanel(el){
         <div class="field"><label>Platform Fee Percentage for Student</label><input id="adminStudentCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.studentCommissionPct)}"></div>
         <div class="field"><label>Platform Fee Percentage for Employers/Neighbors</label><input id="adminEmployerCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.employerCommissionPct)}"></div>
       </div>
-      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, messaging, and payout calculations across the platform.</div>
+      <div class="field"><label>Workshop/Class Platform Fee Percentage</label><input id="adminWorkshopCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.workshopCommissionPct)}"></div>
+      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, workshop hold/release, messaging, and payout calculations. Payments are currently mock Stripe-ready records; no card numbers are stored in CoGo City.</div>
       <button class="btn btn-blue" onclick="saveAdminPaymentSettings()">Save Payment Settings</button>
     </div>
     <div class="card form-card" style="margin-bottom:18px">
@@ -9140,8 +9394,9 @@ function renderAdminPanel(el){
 function saveAdminPaymentSettings(){
   const studentCommissionPct = Number(document.getElementById('adminStudentCommissionPct').value || 0);
   const employerCommissionPct = Number(document.getElementById('adminEmployerCommissionPct').value || 0);
-  if (studentCommissionPct < 0 || employerCommissionPct < 0) return toast('Platform Fee percentages must be 0 or higher.');
-  savePaymentSettings({ studentCommissionPct, employerCommissionPct });
+  const workshopCommissionPct = Number(document.getElementById('adminWorkshopCommissionPct').value || 0);
+  if (studentCommissionPct < 0 || employerCommissionPct < 0 || workshopCommissionPct < 0) return toast('Platform Fee percentages must be 0 or higher.');
+  savePaymentSettings({ studentCommissionPct, employerCommissionPct, workshopCommissionPct });
   toast('Payment settings updated.');
   renderDashboard();
 }
