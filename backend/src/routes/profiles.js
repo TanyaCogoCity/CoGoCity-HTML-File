@@ -3,6 +3,7 @@ const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
+const { serializeService } = require('../lib/compat');
 
 const router = express.Router();
 
@@ -13,7 +14,10 @@ router.get('/student-profiles', async (req, res) => {
 
   const rows = await prisma.studentProfile.findMany({
     where,
-    include: { user: { select: { id: true, displayName: true, city: true, role: true } } },
+    include: {
+      services: { where: { deletedAt: null, isActive: true }, orderBy: { createdAt: 'desc' } },
+      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true } },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -26,7 +30,9 @@ router.get('/student-profiles', async (req, res) => {
     experience: p.experience,
     is_active: p.isActive,
     created_at: p.createdAt,
+    services: (p.services || []).map(serializeService),
     user: p.user,
+    profile: p.user?.userProfile || null,
   })));
 });
 
