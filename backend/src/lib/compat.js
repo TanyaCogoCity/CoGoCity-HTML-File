@@ -69,32 +69,86 @@ function serializeService(service) {
   };
 }
 
+function normalizeJobStatus(status = 'open') {
+  const value = String(status || '').toLowerCase().trim();
+  if (value === 'active') return 'open';
+  if (value === 'removed') return 'closed';
+  return ['open', 'pending', 'closed'].includes(value) ? value : 'open';
+}
+
 function normalizeJobPayload(payload = {}) {
+  const listingMonths = Math.max(1, Number(payload.listing_months ?? payload.listingMonths ?? 1) || 1);
+  const listingDurationDays = Math.max(1, Number(payload.listing_duration_days ?? payload.listingDurationDays ?? 30) || 30);
+  const expiresRaw = payload.expires_at || payload.expiresAt || null;
   return {
-    title: payload.title,
+    title: payload.title || payload.job_title || payload.jobTitle,
     description: payload.description || payload.message || '',
-    category: payload.category || 'general',
-    hourlyRate: Number(payload.hourly_rate ?? payload.rate ?? payload.hourlyRate ?? 0),
+    category: payload.category || 'direct_hire',
+    hourlyRate: Number(payload.hourly_rate ?? payload.rate ?? payload.hourlyRate ?? payload.posting_fee ?? 0),
     location: payload.location || '',
-    status: payload.status || 'open',
+    status: normalizeJobStatus(payload.status || 'open'),
+    companyName: payload.company_name || payload.companyName || '',
+    jobType: payload.job_type || payload.jobType || 'full_time',
+    workMode: payload.work_mode || payload.workMode || 'on_site',
+    compensationText: payload.compensation_text || payload.compensationText || '',
+    requirements: payload.requirements || '',
+    schedule: payload.schedule || '',
+    expiresAt: expiresRaw ? new Date(expiresRaw) : null,
+    postingPackage: String(payload.posting_package || payload.postingPackage || 'basic').toLowerCase(),
+    postingFee: Number(payload.posting_fee ?? payload.postingFee ?? 0),
+    listingMonths,
+    listingDurationDays,
+    paymentStatus: payload.payment_status || payload.paymentStatus || 'paid',
   };
 }
 
 function serializeJob(job) {
+  const status = job.status === 'open' ? 'active' : (job.status || 'closed');
   return {
     id: job.id,
     created_by: job.createdBy,
     createdBy: job.createdBy,
+    employer_id: job.createdBy,
+    employerId: job.createdBy,
+    employer_name: job.creator?.displayName || '',
+    company_name: job.companyName || job.creator?.userProfile?.businessName || job.creator?.displayName || '',
+    companyName: job.companyName || job.creator?.userProfile?.businessName || job.creator?.displayName || '',
     title: job.title,
+    job_title: job.title,
+    jobTitle: job.title,
     description: job.description,
     category: job.category,
     hourly_rate: Number(job.hourlyRate),
     hourlyRate: Number(job.hourlyRate),
     rate: Number(job.hourlyRate),
+    compensation_text: job.compensationText || (Number(job.hourlyRate) ? `$${Number(job.hourlyRate)}/hr` : ''),
+    compensationText: job.compensationText || (Number(job.hourlyRate) ? `$${Number(job.hourlyRate)}/hr` : ''),
+    compensation_type: 'range',
     location: job.location,
-    status: job.status,
+    job_type: job.jobType || 'full_time',
+    jobType: job.jobType || 'full_time',
+    work_mode: job.workMode || 'on_site',
+    workMode: job.workMode || 'on_site',
+    requirements: job.requirements || '',
+    schedule: job.schedule || '',
+    status,
+    expires_at: job.expiresAt,
+    expiresAt: job.expiresAt,
+    posting_package: job.postingPackage || 'basic',
+    postingPackage: job.postingPackage || 'basic',
+    posting_fee: job.postingFee == null ? 0 : Number(job.postingFee),
+    postingFee: job.postingFee == null ? 0 : Number(job.postingFee),
+    subscription_total: job.postingFee == null ? 0 : Number(job.postingFee),
+    listing_months: job.listingMonths || 1,
+    listingMonths: job.listingMonths || 1,
+    listing_duration_days: job.listingDurationDays || 30,
+    listingDurationDays: job.listingDurationDays || 30,
+    payment_status: job.paymentStatus || 'paid',
+    posting_payment_status: job.paymentStatus || 'paid',
     created_at: job.createdAt,
     createdAt: job.createdAt,
+    updated_at: job.updatedAt,
+    updatedAt: job.updatedAt,
   };
 }
 

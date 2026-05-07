@@ -480,6 +480,9 @@ let backendLastSyncError = '';
 let backendBrowseStudentsLoading = false;
 let backendBrowseStudentsLoaded = false;
 let backendBrowseStudentsError = '';
+let backendJobsLoading = false;
+let backendJobsLoaded = false;
+let backendJobsError = '';
 let backendCurrentProfileLoading = false;
 let backendCurrentProfileLoadedFor = '';
 const EMPLOYER_AVATAR_OPTIONS = ['\u{1F3E0}','\u{1F3E2}','\u{1F4BC}','\u{1F6E0}\uFE0F','\u{1F4E6}','\u{1F9F0}','\u{1FAB4}','\u2615','\u{1F6CD}\uFE0F','\u{1F37D}\uFE0F','\u{1F69A}','\u{1F4BB}'];
@@ -648,6 +651,8 @@ function getBackendBrowseUsers(){ return ensureArray(ls('cogo_backend_browse_use
 function saveBackendBrowseUsers(users){ ls('cogo_backend_browse_users', ensureArray(users).map(normalizeUserRecord)); }
 function getBackendBrowseStudents(){ return ensureArray(ls('cogo_backend_browse_students')); }
 function saveBackendBrowseStudents(students){ ls('cogo_backend_browse_students', ensureArray(students).map(normalizeStudentRecord)); }
+function getBackendDirectJobs(){ return ensureArray(ls('cogo_backend_direct_jobs')); }
+function saveBackendDirectJobs(jobs){ ls('cogo_backend_direct_jobs', ensureArray(jobs).map(normalizeDirectJobRecord)); }
 function upsertBackendBrowseStudent(student){
   if (!student) return;
   const students = getBackendBrowseStudents().filter(item => String(item.id) !== String(student.id) && String(item.userId) !== String(student.userId));
@@ -779,6 +784,71 @@ function mergeBackendStudentRecords(localStudents=[]){
     merged.push(student);
   });
   return merged;
+}
+function mapBackendDirectJob(row={}){
+  const createdAt = row.created_at || row.createdAt || new Date().toISOString();
+  const durationDays = Math.max(1, Number(row.listing_duration_days || row.listingDurationDays || 30) || 30);
+  const expiresAt = row.expires_at || row.expiresAt || new Date(new Date(createdAt).getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+  return normalizeDirectJobRecord({
+    id: row.id,
+    backendJobId: row.id,
+    employer_id: row.employer_id || row.employerId || row.created_by || row.createdBy || '',
+    employer_name: row.employer_name || row.employerName || '',
+    company_name: row.company_name || row.companyName || row.employer_name || row.employerName || 'Company',
+    job_title: row.job_title || row.jobTitle || row.title || 'Job',
+    job_type: row.job_type || row.jobType || 'full_time',
+    compensation_type: row.compensation_type || 'range',
+    compensation_text: row.compensation_text || row.compensationText || (Number(row.rate || row.hourly_rate || row.hourlyRate || 0) ? `$${Number(row.rate || row.hourly_rate || row.hourlyRate)}/hr` : ''),
+    location: row.location || '',
+    work_mode: row.work_mode || row.workMode || 'on_site',
+    description: row.description || '',
+    requirements: row.requirements || '',
+    schedule: row.schedule || '',
+    application_deadline: row.application_deadline || row.applicationDeadline || '',
+    expires_at: expiresAt,
+    posting_package: row.posting_package || row.postingPackage || 'basic',
+    posting_fee: Number(row.posting_fee || row.postingFee || 0) || 0,
+    subscription_total: Number(row.subscription_total || row.subscriptionTotal || row.posting_fee || row.postingFee || 0) || 0,
+    listing_months: Number(row.listing_months || row.listingMonths || 1) || 1,
+    listing_duration_days: durationDays,
+    posting_payment_status: row.posting_payment_status || row.postingPaymentStatus || row.payment_status || row.paymentStatus || 'paid',
+    payment_provider: row.payment_provider || row.paymentProvider || 'backend',
+    payment_provider_mode: row.payment_provider_mode || row.paymentProviderMode || PAYMENT_PROVIDER_MODE,
+    payment_status: row.payment_status || row.paymentStatus || 'captured',
+    status: row.status === 'open' ? 'active' : (row.status || 'active'),
+    created_at: createdAt,
+    updated_at: row.updated_at || row.updatedAt || createdAt,
+    backendSource: true
+  });
+}
+function upsertBackendDirectJob(job){
+  if (!job) return;
+  const normalized = normalizeDirectJobRecord(job);
+  const jobs = getBackendDirectJobs().filter(item => String(item.id) !== String(normalized.id));
+  saveBackendDirectJobs([normalized, ...jobs]);
+}
+function mergeBackendDirectJobs(localJobs=[]){
+  const backendJobs = getBackendDirectJobs().map(normalizeDirectJobRecord);
+  if (!backendJobs.length) return localJobs;
+  const backendIds = new Set(backendJobs.map(job => String(job.id)));
+  return backendJobs.concat(localJobs.filter(job => !backendIds.has(String(job.id))));
+}
+async function refreshBackendDirectJobs(options={}){
+  if (!backendAuthEnabled() || backendJobsLoading) return;
+  backendJobsLoading = true;
+  try {
+    const rows = await backendAuthRequest('/jobs');
+    const list = Array.isArray(rows) ? rows : ensureArray(rows.items || rows.jobs || rows.data);
+    saveBackendDirectJobs(list.map(mapBackendDirectJob));
+    backendJobsLoaded = true;
+    backendJobsError = '';
+    if (options.rerender && ['#/jobs', '#/dashboard'].includes(getRoute())) renderPage();
+  } catch (error) {
+    backendJobsError = error.message || 'Could not load backend jobs.';
+    console.warn('Backend jobs load failed', error);
+  } finally {
+    backendJobsLoading = false;
+  }
 }
 async function refreshBackendBrowseStudents(options={}){
   if (!backendAuthEnabled() || backendBrowseStudentsLoading) return;
@@ -1296,7 +1366,7 @@ function getDirectJobs(){
   const jobs = ensureArray(ls('cogo_direct_jobs'));
   const normalized = jobs.map(normalizeDirectJobRecord);
   if (JSON.stringify(jobs) !== JSON.stringify(normalized)) ls('cogo_direct_jobs', normalized);
-  return normalized;
+  return mergeBackendDirectJobs(normalized);
 }
 function saveDirectJobs(items){
   const payload = ensureArray(items).map(normalizeDirectJobRecord);
@@ -4393,6 +4463,7 @@ function renderDirectJobCard(job){
   `;
 }
 function renderJobsPage(){
+  if (backendAuthEnabled() && !backendJobsLoaded && !backendJobsLoading) refreshBackendDirectJobs({ rerender:true });
   const route = getRoute();
   const detailMatch = route.match(/^#\/jobs\/([^?#]+)/);
   if (detailMatch) return renderDirectJobDetailPage(decodeURIComponent(detailMatch[1]));
@@ -8517,7 +8588,7 @@ function saveDirectJobEdit(jobId=''){
   toast('Job updated.');
   renderDashboard();
 }
-function saveEmployerDirectHireJob(){
+async function saveEmployerDirectHireJob(){
   if (!currentUser || currentUser.role !== 'employer') return toast('Only employer accounts can post direct-hire jobs.');
   if (currentUser.type === 'neighbor') return toast('Neighbor accounts cannot post direct-hire jobs. Use Community Feed for contract hiring.');
   if (!getEmployerCompanyName(currentUser)) return toast('Complete company information before posting a direct-hire job.');
@@ -8548,8 +8619,8 @@ function saveEmployerDirectHireJob(){
   });
   if (!listingCharge.success) return toast('Listing payment could not be verified. Please update your payment method.');
   const jobs = getDirectJobs();
-  const directJobId = uid('djob');
-  jobs.unshift({
+  let directJobId = uid('djob');
+  let newJob = {
     id: directJobId,
     employer_id: currentUser.id,
     employer_name: currentUser.publicName || currentUser.name,
@@ -8580,7 +8651,22 @@ function saveEmployerDirectHireJob(){
     status: 'active',
     created_at: createdAt,
     updated_at: new Date().toISOString()
-  });
+  };
+  if (backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token')) {
+    try {
+      const savedJob = await backendAuthRequest('/jobs', {
+        method:'POST',
+        body: JSON.stringify(newJob)
+      });
+      newJob = mapBackendDirectJob(savedJob);
+      directJobId = newJob.id;
+      upsertBackendDirectJob(newJob);
+    } catch (error) {
+      console.warn('Backend job create failed', error);
+      toast(error.message || 'Backend job save failed. Keeping a local draft.');
+    }
+  }
+  jobs.unshift(newJob);
   saveDirectJobs(jobs);
   const txId = uid('tx');
   const transactions = getTransactions();

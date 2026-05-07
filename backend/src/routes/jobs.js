@@ -10,6 +10,7 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   const jobs = await prisma.job.findMany({
     where: { deletedAt: null },
+    include: { creator: { include: { userProfile: true } } },
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
@@ -29,10 +30,23 @@ router.post('/', requireAuth, async (req, res) => {
         title: payload.title,
         description: payload.description,
         category: payload.category,
-        hourlyRate: payload.hourlyRate,
+        hourlyRate: payload.hourlyRate || payload.postingFee || 1,
         location: payload.location,
         status: payload.status,
+        companyName: payload.companyName,
+        jobType: payload.jobType,
+        workMode: payload.workMode,
+        compensationText: payload.compensationText,
+        requirements: payload.requirements,
+        schedule: payload.schedule,
+        expiresAt: payload.expiresAt,
+        postingPackage: payload.postingPackage,
+        postingFee: payload.postingFee,
+        listingMonths: payload.listingMonths,
+        listingDurationDays: payload.listingDurationDays,
+        paymentStatus: payload.paymentStatus,
       },
+      include: { creator: { include: { userProfile: true } } },
     });
 
     await writeAuditLog({ userId: req.user.id, action: 'job.create', entityType: 'job', entityId: job.id, payload: req.body });
@@ -41,6 +55,58 @@ router.post('/', requireAuth, async (req, res) => {
   } catch (error) {
     return fail(res, 400, 'Invalid job payload', error.message);
   }
+});
+
+router.patch('/:id', requireAuth, async (req, res) => {
+  const existing = await prisma.job.findFirst({ where: { id: req.params.id, deletedAt: null } });
+  if (!existing) return fail(res, 404, 'Job not found');
+  if (existing.createdBy !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Only the job owner can update this job');
+
+  try {
+    const payload = normalizeJobPayload(Object.assign({}, serializeJob(existing), req.body || {}));
+    const job = await prisma.job.update({
+      where: { id: existing.id },
+      data: {
+        title: payload.title,
+        description: payload.description,
+        category: payload.category,
+        hourlyRate: payload.hourlyRate || payload.postingFee || existing.hourlyRate,
+        location: payload.location,
+        status: payload.status,
+        companyName: payload.companyName,
+        jobType: payload.jobType,
+        workMode: payload.workMode,
+        compensationText: payload.compensationText,
+        requirements: payload.requirements,
+        schedule: payload.schedule,
+        expiresAt: payload.expiresAt,
+        postingPackage: payload.postingPackage,
+        postingFee: payload.postingFee,
+        listingMonths: payload.listingMonths,
+        listingDurationDays: payload.listingDurationDays,
+        paymentStatus: payload.paymentStatus,
+      },
+      include: { creator: { include: { userProfile: true } } },
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'job.update', entityType: 'job', entityId: job.id, payload: req.body });
+    return ok(res, serializeJob(job));
+  } catch (error) {
+    return fail(res, 400, 'Invalid job payload', error.message);
+  }
+});
+
+router.delete('/:id', requireAuth, async (req, res) => {
+  const existing = await prisma.job.findFirst({ where: { id: req.params.id, deletedAt: null } });
+  if (!existing) return fail(res, 404, 'Job not found');
+  if (existing.createdBy !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Only the job owner can remove this job');
+
+  const job = await prisma.job.update({
+    where: { id: existing.id },
+    data: { deletedAt: new Date(), status: 'closed' },
+  });
+  await writeAuditLog({ userId: req.user.id, action: 'job.delete', entityType: 'job', entityId: job.id, payload: req.body });
+  return ok(res, { id: job.id, deleted: true });
 });
 
 router.post('/:id/apply', requireAuth, async (req, res) => {
