@@ -444,7 +444,7 @@ const PLATFORM_FEE_RATE = 0.15;
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 10;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const PAYMENT_PROVIDER_MODE = 'mock_stripe_ready';
-const STRIPE_ENABLED = false;
+const STRIPE_ENABLED = typeof window !== 'undefined' && window.location.hostname === 'staging.cogocity.com';
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
 const BACKEND_MIGRATION = {
   enabled: false,
@@ -661,6 +661,23 @@ async function backendAuthRequest(path, options={}){
   } finally {
     clearTimeout(timer);
   }
+}
+async function createBackendStripeCheckoutSession(projectId){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId) return null;
+  return backendAuthRequest('/stripe/create-checkout-session', {
+    method:'POST',
+    body: JSON.stringify({ project_id: projectId })
+  });
+}
+async function captureBackendStripePayment(project={}, amountTotal=null){
+  const projectId = getProjectBackendId(project);
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId || !project.stripe_payment_intent_id) return null;
+  const payload = { project_id: projectId };
+  if (amountTotal) payload.amount_total = amountTotal;
+  return backendAuthRequest('/stripe/capture-payment-intent', {
+    method:'POST',
+    body: JSON.stringify(payload)
+  });
 }
 function getBackendBrowseUsers(){ return ensureArray(ls('cogo_backend_browse_users')); }
 function saveBackendBrowseUsers(users){ ls('cogo_backend_browse_users', ensureArray(users).map(normalizeUserRecord)); }
@@ -1542,7 +1559,7 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     ${rate ? `<div>Rate: $${esc(rate)}/hr</div>` : `<div>Compensation: ${esc(formatDirectJobCompensation(job))}</div>`}
     <div>Location: ${esc(projectSnapshot.location || 'TBD')}</div>
     <div>Status: In Progress</div>
-    <div>Direct-hire employer payments are handled outside CoGo escrow until Stripe test mode is connected.</div>
+    <div>Direct-hire employer payments are funded through Stripe test-mode checkout on staging when backend Stripe is configured.</div>
   `;
   const backendStatus = backendProject && backendProject.status;
   const frontendStatus = backendStatus === 'awaiting_approval' ? 'awaiting_employer_approval' : backendStatus;
@@ -1569,16 +1586,18 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     duration: estimatedHours,
     estimatedHours,
     actualHours: backendProject && (backendProject.actual_hours != null || backendProject.actualHours != null) ? Number(backendProject.actual_hours ?? backendProject.actualHours) : null,
-    estimatedTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
-    finalTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
-    employerTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
+    estimatedTotal: backendProject && (backendProject.amount_total != null || backendProject.total_amount != null) ? Number(backendProject.amount_total ?? backendProject.total_amount) : null,
+    finalTotal: backendProject && (backendProject.amount_total != null || backendProject.total_amount != null) ? Number(backendProject.amount_total ?? backendProject.total_amount) : null,
+    employerTotal: backendProject && (backendProject.amount_total != null || backendProject.total_amount != null) ? Number(backendProject.amount_total ?? backendProject.total_amount) : null,
     location: projectSnapshot.location,
     projectSnapshot,
-    escrowStatus: 'not_required',
-    escrowProvider: 'direct_hire',
-    paymentProviderMode: PAYMENT_PROVIDER_MODE,
-    payment_status: 'outside_platform',
-    payout_status: 'outside_platform',
+    escrowStatus: backendProject && backendProject.payment_status === 'funded' ? 'held' : 'not_required',
+    escrowProvider: backendProject && (backendProject.stripe_payment_intent_id || backendProject.stripePaymentIntentId) ? 'stripe' : 'direct_hire',
+    paymentProviderMode: backendProject && (backendProject.stripe_payment_intent_id || backendProject.stripePaymentIntentId) ? 'stripe_manual_capture' : PAYMENT_PROVIDER_MODE,
+    stripe_payment_intent_id: backendProject && (backendProject.stripe_payment_intent_id || backendProject.stripePaymentIntentId) || '',
+    stripe_transfer_id: backendProject && (backendProject.stripe_transfer_id || backendProject.stripeTransferId) || '',
+    payment_status: backendProject && backendProject.payment_status ? backendProject.payment_status : 'outside_platform',
+    payout_status: backendProject && backendProject.payment_status === 'paid' ? 'released' : 'outside_platform',
     status: frontendStatus || 'in_progress',
     thread_id: backendProject && (backendProject.thread_id || backendProject.threadId),
     contractHtml,
@@ -1650,10 +1669,24 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
         body: JSON.stringify({
           application_id: app.id,
           status: 'in_progress',
-          hourly_rate: Number(job.hourly_rate || job.rate || parseCompensationHourlyRate(job.compensation_text || formatDirectJobCompensation(job)) || 0) || undefined
+          hourly_rate: Number(job.hourly_rate || job.rate || parseCompensationHourlyRate(job.compensation_text || formatDirectJobCompensation(job)) || 0) || undefined,
+          estimated_hours: Number(app.estimatedHours || app.estimated_hours || 1) || 1
         })
       });
-      return upsertBackendProject(mapBackendProject(saved, { application: app, job }));
+      const project = upsertBackendProject(mapBackendProject(saved, { application: app, job }));
+      if (STRIPE_ENABLED) {
+        try {
+          const checkout = await createBackendStripeCheckoutSession(getProjectBackendId(project));
+          if (checkout && checkout.url) {
+            toast('Opening secure Stripe test checkout to fund this project.');
+            window.location.href = checkout.url;
+          }
+        } catch (stripeError) {
+          console.warn('Stripe checkout create failed', stripeError);
+          toast(stripeError.message || 'Stripe checkout is not ready yet. Project was saved without funding.');
+        }
+      }
+      return project;
     } catch (error) {
       console.warn('Backend project start failed', error);
       toast(error.message || 'Backend project creation failed. Saving a local booking for now.');
@@ -9845,6 +9878,19 @@ async function approveFinalInvoice(projectId){
   if (!p) return;
   const now = new Date().toISOString();
   const finalBreakdown = calculateCommissionBreakdown(p.actualHours || p.estimatedHours || 0, p.rate || 0);
+  if (STRIPE_ENABLED && p.stripe_payment_intent_id && backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      const captured = await captureBackendStripePayment(p);
+      if (captured) {
+        p.payment_status = captured.status || 'paid';
+        p.stripe_payment_intent_id = captured.payment_intent_id || p.stripe_payment_intent_id;
+      }
+    } catch (error) {
+      console.warn('Stripe capture failed', error);
+      toast(error.message || 'Stripe payment capture failed. Please try again before completing this project.');
+      return;
+    }
+  }
   p.status = 'completed';
   p.completedAt = now;
   p.escrowStatus = 'released';

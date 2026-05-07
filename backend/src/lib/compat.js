@@ -248,6 +248,7 @@ function serializeMessage(message) {
 }
 
 function serializeProject(project) {
+  const transaction = project.transaction || null;
   return {
     id: project.id,
     job_id: project.jobId,
@@ -270,6 +271,18 @@ function serializeProject(project) {
     actualHours: project.actualHours,
     total_amount: project.totalAmount == null ? null : Number(project.totalAmount),
     totalAmount: project.totalAmount == null ? null : Number(project.totalAmount),
+    payment_status: transaction ? transaction.status : undefined,
+    paymentStatus: transaction ? transaction.status : undefined,
+    stripe_payment_intent_id: transaction ? transaction.stripePaymentIntentId : undefined,
+    stripePaymentIntentId: transaction ? transaction.stripePaymentIntentId : undefined,
+    stripe_transfer_id: transaction ? transaction.stripeTransferId : undefined,
+    stripeTransferId: transaction ? transaction.stripeTransferId : undefined,
+    amount_total: transaction ? Number(transaction.amountTotal) : undefined,
+    amountTotal: transaction ? Number(transaction.amountTotal) : undefined,
+    platform_fee: transaction ? Number(transaction.platformFee) : undefined,
+    platformFee: transaction ? Number(transaction.platformFee) : undefined,
+    student_payout: transaction ? Number(transaction.studentPayout) : undefined,
+    studentPayout: transaction ? Number(transaction.studentPayout) : undefined,
     job: project.job ? serializeJob(project.job) : null,
     application: project.application ? serializeApplication(project.application) : null,
     created_at: project.createdAt,

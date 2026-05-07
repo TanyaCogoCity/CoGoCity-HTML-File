@@ -24,6 +24,7 @@ router.get('/', requireAuth, async (req, res) => {
     where,
     include: {
       job: { include: { creator: { include: { userProfile: true } } } },
+      transaction: true,
       application: {
         include: {
           student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
@@ -54,7 +55,7 @@ router.post('/start', requireAuth, async (req, res) => {
 
     let project = await prisma.project.findFirst({
       where: { applicationId: app.id, deletedAt: null },
-      include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
+      include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true, application: { include: { student: true, job: true } } },
     });
 
     const hourlyRate = payload.hourlyRate || Number(app.job.hourlyRate);
@@ -72,7 +73,7 @@ router.post('/start', requireAuth, async (req, res) => {
           estimatedHours,
           totalAmount: estimatedHours ? Number((hourlyRate * estimatedHours).toFixed(2)) : null,
         },
-        include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
+        include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true, application: { include: { student: true, job: true } } },
       });
     }
 
@@ -132,8 +133,13 @@ router.post('/start', requireAuth, async (req, res) => {
 
     await writeAuditLog({ userId: req.user.id, action: 'project.start', entityType: 'project', entityId: project.id, payload: req.body });
 
+    const hydratedProject = await prisma.project.findUnique({
+      where: { id: project.id },
+      include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true, application: { include: { student: true, job: true } } },
+    });
+
     return created(res, {
-      ...serializeProject(project),
+      ...serializeProject(hydratedProject || project),
       thread_id: conversation.id,
     });
   } catch (error) {
@@ -159,7 +165,7 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
       actualHours,
       totalAmount,
     },
-    include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
+    include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true, application: { include: { student: true, job: true } } },
   });
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
@@ -198,7 +204,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
       status: nextStatus,
       completedAt: nextStatus === 'completed' ? new Date() : null,
     },
-    include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
+    include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true, application: { include: { student: true, job: true } } },
   });
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
