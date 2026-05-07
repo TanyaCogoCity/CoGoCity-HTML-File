@@ -49,21 +49,23 @@ app.get('/health/db', async (_req, res) => {
   }
 });
 
-app.use('/api/stripe', stripeRoutes);
+// DigitalOcean public ingress routes /api/* to this service and strips the /api prefix.
+// Keep /api mounts for direct/local backend access and add unprefixed mounts for staging ingress.
+app.use(['/api/stripe', '/stripe'], stripeRoutes);
 
 app.use(express.json({ limit: '1mb' }));
 
-app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api', profileRoutes);
-app.use('/api/services', serviceRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/applications', applicationRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api', reviewRoutes);
-app.use('/api/workshops', workshopRoutes);
-app.use('/api/transactions', transactionRoutes);
-app.use('/api/notifications', notificationRoutes);
+app.use(['/api/auth', '/auth'], authLimiter, authRoutes);
+app.use(['/api', '/'], profileRoutes);
+app.use(['/api/services', '/services'], serviceRoutes);
+app.use(['/api/jobs', '/jobs'], jobRoutes);
+app.use(['/api/applications', '/applications'], applicationRoutes);
+app.use(['/api/projects', '/projects'], projectRoutes);
+app.use(['/api/messages', '/messages'], messageRoutes);
+app.use(['/api', '/'], reviewRoutes);
+app.use(['/api/workshops', '/workshops'], workshopRoutes);
+app.use(['/api/transactions', '/transactions'], transactionRoutes);
+app.use(['/api/notifications', '/notifications'], notificationRoutes);
 
 app.use((err, _req, res, _next) => {
   const msg = err?.message || 'Server error';
