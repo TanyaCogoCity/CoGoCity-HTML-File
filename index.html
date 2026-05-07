@@ -827,6 +827,34 @@ function upsertBackendDirectJob(job){
   const jobs = getBackendDirectJobs().filter(item => String(item.id) !== String(normalized.id));
   saveBackendDirectJobs([normalized, ...jobs]);
 }
+function removeBackendDirectJob(jobId=''){
+  if (!jobId) return;
+  saveBackendDirectJobs(getBackendDirectJobs().filter(item => String(item.id) !== String(jobId)));
+}
+function canPersistDirectJobToBackend(job){
+  return !!(backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token') && job && job.backendSource);
+}
+function toBackendDirectJobPayload(job={}){
+  return {
+    job_title: job.job_title || job.title || '',
+    title: job.job_title || job.title || '',
+    company_name: job.company_name || '',
+    job_type: job.job_type || 'full_time',
+    work_mode: job.work_mode || 'on_site',
+    compensation_text: job.compensation_text || formatDirectJobCompensation(job),
+    location: job.location || '',
+    description: job.description || '',
+    requirements: job.requirements || '',
+    schedule: job.schedule || '',
+    expires_at: job.expires_at || '',
+    posting_package: job.posting_package || 'basic',
+    posting_fee: Number(job.posting_fee || 0) || 0,
+    listing_months: Number(job.listing_months || 1) || 1,
+    listing_duration_days: Number(job.listing_duration_days || 30) || 30,
+    payment_status: job.payment_status || 'captured',
+    status: job.status === 'active' ? 'active' : 'closed'
+  };
+}
 function mergeBackendDirectJobs(localJobs=[]){
   const backendJobs = getBackendDirectJobs().map(normalizeDirectJobRecord);
   if (!backendJobs.length) return localJobs;
@@ -1369,7 +1397,9 @@ function getDirectJobs(){
   return mergeBackendDirectJobs(normalized);
 }
 function saveDirectJobs(items){
-  const payload = ensureArray(items).map(normalizeDirectJobRecord);
+  const payload = ensureArray(items)
+    .map(normalizeDirectJobRecord)
+    .filter(item => !item.backendSource);
   ls('cogo_direct_jobs', payload);
   syncEntityToBackend('direct_jobs', payload);
 }
@@ -1539,7 +1569,7 @@ function updateDirectJobExtendPreview(jobId=''){
   const preview = document.getElementById('directJobExtendFeePreview');
   if (preview) preview.value = `$${money(feePerMonth * months)}`;
 }
-function confirmDirectJobExtension(jobId=''){
+async function confirmDirectJobExtension(jobId=''){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return toast('Job not found.');
@@ -1554,8 +1584,23 @@ function confirmDirectJobExtension(jobId=''){
   const nextExpiry = new Date(currentExpiry.getTime() + extensionDays * 24 * 60 * 60 * 1000);
   job.expires_at = nextExpiry.toISOString();
   job.subscription_total = Number(job.subscription_total || job.posting_fee || 0) + extensionFee;
+  job.listing_months = Number(job.listing_months || 1) + months;
+  job.listing_duration_days = Number(job.listing_duration_days || baseDays) + extensionDays;
   job.status = 'active';
   job.updated_at = new Date().toISOString();
+  if (canPersistDirectJobToBackend(job)) {
+    try {
+      const savedJob = await backendAuthRequest(`/jobs/${encodeURIComponent(job.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify(toBackendDirectJobPayload(job))
+      });
+      Object.assign(job, mapBackendDirectJob(savedJob));
+      upsertBackendDirectJob(job);
+    } catch (error) {
+      console.warn('Backend job extend failed', error);
+      toast(error.message || 'Backend job update failed. Keeping local changes.');
+    }
+  }
   saveDirectJobs(jobs);
   closeModal();
   toast(`Listing extended. New expiration: ${formatDirectJobCloseMessageDate(job.expires_at)}. Charge added: $${money(extensionFee)}.`);
@@ -8564,7 +8609,7 @@ function openEditDirectJobModal(jobId=''){
     </div>
   `, '760px');
 }
-function saveDirectJobEdit(jobId=''){
+async function saveDirectJobEdit(jobId=''){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return toast('Job not found.');
@@ -8583,6 +8628,19 @@ function saveDirectJobEdit(jobId=''){
   job.requirements = requirements;
   job.schedule = String((document.getElementById('directJobEditSchedule') || {}).value || '').trim();
   job.updated_at = new Date().toISOString();
+  if (canPersistDirectJobToBackend(job)) {
+    try {
+      const savedJob = await backendAuthRequest(`/jobs/${encodeURIComponent(job.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify(toBackendDirectJobPayload(job))
+      });
+      Object.assign(job, mapBackendDirectJob(savedJob));
+      upsertBackendDirectJob(job);
+    } catch (error) {
+      console.warn('Backend job update failed', error);
+      toast(error.message || 'Backend job update failed. Keeping local changes.');
+    }
+  }
   saveDirectJobs(jobs);
   closeModal();
   toast('Job updated.');
@@ -8699,23 +8757,45 @@ async function saveEmployerDirectHireJob(){
   employerMyJobsTab = 'manage';
   renderDashboard();
 }
-function setEmployerDirectJobStatus(jobId='', status='closed'){
+async function setEmployerDirectJobStatus(jobId='', status='closed'){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return;
   job.status = status;
   job.updated_at = new Date().toISOString();
+  if (canPersistDirectJobToBackend(job)) {
+    try {
+      const savedJob = await backendAuthRequest(`/jobs/${encodeURIComponent(job.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify(toBackendDirectJobPayload(job))
+      });
+      Object.assign(job, mapBackendDirectJob(savedJob));
+      upsertBackendDirectJob(job);
+    } catch (error) {
+      console.warn('Backend job status update failed', error);
+      toast(error.message || 'Backend job update failed. Keeping local changes.');
+    }
+  }
   saveDirectJobs(jobs);
   toast(status === 'active'
     ? 'Job reopened and visible on the job board again.'
     : 'Your job will be removed from the job board now. You can reopen it anytime before expiration.');
   renderDashboard();
 }
-function removeEmployerDirectJob(jobId=''){
+async function removeEmployerDirectJob(jobId=''){
   const jobs = getDirectJobs();
   const idx = jobs.findIndex(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (idx < 0) return;
   const target = jobs[idx];
+  if (canPersistDirectJobToBackend(target)) {
+    try {
+      await backendAuthRequest(`/jobs/${encodeURIComponent(target.id)}`, { method:'DELETE' });
+      removeBackendDirectJob(target.id);
+    } catch (error) {
+      console.warn('Backend job remove failed', error);
+      toast(error.message || 'Backend job remove failed. Removing local copy only.');
+    }
+  }
   jobs.splice(idx, 1);
   saveDirectJobs(jobs);
   const filteredApplications = getDirectJobApplications().filter(item => String(item.job_id) !== String(target.id));
@@ -8844,6 +8924,7 @@ function renderEmployerMyJobs(el){
     `;
     return;
   }
+  if (backendAuthEnabled() && !backendJobsLoaded && !backendJobsLoading) refreshBackendDirectJobs({ rerender:true });
   const activePackages = getDirectJobPackages().filter(item => item.active);
   const jobs = getDirectJobs()
     .filter(job => String(job.employer_id) === String(currentUser.id))
