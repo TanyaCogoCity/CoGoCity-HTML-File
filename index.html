@@ -1544,6 +1544,8 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     <div>Status: In Progress</div>
     <div>Direct-hire employer payments are handled outside CoGo escrow until Stripe test mode is connected.</div>
   `;
+  const backendStatus = backendProject && backendProject.status;
+  const frontendStatus = backendStatus === 'awaiting_approval' ? 'awaiting_employer_approval' : backendStatus;
   return {
     id: projectId,
     project_id: projectId,
@@ -1566,7 +1568,10 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     agreedPrice: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
     duration: estimatedHours,
     estimatedHours,
+    actualHours: backendProject && (backendProject.actual_hours != null || backendProject.actualHours != null) ? Number(backendProject.actual_hours ?? backendProject.actualHours) : null,
     estimatedTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
+    finalTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
+    employerTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
     location: projectSnapshot.location,
     projectSnapshot,
     escrowStatus: 'not_required',
@@ -1574,13 +1579,14 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     paymentProviderMode: PAYMENT_PROVIDER_MODE,
     payment_status: 'outside_platform',
     payout_status: 'outside_platform',
-    status: (backendProject && backendProject.status) || 'in_progress',
+    status: frontendStatus || 'in_progress',
     thread_id: backendProject && (backendProject.thread_id || backendProject.threadId),
     contractHtml,
     backendSource: !!backendProject,
     createdAt,
     created_at: createdAt,
-    updatedAt: (backendProject && (backendProject.updated_at || backendProject.updatedAt)) || createdAt
+    updatedAt: (backendProject && (backendProject.updated_at || backendProject.updatedAt)) || createdAt,
+    completedAt: backendProject && (backendProject.completed_at || backendProject.completedAt)
   };
 }
 function mapBackendProject(row={}, context={}){
@@ -1607,6 +1613,32 @@ async function refreshBackendProjects(options={}){
   } finally {
     backendProjectsLoading = false;
   }
+}
+function getProjectBackendId(project={}){ return project.backendProjectId || project.project_id || project.id; }
+function mergeBackendProjectUpdate(localProject={}, backendProject={}){
+  if (!backendProject) return localProject;
+  const mapped = mapBackendProject(backendProject, {
+    application: getDirectJobApplications().find(item => String(item.id) === String(localProject.applicationId || backendProject.application_id || backendProject.applicationId || '')) || null,
+    job: getDirectJobById(localProject.job_id || localProject.postId || backendProject.job_id || backendProject.jobId || '') || null
+  });
+  const preserved = {
+    finalInvoice: localProject.finalInvoice || mapped.finalInvoice,
+    projectSnapshot: localProject.projectSnapshot || mapped.projectSnapshot,
+    contractHtml: localProject.contractHtml || mapped.contractHtml,
+    changeRequestNote: localProject.changeRequestNote || mapped.changeRequestNote,
+    finalSubtotal: localProject.finalSubtotal,
+    studentPayout: localProject.studentPayout,
+    studentPlatformFee: localProject.studentPlatformFee,
+    employerPlatformFee: localProject.employerPlatformFee,
+    platformFee: localProject.platformFee,
+    platformFeeTotal: localProject.platformFeeTotal,
+    finalTotal: localProject.finalTotal,
+    employerTotal: localProject.employerTotal,
+    payment_status: localProject.payment_status || mapped.payment_status,
+    payout_status: localProject.payout_status || mapped.payout_status
+  };
+  Object.keys(preserved).forEach(key => preserved[key] === undefined && delete preserved[key]);
+  return Object.assign(localProject, mapped, preserved);
 }
 async function ensureDirectHireProjectForApplication(app={}, job={}){
   const existing = getProjects().find(project => String(project.applicationId) === String(app.id));
@@ -8678,7 +8710,7 @@ function updateCompletionPreview(projectId){
   const breakdownWrap = document.getElementById('student-completion-breakdown');
   if (breakdownWrap) breakdownWrap.innerHTML = renderStudentCommissionBreakdownHtml(calculateCommissionBreakdown(hours, p.rate || 0), 'Actual');
 }
-function submitFinalInvoice(projectId){
+async function submitFinalInvoice(projectId){
   const pList = getProjects();
   const p = pList.find(x => x.id === projectId);
   if (!p) return;
@@ -8720,6 +8752,19 @@ function submitFinalInvoice(projectId){
     totalDue
   };
   p.status = 'awaiting_employer_approval';
+  if (backendAuthEnabled() && p.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest(`/projects/${encodeURIComponent(getProjectBackendId(p))}/complete`, {
+        method: 'PATCH',
+        body: JSON.stringify({ actual_hours: actualHours })
+      });
+      mergeBackendProjectUpdate(p, saved);
+      upsertBackendProject(p);
+    } catch (error) {
+      console.warn('Backend project completion failed', error);
+      toast(error.message || 'Backend project completion failed. Saving local copy only.');
+    }
+  }
   saveProjects(pList);
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. Platform Fee (${formatPercent(breakdown.employerCommissionPct)}): $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, Platform Fee $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
@@ -9794,7 +9839,7 @@ function openEmployerApproval(projectId){
     </div>
   `, '620px');
 }
-function approveFinalInvoice(projectId){
+async function approveFinalInvoice(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
@@ -9913,6 +9958,20 @@ function approveFinalInvoice(projectId){
     savePosts(posts);
   }
 
+  if (backendAuthEnabled() && p.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest(`/projects/${encodeURIComponent(getProjectBackendId(p))}/approve`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'completed' })
+      });
+      mergeBackendProjectUpdate(p, saved);
+      upsertBackendProject(p);
+    } catch (error) {
+      console.warn('Backend project approval failed', error);
+      toast(error.message || 'Backend project approval failed. Saving local copy only.');
+    }
+  }
+
   saveProjects(projects);
   pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work Total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.employerPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions' });
   pushNotif(p.studentUserId, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after a $${money(p.studentPlatformFee || 0)} Platform Fee. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions' });
@@ -9930,13 +9989,26 @@ function openRequestChangesModal(projectId){
     <button class="btn btn-outline" onclick="submitProjectChangeRequest('${esc(projectId)}')">Send Request</button>
   `, '620px');
 }
-function submitProjectChangeRequest(projectId){
+async function submitProjectChangeRequest(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   const note = (document.getElementById('requestChangesNote').value || '').trim();
   p.status = 'in_progress';
   p.changeRequestNote = note;
+  if (backendAuthEnabled() && p.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest(`/projects/${encodeURIComponent(getProjectBackendId(p))}/approve`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'in_progress', note })
+      });
+      mergeBackendProjectUpdate(p, saved);
+      upsertBackendProject(p);
+    } catch (error) {
+      console.warn('Backend project change request failed', error);
+      toast(error.message || 'Backend change request failed. Saving local copy only.');
+    }
+  }
   saveProjects(projects);
   pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`, p.id);

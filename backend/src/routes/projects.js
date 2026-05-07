@@ -159,6 +159,7 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
       actualHours,
       totalAmount,
     },
+    include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
   });
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
@@ -197,33 +198,45 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
       status: nextStatus,
       completedAt: nextStatus === 'completed' ? new Date() : null,
     },
+    include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
   });
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
-  if (tx) {
-    await prisma.transaction.update({ where: { id: tx.id }, data: { status: nextStatus === 'completed' ? 'paid' : tx.status } });
+  if (tx && nextStatus === 'completed') {
+    await prisma.transaction.update({ where: { id: tx.id }, data: { status: 'paid' } });
   }
 
-  await prisma.job.updateMany({ where: { id: project.jobId || '' }, data: { status: 'closed' } });
-
-  await prisma.notification.createMany({
-    data: [
-      {
+  if (nextStatus === 'completed') {
+    await prisma.job.updateMany({ where: { id: project.jobId || '' }, data: { status: 'closed' } });
+    await prisma.notification.createMany({
+      data: [
+        {
+          userId: project.studentId,
+          type: notificationType('payout'),
+          title: 'Payment approved',
+          body: 'Your payout has been approved by employer.',
+          link: `/dashboard?section=transactions&project=${project.id}`,
+        },
+        {
+          userId: project.employerId,
+          type: notificationType('payment'),
+          title: 'Project approved',
+          body: 'Payment release initiated.',
+          link: `/dashboard?section=transactions&project=${project.id}`,
+        },
+      ],
+    });
+  } else if (nextStatus === 'in_progress') {
+    await prisma.notification.create({
+      data: {
         userId: project.studentId,
-        type: notificationType('payout'),
-        title: 'Payment approved',
-        body: 'Your payout has been approved by employer.',
-        link: `/dashboard?section=transactions&project=${project.id}`,
+        type: notificationType('project'),
+        title: 'Project changes requested',
+        body: req.body?.note || 'Employer requested changes before approval.',
+        link: `/dashboard?section=jobs_bookings&project=${project.id}`,
       },
-      {
-        userId: project.employerId,
-        type: notificationType('payment'),
-        title: 'Project approved',
-        body: 'Payment release initiated.',
-        link: `/dashboard?section=transactions&project=${project.id}`,
-      },
-    ],
-  });
+    });
+  }
 
   await writeAuditLog({ userId: req.user.id, action: 'project.approve', entityType: 'project', entityId: project.id, payload: req.body });
 

@@ -274,6 +274,10 @@ function serializeProject(project) {
     application: project.application ? serializeApplication(project.application) : null,
     created_at: project.createdAt,
     createdAt: project.createdAt,
+    updated_at: project.updatedAt,
+    updatedAt: project.updatedAt,
+    completed_at: project.completedAt,
+    completedAt: project.completedAt,
   };
 }
 
