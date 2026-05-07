@@ -1,0 +1,440 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  employer
+  neighbor
+  admin
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum JobStatus {
+  open
+  pending
+  closed
+}
+
+enum ApplicationStatus {
+  applied
+  offered
+  rejected
+  accepted
+}
+
+enum ProjectStatus {
+  accepted
+  funded
+  in_progress
+  awaiting_approval
+  completed
+  canceled
+}
+
+enum TransactionStatus {
+  pending
+  funded
+  paid
+  failed
+  refunded
+}
+
+enum MessageType {
+  user
+  system
+}
+
+enum NotificationType {
+  application
+  project
+  payment
+  message
+  workshop
+  payout
+  refund
+  system
+}
+
+enum WorkshopFormat {
+  online
+  in_person
+}
+
+enum WorkshopStatus {
+  draft
+  published
+  completed
+  canceled
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum MediaAssetType {
+  image
+  video
+}
+
+model User {
+  id                String       @id @default(uuid()) @db.Uuid
+  firstName         String       @map("first_name")
+  lastName          String       @map("last_name")
+  displayName       String       @map("display_name")
+  email             String       @unique
+  phone             String?
+  role              UserRole
+  status            UserStatus   @default(active)
+  dateOfBirth       DateTime?    @map("date_of_birth")
+  profileImageId    String?      @db.Uuid @map("profile_image_id")
+  city              String?
+  passwordHash      String       @map("password_hash")
+  stripeCustomerId  String?      @map("stripe_customer_id")
+  stripeAccountId   String?      @map("stripe_account_id")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+  lastLogin         DateTime?    @map("last_login")
+  deletedAt         DateTime?    @map("deleted_at")
+
+  profileImage      MediaAsset?  @relation("UserProfileImage", fields: [profileImageId], references: [id])
+  studentProfiles   StudentProfile[]
+  jobsCreated       Job[]        @relation("JobCreator")
+  applications      Application[] @relation("ApplicationStudent")
+  projectsAsEmployer Project[]    @relation("ProjectEmployer")
+  projectsAsStudent  Project[]    @relation("ProjectStudent")
+  transactionsPaid   Transaction[] @relation("TransactionPayer")
+  transactionsEarned Transaction[] @relation("TransactionPayee")
+  reviewsWritten     Review[]      @relation("Reviewer")
+  reviewsReceived    Review[]      @relation("ReviewStudent")
+  messagesSent       Message[]     @relation("MessageSender")
+  notifications      Notification[]
+  workshopCreated    Workshop[]    @relation("WorkshopCreator")
+  workshopEnrollments WorkshopEnrollment[]
+  conversationParticipants ConversationParticipant[]
+  refreshTokens      RefreshToken[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model StudentProfile {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid @map("user_id")
+  title       String
+  bio         String?
+  experience  String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  user        User      @relation(fields: [userId], references: [id])
+  services    Service[]
+
+  @@index([userId])
+  @@map("student_profiles")
+}
+
+model Service {
+  id          String    @id @default(uuid()) @db.Uuid
+  profileId   String    @db.Uuid @map("profile_id")
+  title       String
+  description String?
+  hourlyRate  Decimal   @db.Decimal(10,2) @map("hourly_rate")
+  availability String?
+  location    String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  profile     StudentProfile @relation(fields: [profileId], references: [id])
+  reviews     Review[]
+  projects    Project[]
+
+  @@index([profileId])
+  @@map("services")
+}
+
+model MediaAsset {
+  id           String      @id @default(uuid()) @db.Uuid
+  type         MediaAssetType
+  url          String
+  thumbnailUrl String?     @map("thumbnail_url")
+  metadata     Json?
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  usersProfileImage User[] @relation("UserProfileImage")
+  entityLinks    EntityMedia[]
+
+  @@map("media_assets")
+}
+
+model EntityMedia {
+  id          String   @id @default(uuid()) @db.Uuid
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  mediaId     String   @db.Uuid @map("media_id")
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  media       MediaAsset @relation(fields: [mediaId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([mediaId])
+  @@map("entity_media")
+}
+
+model Job {
+  id          String    @id @default(uuid()) @db.Uuid
+  createdBy   String    @db.Uuid @map("created_by")
+  title       String
+  description String?
+  category    String?
+  hourlyRate  Decimal   @db.Decimal(10,2) @map("hourly_rate")
+  location    String?
+  status      JobStatus @default(open)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  creator      User          @relation("JobCreator", fields: [createdBy], references: [id])
+  applications Application[]
+  projects     Project[]
+
+  @@index([createdBy, status])
+  @@map("jobs")
+}
+
+model Application {
+  id         String            @id @default(uuid()) @db.Uuid
+  jobId       String           @db.Uuid @map("job_id")
+  studentId   String           @db.Uuid @map("student_id")
+  status      ApplicationStatus @default(applied)
+  message     String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+
+  job         Job              @relation(fields: [jobId], references: [id])
+  student     User             @relation("ApplicationStudent", fields: [studentId], references: [id])
+  project     Project?
+
+  @@unique([jobId, studentId])
+  @@index([jobId, status])
+  @@map("applications")
+}
+
+model Project {
+  id             String       @id @default(uuid()) @db.Uuid
+  jobId          String?      @db.Uuid @map("job_id")
+  applicationId  String?      @unique @db.Uuid @map("application_id")
+  employerId     String       @db.Uuid @map("employer_id")
+  studentId      String       @db.Uuid @map("student_id")
+  serviceId      String?      @db.Uuid @map("service_id")
+  status         ProjectStatus @default(accepted)
+  hourlyRate     Decimal      @db.Decimal(10,2) @map("hourly_rate")
+  estimatedHours Int?         @map("estimated_hours")
+  actualHours    Int?         @map("actual_hours")
+  totalAmount    Decimal?     @db.Decimal(10,2) @map("total_amount")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  completedAt    DateTime?    @map("completed_at")
+  deletedAt      DateTime?    @map("deleted_at")
+
+  job            Job?         @relation(fields: [jobId], references: [id])
+  application    Application? @relation(fields: [applicationId], references: [id])
+  employer       User         @relation("ProjectEmployer", fields: [employerId], references: [id])
+  student        User         @relation("ProjectStudent", fields: [studentId], references: [id])
+  service        Service?     @relation(fields: [serviceId], references: [id])
+  transaction    Transaction?
+  reviews        Review[]
+  conversations  Conversation[]
+
+  @@index([employerId, status])
+  @@index([studentId, status])
+  @@map("projects")
+}
+
+model Transaction {
+  id                    String            @id @default(uuid()) @db.Uuid
+  projectId             String            @unique @db.Uuid @map("project_id")
+  payerId               String            @db.Uuid @map("payer_id")
+  payeeId               String            @db.Uuid @map("payee_id")
+  amountTotal           Decimal           @db.Decimal(10,2) @map("amount_total")
+  platformFee           Decimal           @db.Decimal(10,2) @map("platform_fee")
+  studentPayout         Decimal           @db.Decimal(10,2) @map("student_payout")
+  stripePaymentIntentId String?           @unique @map("stripe_payment_intent_id")
+  stripeTransferId      String?           @map("stripe_transfer_id")
+  status                TransactionStatus @default(pending)
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  project               Project           @relation(fields: [projectId], references: [id])
+  payer                 User              @relation("TransactionPayer", fields: [payerId], references: [id])
+  payee                 User              @relation("TransactionPayee", fields: [payeeId], references: [id])
+
+  @@index([payerId, status])
+  @@index([payeeId, status])
+  @@map("transactions")
+}
+
+model Review {
+  id         String   @id @default(uuid()) @db.Uuid
+  projectId  String   @db.Uuid @map("project_id")
+  reviewerId String   @db.Uuid @map("reviewer_id")
+  studentId  String   @db.Uuid @map("student_id")
+  serviceId  String?  @db.Uuid @map("service_id")
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  project    Project  @relation(fields: [projectId], references: [id])
+  reviewer   User     @relation("Reviewer", fields: [reviewerId], references: [id])
+  student    User     @relation("ReviewStudent", fields: [studentId], references: [id])
+  service    Service? @relation(fields: [serviceId], references: [id])
+
+  @@unique([projectId, reviewerId])
+  @@index([studentId])
+  @@map("reviews")
+}
+
+model Conversation {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String?  @db.Uuid @map("project_id")
+  label       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project      Project?                 @relation(fields: [projectId], references: [id])
+  messages     Message[]
+  participants ConversationParticipant[]
+
+  @@index([projectId])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @db.Uuid @map("conversation_id")
+  userId         String       @db.Uuid @map("user_id")
+  lastReadAt     DateTime?    @map("last_read_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String      @id @default(uuid()) @db.Uuid
+  conversationId String      @db.Uuid @map("conversation_id")
+  senderId       String      @db.Uuid @map("sender_id")
+  messageText    String      @map("message_text")
+  messageType    MessageType @default(user) @map("message_type")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation("MessageSender", fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId      String          @db.Uuid @map("user_id")
+  type        NotificationType
+  title       String
+  body        String
+  isRead      Boolean         @default(false) @map("is_read")
+  link        String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  user        User            @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model Workshop {
+  id              String         @id @default(uuid()) @db.Uuid
+  title           String
+  description     String?
+  price           Decimal        @db.Decimal(10,2)
+  capacity        Int?
+  format          WorkshopFormat
+  location        String?
+  onlineUrl       String?        @map("online_url")
+  durationMinutes Int?           @map("duration_minutes")
+  status          WorkshopStatus @default(draft)
+  startDate       DateTime       @map("start_date")
+  createdBy       String         @db.Uuid @map("created_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  creator         User           @relation("WorkshopCreator", fields: [createdBy], references: [id])
+  enrollments     WorkshopEnrollment[]
+
+  @@index([createdBy, status])
+  @@map("workshops")
+}
+
+model WorkshopEnrollment {
+  id            String        @id @default(uuid()) @db.Uuid
+  workshopId    String        @db.Uuid @map("workshop_id")
+  userId        String        @db.Uuid @map("user_id")
+  paymentStatus PaymentStatus @default(pending) @map("payment_status")
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  workshop      Workshop      @relation(fields: [workshopId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+
+  @@unique([workshopId, userId])
+  @@map("workshop_enrollments")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId      String  @db.Uuid @map("user_id")
+  tokenHash   String  @map("token_hash")
+  expiresAt   DateTime @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @db.Uuid @map("user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  payload     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
