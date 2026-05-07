@@ -47,6 +47,22 @@ function serializeUser(user, extras = {}) {
     profile: extras.userProfile || null,
     student_profile: extras.studentProfile || null,
     services: (extras.services || []).map(serializeService),
+    stripe_onboarding: {
+      payer: {
+        stripe_customer_id: user.stripeCustomerId || null,
+        default_payment_method_id: user.stripeDefaultPaymentMethodId || null,
+        payment_setup_status: user.stripePaymentSetupStatus || 'not_started',
+        ready: Boolean(user.stripeCustomerId && user.stripeDefaultPaymentMethodId && user.stripePaymentSetupStatus === 'complete'),
+      },
+      connect: {
+        stripe_account_id: user.stripeAccountId || null,
+        onboarding_status: user.stripeConnectOnboardingStatus || 'not_started',
+        charges_enabled: Boolean(user.stripeChargesEnabled),
+        payouts_enabled: Boolean(user.stripePayoutsEnabled),
+        details_submitted: Boolean(user.stripeDetailsSubmitted),
+        ready: Boolean(user.stripeAccountId && user.stripePayoutsEnabled && user.stripeDetailsSubmitted),
+      },
+    },
   };
 }
 

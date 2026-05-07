@@ -106,9 +106,15 @@ model User {
   profileImageId   String?    @map("profile_image_id") @db.Uuid
   city             String?
   passwordHash     String     @map("password_hash")
-  stripeCustomerId String?    @map("stripe_customer_id")
-  stripeAccountId  String?    @map("stripe_account_id")
-  createdAt        DateTime   @default(now()) @map("created_at")
+  stripeCustomerId              String? @map("stripe_customer_id")
+  stripeDefaultPaymentMethodId  String? @map("stripe_default_payment_method_id")
+  stripePaymentSetupStatus      String  @default("not_started") @map("stripe_payment_setup_status")
+  stripeAccountId               String? @map("stripe_account_id")
+  stripeConnectOnboardingStatus String  @default("not_started") @map("stripe_connect_onboarding_status")
+  stripeChargesEnabled          Boolean @default(false) @map("stripe_charges_enabled")
+  stripePayoutsEnabled          Boolean @default(false) @map("stripe_payouts_enabled")
+  stripeDetailsSubmitted        Boolean @default(false) @map("stripe_details_submitted")
+  createdAt                     DateTime @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
   lastLogin        DateTime?  @map("last_login")
   deletedAt        DateTime?  @map("deleted_at")

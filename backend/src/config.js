@@ -10,6 +10,7 @@ module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
   apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:4000',
+  appUrl: process.env.APP_URL || 'https://staging.cogocity.com',
   corsOrigins: toList(process.env.CORS_ORIGIN || 'https://staging.cogocity.com,http://127.0.0.1:8080,http://localhost:8080,file://'),
 
   databaseUrl: process.env.DATABASE_URL,

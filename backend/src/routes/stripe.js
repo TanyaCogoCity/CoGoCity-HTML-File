@@ -21,6 +21,81 @@ function paymentStatusForIntent(paymentIntent) {
   return 'pending';
 }
 
+
+function stripeOrigin(req) {
+  return req.get('origin') || config.appUrl || 'https://staging.cogocity.com';
+}
+
+function onboardingStatusForUser(user) {
+  return {
+    user_id: user.id,
+    role: user.role,
+    payer: {
+      stripe_customer_id: user.stripeCustomerId || null,
+      default_payment_method_id: user.stripeDefaultPaymentMethodId || null,
+      payment_setup_status: user.stripePaymentSetupStatus || 'not_started',
+      ready: Boolean(user.stripeCustomerId && user.stripeDefaultPaymentMethodId && user.stripePaymentSetupStatus === 'complete'),
+    },
+    connect: {
+      stripe_account_id: user.stripeAccountId || null,
+      onboarding_status: user.stripeConnectOnboardingStatus || 'not_started',
+      charges_enabled: Boolean(user.stripeChargesEnabled),
+      payouts_enabled: Boolean(user.stripePayoutsEnabled),
+      details_submitted: Boolean(user.stripeDetailsSubmitted),
+      ready: Boolean(user.stripeAccountId && user.stripePayoutsEnabled && user.stripeDetailsSubmitted),
+    },
+  };
+}
+
+async function ensureStripeCustomer(user) {
+  if (user.stripeCustomerId) return user.stripeCustomerId;
+  const customer = await stripe.customers.create(
+    {
+      email: user.email,
+      name: user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+      phone: user.phone || undefined,
+      metadata: { user_id: user.id, role: user.role },
+    },
+    { idempotencyKey: `user:${user.id}:customer:v1` }
+  );
+  await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: customer.id, stripePaymentSetupStatus: 'in_progress' } });
+  return customer.id;
+}
+
+async function syncPaymentSetupIntent(setupIntent) {
+  const userId = setupIntent.metadata?.user_id;
+  if (!userId || setupIntent.status !== 'succeeded' || !setupIntent.payment_method) return null;
+  const customerId = typeof setupIntent.customer === 'string' ? setupIntent.customer : setupIntent.customer?.id;
+  if (customerId) await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: setupIntent.payment_method } });
+  const data = {
+    stripeCustomerId: customerId || undefined,
+    stripeDefaultPaymentMethodId: String(setupIntent.payment_method),
+    stripePaymentSetupStatus: 'complete',
+  };
+  await prisma.user.updateMany({ where: { id: userId }, data });
+  return prisma.user.findUnique({ where: { id: userId } });
+}
+
+async function updateUserFromConnectAccount(account) {
+  const userId = account.metadata?.user_id;
+  const data = {
+    stripeAccountId: account.id,
+    stripeChargesEnabled: Boolean(account.charges_enabled),
+    stripePayoutsEnabled: Boolean(account.payouts_enabled),
+    stripeDetailsSubmitted: Boolean(account.details_submitted),
+    stripeConnectOnboardingStatus: account.details_submitted && account.payouts_enabled ? 'complete' : 'in_progress',
+  };
+  if (userId) return prisma.user.update({ where: { id: userId }, data });
+  await prisma.user.updateMany({ where: { stripeAccountId: account.id }, data });
+  return prisma.user.findFirst({ where: { stripeAccountId: account.id } });
+}
+
+async function syncConnectAccount(user) {
+  if (!user.stripeAccountId) return user;
+  const account = await stripe.accounts.retrieve(user.stripeAccountId);
+  return updateUserFromConnectAccount(account);
+}
+
 async function loadProjectForPayment(projectId, user) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -61,6 +136,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       await markTransactionFromIntent(event.data.object);
     }
 
+    if (event.type === 'setup_intent.succeeded') {
+      await syncPaymentSetupIntent(event.data.object);
+    }
+
+    if (event.type === 'account.updated') {
+      await updateUserFromConnectAccount(event.data.object);
+    }
+
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       if (session.payment_intent) {
@@ -99,6 +182,129 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
 router.use(express.json({ limit: '1mb' }));
 
+
+router.get('/onboarding/status', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  try {
+    const user = req.user.stripeAccountId ? await syncConnectAccount(req.user) : req.user;
+    return ok(res, onboardingStatusForUser(user));
+  } catch (error) {
+    return fail(res, 400, 'Failed to load Stripe onboarding status', error.message);
+  }
+});
+
+router.post('/onboarding/setup-intent', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payer accounts can save payment methods');
+
+  try {
+    const customerId = await ensureStripeCustomer(req.user);
+    const setupIntent = await stripe.setupIntents.create(
+      {
+        customer: customerId,
+        usage: 'off_session',
+        automatic_payment_methods: { enabled: true },
+        metadata: { user_id: req.user.id, role: req.user.role },
+      },
+      { idempotencyKey: `user:${req.user.id}:setup-intent:${Date.now()}` }
+    );
+    await writeAuditLog({ userId: req.user.id, action: 'stripe.setup_intent.create', entityType: 'user', entityId: req.user.id, payload: { setupIntentId: setupIntent.id } });
+    return ok(res, { setup_intent_id: setupIntent.id, client_secret: setupIntent.client_secret, stripe_customer_id: customerId, status: setupIntent.status });
+  } catch (error) {
+    return fail(res, 400, 'Failed to create Stripe setup intent', error.message);
+  }
+});
+
+router.post('/onboarding/payment-method', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payer accounts can save payment methods');
+
+  const setupIntentId = String(req.body?.setup_intent_id || req.body?.setupIntentId || '').trim();
+  if (!setupIntentId) return fail(res, 400, 'setup_intent_id is required');
+
+  try {
+    const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+    if (setupIntent.metadata?.user_id !== req.user.id) return fail(res, 403, 'Setup intent does not belong to this user');
+    if (setupIntent.status !== 'succeeded') return fail(res, 409, `Setup intent is not complete (${setupIntent.status})`);
+    if (!setupIntent.payment_method) return fail(res, 409, 'Setup intent has no payment method');
+
+    const user = await syncPaymentSetupIntent(setupIntent);
+    await writeAuditLog({ userId: req.user.id, action: 'stripe.payment_method.save', entityType: 'user', entityId: req.user.id, payload: { setupIntentId } });
+    return ok(res, onboardingStatusForUser(user));
+  } catch (error) {
+    return fail(res, 400, 'Failed to save Stripe payment method', error.message);
+  }
+});
+
+router.post('/onboarding/connect-account', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['student', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can create Stripe Connect accounts');
+
+  try {
+    let accountId = req.user.stripeAccountId;
+    if (!accountId) {
+      const account = await stripe.accounts.create(
+        {
+          type: 'express',
+          country: String(req.body?.country || 'US').toUpperCase(),
+          email: req.user.email,
+          business_type: 'individual',
+          capabilities: {
+            transfers: { requested: true },
+          },
+          metadata: { user_id: req.user.id, role: req.user.role },
+        },
+        { idempotencyKey: `user:${req.user.id}:connect-account:v1` }
+      );
+      accountId = account.id;
+      await prisma.user.update({ where: { id: req.user.id }, data: { stripeAccountId: accountId, stripeConnectOnboardingStatus: 'in_progress' } });
+      await writeAuditLog({ userId: req.user.id, action: 'stripe.connect_account.create', entityType: 'user', entityId: req.user.id, payload: { accountId } });
+    }
+
+    const user = await syncConnectAccount({ ...req.user, stripeAccountId: accountId });
+    return ok(res, onboardingStatusForUser(user));
+  } catch (error) {
+    return fail(res, 400, 'Failed to create Stripe Connect account', error.message);
+  }
+});
+
+router.post('/onboarding/connect-account-link', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['student', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can onboard with Stripe Connect');
+
+  try {
+    let user = req.user;
+    if (!user.stripeAccountId) {
+      const account = await stripe.accounts.create(
+        {
+          type: 'express',
+          country: String(req.body?.country || 'US').toUpperCase(),
+          email: user.email,
+          business_type: 'individual',
+          capabilities: { transfers: { requested: true } },
+          metadata: { user_id: user.id, role: user.role },
+        },
+        { idempotencyKey: `user:${user.id}:connect-account:v1` }
+      );
+      user = await prisma.user.update({ where: { id: user.id }, data: { stripeAccountId: account.id, stripeConnectOnboardingStatus: 'in_progress' } });
+    }
+
+    const origin = stripeOrigin(req);
+    const refreshUrl = req.body?.refresh_url || req.body?.refreshUrl || `${origin}/?stripe_connect=refresh`;
+    const returnUrl = req.body?.return_url || req.body?.returnUrl || `${origin}/?stripe_connect=return`;
+    const link = await stripe.accountLinks.create({
+      account: user.stripeAccountId,
+      refresh_url: refreshUrl,
+      return_url: returnUrl,
+      type: 'account_onboarding',
+    });
+    await writeAuditLog({ userId: req.user.id, action: 'stripe.connect_account_link.create', entityType: 'user', entityId: req.user.id });
+    return ok(res, { url: link.url, expires_at: link.expires_at, stripe_account_id: user.stripeAccountId });
+  } catch (error) {
+    return fail(res, 400, 'Failed to create Stripe Connect onboarding link', error.message);
+  }
+});
+
 router.post('/create-payment-intent', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
   if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can initiate payment');
@@ -128,6 +334,8 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
         currency: 'usd',
         capture_method: 'manual',
         automatic_payment_methods: { enabled: true },
+        customer: project.employer?.stripeCustomerId || undefined,
+        payment_method: project.employer?.stripeDefaultPaymentMethodId || undefined,
         description: `CoGo City project funding${project.job?.title ? `: ${project.job.title}` : ''}`,
         metadata: {
           project_id: project.id,
@@ -164,7 +372,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
   const loaded = await loadProjectForPayment(projectId, req.user);
   if (loaded.error) return fail(res, loaded.error[0], loaded.error[1]);
   const { project, tx } = loaded;
-  const origin = req.get('origin') || 'https://staging.cogocity.com';
+  const origin = stripeOrigin(req);
 
   try {
     const session = await stripe.checkout.sessions.create(
@@ -173,6 +381,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
         success_url: `${origin}/?stripe_project=${project.id}&stripe_status=success`,
         cancel_url: `${origin}/?stripe_project=${project.id}&stripe_status=cancel`,
         client_reference_id: project.id,
+        customer: project.employer?.stripeCustomerId || undefined,
         line_items: [
           {
             quantity: 1,
@@ -185,6 +394,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
         ],
         payment_intent_data: {
           capture_method: 'manual',
+          setup_future_usage: project.employer?.stripeCustomerId ? undefined : 'off_session',
           metadata: {
             project_id: project.id,
             transaction_id: tx.id,
@@ -236,6 +446,52 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
     return ok(res, { payment_intent_id: captured.id, status: 'paid', stripe_status: captured.status, project_id: project.id });
   } catch (error) {
     return fail(res, 400, 'Failed to capture payment intent', error.message);
+  }
+});
+
+router.post('/transfer-payout', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (req.user.role !== 'admin') return fail(res, 403, 'Only admins can transfer payouts');
+
+  const projectId = String(req.body?.project_id || req.body?.projectId || '').trim();
+  if (!projectId) return fail(res, 400, 'project_id is required');
+
+  const loaded = await loadProjectForPayment(projectId, req.user);
+  if (loaded.error) return fail(res, loaded.error[0], loaded.error[1]);
+  const { project, tx } = loaded;
+  if (tx.stripeTransferId) return ok(res, { transfer_id: tx.stripeTransferId, status: 'paid', project_id: project.id, already_transferred: true });
+  if (!tx.stripePaymentIntentId || tx.status !== 'paid') return fail(res, 409, 'Project payment must be captured before payout transfer');
+  if (!project.student?.stripeAccountId) return fail(res, 409, 'Student has not connected a Stripe payout account');
+  if (!project.student?.stripePayoutsEnabled || !project.student?.stripeDetailsSubmitted) return fail(res, 409, 'Student Stripe payout account is not ready');
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId);
+    if (paymentIntent.status !== 'succeeded') return fail(res, 409, `Payment is not captured (${paymentIntent.status})`);
+    const latestCharge = typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
+
+    const transfer = await stripe.transfers.create(
+      {
+        amount: toCents(tx.studentPayout),
+        currency: 'usd',
+        destination: project.student.stripeAccountId,
+        source_transaction: latestCharge || undefined,
+        metadata: {
+          project_id: project.id,
+          transaction_id: tx.id,
+          payer_id: project.employerId,
+          payee_id: project.studentId,
+        },
+      },
+      { idempotencyKey: `project:${project.id}:tx:${tx.id}:transfer:v1` }
+    );
+
+    await prisma.transaction.update({ where: { id: tx.id }, data: { stripeTransferId: transfer.id } });
+    await prisma.notification.create({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payout sent', body: 'Your project payout has been sent to Stripe.', link: `/dashboard?section=transactions&project=${project.id}` } });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.transfer.create', entityType: 'transaction', entityId: tx.id, payload: { transferId: transfer.id } });
+
+    return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid', project_id: project.id });
+  } catch (error) {
+    return fail(res, 400, 'Failed to transfer payout', error.message);
   }
 });
 
