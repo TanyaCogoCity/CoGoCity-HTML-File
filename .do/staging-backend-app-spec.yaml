@@ -1,6 +1,6 @@
-# Candidate DigitalOcean App Platform spec for adding the CoGo City staging backend.
-# Do not apply blindly over the existing app until the current static-site spec is reviewed in DigitalOcean.
-# Intended app: seal-app / staging.cogocity.com
+# DigitalOcean App Platform staging topology reference.
+# Actual app: seal-app / https://staging.cogocity.com
+# This file documents the deployed shape without storing real secrets.
 
 name: seal-app
 region: nyc
@@ -14,7 +14,7 @@ services:
     source_dir: backend
     environment_slug: node-js
     build_command: npm ci && npx prisma generate
-    run_command: npm start
+    run_command: npx prisma migrate deploy && npm start
     instance_count: 1
     instance_size_slug: basic-xxs
     http_port: 4000
@@ -28,13 +28,13 @@ services:
         value: "4000"
         scope: RUN_TIME
       - key: API_BASE_URL
-        value: https://api-staging.cogocity.com
+        value: https://staging.cogocity.com/api
         scope: RUN_TIME
       - key: CORS_ORIGIN
         value: https://staging.cogocity.com
         scope: RUN_TIME
       - key: DATABASE_URL
-        value: ${cogocity-staging-db.DATABASE_URL}
+        value: ${db.DATABASE_URL}
         scope: RUN_TIME
         type: SECRET
       - key: REQUIRE_DATABASE
@@ -67,7 +67,12 @@ services:
         scope: RUN_TIME
 
 databases:
-  - name: cogocity-staging-db
+  - name: db
     engine: PG
-    version: "16"
+    version: "17"
     production: false
+
+# Public routing used on staging:
+# - /api/* -> cogocity-api (DigitalOcean strips the /api prefix before forwarding)
+# - /*     -> cogocity-html-file static frontend
+# Runtime start applies committed Prisma migrations before starting the API.

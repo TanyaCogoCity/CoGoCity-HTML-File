@@ -4,8 +4,11 @@ Goal: deploy `backend/` as a DigitalOcean App Platform service and attach a stag
 
 ## Current status
 - Backend code is pushed to GitHub on `main`.
-- Local health test passed for `GET /health`.
-- `GET /health/db` is expected to fail until a real PostgreSQL `DATABASE_URL` is attached.
+- Backend service `cogocity-api` is deployed on DigitalOcean App Platform under `seal-app`.
+- Staging PostgreSQL dev database component is attached as `db`.
+- Public API route is `https://staging.cogocity.com/api`.
+- Verified `GET /api/health` returns `{ "ok": true }`.
+- Verified `GET /api/health/db` returns `{ "database": "connected" }`.
 - Stripe real payments remain disabled; Stripe secret env vars are blank placeholders.
 
 ## DigitalOcean settings to add
@@ -23,15 +26,16 @@ Backend service:
 
 Database:
 - Type: PostgreSQL
-- Name: `cogocity-staging-db`
+- Component name: `db`
+- Version: PostgreSQL 17
 - Environment: staging/dev database is okay for now
-- Attach `DATABASE_URL` to the backend service as a secret runtime env var
+- Attach `DATABASE_URL` to the backend service as a secret runtime env var using `${db.DATABASE_URL}`
 
 Runtime env vars:
 ```text
 NODE_ENV=production
 PORT=4000
-API_BASE_URL=https://api-staging.cogocity.com
+API_BASE_URL=https://staging.cogocity.com/api
 CORS_ORIGIN=https://staging.cogocity.com
 DATABASE_URL=<DigitalOcean managed database URL, secret>
 REQUIRE_DATABASE=true
@@ -45,10 +49,11 @@ STRIPE_PLATFORM_FEE_BPS=1000
 ```
 
 ## After deploy
-1. Open backend public URL and verify `/health` returns `{ "ok": true }`.
-2. Run Prisma migrations against the staging database.
-3. Verify `/health/db` returns database connected.
-4. Only after that, point frontend migration bridge to the backend API.
+1. Open `https://staging.cogocity.com/api/health` and verify `{ "ok": true }`.
+2. Open `https://staging.cogocity.com/api/health/db` and verify `{ "database": "connected" }`.
+3. Commit Prisma migrations under `backend/prisma/migrations/`.
+4. Configure the backend run command as `npx prisma migrate deploy && npm start` so staging applies committed migrations before starting.
+5. Only after that, point frontend migration bridge to the backend API.
 
 ## Important safety notes
 - Do not add real Stripe keys yet.
