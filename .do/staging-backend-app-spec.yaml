@@ -1,0 +1,73 @@
+# Candidate DigitalOcean App Platform spec for adding the CoGo City staging backend.
+# Do not apply blindly over the existing app until the current static-site spec is reviewed in DigitalOcean.
+# Intended app: seal-app / staging.cogocity.com
+
+name: seal-app
+region: nyc
+
+services:
+  - name: cogocity-api
+    github:
+      repo: TanyaCogoCity/CoGoCity-HTML-File
+      branch: main
+      deploy_on_push: true
+    source_dir: backend
+    environment_slug: node-js
+    build_command: npm ci && npx prisma generate
+    run_command: npm start
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 4000
+    health_check:
+      http_path: /health
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_TIME
+      - key: PORT
+        value: "4000"
+        scope: RUN_TIME
+      - key: API_BASE_URL
+        value: https://api-staging.cogocity.com
+        scope: RUN_TIME
+      - key: CORS_ORIGIN
+        value: https://staging.cogocity.com
+        scope: RUN_TIME
+      - key: DATABASE_URL
+        value: ${cogocity-staging-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: REQUIRE_DATABASE
+        value: "true"
+        scope: RUN_TIME
+      - key: JWT_ACCESS_SECRET
+        value: replace-in-digitalocean-with-generated-secret
+        scope: RUN_TIME
+        type: SECRET
+      - key: JWT_REFRESH_SECRET
+        value: replace-in-digitalocean-with-generated-secret
+        scope: RUN_TIME
+        type: SECRET
+      - key: JWT_ACCESS_TTL
+        value: 15m
+        scope: RUN_TIME
+      - key: JWT_REFRESH_TTL
+        value: 30d
+        scope: RUN_TIME
+      - key: STRIPE_SECRET_KEY
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: STRIPE_WEBHOOK_SECRET
+        value: ""
+        scope: RUN_TIME
+        type: SECRET
+      - key: STRIPE_PLATFORM_FEE_BPS
+        value: "1000"
+        scope: RUN_TIME
+
+databases:
+  - name: cogocity-staging-db
+    engine: PG
+    version: "16"
+    production: false
