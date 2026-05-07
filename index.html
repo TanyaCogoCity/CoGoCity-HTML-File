@@ -483,6 +483,9 @@ let backendBrowseStudentsError = '';
 let backendJobsLoading = false;
 let backendJobsLoaded = false;
 let backendJobsError = '';
+let backendApplicationsLoading = false;
+let backendApplicationsLoaded = false;
+let backendApplicationsError = '';
 let backendCurrentProfileLoading = false;
 let backendCurrentProfileLoadedFor = '';
 const EMPLOYER_AVATAR_OPTIONS = ['\u{1F3E0}','\u{1F3E2}','\u{1F4BC}','\u{1F6E0}\uFE0F','\u{1F4E6}','\u{1F9F0}','\u{1FAB4}','\u2615','\u{1F6CD}\uFE0F','\u{1F37D}\uFE0F','\u{1F69A}','\u{1F4BB}'];
@@ -1432,20 +1435,72 @@ function normalizeDirectJobApplication(application){
   normalized.review_submitted = !!normalized.review_submitted;
   normalized.review_rating = Number(normalized.review_rating || 0) || 0;
   normalized.review_comment = String(normalized.review_comment || '').trim();
+  normalized.backendSource = !!normalized.backendSource;
   normalized.created_at = normalized.created_at || new Date().toISOString();
   normalized.updated_at = normalized.updated_at ? new Date(normalized.updated_at).toISOString() : '';
   return normalized;
 }
+function getBackendDirectJobApplications(){ return ensureArray(ls('cogo_backend_direct_job_applications')).map(normalizeDirectJobApplication); }
+function saveBackendDirectJobApplications(items){ ls('cogo_backend_direct_job_applications', ensureArray(items).map(item => normalizeDirectJobApplication(Object.assign({}, item, { backendSource:true })))); }
+function mapBackendDirectJobApplication(row={}){
+  const job = row.job ? mapBackendDirectJob(row.job) : null;
+  if (job) upsertBackendDirectJob(job);
+  return normalizeDirectJobApplication({
+    id: row.id,
+    job_id: row.job_id || row.jobId,
+    employer_id: row.employer_id || row.employerId || (job && job.employer_id),
+    student_id: row.student_id || row.studentId,
+    student_name: row.student_name || row.studentName,
+    message: row.message,
+    resume_file_name: row.resume_file_name || row.resumeFileName,
+    resume_data_url: row.resume_data_url || row.resumeDataUrl,
+    status: row.status || 'new',
+    created_at: row.created_at || row.createdAt,
+    updated_at: row.updated_at || row.updatedAt,
+    backendSource: true
+  });
+}
+function upsertBackendDirectJobApplication(application){
+  const app = normalizeDirectJobApplication(Object.assign({}, application, { backendSource:true }));
+  const items = getBackendDirectJobApplications();
+  const idx = items.findIndex(item => String(item.id) === String(app.id));
+  if (idx >= 0) items[idx] = app; else items.unshift(app);
+  saveBackendDirectJobApplications(items);
+  return app;
+}
+function mergeBackendDirectJobApplications(localApps=[]){
+  const backendApps = getBackendDirectJobApplications();
+  const backendIds = new Set(backendApps.map(item => String(item.id)));
+  return backendApps.concat(ensureArray(localApps).filter(item => !backendIds.has(String(item.id))));
+}
+async function refreshBackendDirectJobApplications(options={}){
+  if (!backendAuthEnabled() || backendApplicationsLoading || !getBackendAccessToken()) return;
+  backendApplicationsLoading = true;
+  try {
+    const rows = await backendAuthRequest('/jobs/applications/me');
+    const list = Array.isArray(rows) ? rows : ensureArray(rows.items || rows.applications || rows.data);
+    saveBackendDirectJobApplications(list.map(mapBackendDirectJobApplication));
+    backendApplicationsLoaded = true;
+    backendApplicationsError = '';
+    if (options.rerender) renderPage();
+  } catch (error) {
+    backendApplicationsError = error.message || 'Could not load backend applications.';
+    console.warn('Backend applications load failed', error);
+  } finally {
+    backendApplicationsLoading = false;
+  }
+}
 function getDirectJobApplications(){
   const items = ensureArray(ls('cogo_direct_job_applications'));
   const normalized = items.map(normalizeDirectJobApplication);
-  if (JSON.stringify(items) !== JSON.stringify(normalized)) ls('cogo_direct_job_applications', normalized);
-  return normalized;
+  if (JSON.stringify(items) !== JSON.stringify(normalized)) ls('cogo_direct_job_applications', normalized.filter(item => !item.backendSource));
+  return mergeBackendDirectJobApplications(normalized);
 }
 function saveDirectJobApplications(items){
   const payload = ensureArray(items).map(normalizeDirectJobApplication);
-  ls('cogo_direct_job_applications', payload);
-  syncEntityToBackend('direct_job_applications', payload);
+  ls('cogo_direct_job_applications', payload.filter(item => !item.backendSource));
+  saveBackendDirectJobApplications(payload.filter(item => item.backendSource));
+  syncEntityToBackend('direct_job_applications', payload.filter(item => !item.backendSource));
 }
 function getDirectJobById(jobId=''){ return getDirectJobs().find(job => String(job.id) === String(jobId)); }
 function getDirectJobApplicationsFor(jobId=''){ return getDirectJobApplications().filter(item => String(item.job_id) === String(jobId)); }
@@ -4646,7 +4701,7 @@ function openDirectJobApplyModal(jobId=''){
     </div>
   `, '700px');
 }
-function submitDirectJobApplication(jobId=''){
+async function submitDirectJobApplication(jobId=''){
   const job = getDirectJobById(jobId);
   if (!job || !currentUser) return;
   const message = String((document.getElementById('directJobApplicationMessage') || {}).value || '').trim();
@@ -4659,8 +4714,8 @@ function submitDirectJobApplication(jobId=''){
   const dataUrl = useSaved ? savedResume.dataUrl : String((directJobApplyDraft && directJobApplyDraft.dataUrl) || '').trim();
   if (!fileName || !dataUrl) return toast('Please upload your resume before applying.');
   const applications = getDirectJobApplications();
-  if (applications.some(item => item.job_id === job.id && item.student_id === currentUser.id)) return toast('You already applied to this job.');
-  applications.unshift({
+  if (applications.some(item => item.job_id === job.id && item.student_id === currentUser.id && item.status !== 'withdrawn')) return toast('You already applied to this job.');
+  let application = {
     id: uid('dapp'),
     job_id: job.id,
     employer_id: job.employer_id,
@@ -4672,8 +4727,23 @@ function submitDirectJobApplication(jobId=''){
     status: 'new',
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
-  });
-  saveDirectJobApplications(applications);
+  };
+  if (backendAuthEnabled() && job.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest(`/jobs/${encodeURIComponent(job.id)}/apply`, {
+        method: 'POST',
+        body: JSON.stringify(application)
+      });
+      application = upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved));
+    } catch (error) {
+      console.warn('Backend application submit failed', error);
+      toast(error.message || 'Backend application failed. Saving local copy only.');
+    }
+  }
+  if (!application.backendSource) {
+    applications.unshift(application);
+    saveDirectJobApplications(applications);
+  }
   if (!useSaved) saveStudentResume(currentUser.id, { fileName, dataUrl });
   sendInboxMessage(job.employer_id, getUserById(job.employer_id)?.name || 'Employer', `Direct Hire application for "${job.job_title}": ${message}`, null, currentUser, {
     thread_id: `direct_job:${job.id}`,
@@ -8114,6 +8184,7 @@ function deleteStudentProfile(profileId){
 }
 
 function renderStudentJobsBookings(el){
+ if (backendAuthEnabled() && !backendApplicationsLoaded && !backendApplicationsLoading) refreshBackendDirectJobApplications({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
@@ -8187,7 +8258,7 @@ function openStudentDirectJobThread(applicationId=''){
   activeThreadUserId = `${job.employer_id}::direct_job:${job.id}`;
   renderDashboard();
 }
-function withdrawStudentDirectJobApplication(applicationId=''){
+async function withdrawStudentDirectJobApplication(applicationId=''){
   const apps = getDirectJobApplications();
   const app = apps.find(item => String(item.id) === String(applicationId) && String(item.student_id) === String(currentUser.id));
   if (!app) return toast('Application not found.');
@@ -8195,6 +8266,18 @@ function withdrawStudentDirectJobApplication(applicationId=''){
   const job = getDirectJobById(app.job_id);
   app.status = 'withdrawn';
   app.updated_at = new Date().toISOString();
+  if (backendAuthEnabled() && app.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest(`/jobs/applications/${encodeURIComponent(app.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'withdrawn' })
+      });
+      Object.assign(app, upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved)));
+    } catch (error) {
+      console.warn('Backend application withdraw failed', error);
+      toast(error.message || 'Backend withdraw failed. Saving local copy only.');
+    }
+  }
   saveDirectJobApplications(apps);
   const studentName = currentUser.publicName || currentUser.name || app.student_name || 'Student';
   const jobTitle = (job && job.job_title) || 'your job listing';
@@ -8803,7 +8886,7 @@ async function removeEmployerDirectJob(jobId=''){
   toast('Job removed.');
   renderDashboard();
 }
-function updateDirectJobApplicationStatus(applicationId='', status='new'){
+async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   const items = getDirectJobApplications();
   const app = items.find(item => String(item.id) === String(applicationId));
   if (!app) return;
@@ -8811,6 +8894,18 @@ function updateDirectJobApplicationStatus(applicationId='', status='new'){
   if (!job || String(job.employer_id) !== String(currentUser.id)) return;
   app.status = status;
   app.updated_at = new Date().toISOString();
+  if (backendAuthEnabled() && app.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest(`/jobs/applications/${encodeURIComponent(app.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status })
+      });
+      Object.assign(app, upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved)));
+    } catch (error) {
+      console.warn('Backend application status failed', error);
+      toast(error.message || 'Backend status update failed. Saving local copy only.');
+    }
+  }
   saveDirectJobApplications(items);
   if (['shortlisted','hired','rejected','reviewing'].includes(status)) {
     pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'messages' });
@@ -8925,6 +9020,7 @@ function renderEmployerMyJobs(el){
     return;
   }
   if (backendAuthEnabled() && !backendJobsLoaded && !backendJobsLoading) refreshBackendDirectJobs({ rerender:true });
+  if (backendAuthEnabled() && !backendApplicationsLoaded && !backendApplicationsLoading) refreshBackendDirectJobApplications({ rerender:true });
   const activePackages = getDirectJobPackages().filter(item => item.active);
   const jobs = getDirectJobs()
     .filter(job => String(job.employer_id) === String(currentUser.id))

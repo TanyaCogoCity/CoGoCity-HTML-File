@@ -152,9 +152,48 @@ function serializeJob(job) {
   };
 }
 
+function normalizeApplicationStatus(status = 'applied') {
+  const value = String(status || '').toLowerCase().trim();
+  if (value === 'new') return 'applied';
+  if (value === 'accepted') return 'hired';
+  if (value === 'offered') return 'shortlisted';
+  return ['applied', 'reviewing', 'shortlisted', 'hired', 'rejected', 'withdrawn'].includes(value) ? value : 'applied';
+}
+
+function serializeApplication(app) {
+  const student = app.student || {};
+  const job = app.job || {};
+  return {
+    id: app.id,
+    job_id: app.jobId,
+    jobId: app.jobId,
+    employer_id: job.createdBy || job.created_by || '',
+    employerId: job.createdBy || job.created_by || '',
+    student_id: app.studentId,
+    studentId: app.studentId,
+    student_name: student.displayName || '',
+    studentName: student.displayName || '',
+    message: app.message || '',
+    resume_file_name: app.resumeFileName || app.resume_file_name || '',
+    resumeFileName: app.resumeFileName || app.resume_file_name || '',
+    resume_data_url: app.resumeDataUrl || app.resume_data_url || '',
+    resumeDataUrl: app.resumeDataUrl || app.resume_data_url || '',
+    status: app.status === 'applied' ? 'new' : app.status,
+    backend_status: app.status,
+    created_at: app.createdAt,
+    createdAt: app.createdAt,
+    updated_at: app.updatedAt,
+    updatedAt: app.updatedAt,
+    job: app.job ? serializeJob(app.job) : null,
+  };
+}
+
 function normalizeApplyPayload(payload = {}) {
   return {
     message: payload.message || payload.cover_letter || '',
+    resumeFileName: payload.resume_file_name || payload.resumeFileName || '',
+    resumeDataUrl: payload.resume_data_url || payload.resumeDataUrl || '',
+    status: normalizeApplicationStatus(payload.status || 'applied'),
     threadId: payload.thread_id || payload.threadId || null,
   };
 }
@@ -245,6 +284,8 @@ module.exports = {
   serializeService,
   normalizeJobPayload,
   serializeJob,
+  normalizeApplicationStatus,
+  serializeApplication,
   normalizeApplyPayload,
   normalizeProjectStatus,
   normalizeProjectStartPayload,

@@ -27,8 +27,12 @@ enum JobStatus {
 
 enum ApplicationStatus {
   applied
-  offered
+  reviewing
+  shortlisted
+  hired
   rejected
+  withdrawn
+  offered
   accepted
 }
 
@@ -260,9 +264,11 @@ model Application {
   id        String            @id @default(uuid()) @db.Uuid
   jobId     String            @map("job_id") @db.Uuid
   studentId String            @map("student_id") @db.Uuid
-  status    ApplicationStatus @default(applied)
-  message   String?
-  createdAt DateTime          @default(now()) @map("created_at")
+  status         ApplicationStatus @default(applied)
+  message        String?
+  resumeFileName String?           @map("resume_file_name")
+  resumeDataUrl  String?           @map("resume_data_url")
+  createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt DateTime          @updatedAt @map("updated_at")
   deletedAt DateTime?         @map("deleted_at")
 

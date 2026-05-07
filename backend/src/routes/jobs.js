@@ -2,7 +2,7 @@ const express = require('express');
 const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
-const { normalizeJobPayload, serializeJob, normalizeApplyPayload, notificationType } = require('../lib/compat');
+const { normalizeJobPayload, serializeJob, normalizeApplicationStatus, serializeApplication, normalizeApplyPayload, notificationType } = require('../lib/compat');
 const { writeAuditLog } = require('../lib/audit');
 
 const router = express.Router();
@@ -109,6 +109,72 @@ router.delete('/:id', requireAuth, async (req, res) => {
   return ok(res, { id: job.id, deleted: true });
 });
 
+router.get('/applications/me', requireAuth, async (req, res) => {
+  const where = { deletedAt: null };
+  if (req.user.role === 'student') {
+    where.studentId = req.user.id;
+  } else if (['employer', 'neighbor'].includes(req.user.role)) {
+    where.job = { createdBy: req.user.id, deletedAt: null };
+  } else if (req.user.role !== 'admin') {
+    return fail(res, 403, 'Not authorized');
+  }
+
+  const applications = await prisma.application.findMany({
+    where,
+    include: {
+      student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
+      job: { include: { creator: { include: { userProfile: true } } } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  return ok(res, applications.map(serializeApplication));
+});
+
+router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
+  const existing = await prisma.application.findFirst({
+    where: { id: req.params.applicationId, deletedAt: null },
+    include: { job: true },
+  });
+  if (!existing) return fail(res, 404, 'Application not found');
+
+  const isOwner = existing.job.createdBy === req.user.id;
+  const isStudent = existing.studentId === req.user.id;
+  const isAdmin = req.user.role === 'admin';
+  if (!isOwner && !isStudent && !isAdmin) return fail(res, 403, 'Not authorized to update this application');
+
+  const body = req.body || {};
+  const nextStatus = normalizeApplicationStatus(body.status || existing.status);
+  if (isStudent && !isAdmin && !['withdrawn', 'applied'].includes(nextStatus)) return fail(res, 403, 'Students can only withdraw or resubmit their own applications');
+
+  const app = await prisma.application.update({
+    where: { id: existing.id },
+    data: {
+      status: nextStatus,
+      message: body.message == null ? existing.message : String(body.message || ''),
+      resumeFileName: body.resume_file_name == null && body.resumeFileName == null ? existing.resumeFileName : String(body.resume_file_name || body.resumeFileName || ''),
+      resumeDataUrl: body.resume_data_url == null && body.resumeDataUrl == null ? existing.resumeDataUrl : String(body.resume_data_url || body.resumeDataUrl || ''),
+    },
+    include: {
+      student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
+      job: { include: { creator: { include: { userProfile: true } } } },
+    },
+  });
+
+  const notifyUserId = isOwner ? app.studentId : app.job.createdBy;
+  await prisma.notification.create({
+    data: {
+      userId: notifyUserId,
+      type: notificationType('application'),
+      title: 'Application updated',
+      body: `${app.job.title} application is now ${nextStatus}`,
+      link: '/dashboard',
+    },
+  });
+  await writeAuditLog({ userId: req.user.id, action: 'application.update', entityType: 'application', entityId: app.id, payload: req.body });
+  return ok(res, serializeApplication(app));
+});
+
 router.post('/:id/apply', requireAuth, async (req, res) => {
   if (req.user.role !== 'student') return fail(res, 403, 'Only students can apply');
 
@@ -126,10 +192,19 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
         studentId: req.user.id,
         status: 'applied',
         message: payload.message,
+        resumeFileName: payload.resumeFileName,
+        resumeDataUrl: payload.resumeDataUrl,
       },
       update: {
         message: payload.message,
         status: 'applied',
+        resumeFileName: payload.resumeFileName,
+        resumeDataUrl: payload.resumeDataUrl,
+        deletedAt: null,
+      },
+      include: {
+        student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
+        job: { include: { creator: { include: { userProfile: true } } } },
       },
     });
 
@@ -139,21 +214,13 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
         type: notificationType('application'),
         title: 'New application received',
         body: `${req.user.displayName} applied to ${job.title}`,
-        link: `/dashboard?section=applicants_projects&job=${job.id}`,
+        link: `/dashboard?section=my_jobs&job=${job.id}`,
       },
     });
 
     await writeAuditLog({ userId: req.user.id, action: 'application.apply', entityType: 'application', entityId: app.id, payload: req.body });
 
-    return created(res, {
-      id: app.id,
-      job_id: app.jobId,
-      student_id: app.studentId,
-      status: app.status,
-      message: app.message,
-      created_at: app.createdAt,
-      thread_id: payload.threadId,
-    });
+    return created(res, Object.assign(serializeApplication(app), { thread_id: payload.threadId }));
   } catch (error) {
     return fail(res, 400, 'Application failed', error.message);
   }
