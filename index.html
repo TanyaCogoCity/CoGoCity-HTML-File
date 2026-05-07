@@ -445,6 +445,7 @@ const DEFAULT_PLATFORM_COMMISSION_PERCENT = 10;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const PAYMENT_PROVIDER_MODE = 'mock_stripe_ready';
 const STRIPE_ENABLED = typeof window !== 'undefined' && window.location.hostname === 'staging.cogocity.com';
+const STRIPE_PUBLISHABLE_KEY = (typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || 'pk_test_51TCSvnEUfcoM0jH8P15J2oKomCRWcgECbBj7CghdxPYrD0jlda03P4beGADMyCHWeiooCO0jdkOjv3YjASdETbb300UdAOmXUq';
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
 const BACKEND_MIGRATION = {
   enabled: false,
@@ -678,6 +679,194 @@ async function captureBackendStripePayment(project={}, amountTotal=null){
     method:'POST',
     body: JSON.stringify(payload)
   });
+}
+
+let stripeJsPromise = null;
+let stripeClient = null;
+let stripeCardElement = null;
+let stripeCardElements = null;
+let stripeSetupIntentContext = null;
+function stripeOnboardingEnabled(){
+  return !!(STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken());
+}
+function userStripeOnboarding(user=currentUser){
+  return (user && user.stripe_onboarding) || { payer:{ payment_setup_status:'not_started', ready:false }, connect:{ onboarding_status:'not_started', ready:false } };
+}
+function stripeStatusLabel(value=''){
+  const raw = String(value || 'not_started').replace(/_/g, ' ');
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+function syncCurrentUserStripeOnboarding(status){
+  if (!currentUser || !status) return;
+  currentUser.stripe_onboarding = status;
+  currentUser.paymentSetupComplete = Boolean(status.payer && status.payer.ready);
+  currentUser.stripeConnectReady = Boolean(status.connect && status.connect.ready);
+  if (status.payer && status.payer.ready) currentUser.paymentMethod = Object.assign({ status:'valid', brand:'Stripe', last4:'saved' }, currentUser.paymentMethod || {});
+  const users = getUsers();
+  const idx = users.findIndex(user => String(user.id) === String(currentUser.id));
+  if (idx >= 0) {
+    users[idx] = Object.assign({}, users[idx], currentUser);
+    saveUsers(users);
+  }
+  setCurrentUser(currentUser);
+}
+async function refreshStripeOnboardingStatus(options={}){
+  if (!stripeOnboardingEnabled()) return null;
+  try {
+    const status = await backendAuthRequest('/stripe/onboarding/status');
+    syncCurrentUserStripeOnboarding(status);
+    if (options.rerender) renderDashboard();
+    return status;
+  } catch (error) {
+    if (options.toast !== false) toast(error.message || 'Could not load Stripe onboarding status.');
+    return null;
+  }
+}
+function loadStripeJs(){
+  if (!STRIPE_PUBLISHABLE_KEY) return Promise.reject(new Error('Stripe publishable key is not configured.'));
+  if (window.Stripe) return Promise.resolve(window.Stripe);
+  if (!stripeJsPromise) {
+    stripeJsPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.async = true;
+      script.onload = () => window.Stripe ? resolve(window.Stripe) : reject(new Error('Stripe.js did not load.'));
+      script.onerror = () => reject(new Error('Could not load Stripe.js.'));
+      document.head.appendChild(script);
+    });
+  }
+  return stripeJsPromise;
+}
+async function getStripeClient(){
+  if (stripeClient) return stripeClient;
+  const StripeFactory = await loadStripeJs();
+  stripeClient = StripeFactory(STRIPE_PUBLISHABLE_KEY);
+  return stripeClient;
+}
+function openPostSignupStripeOnboardingPrompt(kind){
+  if (!stripeOnboardingEnabled()) return;
+  const isPayer = kind === 'payer';
+  openModal(isPayer ? 'Add Payment Method' : 'Set Up Payouts', `
+    <div class="card form-card">
+      <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Secure hiring payments with Stripe' : 'Get ready to receive payouts'}</div>
+      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, save a test-mode card through Stripe. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect onboarding on Stripe\'s secure hosted page.'}</div>
+      <div class="warning" style="margin-bottom:14px">Staging/test mode only.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="closeModal()">Later</button>
+        <button class="btn btn-blue" onclick="${isPayer ? 'closeModal();openPayerStripeSetupModal()' : 'closeModal();startStripeConnectOnboarding()'}">${isPayer ? 'Add Test Card' : 'Start Stripe Connect'}</button>
+      </div>
+    </div>
+  `, '620px');
+}
+function renderStripeOnboardingCard(){
+  if (!stripeOnboardingEnabled()) return '';
+  const status = userStripeOnboarding();
+  const isPayer = ['employer','neighbor','admin'].includes(currentUser.role);
+  const isPayout = ['student','admin'].includes(currentUser.role);
+  const payer = status.payer || {};
+  const connect = status.connect || {};
+  const blocks = [];
+  if (isPayer) blocks.push(`
+    <div class="card" style="padding:14px;background:#fff;margin-top:10px">
+      <div class="split" style="gap:12px;align-items:center">
+        <div>
+          <div style="font-weight:800">Payment method for hiring</div>
+          <div class="small muted">Status: ${esc(payer.ready ? 'Ready' : stripeStatusLabel(payer.payment_setup_status))}</div>
+          <div class="small muted" style="margin-top:4px">Cards are saved securely by Stripe; CoGo City never stores card numbers.</div>
+        </div>
+        <button class="btn ${payer.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="openPayerStripeSetupModal()">${payer.ready ? 'Update Card' : 'Add Card'}</button>
+      </div>
+    </div>
+  `);
+  if (isPayout) blocks.push(`
+    <div class="card" style="padding:14px;background:#fff;margin-top:10px">
+      <div class="split" style="gap:12px;align-items:center">
+        <div>
+          <div style="font-weight:800">Payout setup with Stripe Connect</div>
+          <div class="small muted">Status: ${esc(connect.ready ? 'Ready' : stripeStatusLabel(connect.onboarding_status))}</div>
+          <div class="small muted" style="margin-top:4px">Stripe collects bank, identity, and payout details on its secure hosted page.</div>
+        </div>
+        <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Stripe' : 'Set Up Payouts'}</button>
+      </div>
+    </div>
+  `);
+  if (!blocks.length) return '';
+  return `<div class="card form-card" style="margin-bottom:16px;background:#f8fafc"><div style="font-weight:900;font-size:1.05rem">Stripe onboarding</div><div class="small muted" style="margin-top:6px">Staging/test mode only.</div>${blocks.join('')}</div>`;
+}
+async function openPayerStripeSetupModal(){
+  if (!stripeOnboardingEnabled()) return toast('Stripe onboarding is available on staging after sign-in.');
+  if (!STRIPE_PUBLISHABLE_KEY) return toast('Stripe publishable key is not configured.');
+  openModal('Add Payment Method', `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Test mode only. Use Stripe test card 4242 4242 4242 4242, any future expiry, any CVC.</div>
+      <div class="field"><label>Card details</label><div id="stripe-card-element" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff"></div></div>
+      <div id="stripe-card-errors" class="small" style="color:#b91c1c;margin-bottom:12px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-blue" id="stripeSavePaymentBtn" onclick="submitPayerStripeSetup()">Save Payment Method</button>
+      </div>
+    </div>
+  `, '620px');
+  try {
+    const setup = await backendAuthRequest('/stripe/onboarding/setup-intent', { method:'POST', body: JSON.stringify({}) });
+    stripeSetupIntentContext = setup;
+    const stripe = await getStripeClient();
+    stripeCardElements = stripe.elements();
+    stripeCardElement = stripeCardElements.create('card', { hidePostalCode:false });
+    stripeCardElement.mount('#stripe-card-element');
+    stripeCardElement.on('change', event => {
+      const el = document.getElementById('stripe-card-errors');
+      if (el) el.textContent = event.error ? event.error.message : '';
+    });
+  } catch (error) {
+    const el = document.getElementById('stripe-card-errors');
+    if (el) el.textContent = error.message || 'Could not initialize Stripe payment form.';
+  }
+}
+async function submitPayerStripeSetup(){
+  const btn = document.getElementById('stripeSavePaymentBtn');
+  const err = document.getElementById('stripe-card-errors');
+  if (!stripeCardElement || !stripeSetupIntentContext?.client_secret) return err ? err.textContent = 'Stripe card form is not ready yet.' : toast('Stripe card form is not ready yet.');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+  try {
+    const stripe = await getStripeClient();
+    const result = await stripe.confirmCardSetup(stripeSetupIntentContext.client_secret, { payment_method: { card: stripeCardElement, billing_details: { email: currentUser.email || undefined, name: currentUser.name || undefined } } });
+    if (result.error) throw new Error(result.error.message || 'Stripe could not save this payment method.');
+    const status = await backendAuthRequest('/stripe/onboarding/payment-method', { method:'POST', body: JSON.stringify({ setup_intent_id: result.setupIntent.id }) });
+    syncCurrentUserStripeOnboarding(status);
+    closeModal();
+    toast('Payment method saved securely with Stripe.');
+    renderDashboard();
+  } catch (error) {
+    if (err) err.textContent = error.message || 'Could not save payment method.';
+    else toast(error.message || 'Could not save payment method.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Payment Method'; }
+  }
+}
+async function startStripeConnectOnboarding(){
+  if (!stripeOnboardingEnabled()) return toast('Stripe Connect onboarding is available on staging after sign-in.');
+  try {
+    await backendAuthRequest('/stripe/onboarding/connect-account', { method:'POST', body: JSON.stringify({ country:'US' }) });
+    const returnUrl = `${window.location.origin}${window.location.pathname}?stripe_connect=return#/dashboard`;
+    const refreshUrl = `${window.location.origin}${window.location.pathname}?stripe_connect=refresh#/dashboard`;
+    const link = await backendAuthRequest('/stripe/onboarding/connect-account-link', { method:'POST', body: JSON.stringify({ return_url:returnUrl, refresh_url:refreshUrl }) });
+    if (!link.url) throw new Error('Stripe did not return an onboarding link.');
+    window.location.href = link.url;
+  } catch (error) {
+    toast(error.message || 'Could not start Stripe Connect onboarding.');
+  }
+}
+function handleStripeReturnParams(){
+  const query = new URLSearchParams(window.location.search || '');
+  if (!query.has('stripe_connect')) return;
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    refreshStripeOnboardingStatus({ rerender:true, toast:false });
+    toast(query.get('stripe_connect') === 'refresh' ? 'Stripe onboarding link refreshed. Please continue setup.' : 'Returned from Stripe. Status refreshed.');
+  }
+  query.delete('stripe_connect');
+  const clean = `${window.location.pathname}${query.toString() ? `?${query.toString()}` : ''}${window.location.hash || '#/dashboard'}`;
+  window.history.replaceState({}, '', clean);
 }
 function getBackendBrowseUsers(){ return ensureArray(ls('cogo_backend_browse_users')); }
 function saveBackendBrowseUsers(users){ ls('cogo_backend_browse_users', ensureArray(users).map(normalizeUserRecord)); }
@@ -953,8 +1142,16 @@ function mapBackendUser(apiUser={}, fallback={}){
     status: apiUser.status || fallback.status || 'active',
     city: apiUser.city || fallback.city || '',
     phone: apiUser.phone || fallback.phone || '',
+    stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
     backendAuth:true
   });
+  if (merged.stripe_onboarding) {
+    const payer = merged.stripe_onboarding.payer || {};
+    const connect = merged.stripe_onboarding.connect || {};
+    merged.paymentSetupComplete = Boolean(payer.ready);
+    merged.paymentMethod = payer.ready ? Object.assign({ status:'valid', brand:'Stripe', last4:'saved' }, merged.paymentMethod || {}) : (merged.paymentMethod || null);
+    merged.stripeConnectReady = Boolean(connect.ready);
+  }
   delete merged.password;
   return normalizeUserRecord(merged);
 }
@@ -2824,10 +3021,31 @@ function getProjectRolePaymentData(project){
   const employerTotal = Number(project.finalTotal ?? project.estimatedEmployerTotal ?? fallback.employerTotal);
   return { hours, rate, workTotal, employerFee, studentFee, studentPayout, employerTotal };
 }
+function projectPaymentStatusText(project={}){
+  const paymentStatus = project.payment_status || project.paymentStatus || '';
+  const escrowStatus = project.escrowStatus || project.escrow_status || '';
+  if (paymentStatus === 'funded' || escrowStatus === 'held') return 'Funds secured and held until project approval';
+  if (paymentStatus === 'paid' || project.paid) return 'Paid and released';
+  if (paymentStatus === 'requires_payment_method') return 'Payment method needed';
+  if (paymentStatus === 'requires_capture') return 'Authorized; waiting for capture';
+  if (paymentStatus) return stripeStatusLabel(paymentStatus);
+  return 'Outside platform / not funded yet';
+}
+function renderProjectPaymentStatus(project={}){
+  const hasStripe = Boolean(project.stripe_payment_intent_id || project.stripePaymentIntentId);
+  const stripeId = project.stripe_payment_intent_id || project.stripePaymentIntentId || '';
+  return `
+    <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border);margin:8px 0">
+      <div class="small"><strong>Payment status:</strong> ${esc(projectPaymentStatusText(project))}</div>
+      <div class="small muted">Provider: ${hasStripe ? 'Stripe test-mode' : 'Direct / outside platform'}${stripeId ? ` · ${esc(stripeId)}` : ''}</div>
+    </div>
+  `;
+}
 function renderProjectPaymentSection(project){
   const payment = getProjectRolePaymentData(project);
   if (currentUser.role === 'student') {
     return `
+      ${renderProjectPaymentStatus(project)}
       <div class="small">Hourly rate: <strong>$${esc(money(payment.rate))}/hr</strong></div>
       <div class="small">Hours worked: <strong>${esc(payment.hours)} hrs</strong></div>
       <div class="small">Total earned: <strong>$${esc(money(payment.workTotal))}</strong></div>
@@ -2837,12 +3055,14 @@ function renderProjectPaymentSection(project){
   }
   if (currentUser.role === 'employer') {
     return `
+      ${renderProjectPaymentStatus(project)}
       <div class="small">Service cost: <strong>$${esc(money(payment.workTotal))}</strong></div>
       <div class="small">Platform fee: <strong>$${esc(money(payment.employerFee))}</strong></div>
       <div class="small">Total charged: <strong>$${esc(money(payment.employerTotal))}</strong></div>
     `;
   }
   return `
+    ${renderProjectPaymentStatus(project)}
     <div class="small">Service cost: <strong>$${esc(money(payment.workTotal))}</strong></div>
     <div class="small">Employer fee: <strong>$${esc(money(payment.employerFee))}</strong></div>
     <div class="small">Student deduction: <strong>$${esc(money(payment.studentFee))}</strong></div>
@@ -4043,6 +4263,7 @@ async function publishStudentSignupProfile(){
   dashSection = 'profile';
   location.hash = '#/dashboard';
   renderPage();
+  setTimeout(() => openPostSignupStripeOnboardingPrompt('connect'), 250);
 }
 function extractCity(address=''){
   const clean = String(address || '').trim();
@@ -4394,6 +4615,7 @@ async function publishEmployerSignupProfile(){
   dashSection = 'profile';
   location.hash = '#/dashboard';
   renderPage();
+  setTimeout(() => openPostSignupStripeOnboardingPrompt('payer'), 250);
 }
 function signOut(){
   currentUser = null;
@@ -7926,6 +8148,9 @@ function renderDashboard(){
   if (currentUser.role === 'student' && backendAuthEnabled() && backendCurrentProfileLoadedFor !== currentUser.id) {
     refreshBackendCurrentProfile({ rerender:true });
   }
+  if (stripeOnboardingEnabled() && !currentUser.stripe_onboarding) {
+    refreshStripeOnboardingStatus({ rerender:true, toast:false });
+  }
 
   if (currentUser.role === 'admin' && !['admin','users','blog_manager','images','messages','transactions','settings','workshops'].includes(dashSection)) {
     dashSection = 'admin';
@@ -8021,6 +8246,7 @@ function renderEmployerProfile(el){
   const showBusiness = business && ['all','business'].includes(employerProfileTab);
   el.innerHTML = `
     <div class="section-title">My Profile</div>
+    ${renderStripeOnboardingCard()}
     <div class="subtabs">
       ${tabs.map(tab => `<button class="pill ${employerProfileTab===tab.key?'active':''}" onclick="employerProfileTab='${tab.key}';renderDashboard()">${tab.label}</button>`).join('')}
     </div>
@@ -8076,6 +8302,7 @@ function renderStudentProfile(el){
   const showReviews = ['all','reviews'].includes(studentProfileTab);
   el.innerHTML = `
     <div class="section-title">My Profile</div>
+    ${renderStripeOnboardingCard()}
     <div class="subtabs">
       <button class="pill ${studentProfileTab==='all'?'active':''}" onclick="studentProfileTab='all';renderDashboard()">All</button>
       <button class="pill ${studentProfileTab==='profile'?'active':''}" onclick="studentProfileTab='profile';renderDashboard()">My Profile</button>
@@ -9796,6 +10023,12 @@ function renderEmployerProjectCard(p, listIndex=0){
           <div class="small">Location: ${esc(p.location || 'TBD')}</div>
           ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
           <div class="contract-box small">${p.contractHtml}</div>
+        </div>
+        <div class="card form-card" style="margin-top:10px;background:#fff">
+          <div style="font-weight:800">Payment & Funding</div>
+          ${renderProjectPaymentSection(p)}
+          <div style="font-weight:800;margin-top:10px">System Updates</div>
+          ${renderProjectSystemUpdates(p.id)}
         </div>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
         `}
@@ -12441,6 +12674,7 @@ function initializePrototype(){
   try {
     seedData();
     loadCurrentUser();
+    handleStripeReturnParams();
     startWorkshopPayoutProcessor();
     attachConnectivityHandlers();
     renderPage();
@@ -12451,6 +12685,7 @@ function initializePrototype(){
       resetPrototypeRuntimeState();
       seedData();
       loadCurrentUser();
+      handleStripeReturnParams();
       startWorkshopPayoutProcessor();
       attachConnectivityHandlers();
       renderPage();
