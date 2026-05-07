@@ -451,6 +451,12 @@ const BACKEND_MIGRATION = {
   baseUrl: '/api',
   timeoutMs: 8000
 };
+const BACKEND_AUTH = {
+  // Staging-only: keep production/live behavior unchanged until the backend flow is fully verified.
+  enabled: ['staging.cogocity.com', 'localhost', '127.0.0.1'].includes(window.location.hostname),
+  baseUrl: '/api',
+  timeoutMs: 10000
+};
 const BACKEND_SYNC_ENDPOINTS = {
   users: '/sync/users',
   students: '/sync/student-profiles',
@@ -602,6 +608,57 @@ function saveUsers(v){
   const payload = ensureArray(v).map(normalizeUserRecord);
   ls('cogo_users', payload);
   syncEntityToBackend('users', payload);
+}
+function backendAuthEnabled(){
+  return !!BACKEND_AUTH.enabled;
+}
+function saveBackendAuthSession(authData={}){
+  if (authData.access_token) localStorage.setItem('cogo_backend_access_token', authData.access_token);
+  if (authData.refresh_token) localStorage.setItem('cogo_backend_refresh_token', authData.refresh_token);
+}
+function clearBackendAuthSession(){
+  localStorage.removeItem('cogo_backend_access_token');
+  localStorage.removeItem('cogo_backend_refresh_token');
+}
+async function backendAuthRequest(path, options={}){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BACKEND_AUTH.timeoutMs || 10000);
+  try {
+    const headers = Object.assign({ 'content-type':'application/json' }, options.headers || {});
+    const token = localStorage.getItem('cogo_backend_access_token');
+    if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
+    const text = await response.text();
+    let payload = null;
+    try { payload = text ? JSON.parse(text) : null; } catch (error) {}
+    if (!response.ok || !payload || payload.ok === false) {
+      throw new Error(payload?.error?.message || `Backend auth request failed (${response.status})`);
+    }
+    return payload.data || {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function mapBackendUser(apiUser={}, fallback={}){
+  const first = apiUser.first_name || apiUser.firstName || fallback.firstName || '';
+  const last = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
+  const display = apiUser.display_name || apiUser.displayName || fallback.name || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User';
+  const merged = Object.assign({}, fallback, {
+    id: apiUser.id || fallback.id || uid('u'),
+    backendUserId: apiUser.id || fallback.backendUserId || '',
+    email: apiUser.email || fallback.email || '',
+    firstName: first,
+    lastName: last,
+    name: display,
+    publicName: fallback.publicName || display,
+    role: apiUser.role || fallback.role || 'student',
+    status: apiUser.status || fallback.status || 'active',
+    city: apiUser.city || fallback.city || '',
+    phone: apiUser.phone || fallback.phone || '',
+    backendAuth:true
+  });
+  delete merged.password;
+  return normalizeUserRecord(merged);
 }
 function looksLikeImageSource(value=''){
   const raw = String(value || '').trim();
@@ -2559,16 +2616,23 @@ function openLoginModal(tab='signin'){
         <div class="small muted" style="margin-top:10px">Reset restores the seeded test users, passwords, and sample data for this browser.</div>
       </div>
       <div style="height:14px"></div>
-      <div class="card form-card">
-        <div style="font-weight:800;margin-bottom:10px">Quick test logins</div>
-        <div class="small muted" style="margin-bottom:12px">One tap signs you in instantly.</div>
-        <div class="grid" style="grid-template-columns:1fr;gap:10px">
-          <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student \u2014 student@cogocity.com</button>
-          <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer \u2014 ilya@cogocity.com</button>
-          <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor \u2014 tanya@cogocity.com</button>
-          <button class="btn btn-outline" onclick="quickLogin('admin@cogocity.com','Admin123')">Admin \u2014 admin@cogocity.com</button>
+      ${backendAuthEnabled() ? `
+        <div class="card form-card">
+          <div style="font-weight:800;margin-bottom:10px">Staging backend sign-in is active</div>
+          <div class="small muted">Use an account created through this staging signup flow. Demo quick logins are disabled here because passwords are now checked by the backend.</div>
         </div>
-      </div>
+      ` : `
+        <div class="card form-card">
+          <div style="font-weight:800;margin-bottom:10px">Quick test logins</div>
+          <div class="small muted" style="margin-bottom:12px">One tap signs you in instantly.</div>
+          <div class="grid" style="grid-template-columns:1fr;gap:10px">
+            <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student \u2014 student@cogocity.com</button>
+            <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer \u2014 ilya@cogocity.com</button>
+            <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor \u2014 tanya@cogocity.com</button>
+            <button class="btn btn-outline" onclick="quickLogin('admin@cogocity.com','Admin123')">Admin \u2014 admin@cogocity.com</button>
+          </div>
+        </div>
+      `}
     `;
   } else if (authTab === 'student') {
     return openStudentSignupWorkflow();
@@ -2607,12 +2671,39 @@ function resetDemoData(){
   toast('Demo data reset.');
   openLoginModal();
 }
-function doLogin(){
+async function doLogin(){
   let email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
   const password = document.getElementById('loginPassword').value || '';
   if (email === 'tanya.lipovich@gmail.com' && password === 'cKL3h9kT7*PvZ%') {
     email = 'admin@cogocity.com';
   }
+
+  if (backendAuthEnabled()) {
+    try {
+      const data = await backendAuthRequest('/auth/login', {
+        method:'POST',
+        body: JSON.stringify({ email, password })
+      });
+      saveBackendAuthSession(data);
+      const users = getUsers();
+      const existing = users.find(u => String(u.email || '').toLowerCase() === email || u.backendUserId === data.user?.id);
+      const user = mapBackendUser(data.user, existing || { email });
+      user.lastLogin = new Date().toISOString();
+      const nextUsers = existing ? users.map(u => (u.id === existing.id ? user : u)) : users.concat(user);
+      saveUsers(nextUsers);
+      localStorage.removeItem('cogo_admin_impersonation');
+      setCurrentUser(user);
+      closeModal();
+      toast(`Welcome back, ${firstName(user.name)}!`);
+      location.hash = '#/';
+      renderPage();
+      return;
+    } catch (error) {
+      toast(error.message || 'Backend sign in failed.');
+      return;
+    }
+  }
+
   const users = getUsers();
   const user = users.find(u => u.email.toLowerCase() === email && u.password === password);
   if (!user) { toast('Invalid email or password'); return; }
@@ -2956,7 +3047,7 @@ function saveStudentSignupStep(step){
   if (step === 8){
     const password = document.getElementById('studentFlowPassword').value || '';
     const confirmPassword = document.getElementById('studentFlowConfirmPassword').value || '';
-    if (!password || password.length < 6) return toast('Please create a password with at least 6 characters.'), false;
+    if (!password || password.length < 8) return toast('Please create a password with at least 8 characters.'), false;
     if (password !== confirmPassword) return toast('Passwords do not match.'), false;
     Object.assign(studentSignupDraft, { password, confirmPassword });
     return true;
@@ -3184,7 +3275,7 @@ function submitStudentSignupProfile(){
   studentSignupStep = 8;
   renderStudentSignupModal();
 }
-function publishStudentSignupProfile(){
+async function publishStudentSignupProfile(){
   if (!studentSignupDraft.profileReady) return toast('Please submit and publish your profile first.');
   if (!saveStudentSignupStep(8)) return;
   const d = studentSignupDraft;
@@ -3192,22 +3283,48 @@ function publishStudentSignupProfile(){
   const users = getUsers();
   if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
   const students = getStudents();
-  const userId = uid('u');
+  const nameParts = String(d.name || '').trim().split(/\s+/).filter(Boolean);
+  let backendUser = null;
+  if (backendAuthEnabled()) {
+    try {
+      const data = await backendAuthRequest('/auth/register', {
+        method:'POST',
+        body: JSON.stringify({
+          firstName: nameParts[0] || d.name || 'Student',
+          lastName: nameParts.slice(1).join(' '),
+          displayName: d.name,
+          email: d.email,
+          password: d.password,
+          role: 'student',
+          phone: d.phone,
+          city: d.city || extractCity(d.address)
+        })
+      });
+      saveBackendAuthSession(data);
+      backendUser = data.user || null;
+    } catch (error) {
+      toast(error.message || 'Backend signup failed.');
+      return;
+    }
+  }
+  const userId = backendUser?.id || uid('u');
   const studentId = uid('s');
   const createdAt = new Date().toISOString();
   const primaryService = d.services[0];
-  const newUser = {
+  const newUser = mapBackendUser(backendUser || {}, {
     id:userId,
+    backendUserId:backendUser?.id || '',
     email:d.email,
-    password:d.password,
     name:d.name,
+    firstName:nameParts[0] || '',
+    lastName:nameParts.slice(1).join(' '),
     role:'student',
     emoji:d.avatar || '\u{1F393}',
     photo:d.photo || ((d.profileImages || [])[0]) || '',
     profile_image_id:d.photo || ((d.profileImages || [])[0]) || '',
     createdAt,
-    verificationStatus:'skipped_test_mode'
-  };
+    verificationStatus:backendAuthEnabled() ? 'backend_auth_created' : 'skipped_test_mode'
+  });
   const newStudent = {
     id:studentId,
     userId,
@@ -3455,7 +3572,7 @@ function saveEmployerSignupStep(step){
   const passwordStep = employerSignupMode === 'employer' ? 4 : 2;
   if (step === passwordStep) {
     syncEmployerSignupPasswordDraft();
-    if (!employerSignupDraft.password || employerSignupDraft.password.length < 6) return toast('Please create a password with at least 6 characters.'), false;
+    if (!employerSignupDraft.password || employerSignupDraft.password.length < 8) return toast('Please create a password with at least 8 characters.'), false;
     if (employerSignupDraft.password !== employerSignupDraft.confirmPassword) return toast('Passwords do not match.'), false;
     return true;
   }
@@ -3512,23 +3629,47 @@ function submitEmployerSignupPreview(){
   employerSignupStep = 4;
   renderEmployerSignupModal();
 }
-function publishEmployerSignupProfile(){
+async function publishEmployerSignupProfile(){
   const passwordStep = employerSignupMode === 'employer' ? 4 : 2;
   if (!saveEmployerSignupStep(passwordStep)) return;
   const d = employerSignupDraft;
   const users = getUsers();
   if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
+  let backendUser = null;
+  const role = employerSignupMode === 'neighbor' ? 'neighbor' : 'employer';
+  if (backendAuthEnabled()) {
+    try {
+      const data = await backendAuthRequest('/auth/register', {
+        method:'POST',
+        body: JSON.stringify({
+          firstName: d.firstName,
+          lastName: d.lastName,
+          displayName: `${d.firstName} ${(d.lastName || '').slice(0,1).toUpperCase()}.`,
+          email: d.email,
+          password: d.password,
+          role,
+          phone: d.phone,
+          city: d.city || extractCity(d.address)
+        })
+      });
+      saveBackendAuthSession(data);
+      backendUser = data.user || null;
+    } catch (error) {
+      toast(error.message || 'Backend signup failed.');
+      return;
+    }
+  }
   const lastInitial = (d.lastName || '').slice(0,1).toUpperCase();
   const createdAt = new Date().toISOString();
-  const newUser = {
-    id:uid('u'),
+  const newUser = mapBackendUser(backendUser || {}, {
+    id:backendUser?.id || uid('u'),
+    backendUserId:backendUser?.id || '',
     email:d.email,
-    password:d.password,
     firstName:d.firstName,
     lastName:d.lastName,
     name:`${d.firstName} ${lastInitial}.`,
     publicName:`${d.firstName} ${lastInitial}.`,
-    role:'employer',
+    role,
     type:employerSignupMode === 'employer' ? 'business' : 'neighbor',
     emoji:d.avatar || (employerSignupMode === 'employer' ? '\u{1F3E2}' : '\u{1F3E0}'),
     photo:d.photo || '',
@@ -3551,7 +3692,7 @@ function publishEmployerSignupProfile(){
       createdAt
     } : null,
     createdAt
-  };
+  });
   users.push(newUser);
   saveUsers(users);
   setCurrentUser(newUser);
@@ -3568,6 +3709,7 @@ function signOut(){
   avatarMenuOpen = false;
   localStorage.removeItem('cogo_current_user');
   localStorage.removeItem('cogo_admin_impersonation');
+  clearBackendAuthSession();
   activeThreadUserId = null;
   renderNav();
   location.hash = '#/';
