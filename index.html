@@ -3297,7 +3297,29 @@ async function publishStudentSignupProfile(){
           password: d.password,
           role: 'student',
           phone: d.phone,
-          city: d.city || extractCity(d.address)
+          city: d.city || extractCity(d.address),
+          profile: {
+            age: Number(d.age) || null,
+            school: d.school,
+            about: d.about,
+            experience: d.experience,
+            address: d.address,
+            avatar: d.avatar,
+            photo: d.photo || ((d.profileImages || [])[0]) || '',
+            profileImages: d.profileImages || [],
+            video_url: d.video_url || '',
+            videoUrl: d.video_url || ''
+          },
+          services: (d.services || []).map(service => ({
+            title: service.title,
+            description: service.description,
+            rate: Number(service.rate || 0),
+            hourlyRate: Number(service.rate || 0),
+            location: service.location || d.city || '',
+            availability: service.availability || '',
+            images: service.images || [],
+            video_url: service.video_url || ''
+          }))
         })
       });
       saveBackendAuthSession(data);
@@ -3648,8 +3670,25 @@ async function publishEmployerSignupProfile(){
           email: d.email,
           password: d.password,
           role,
+          type: employerSignupMode === 'employer' ? 'business' : 'neighbor',
           phone: d.phone,
-          city: d.city || extractCity(d.address)
+          city: d.city || extractCity(d.address),
+          profile: {
+            about: d.about,
+            address: d.address,
+            avatar: d.avatar,
+            photo: d.photo || '',
+            type: employerSignupMode === 'employer' ? 'business' : 'neighbor'
+          },
+          businessProfile: employerSignupMode === 'employer' ? {
+            name: d.businessName,
+            logo: d.businessLogo || '',
+            about: d.businessAbout,
+            phone: d.businessPhone,
+            address: d.businessAddress,
+            city: d.businessCity || extractCity(d.businessAddress),
+            tin: d.tin
+          } : null
         })
       });
       saveBackendAuthSession(data);

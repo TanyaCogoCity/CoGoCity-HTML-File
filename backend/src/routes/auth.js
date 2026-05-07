@@ -2,12 +2,53 @@ const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
-const { normalizeRegisterPayload } = require('../lib/compat');
+const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 
 const router = express.Router();
+
+function buildUserProfileData(userId, payload = {}) {
+  const profile = payload.profile || {};
+  const business = payload.businessProfile || profile.businessProfile || {};
+  const metadata = {
+    photo: profile.photo || payload.photo || '',
+    profile_images: profile.profileImages || [],
+    video_url: profile.video_url || profile.videoUrl || '',
+  };
+  return {
+    userId,
+    type: payload.type || profile.type || null,
+    about: profile.about || payload.about || null,
+    address: profile.address || payload.address || null,
+    school: profile.school || payload.school || null,
+    age: profile.age ? Number(profile.age) : null,
+    avatar: profile.avatar || payload.avatar || null,
+    businessName: business.name || payload.businessName || null,
+    businessAbout: business.about || payload.businessAbout || null,
+    businessPhone: business.phone || payload.businessPhone || null,
+    businessAddress: business.address || payload.businessAddress || null,
+    businessCity: business.city || payload.businessCity || null,
+    businessTin: business.tin || payload.tin || null,
+    metadata,
+  };
+}
+
+function serializeUser(user, extras = {}) {
+  return {
+    id: user.id,
+    first_name: user.firstName,
+    last_name: user.lastName,
+    display_name: user.displayName,
+    email: user.email,
+    role: user.role,
+    city: user.city,
+    profile: extras.userProfile || null,
+    student_profile: extras.studentProfile || null,
+    services: (extras.services || []).map(serializeService),
+  };
+}
 
 router.post('/register', async (req, res) => {
   try {
@@ -15,21 +56,61 @@ router.post('/register', async (req, res) => {
     const exists = await prisma.user.findUnique({ where: { email: payload.email } });
     if (exists) return fail(res, 409, 'Email already in use');
 
+    const rawPayload = req.body || {};
     const passwordHash = await hashPassword(payload.password);
-    const user = await prisma.user.create({
-      data: {
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        displayName: payload.displayName,
-        email: payload.email,
-        phone: payload.phone,
-        role: payload.role,
-        city: payload.city,
-        dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
-        passwordHash,
-      },
+    const profilePayload = rawPayload.profile || {};
+    const servicesPayload = Array.isArray(rawPayload.services) ? rawPayload.services : Array.isArray(profilePayload.services) ? profilePayload.services : [];
+
+    const createdRecords = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          displayName: payload.displayName,
+          email: payload.email,
+          phone: payload.phone,
+          role: payload.role,
+          city: payload.city,
+          dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
+          passwordHash,
+        },
+      });
+
+      const userProfile = await tx.userProfile.create({ data: buildUserProfileData(user.id, rawPayload) });
+      let studentProfile = null;
+      let services = [];
+
+      if (payload.role === 'student') {
+        const firstService = servicesPayload[0] || {};
+        studentProfile = await tx.studentProfile.create({
+          data: {
+            userId: user.id,
+            title: firstService.title || profilePayload.title || rawPayload.title || 'Student Service',
+            bio: profilePayload.bio || profilePayload.about || rawPayload.about || '',
+            experience: profilePayload.experience || rawPayload.experience || '',
+            isActive: true,
+          },
+        });
+
+        if (servicesPayload.length) {
+          services = await Promise.all(servicesPayload.map((service) => tx.service.create({
+            data: {
+              profileId: studentProfile.id,
+              title: String(service.title || 'Student Service').trim(),
+              description: service.description || service.about || '',
+              hourlyRate: Number(service.hourly_rate ?? service.hourlyRate ?? service.rate ?? 0) || 0,
+              availability: service.availability || '',
+              location: service.location || rawPayload.city || '',
+              isActive: service.is_active ?? service.isActive ?? true,
+            },
+          })));
+        }
+      }
+
+      return { user, userProfile, studentProfile, services };
     });
 
+    const user = createdRecords.user;
     const accessToken = signAccessToken(user);
     const refreshToken = signRefreshToken(user);
     await prisma.refreshToken.create({
@@ -43,15 +124,7 @@ router.post('/register', async (req, res) => {
     await writeAuditLog({ userId: user.id, action: 'auth.register', entityType: 'user', entityId: user.id });
 
     return created(res, {
-      user: {
-        id: user.id,
-        first_name: user.firstName,
-        last_name: user.lastName,
-        display_name: user.displayName,
-        email: user.email,
-        role: user.role,
-        city: user.city,
-      },
+      user: serializeUser(user, createdRecords),
       access_token: accessToken,
       refresh_token: refreshToken,
     });
@@ -65,7 +138,10 @@ router.post('/login', async (req, res) => {
     const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
     const payload = schema.parse(req.body || {});
 
-    const user = await prisma.user.findUnique({ where: { email: payload.email.toLowerCase() } });
+    const user = await prisma.user.findUnique({
+      where: { email: payload.email.toLowerCase() },
+      include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+    });
     if (!user || user.deletedAt || user.status !== 'active') return fail(res, 401, 'Invalid credentials');
 
     const valid = await comparePassword(payload.password, user.passwordHash);
@@ -84,16 +160,9 @@ router.post('/login', async (req, res) => {
       },
     });
 
+    const studentProfile = user.studentProfiles?.[0] || null;
     return ok(res, {
-      user: {
-        id: user.id,
-        first_name: user.firstName,
-        last_name: user.lastName,
-        display_name: user.displayName,
-        email: user.email,
-        role: user.role,
-        city: user.city,
-      },
+      user: serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
       access_token: accessToken,
       refresh_token: refreshToken,
     });
@@ -139,17 +208,15 @@ router.post('/logout', requireAuth, async (req, res) => {
 });
 
 router.get('/me', requireAuth, async (req, res) => {
-  const user = req.user;
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+  });
+  const studentProfile = user.studentProfiles?.[0] || null;
   return ok(res, {
-    id: user.id,
-    first_name: user.firstName,
-    last_name: user.lastName,
-    display_name: user.displayName,
-    email: user.email,
+    ...serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
     phone: user.phone,
-    role: user.role,
     status: user.status,
-    city: user.city,
     created_at: user.createdAt,
   });
 });
