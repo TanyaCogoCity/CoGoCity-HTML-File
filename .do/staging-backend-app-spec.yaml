@@ -14,7 +14,7 @@ services:
     source_dir: backend
     environment_slug: node-js
     build_command: npm ci && npx prisma generate
-    run_command: npx prisma migrate deploy && npm start
+    run_command: npx prisma db push --accept-data-loss && npm start
     instance_count: 1
     instance_size_slug: basic-xxs
     http_port: 4000
@@ -75,4 +75,6 @@ databases:
 # Public routing used on staging:
 # - /api/* -> cogocity-api (DigitalOcean strips the /api prefix before forwarding)
 # - /*     -> cogocity-html-file static frontend
-# Runtime start applies committed Prisma migrations before starting the API.
+# Current staging bootstrap run command syncs the empty dev database schema before starting the API.
+# Before importing real/live data, replace db push with `npx prisma migrate deploy && npm start`
+# after the staging migration history has been resolved/verified.
