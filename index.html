@@ -486,6 +486,11 @@ let backendJobsError = '';
 let backendApplicationsLoading = false;
 let backendApplicationsLoaded = false;
 let backendApplicationsError = '';
+let backendMessagesLoading = false;
+let backendMessagesLoaded = false;
+let backendMessagesError = '';
+let backendMessageThreadsLoading = {};
+let backendMessageThreadsLoaded = {};
 let backendCurrentProfileLoading = false;
 let backendCurrentProfileLoadedFor = '';
 const EMPLOYER_AVATAR_OPTIONS = ['\u{1F3E0}','\u{1F3E2}','\u{1F4BC}','\u{1F6E0}\uFE0F','\u{1F4E6}','\u{1F9F0}','\u{1FAB4}','\u2615','\u{1F6CD}\uFE0F','\u{1F37D}\uFE0F','\u{1F69A}','\u{1F4BB}'];
@@ -497,7 +502,7 @@ function setBackendAccessToken(token=''){
   backendAccessToken = String(token || '').trim();
 }
 function getBackendAccessToken(){
-  return backendAccessToken;
+  return backendAccessToken || localStorage.getItem('cogo_backend_access_token') || '';
 }
 async function backendRequest(path, options={}){
   if (!BACKEND_MIGRATION.enabled) return { ok:false, disabled:true };
@@ -624,10 +629,14 @@ function backendAuthEnabled(){
   return !!BACKEND_AUTH.enabled;
 }
 function saveBackendAuthSession(authData={}){
-  if (authData.access_token) localStorage.setItem('cogo_backend_access_token', authData.access_token);
+  if (authData.access_token) {
+    setBackendAccessToken(authData.access_token);
+    localStorage.setItem('cogo_backend_access_token', authData.access_token);
+  }
   if (authData.refresh_token) localStorage.setItem('cogo_backend_refresh_token', authData.refresh_token);
 }
 function clearBackendAuthSession(){
+  setBackendAccessToken('');
   localStorage.removeItem('cogo_backend_access_token');
   localStorage.removeItem('cogo_backend_refresh_token');
 }
@@ -1707,6 +1716,8 @@ function normalizeMessageRecord(message){
     thread_label: '',
     message_type: 'user',
     system_category: '',
+    conversation_id: '',
+    backendSource: false,
     createdAt: new Date().toISOString(),
     read: false
   }, message || {});
@@ -1716,16 +1727,110 @@ function normalizeMessageRecord(message){
   normalized.message_type = normalized.message_type === 'system' || derivedSystem ? 'system' : 'user';
   return normalized;
 }
+function getBackendMessages(){ return ensureArray(ls('cogo_backend_messages')).map(message => normalizeMessageRecord(Object.assign({}, message, { backendSource:true }))); }
+function saveBackendMessages(items){ ls('cogo_backend_messages', ensureArray(items).map(message => normalizeMessageRecord(Object.assign({}, message, { backendSource:true })))); }
+function upsertBackendMessage(message){
+  const normalized = normalizeMessageRecord(Object.assign({}, message, { backendSource:true }));
+  const items = getBackendMessages();
+  const idx = items.findIndex(item => String(item.id) === String(normalized.id));
+  if (idx >= 0) items[idx] = normalized; else items.push(normalized);
+  saveBackendMessages(items.sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt)));
+  return normalized;
+}
+function mergeBackendMessages(localMessages=[]){
+  const backendMessages = getBackendMessages();
+  const backendIds = new Set(backendMessages.map(item => String(item.id)));
+  return ensureArray(localMessages).filter(item => !item.backendSource && !backendIds.has(String(item.id))).concat(backendMessages);
+}
+function mapBackendMessage(row={}, context={}){
+  const senderId = row.sender_id || row.senderId;
+  const conversationId = row.conversation_id || row.conversationId || row.thread_id || context.conversation_id || context.thread_id || '';
+  const partnerId = context.partner_id || (String(senderId) === String(currentUser?.id) ? context.to_id : context.from_id) || '';
+  const fromId = String(senderId || '').trim();
+  const toId = String(fromId) === String(currentUser?.id) ? String(partnerId || '') : String(currentUser?.id || '');
+  const partnerName = context.partner_name || 'User';
+  return normalizeMessageRecord({
+    id: row.id,
+    fromId,
+    fromName: row.sender_name || (String(fromId) === String(currentUser?.id) ? (currentUser.publicName || currentUser.name) : partnerName),
+    toId,
+    toName: String(toId) === String(currentUser?.id) ? (currentUser.publicName || currentUser.name || 'Me') : partnerName,
+    content: row.message_text || row.message || row.content || '',
+    projectId: row.project_id || row.projectId || context.project_id || null,
+    thread_id: conversationId,
+    conversation_id: conversationId,
+    thread_label: context.thread_label || '',
+    message_type: row.message_type || row.messageType || 'user',
+    createdAt: row.created_at || row.createdAt,
+    read: !context.unread,
+    backendSource: true
+  });
+}
+function isBackendConversationId(value=''){
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+async function refreshBackendThreadMessages(threadId='', options={}){
+  const conversationId = String(threadId || '').trim();
+  if (!backendAuthEnabled() || !getBackendAccessToken() || !isBackendConversationId(conversationId) || backendMessageThreadsLoading[conversationId]) return;
+  backendMessageThreadsLoading[conversationId] = true;
+  try {
+    const rows = await backendAuthRequest(`/messages?thread_id=${encodeURIComponent(conversationId)}`);
+    const list = Array.isArray(rows) ? rows : ensureArray(rows.items || rows.messages || rows.data);
+    const existing = getBackendMessages().filter(message => String(message.thread_id || message.conversation_id) !== conversationId);
+    const activeSummary = getBackendMessages().find(message => String(message.thread_id || message.conversation_id) === conversationId) || {};
+    const mapped = list.map(row => mapBackendMessage(row, {
+      conversation_id: conversationId,
+      partner_id: activeSummary.fromId === currentUser?.id ? activeSummary.toId : activeSummary.fromId,
+      partner_name: activeSummary.fromId === currentUser?.id ? activeSummary.toName : activeSummary.fromName,
+      thread_label: activeSummary.thread_label,
+      project_id: activeSummary.projectId
+    }));
+    saveBackendMessages(existing.concat(mapped));
+    backendMessageThreadsLoaded[conversationId] = true;
+    backendMessagesError = '';
+    if (options.rerender) renderDashboard();
+  } catch (error) {
+    backendMessagesError = error.message || 'Could not load backend messages.';
+    console.warn('Backend thread messages load failed', error);
+  } finally {
+    backendMessageThreadsLoading[conversationId] = false;
+  }
+}
+async function refreshBackendMessages(options={}){
+  if (!backendAuthEnabled() || backendMessagesLoading || !getBackendAccessToken()) return;
+  backendMessagesLoading = true;
+  try {
+    const rows = await backendAuthRequest('/messages');
+    const list = Array.isArray(rows) ? rows : ensureArray(rows.items || rows.conversations || rows.data);
+    const existing = getBackendMessages();
+    list.forEach(thread => {
+      if (thread.last_message) upsertBackendMessage(mapBackendMessage(thread.last_message, thread));
+    });
+    if (!list.length && !existing.length) saveBackendMessages([]);
+    backendMessagesLoaded = true;
+    backendMessagesError = '';
+    if (options.threadId) refreshBackendThreadMessages(options.threadId, { rerender: options.rerender });
+    else if (options.rerender) renderDashboard();
+  } catch (error) {
+    backendMessagesError = error.message || 'Could not load backend messages.';
+    console.warn('Backend messages load failed', error);
+  } finally {
+    backendMessagesLoading = false;
+  }
+}
 function getMessages(){
   const messages = ensureArray(ls('cogo_messages'));
   const normalized = messages.map(normalizeMessageRecord);
-  if (JSON.stringify(messages) !== JSON.stringify(normalized)) ls('cogo_messages', normalized);
-  return normalized;
+  const localOnly = normalized.filter(item => !item.backendSource);
+  if (JSON.stringify(messages) !== JSON.stringify(localOnly)) ls('cogo_messages', localOnly);
+  return mergeBackendMessages(localOnly);
 }
 function saveMessages(v){
   const payload = ensureArray(v).map(normalizeMessageRecord);
-  ls('cogo_messages', payload);
-  syncEntityToBackend('messages', payload);
+  const localOnly = payload.filter(item => !item.backendSource);
+  ls('cogo_messages', localOnly);
+  saveBackendMessages(payload.filter(item => item.backendSource));
+  syncEntityToBackend('messages', localOnly);
 }
 function getNotifications(id){ return ls('cogo_notifs_' + id) || []; }
 function saveNotifications(id, data){
@@ -9842,6 +9947,7 @@ function renderMessages(el){
     `;
     return;
   }
+  if (backendAuthEnabled() && !backendMessagesLoaded && !backendMessagesLoading) refreshBackendMessages({ rerender:true });
   const all = getMessages();
   const me = currentUser.id;
   const threads = {};
@@ -9950,6 +10056,7 @@ function renderThreadView(userId){
   const tokenParts = String(userId || '').split('::');
   const partnerId = tokenParts[0] || userId;
   const threadId = tokenParts[1] || getDirectThreadId(currentUser.id, partnerId);
+  if (backendAuthEnabled() && isBackendConversationId(threadId) && !backendMessageThreadsLoaded[threadId] && !backendMessageThreadsLoading[threadId]) refreshBackendThreadMessages(threadId, { rerender:true });
   const isCogoPartner = String(partnerId) === 'system_cogo';
   const isSystemThread = threadId.startsWith('system:');
   const isUnifiedCogoSystemThread = isCogoPartner && threadId === 'system:cogo';
@@ -10009,15 +10116,52 @@ function renderThreadView(userId){
       : `<div class="msg-compose"><input id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}"><button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button></div>`}
   `;
 }
-function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
+async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
   const sender = fromUser || currentUser || {};
   const messageType = meta.message_type || 'user';
   if (messageType === 'user' && containsRestrictedPaymentChatContent(content)) {
     toast('Payment details are sent automatically by CoGo Team. Keep chat focused on job scope and timing.');
     return false;
   }
-  const msgs = getMessages();
   const fallbackThreadId = meta.workshop_id ? `workshop:${meta.workshop_id}` : (projectId ? `project:${projectId}` : getDirectThreadId(sender.id || currentUser?.id, toId));
+  const threadId = meta.thread_id || fallbackThreadId;
+  const canUseBackend = backendAuthEnabled()
+    && getBackendAccessToken()
+    && currentUser
+    && String(sender.id || '') === String(currentUser.id || '')
+    && messageType === 'user'
+    && String(toId || '')
+    && String(toId || '') !== 'system_cogo';
+
+  if (canUseBackend) {
+    try {
+      const payload = {
+        recipient_id: isBackendConversationId(threadId) ? undefined : toId,
+        thread_id: isBackendConversationId(threadId) ? threadId : undefined,
+        message: content,
+        project_id: projectId || undefined,
+        thread_label: meta.thread_label || undefined
+      };
+      const saved = await backendAuthRequest('/messages', { method:'POST', body: JSON.stringify(payload) });
+      const mapped = upsertBackendMessage(mapBackendMessage(saved, {
+        conversation_id: saved.conversation_id || saved.conversationId || saved.thread_id,
+        partner_id: toId,
+        partner_name: toName,
+        thread_label: meta.thread_label || '',
+        project_id: projectId || null
+      }));
+      backendMessagesLoaded = true;
+      const backendThreadId = mapped.thread_id || mapped.conversation_id;
+      if (backendThreadId) {
+        activeThreadUserId = `${toId}::${backendThreadId}`;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Backend message send failed; saving locally', error);
+    }
+  }
+
+  const msgs = getMessages();
   msgs.push({
     id: uid('m'),
     fromId: sender.id || currentUser?.id,
@@ -10029,7 +10173,7 @@ function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, 
     postId: meta.postId || null,
     applicationId: meta.applicationId || null,
     workshop_id: meta.workshop_id || null,
-    thread_id: meta.thread_id || fallbackThreadId,
+    thread_id: threadId,
     thread_label: meta.thread_label || '',
     message_type: messageType,
     system_category: meta.system_category || '',
@@ -10039,7 +10183,7 @@ function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, 
   saveMessages(msgs);
   return true;
 }
-function sendMessageToActive(){
+async function sendMessageToActive(){
   if (!activeThreadUserId) return;
   const input = document.getElementById('msgInput');
   const content = (input.value || '').trim();
@@ -10059,7 +10203,7 @@ function sendMessageToActive(){
   const nextThreadLabel = existing && existing.thread_label
     ? existing.thread_label
     : (threadId.startsWith('project:') ? 'Job Chat' : '');
-  sendInboxMessage(partner.id, partner.name, content, activeProject ? activeProject.id : null, currentUser, {
+  await sendInboxMessage(partner.id, partner.name, content, activeProject ? activeProject.id : null, currentUser, {
     thread_id: threadId,
     thread_label: nextThreadLabel
   });

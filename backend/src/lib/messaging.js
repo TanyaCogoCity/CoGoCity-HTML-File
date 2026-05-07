@@ -4,6 +4,18 @@ async function ensureConversationBetweenUsers({ userAId, userBId, projectId = nu
   if (projectId) {
     const existing = await prisma.conversation.findFirst({ where: { projectId } });
     if (existing) return existing;
+  } else {
+    const existing = await prisma.conversation.findFirst({
+      where: {
+        projectId: null,
+        AND: [
+          { participants: { some: { userId: userAId } } },
+          { participants: { some: { userId: userBId } } },
+        ],
+      },
+      include: { participants: true },
+    });
+    if (existing && existing.participants.length === 2) return existing;
   }
 
   const conversation = await prisma.conversation.create({
