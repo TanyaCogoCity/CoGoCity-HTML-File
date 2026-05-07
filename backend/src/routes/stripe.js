@@ -203,7 +203,7 @@ router.post('/onboarding/setup-intent', requireAuth, async (req, res) => {
       {
         customer: customerId,
         usage: 'off_session',
-        automatic_payment_methods: { enabled: true },
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
         metadata: { user_id: req.user.id, role: req.user.role },
       },
       { idempotencyKey: `user:${req.user.id}:setup-intent:${Date.now()}` }
