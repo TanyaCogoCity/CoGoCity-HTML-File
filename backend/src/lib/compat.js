@@ -252,6 +252,8 @@ function serializeProject(project) {
     id: project.id,
     job_id: project.jobId,
     jobId: project.jobId,
+    application_id: project.applicationId,
+    applicationId: project.applicationId,
     employer_id: project.employerId,
     employerId: project.employerId,
     student_id: project.studentId,
@@ -268,6 +270,8 @@ function serializeProject(project) {
     actualHours: project.actualHours,
     total_amount: project.totalAmount == null ? null : Number(project.totalAmount),
     totalAmount: project.totalAmount == null ? null : Number(project.totalAmount),
+    job: project.job ? serializeJob(project.job) : null,
+    application: project.application ? serializeApplication(project.application) : null,
     created_at: project.createdAt,
     createdAt: project.createdAt,
   };

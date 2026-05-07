@@ -10,6 +10,34 @@ const { getOrCreateSystemUser } = require('../lib/systemUser');
 
 const router = express.Router();
 
+router.get('/', requireAuth, async (req, res) => {
+  const where = { deletedAt: null };
+  if (req.user.role === 'student') {
+    where.studentId = req.user.id;
+  } else if (['employer', 'neighbor'].includes(req.user.role)) {
+    where.employerId = req.user.id;
+  } else if (req.user.role !== 'admin') {
+    return fail(res, 403, 'Not authorized');
+  }
+
+  const projects = await prisma.project.findMany({
+    where,
+    include: {
+      job: { include: { creator: { include: { userProfile: true } } } },
+      application: {
+        include: {
+          student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
+          job: { include: { creator: { include: { userProfile: true } } } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+
+  return ok(res, projects.map(serializeProject));
+});
+
 router.post('/start', requireAuth, async (req, res) => {
   if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can start project');
 
@@ -24,7 +52,10 @@ router.post('/start', requireAuth, async (req, res) => {
     if (!app || app.deletedAt || app.job.deletedAt) return fail(res, 404, 'Application not found');
     if (req.user.role !== 'admin' && app.job.createdBy !== req.user.id) return fail(res, 403, 'Forbidden');
 
-    let project = await prisma.project.findFirst({ where: { applicationId: app.id, deletedAt: null } });
+    let project = await prisma.project.findFirst({
+      where: { applicationId: app.id, deletedAt: null },
+      include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
+    });
 
     const hourlyRate = payload.hourlyRate || Number(app.job.hourlyRate);
     const estimatedHours = payload.estimatedHours || null;
@@ -41,10 +72,11 @@ router.post('/start', requireAuth, async (req, res) => {
           estimatedHours,
           totalAmount: estimatedHours ? Number((hourlyRate * estimatedHours).toFixed(2)) : null,
         },
+        include: { job: { include: { creator: { include: { userProfile: true } } } }, application: { include: { student: true, job: true } } },
       });
     }
 
-    await prisma.application.update({ where: { id: app.id }, data: { status: 'accepted' } });
+    await prisma.application.update({ where: { id: app.id }, data: { status: 'hired' } });
     await prisma.job.update({ where: { id: app.jobId }, data: { status: 'pending' } });
 
     const existingTx = await prisma.transaction.findUnique({ where: { projectId: project.id } });

@@ -489,6 +489,9 @@ let backendApplicationsError = '';
 let backendMessagesLoading = false;
 let backendMessagesLoaded = false;
 let backendMessagesError = '';
+let backendProjectsLoading = false;
+let backendProjectsLoaded = false;
+let backendProjectsError = '';
 let backendMessageThreadsLoading = {};
 let backendMessageThreadsLoaded = {};
 let backendCurrentProfileLoading = false;
@@ -1513,6 +1516,123 @@ function saveDirectJobApplications(items){
 }
 function getDirectJobById(jobId=''){ return getDirectJobs().find(job => String(job.id) === String(jobId)); }
 function getDirectJobApplicationsFor(jobId=''){ return getDirectJobApplications().filter(item => String(item.job_id) === String(jobId)); }
+function parseCompensationHourlyRate(value=''){
+  const match = String(value || '').replace(/,/g, '').match(/\$?\s*(\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) || 0 : 0;
+}
+function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
+  const createdAt = (backendProject && (backendProject.created_at || backendProject.createdAt)) || new Date().toISOString();
+  const rate = Number((backendProject && (backendProject.rate || backendProject.hourly_rate || backendProject.hourlyRate)) || job.hourly_rate || job.rate || parseCompensationHourlyRate(job.compensation_text || formatDirectJobCompensation(job)) || 0) || 0;
+  const projectId = (backendProject && backendProject.id) || uid('proj');
+  const estimatedHours = Number((backendProject && (backendProject.estimated_hours || backendProject.estimatedHours)) || 0) || null;
+  const jobTitle = (job && job.job_title) || 'Direct Hire Job';
+  const employerName = (job && job.company_name) || (currentUser && (currentUser.publicName || currentUser.name)) || 'Employer';
+  const studentName = app.student_name || 'Student';
+  const projectSnapshot = {
+    title: jobTitle,
+    description: (job && (job.description || job.requirements)) || app.message || '',
+    rate,
+    location: (job && job.location) || '',
+    estimatedHours
+  };
+  const contractHtml = `
+    <div><strong>Direct Hire Booking</strong></div>
+    <div>Title: ${esc(projectSnapshot.title)}</div>
+    <div>Description: ${esc(projectSnapshot.description || '')}</div>
+    ${rate ? `<div>Rate: $${esc(rate)}/hr</div>` : `<div>Compensation: ${esc(formatDirectJobCompensation(job))}</div>`}
+    <div>Location: ${esc(projectSnapshot.location || 'TBD')}</div>
+    <div>Status: In Progress</div>
+    <div>Direct-hire employer payments are handled outside CoGo escrow until Stripe test mode is connected.</div>
+  `;
+  return {
+    id: projectId,
+    project_id: projectId,
+    applicationId: app.id,
+    backendProjectId: backendProject && backendProject.id,
+    job_id: app.job_id || (job && job.id) || null,
+    postId: app.job_id || (job && job.id) || null,
+    jobTitle,
+    scope: projectSnapshot.description,
+    employer_id: app.employer_id || (job && job.employer_id) || '',
+    employerId: app.employer_id || (job && job.employer_id) || '',
+    employerName,
+    student_id: app.student_id || '',
+    studentUserId: app.student_id || '',
+    studentProfileId: app.studentProfileId || null,
+    studentServiceId: null,
+    studentServiceTitle: '',
+    studentName,
+    rate,
+    agreedPrice: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
+    duration: estimatedHours,
+    estimatedHours,
+    estimatedTotal: backendProject && backendProject.total_amount != null ? Number(backendProject.total_amount) : null,
+    location: projectSnapshot.location,
+    projectSnapshot,
+    escrowStatus: 'not_required',
+    escrowProvider: 'direct_hire',
+    paymentProviderMode: PAYMENT_PROVIDER_MODE,
+    payment_status: 'outside_platform',
+    payout_status: 'outside_platform',
+    status: (backendProject && backendProject.status) || 'in_progress',
+    thread_id: backendProject && (backendProject.thread_id || backendProject.threadId),
+    contractHtml,
+    backendSource: !!backendProject,
+    createdAt,
+    created_at: createdAt,
+    updatedAt: (backendProject && (backendProject.updated_at || backendProject.updatedAt)) || createdAt
+  };
+}
+function mapBackendProject(row={}, context={}){
+  const app = context.application || (row.application ? mapBackendDirectJobApplication(row.application) : null) || getDirectJobApplications().find(item => String(item.id) === String(row.application_id || row.applicationId || '')) || {};
+  const job = context.job || (row.job ? mapBackendDirectJob(row.job) : null) || getDirectJobById(app.job_id || row.job_id || row.jobId || '') || {};
+  return buildDirectHireProjectRecord(app, job, row);
+}
+async function refreshBackendProjects(options={}){
+  if (!backendAuthEnabled() || !getBackendAccessToken()) return getBackendProjects();
+  if (backendProjectsLoading) return getBackendProjects();
+  backendProjectsLoading = true;
+  backendProjectsError = '';
+  try {
+    const rows = await backendAuthRequest('/projects');
+    const mapped = ensureArray(rows).map(row => mapBackendProject(row));
+    saveBackendProjects(mapped);
+    backendProjectsLoaded = true;
+    if (options.rerender && isDashboardOpen()) renderDashboard();
+    return mapped;
+  } catch (error) {
+    backendProjectsError = error.message || 'Could not load backend projects';
+    console.warn('Backend projects refresh failed', error);
+    return getBackendProjects();
+  } finally {
+    backendProjectsLoading = false;
+  }
+}
+async function ensureDirectHireProjectForApplication(app={}, job={}){
+  const existing = getProjects().find(project => String(project.applicationId) === String(app.id));
+  if (existing) return existing;
+  if (backendAuthEnabled() && app.backendSource && getBackendAccessToken()) {
+    try {
+      const saved = await backendAuthRequest('/projects/start', {
+        method: 'POST',
+        body: JSON.stringify({
+          application_id: app.id,
+          status: 'in_progress',
+          hourly_rate: Number(job.hourly_rate || job.rate || parseCompensationHourlyRate(job.compensation_text || formatDirectJobCompensation(job)) || 0) || undefined
+        })
+      });
+      return upsertBackendProject(mapBackendProject(saved, { application: app, job }));
+    } catch (error) {
+      console.warn('Backend project start failed', error);
+      toast(error.message || 'Backend project creation failed. Saving a local booking for now.');
+    }
+  }
+  const projects = getProjects();
+  const localProject = buildDirectHireProjectRecord(app, job, null);
+  projects.unshift(localProject);
+  saveProjects(projects);
+  return localProject;
+}
 function getEmployerCompanyName(user){
   if (!user) return '';
   return String((user.businessProfile && user.businessProfile.name) || user.company || user.publicName || user.name || '').trim();
@@ -1694,11 +1814,31 @@ function saveApplications(v){
 }
 function getBookings(){ return ls('cogo_bookings') || []; }
 function saveBookings(v){ ls('cogo_bookings', v); }
-function getProjects(){ return ls('cogo_projects') || []; }
+function getBackendProjects(){ return ensureArray(ls('cogo_backend_projects')).map(p => Object.assign({}, p, { backendSource:true })); }
+function saveBackendProjects(items){ ls('cogo_backend_projects', ensureArray(items).map(p => Object.assign({}, p, { backendSource:true }))); }
+function upsertBackendProject(project){
+  if (!project) return null;
+  const normalized = Object.assign({}, project, { backendSource:true });
+  const projects = getBackendProjects();
+  const idx = projects.findIndex(item => String(item.id) === String(normalized.id) || (item.applicationId && normalized.applicationId && String(item.applicationId) === String(normalized.applicationId)));
+  if (idx >= 0) projects[idx] = Object.assign({}, projects[idx], normalized); else projects.unshift(normalized);
+  saveBackendProjects(projects);
+  return normalized;
+}
+function mergeBackendProjects(localProjects=[]){
+  const backendProjects = getBackendProjects();
+  const backendIds = new Set(backendProjects.map(project => String(project.id)));
+  const backendApplicationIds = new Set(backendProjects.map(project => String(project.applicationId || '')).filter(Boolean));
+  return backendProjects.concat(ensureArray(localProjects).filter(project => !backendIds.has(String(project.id)) && !(project.applicationId && backendApplicationIds.has(String(project.applicationId)))));
+}
+function getProjects(){ return mergeBackendProjects(ls('cogo_projects') || []); }
 function saveProjects(v){
   const payload = ensureArray(v);
-  ls('cogo_projects', payload);
-  syncEntityToBackend('projects', payload);
+  const localOnly = payload.filter(item => !item.backendSource);
+  const backendOnly = payload.filter(item => item.backendSource);
+  ls('cogo_projects', localOnly);
+  if (backendOnly.length) saveBackendProjects(backendOnly);
+  syncEntityToBackend('projects', localOnly);
 }
 function normalizeMessageRecord(message){
   const normalized = Object.assign({
@@ -8290,6 +8430,7 @@ function deleteStudentProfile(profileId){
 
 function renderStudentJobsBookings(el){
  if (backendAuthEnabled() && !backendApplicationsLoaded && !backendApplicationsLoading) refreshBackendDirectJobApplications({ rerender:true });
+ if (backendAuthEnabled() && getBackendAccessToken() && !backendProjectsLoaded && !backendProjectsLoading) refreshBackendProjects({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
@@ -9011,6 +9152,10 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
       toast(error.message || 'Backend status update failed. Saving local copy only.');
     }
   }
+  if (status === 'hired') {
+    const project = await ensureDirectHireProjectForApplication(app, job);
+    if (project && !app.project_id) app.project_id = project.id;
+  }
   saveDirectJobApplications(items);
   if (['shortlisted','hired','rejected','reviewing'].includes(status)) {
     pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'messages' });
@@ -9288,6 +9433,7 @@ function shouldDisableDeclineApplicant(application){
   return application.status === 'accepted' || !!(job && !['open','pending'].includes(job.status));
 }
 function renderEmployerApplicantsBookings(el){
+ if (backendAuthEnabled() && getBackendAccessToken() && !backendProjectsLoaded && !backendProjectsLoading) refreshBackendProjects({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const allApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
