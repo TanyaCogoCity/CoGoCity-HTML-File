@@ -187,6 +187,31 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.patch('/password', requireAuth, async (req, res) => {
+  try {
+    const schema = z.object({
+      current_password: z.string().min(1),
+      new_password: z.string().min(8),
+    });
+    const payload = schema.parse(req.body || {});
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user || user.deletedAt || user.status !== 'active') return fail(res, 401, 'Unauthorized user');
+
+    const valid = await comparePassword(payload.current_password, user.passwordHash);
+    if (!valid) return fail(res, 401, 'Current password is incorrect');
+
+    const passwordHash = await hashPassword(payload.new_password);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await writeAuditLog({ userId: user.id, action: 'auth.password_update', entityType: 'user', entityId: user.id });
+
+    return ok(res, { updated: true });
+  } catch (error) {
+    return fail(res, 400, 'Invalid password update payload', error.message);
+  }
+});
+
 router.post('/refresh', async (req, res) => {
   try {
     const token = String(req.body?.refresh_token || '').trim();

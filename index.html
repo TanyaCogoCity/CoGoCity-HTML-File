@@ -12652,16 +12652,30 @@ function renderSettings(el){
     </div>
   `;
 }
-function changePassword(){
+async function changePassword(){
   const users = getUsers();
   const user = users.find(x => x.id === currentUser.id);
   if (!user) return;
   const currentPassword = document.getElementById('currentPassword').value || '';
   const newPassword = document.getElementById('newPassword').value || '';
   const confirmNewPassword = document.getElementById('confirmNewPassword').value || '';
-  if (currentPassword !== user.password) return toast('Current password is incorrect.');
-  if (!newPassword || newPassword.length < 6) return toast('New password must be at least 6 characters.');
+  if (!newPassword || newPassword.length < 8) return toast('New password must be at least 8 characters.');
   if (newPassword !== confirmNewPassword) return toast('New passwords do not match.');
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      await backendAuthRequest('/auth/password', {
+        method:'PATCH',
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+      });
+      toast('Password updated. Please use your new password next time you sign in.');
+      renderSettings(document.getElementById('dash-main'));
+      return;
+    } catch (error) {
+      toast(error.message || 'Password update failed.');
+      return;
+    }
+  }
+  if (currentPassword !== user.password) return toast('Current password is incorrect.');
   user.password = newPassword;
   saveUsers(users);
   setCurrentUser(user);
