@@ -81,7 +81,7 @@
     .hero p{max-width:680px;margin:0 auto 24px;color:var(--color-text-secondary)}
     .home-hero{
       min-height:392px;padding:56px 20px;display:flex;align-items:center;border-bottom:1px solid var(--color-border);
-      background-image:linear-gradient(90deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.92) 34%,rgba(255,255,255,.55) 58%,rgba(255,255,255,.08) 100%),url('assets/home-hero-students.jpg');
+      background-image:linear-gradient(90deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.86) 32%,rgba(255,255,255,.32) 54%,rgba(255,255,255,0) 100%),url('assets/home-hero-students.jpg');
       background-size:cover;background-position:center right;color:var(--color-text-main)
     }
     .home-hero-content{max-width:1120px;width:100%;margin:0 auto}
@@ -328,7 +328,7 @@
       .hero h1{font-size:1.85rem;line-height:1.12}
       .hero p{font-size:.98rem;margin-left:0;margin-right:0}
       .hero .btn,.hero a.btn{width:100%;margin-bottom:8px}
-      .home-hero{min-height:520px;align-items:flex-start;padding:28px 16px 240px;background-image:linear-gradient(180deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.94) 42%,rgba(255,255,255,.36) 72%,rgba(255,255,255,.08) 100%),url('assets/home-hero-students.jpg');background-position:center bottom}
+      .home-hero{min-height:520px;align-items:flex-start;padding:28px 16px 240px;background-image:linear-gradient(180deg,rgba(255,255,255,.97) 0%,rgba(255,255,255,.9) 38%,rgba(255,255,255,.2) 70%,rgba(255,255,255,0) 100%),url('assets/home-hero-students.jpg');background-position:center bottom}
       .home-hero h1{font-size:2rem;line-height:1.08}
       .home-hero p{font-size:.98rem}
       .home-hero-actions{display:block}
@@ -2435,8 +2435,8 @@ function getSiteSettings(){
     },
     page_blocks: {
       home: {
-        title: 'Find Trusted Local Student Help',
-        body: 'Book reliable students for tutoring, pet care, event help, yard work, tech support, and everyday local tasks.',
+        title: 'Find Skilled Local Students for Real Work',
+        body: 'Hire motivated students for social media, office support, event help, tutoring, and more.',
         image_url: 'assets/home-hero-students.jpg'
       },
       community: {
@@ -4770,8 +4770,8 @@ function renderHome(){
   const serviceCards = getHomepageOrderedServiceCards();
   const publicBlogPosts = getPublicBlogPosts();
   const homeBlock = Object.assign({
-    title:'Find Trusted Local Student Help',
-    body:'Book reliable students for tutoring, pet care, event help, yard work, tech support, and everyday local tasks.'
+    title:'Find Skilled Local Students for Real Work',
+    body:'Hire motivated students for social media, office support, event help, tutoring, and more.'
   }, (getSiteSettings().page_blocks || {}).home || {});
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -4783,7 +4783,6 @@ function renderHome(){
           <div class="home-hero-actions">
             ${!currentUser ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>` : ''}
             <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Feed</button>
-            <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/blog';renderPage()">Read the Blog</button>
           </div>
         </div>
       </div>
