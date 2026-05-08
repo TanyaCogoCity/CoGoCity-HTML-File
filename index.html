@@ -51,8 +51,8 @@
       position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--border);
       display:flex;align-items:center;gap:20px;padding:0 20px;height:64px
     }
-    .logo{font-size:1.35rem;font-weight:800;color:var(--navy);text-decoration:none}
-    .logo span{color:var(--color-primary)}
+    .logo{display:inline-flex;align-items:center;text-decoration:none;line-height:1}
+    .logo img{display:block;height:42px;width:auto;max-width:190px;object-fit:contain}
     .nav-links{display:flex;gap:18px;flex:1}
     .nav-links a{text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem;text-underline-offset:6px}
     .nav-links a.active,.nav-links a:hover{color:var(--color-text-main);text-decoration:underline;text-decoration-thickness:3px;text-decoration-color:var(--color-primary)}
@@ -309,7 +309,7 @@
     @media (max-width: 640px){
       body{font-size:15px}
       nav{height:auto;min-height:58px;flex-wrap:wrap;align-items:flex-start;padding:10px 12px;gap:8px}
-      .logo{font-size:1.2rem;line-height:38px}
+      .logo img{height:38px;max-width:170px}
       .nav-links{order:3;width:100%;flex:0 0 100%;padding:2px 0 4px;display:flex}
       .nav-actions{margin-left:auto;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:58%}
       .nav-actions .btn,.nav-actions button{padding:8px 10px;font-size:.82rem;border-radius:9px}
@@ -368,7 +368,7 @@
 <body>
   <div id="toast" class="toast"></div>
   <nav>
-    <a class="logo" href="#/">CoGo<span>City</span></a>
+    <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
     <div class="nav-links">
       <a href="#/" id="nav-home">Browse Students</a>
       <a href="#/community" id="nav-community">Community</a>
