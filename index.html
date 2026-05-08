@@ -7,59 +7,78 @@
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
   <meta name="description" content="CoGo City connects local students, families, neighbors, and businesses for trusted services, jobs, workshops, messages, and community opportunities." />
-  <meta name="theme-color" content="#1B3A6B" />
+  <meta name="theme-color" content="#FFE600" />
   <title>CoGo City</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231B3A6B'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='28' font-family='Arial,sans-serif' font-weight='700' fill='white'%3ECG%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23FFE600'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='28' font-family='Arial,sans-serif' font-weight='700' fill='%231F2937'%3ECG%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root{
-      --navy:#1B3A6B;
-      --blue:#2563EB;
-      --green:#059669;
-      --orange:#F59E0B;
-      --light:#F0F6FF;
-      --gray:#6B7280;
-      --dark:#111827;
-      --bg:#f8fafc;
-      --border:#e5e7eb;
-      --shadow:0 8px 24px rgba(0,0,0,.08);
+      --color-primary:#FFE600;
+      --color-primary-hover:#FFD600;
+      --color-primary-active:#FFC400;
+      --color-text-main:#1F2937;
+      --color-text-secondary:#6B7280;
+      --color-border:#E5E7EB;
+      --color-input-border:#D1D5DB;
+      --color-placeholder:#9CA3AF;
+      --color-success:#22C55E;
+      --color-bg:#FFFFFF;
+      --color-bg-light:#F9FAFB;
+      --color-link:#3B82F6;
+      --color-link-hover:#2563EB;
+
+      --navy:var(--color-text-main);
+      --blue:var(--color-link);
+      --green:var(--color-success);
+      --orange:#92400E;
+      --light:var(--color-bg-light);
+      --gray:var(--color-text-secondary);
+      --dark:var(--color-text-main);
+      --bg:var(--color-bg);
+      --border:var(--color-border);
+      --shadow:0 1px 3px rgba(0,0,0,.05);
       --radius:16px;
     }
     *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;background:var(--bg);color:var(--dark)}
+    body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;background:var(--color-bg);color:var(--color-text-main)}
     a{color:inherit}
+    .blog-article-content a{color:var(--color-link)}
+    .blog-article-content a:hover{color:var(--color-link-hover)}
+    .money{color:var(--color-success);font-weight:800}
     button,input,textarea,select{font:inherit}
     nav{
       position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid var(--border);
       display:flex;align-items:center;gap:20px;padding:0 20px;height:64px
     }
     .logo{font-size:1.35rem;font-weight:800;color:var(--navy);text-decoration:none}
-    .logo span{color:var(--blue)}
+    .logo span{color:var(--color-primary)}
     .nav-links{display:flex;gap:18px;flex:1}
-    .nav-links a{text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem}
-    .nav-links a.active,.nav-links a:hover{color:var(--navy)}
+    .nav-links a{text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem;text-underline-offset:6px}
+    .nav-links a.active,.nav-links a:hover{color:var(--color-text-main);text-decoration:underline;text-decoration-thickness:3px;text-decoration-color:var(--color-primary)}
     .nav-actions{display:flex;gap:10px;align-items:center}
     .btn{
       border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;text-decoration:none;
       display:inline-flex;align-items:center;justify-content:center;gap:6px
     }
     .btn-sm{padding:8px 12px;font-size:.88rem}
-    .btn-blue{background:var(--blue);color:#fff}
-    .btn-blue:hover{filter:brightness(.95)}
-    .btn-navy{background:var(--navy);color:#fff}
-    .btn-green{background:var(--green);color:#fff}
-    .btn-outline{background:#fff;border:1.5px solid var(--navy);color:var(--navy)}
-    .btn-danger{background:#fff;border:1.5px solid #dc2626;color:#dc2626}
-    .link-btn{background:none;border:none;padding:0;color:var(--navy);font:inherit;font-weight:800;cursor:pointer;text-decoration:underline}
-    .link-btn:hover{color:var(--blue)}
+    .btn-blue{background:var(--color-primary);color:var(--color-text-main)}
+    .btn-blue:hover{background:var(--color-primary-hover)}
+    .btn-blue:active{background:var(--color-primary-active)}
+    .btn-navy{background:var(--color-text-main);color:#fff}
+    .btn-green{background:var(--color-success);color:#fff}
+    .btn-outline{background:var(--color-bg);border:1px solid var(--color-border);color:var(--color-text-main)}
+    .btn-outline:hover{background:var(--color-bg-light)}
+    .btn-danger{background:#fff;border:1.5px solid #991B1B;color:#991B1B}
+    .link-btn{background:none;border:none;padding:0;color:var(--color-link);font:inherit;font-weight:800;cursor:pointer;text-decoration:underline}
+    .link-btn:hover{color:var(--color-link-hover)}
     main{min-height:calc(100vh - 64px)}
     .hero{
-      background:linear-gradient(135deg,var(--navy),var(--blue));
-      color:#fff;padding:64px 20px 56px;text-align:center
+      background:linear-gradient(135deg,#FFFFFF,#F9FAFB);
+      color:var(--color-text-main);padding:64px 20px 56px;text-align:center;border-bottom:1px solid var(--color-border)
     }
     .hero h1{margin:0 0 10px;font-size:2.6rem}
-    .hero p{max-width:680px;margin:0 auto 24px;opacity:.92}
+    .hero p{max-width:680px;margin:0 auto 24px;color:var(--color-text-secondary)}
     .container{max-width:1120px;margin:0 auto;padding:28px 20px}
     .card{
       background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)
@@ -68,43 +87,43 @@
     .grid{display:grid;gap:18px}
     .profiles-grid{grid-template-columns:repeat(3,1fr)}
     .profile-card{overflow:hidden}
-    .profile-top{background:linear-gradient(135deg,var(--navy),var(--blue));padding:18px;color:#fff;display:flex;gap:12px}
+    .profile-top{background:linear-gradient(135deg,#1F2937,#374151);padding:18px;color:#fff;display:flex;gap:12px}
     .avatar{
       width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.18);
       display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0
     }
     .profile-body{padding:16px}
     .tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
-    .tag{background:var(--light);color:var(--navy);padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:700}
+    .tag{background:#FEF9C3;color:#92400E;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:700}
     .muted{color:var(--gray)}
-    .rate{font-weight:800;color:var(--navy);font-size:1.05rem}
+    .rate{font-weight:800;color:var(--color-success);font-size:1.05rem}
     .profile-actions{display:flex;gap:8px;padding:0 16px 16px}
     .feed-wrap{max-width:760px;margin:0 auto}
     .post-card{padding:18px;margin-bottom:14px}
     .post-header{display:flex;gap:10px;align-items:center;margin-bottom:10px}
     .post-avatar{
-      width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--navy),var(--blue));
+      width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#1F2937,#374151);
       color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800
     }
     .post-job-badge,.badge{
       display:inline-block;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:800
     }
     .post-job-badge{background:#FEF3C7;color:#92400E}
-    .badge-open{background:#DCFCE7;color:#166534}
+    .badge-open{background:#FEF9C3;color:#92400E}
     .badge-pending{background:#FEF3C7;color:#92400E}
- .badge-offer_sent{background:#DBEAFE;color:#1D4ED8}
+ .badge-offer_sent{background:#E0F2FE;color:#0369A1}
  .badge-accepted{background:#DCFCE7;color:#166534}
  .badge-active{background:#DCFCE7;color:#166534}
  .badge-paid{background:#DCFCE7;color:#166534}
- .badge-processing{background:#DBEAFE;color:#1D4ED8}
+ .badge-processing{background:#E0F2FE;color:#0369A1}
  .badge-project_started{background:#DCFCE7;color:#166534}
- .badge-funded{background:#E0E7FF;color:#3730A3}
-    .badge-in_progress{background:#E0E7FF;color:#3730A3}
-    .badge-pending_approval,.badge-awaiting_employer_approval{background:#FCE7F3;color:#9D174D}
+ .badge-funded{background:#E0F2FE;color:#0369A1}
+    .badge-in_progress{background:#E0F2FE;color:#0369A1}
+    .badge-pending_approval,.badge-awaiting_employer_approval{background:#FEF3C7;color:#92400E}
     .badge-completed{background:#DCFCE7;color:#166534}
     .badge-declined{background:#FEE2E2;color:#991B1B}
     .badge-rejected{background:#FEE2E2;color:#991B1B}
-    .badge-closed{background:#F3F4F6;color:#4B5563}
+    .badge-closed{background:#E5E7EB;color:#374151}
     .meta-row{display:flex;gap:12px;flex-wrap:wrap;color:var(--gray);font-size:.85rem}
     .post-footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     .form-card{padding:18px}
@@ -112,9 +131,11 @@
     .field{margin-bottom:14px}
     .field label{display:block;font-size:.85rem;font-weight:700;margin-bottom:6px}
     .field input,.field textarea,.field select{
-      width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;outline:none;background:#fff
+      width:100%;padding:10px 12px;border:1.5px solid var(--color-input-border);border-radius:10px;outline:none;background:var(--color-bg);color:var(--color-text-main)
     }
     .field textarea{min-height:88px;resize:vertical}
+    .field input::placeholder,.field textarea::placeholder{color:var(--color-placeholder)}
+    .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(255,230,0,.24)}
     .hidden{display:none!important}
     .dashboard{display:flex;min-height:calc(100vh - 64px)}
     .sidebar{
@@ -123,23 +144,23 @@
     .sidebar a{
       display:block;padding:10px 18px;text-decoration:none;color:var(--gray);font-weight:600
     }
-    .sidebar a.active,.sidebar a:hover{background:var(--light);color:var(--navy)}
+    .sidebar a.active,.sidebar a:hover{background:var(--color-bg-light);color:var(--color-text-main)}
     .dash-main{flex:1;padding:24px}
     .subtabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .pill{padding:8px 14px;border:none;border-radius:999px;background:#E5E7EB;font-weight:700;cursor:pointer}
-    .pill.active{background:var(--navy);color:#fff}
+    .pill.active{background:var(--color-primary);color:var(--color-text-main)}
     .item-card{padding:16px;margin-bottom:12px}
     .project-toggle{
       border:1px solid var(--border);
       background:#fff;
-      color:var(--navy);
+      color:var(--color-text-main);
       border-radius:999px;
       padding:6px 12px;
       font-size:.78rem;
       font-weight:800;
       cursor:pointer;
     }
-    .project-toggle:hover{background:var(--light)}
+    .project-toggle:hover{background:var(--color-bg-light)}
     .split{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
     .modal-bg{
       position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;
@@ -153,26 +174,26 @@
     .close-btn{border:none;background:none;font-size:1.25rem;cursor:pointer}
     .toast{
       position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-      background:#111827;color:#fff;padding:12px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100
+      background:var(--color-text-main);color:#fff;padding:12px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100
     }
     .toast.show{opacity:1}
     .msg-shell{display:grid;grid-template-columns:280px 1fr;gap:14px}
     .thread-list,.thread-view{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
-    .thread{padding:14px 16px;border-bottom:1px solid #f3f4f6;cursor:pointer}
+    .thread{padding:14px 16px;border-bottom:1px solid #F3F4F6;cursor:pointer}
     .thread:hover{background:var(--light)}
     .thread.unread{
-      background:#dbeafe;
-      border-left:6px solid #2563eb;
+      background:#E0F2FE;
+      border-left:6px solid var(--color-link);
       box-shadow:inset 0 0 0 1px rgba(37,99,235,.22);
     }
-    .thread.unread .thread-title{font-weight:900;color:#1e3a8a}
-    .thread.unread .thread-preview{font-weight:800;color:#0f172a}
+    .thread.unread .thread-title{font-weight:900;color:#0369A1}
+    .thread.unread .thread-preview{font-weight:800;color:#1F2937}
     .thread-unread-badge{
       display:inline-flex;
       align-items:center;
       padding:2px 8px;
       border-radius:999px;
-      background:#2563eb;
+      background:var(--color-link);
       color:#fff;
       font-size:.72rem;
       font-weight:900;
@@ -182,45 +203,45 @@
     .thread-view{display:flex;flex-direction:column;min-height:480px}
     .messages{padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:420px}
     .bubble{max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.4}
-    .bubble.mine{background:var(--blue);color:#fff;align-self:flex-end}
+    .bubble.mine{background:var(--color-link);color:#fff;align-self:flex-end}
     .bubble.theirs{background:#F3F4F6;color:var(--dark);align-self:flex-start}
-    .bubble.new-message{border:2px solid #2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.15);font-weight:700}
+    .bubble.new-message{border:2px solid var(--color-link);box-shadow:0 0 0 2px rgba(59,130,246,.15);font-weight:700}
     .msg-compose{display:flex;gap:10px;padding:12px;border-top:1px solid var(--border)}
     .msg-compose input{flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px}
     .warning{
-      background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;padding:12px 14px;border-radius:12px;font-size:.88rem
+      background:#FEF3C7;color:#92400E;border:1px solid #FEF3C7;padding:12px 14px;border-radius:12px;font-size:.88rem
     }
     .contract-box{
-      background:#F8FAFC;border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:12px
+      background:var(--color-bg-light);border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:12px
     }
     .small{font-size:.84rem}
     .blog-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
     .blog-featured{display:grid;grid-template-columns:1.2fr 1fr;gap:0;overflow:hidden}
-    .blog-featured-media{position:relative;min-height:320px;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
+    .blog-featured-media{position:relative;min-height:320px;aspect-ratio:16/9;background:linear-gradient(135deg,#1F2937,#374151);overflow:hidden}
     .blog-featured-media img{width:100%;height:100%;object-fit:cover;display:block}
-    .blog-card-media{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
+    .blog-card-media{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#1F2937,#374151);overflow:hidden}
     .blog-card-image{width:100%;height:100%;object-fit:cover;display:block}
-    .blog-video-frame{width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;margin:18px 0}
+    .blog-video-frame{width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#1F2937;margin:18px 0}
     .blog-video-frame iframe{width:100%;height:100%;border:0;display:block}
     .blog-article-content img{max-width:100%;height:auto;border-radius:12px}
-    .blog-article-content iframe,.blog-article-content video{width:100%;max-width:100%;min-height:420px;border:0;border-radius:12px;background:#000}
+    .blog-article-content iframe,.blog-article-content video{width:100%;max-width:100%;min-height:420px;border:0;border-radius:12px;background:#1F2937}
     .blog-article-content figure{margin:18px 0}
     .blog-article-content figcaption{margin-top:8px;color:var(--gray);font-size:.84rem}
     .blog-article-content p,.blog-article-content ul,.blog-article-content ol{margin:16px 0}
     .blog-article-content h2,.blog-article-content h3,.blog-article-content h4{margin-top:28px}
     .workshop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
     .workshop-card{overflow:hidden}
-    .workshop-cover{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--blue));overflow:hidden}
+    .workshop-cover{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#1F2937,#374151);overflow:hidden}
     .workshop-cover img{width:100%;height:100%;object-fit:cover;display:block}
     .workshop-meta{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-    .workshop-chip{font-size:.76rem;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#1e3a8a;font-weight:700}
-    .workshop-price-badge{position:absolute;top:10px;right:10px;background:rgba(17,24,39,.92);color:#fff;padding:6px 10px;border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.02em;z-index:2}
-    .workshop-detail-media{position:relative;aspect-ratio:16/9;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;margin-bottom:16px}
+    .workshop-chip{font-size:.76rem;padding:4px 8px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-weight:700}
+    .workshop-price-badge{position:absolute;top:10px;right:10px;background:var(--color-success);color:#fff;padding:6px 10px;border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.02em;z-index:2}
+    .workshop-detail-media{position:relative;aspect-ratio:16/9;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;margin-bottom:16px}
     .workshop-detail-media img,.workshop-detail-media iframe{width:100%;height:100%;object-fit:cover;border:0;display:block}
     .workshop-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
     .site-footer{
-      background:#0f172a;
-      color:#e5e7eb;
+      background:#1F2937;
+      color:#E5E7EB;
       border-top:1px solid rgba(255,255,255,.08);
       padding:36px 20px 24px;
     }
@@ -238,7 +259,7 @@
       font-size:1rem;
     }
     .footer-text{
-      color:#cbd5e1;
+      color:#E5E7EB;
       line-height:1.6;
       font-size:.92rem;
     }
@@ -248,7 +269,7 @@
       gap:8px;
     }
     .footer-links a{
-      color:#cbd5e1;
+      color:#E5E7EB;
       text-decoration:none;
       font-size:.92rem;
     }
@@ -257,16 +278,16 @@
     .social-icon{
       width:34px;height:34px;border-radius:50%;
       display:inline-flex;align-items:center;justify-content:center;
-      background:#1e293b;color:#fff;text-decoration:none;font-weight:800;font-size:.8rem;
+      background:#374151;color:#fff;text-decoration:none;font-weight:800;font-size:.8rem;
       border:1px solid rgba(255,255,255,.12);
     }
-    .social-icon:hover{background:#2563eb}
+    .social-icon:hover{background:var(--color-link-hover)}
     .footer-bottom{
       max-width:1120px;
       margin:18px auto 0;
       padding-top:16px;
       border-top:1px solid rgba(255,255,255,.1);
-      color:#94a3b8;
+      color:#9CA3AF;
       font-size:.82rem;
     }
     @media (max-width: 900px){
@@ -791,7 +812,7 @@ function renderStripeOnboardingCard(){
     </div>
   `);
   if (!blocks.length) return '';
-  return `<div class="card form-card" style="margin-bottom:16px;background:#f8fafc"><div style="font-weight:900;font-size:1.05rem">Stripe onboarding</div><div class="small muted" style="margin-top:6px">Staging/test mode only.</div>${blocks.join('')}</div>`;
+  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Stripe onboarding</div><div class="small muted" style="margin-top:6px">Staging/test mode only.</div>${blocks.join('')}</div>`;
 }
 async function openPayerStripeSetupModal(){
   if (!stripeOnboardingEnabled()) return toast('Stripe onboarding is available on staging after sign-in.');
@@ -800,7 +821,7 @@ async function openPayerStripeSetupModal(){
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Test mode only. Use Stripe test card 4242 4242 4242 4242, any future expiry, any CVC.</div>
       <div class="field"><label>Card details</label><div id="stripe-card-element" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff"></div></div>
-      <div id="stripe-card-errors" class="small" style="color:#b91c1c;margin-bottom:12px"></div>
+      <div id="stripe-card-errors" class="small" style="color:#991B1B;margin-bottom:12px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-blue" id="stripeSavePaymentBtn" onclick="submitPayerStripeSetup()">Save Payment Method</button>
@@ -3035,7 +3056,7 @@ function renderProjectPaymentStatus(project={}){
   const hasStripe = Boolean(project.stripe_payment_intent_id || project.stripePaymentIntentId);
   const stripeId = project.stripe_payment_intent_id || project.stripePaymentIntentId || '';
   return `
-    <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border);margin:8px 0">
+    <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border);margin:8px 0">
       <div class="small"><strong>Payment status:</strong> ${esc(projectPaymentStatusText(project))}</div>
       <div class="small muted">Provider: ${hasStripe ? 'Stripe test-mode' : 'Direct / outside platform'}${stripeId ? ` · ${esc(stripeId)}` : ''}</div>
     </div>
@@ -3082,7 +3103,7 @@ function renderProjectSystemUpdates(projectId=''){
   if (!updates.length) return `<div class="small muted">No system payment updates yet.</div>`;
   return updates.map(update => `
     <div class="contract-box small" style="margin-top:8px">
-      <div style="font-weight:800;color:#1e3a8a">CoGo Team</div>
+      <div style="font-weight:800;color:#0369A1">CoGo Team</div>
       <div style="margin-top:6px">${esc(update.content || '')}</div>
       <div class="muted small" style="margin-top:6px">${timeAgo(update.createdAt)}</div>
     </div>
@@ -3718,7 +3739,7 @@ function renderStudentSignupModal(){
         <div style="min-width:180px;text-align:right">
           <div class="small muted">Profile strength</div>
           <div style="font-weight:800">${strength}% complete</div>
-          <div style="height:8px;background:#e5e7eb;border-radius:999px;margin-top:8px;overflow:hidden">
+          <div style="height:8px;background:#E5E7EB;border-radius:999px;margin-top:8px;overflow:hidden">
             <div style="height:100%;width:${strength}%;background:linear-gradient(90deg,var(--blue),var(--green))"></div>
           </div>
         </div>
@@ -3747,10 +3768,10 @@ function renderStudentSignupStepContent(){
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
       <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
-      <div style="margin-bottom:14px">${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:120px;height:120px;border-radius:20px;object-fit:cover;border:3px solid #dbeafe', 'full', 'loading="eager"') : `<div class="small muted">No photo uploaded yet.</div>`}</div>
+      <div style="margin-bottom:14px">${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:120px;height:120px;border-radius:20px;object-fit:cover;border:3px solid #E0F2FE', 'full', 'loading="eager"') : `<div class="small muted">No photo uploaded yet.</div>`}</div>
       <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
-        ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
+        ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
       </div>
     </div>
   `;
@@ -3839,7 +3860,7 @@ function renderStudentSignupStepContent(){
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:10px">Ready to go live</div>
       <div class="small muted" style="margin-bottom:14px">Your student profile will publish to Browse Students and your Dashboard \u2192 My Profile after password setup.</div>
-      <div class="card" style="padding:14px;background:#f8fafc">
+      <div class="card" style="padding:14px;background:#F9FAFB">
         <div style="font-weight:800">${esc(d.name || 'New Student')}</div>
         <div class="small muted">${esc(d.city || '')} \u00B7 ${(d.services || []).length} service${(d.services || []).length === 1 ? '' : 's'}</div>
       </div>
@@ -4363,7 +4384,7 @@ function renderEmployerSignupModal(){
   const label = employerSignupMode === 'employer' ? 'Employer' : 'Neighbor';
   const footer = renderEmployerSignupFooter();
   openModal(`Join CoGo City as ${label}`, `
-    <div class="card" style="padding:14px 16px;background:#f8fafc;border:1px solid var(--border);margin-bottom:16px">
+    <div class="card" style="padding:14px 16px;background:#F9FAFB;border:1px solid var(--border);margin-bottom:16px">
       <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap">
         <div>
           <div class="small muted">Step ${employerSignupStep} of ${employerSignupTotalSteps()}</div>
@@ -4387,7 +4408,7 @@ function renderEmployerSignupStepContent(){
       <div class="field"><label>Profile Photo</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
-      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
+      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
       <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
@@ -4411,7 +4432,7 @@ function renderEmployerSignupStepContent(){
       <div class="warning" style="margin-bottom:14px">Review your profile before continuing to password setup.</div>
       <div class="card" style="padding:14px;background:#fff;margin-bottom:14px">
         <div class="split" style="align-items:center;gap:14px;flex-wrap:wrap">
-          <div style="display:flex;gap:14px;align-items:center">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E2}')}</div>`}<div><div style="font-weight:800">${esc(d.firstName)} ${esc((d.lastName || '').slice(0,1))}.</div><div class="muted">${esc(d.city || extractCity(d.address))}</div></div></div>
+          <div style="display:flex;gap:14px;align-items:center">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E2}')}</div>`}<div><div style="font-weight:800">${esc(d.firstName)} ${esc((d.lastName || '').slice(0,1))}.</div><div class="muted">${esc(d.city || extractCity(d.address))}</div></div></div>
           <button class="btn btn-outline btn-sm" onclick="editEmployerSignupPreview('personal')">Edit Personal Info</button>
         </div>
         <div class="row" style="margin-top:12px">
@@ -5067,12 +5088,12 @@ function renderDirectJobCard(job){
   const isOwner = !!(currentUser && currentUser.id === job.employer_id);
   const featured = isFeaturedDirectJob(job);
   return `
-    <article class="card item-card" style="${featured ? 'background:#fffdf2;border-color:#f5d97a;box-shadow:0 10px 24px rgba(0,0,0,.06);' : ''}">
+    <article class="card item-card" style="${featured ? 'background:#F9FAFB;border-color:#E5E7EB;box-shadow:0 10px 24px rgba(0,0,0,.06);' : ''}">
       <div class="split">
         <div style="max-width:760px">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <div style="font-weight:800;font-size:1.08rem">${esc(job.job_title)}</div>
-            ${featured ? `<span class="pill active" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b">Featured</span>` : ''}
+            ${featured ? `<span class="pill active" style="background:#FEF3C7;color:#92400E;border:1px solid #FEF3C7">Featured</span>` : ''}
             ${badge(job.status)}
           </div>
           <div class="small muted" style="margin-top:6px">${esc(job.company_name || 'Company')} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
@@ -5599,7 +5620,7 @@ function renderWorkshopDetailPage(workshopId=''){
           ${spotsLeft !== null ? `<span class="workshop-chip">${esc(spotsLeft)} spot${spotsLeft === 1 ? '' : 's'} left</span>` : ''}
         </div>
         <p style="line-height:1.75">${esc(workshop.description)}</p>
-        <div class="card form-card" style="margin-top:12px;background:#f8fafc">
+        <div class="card form-card" style="margin-top:12px;background:#F9FAFB">
           <div style="font-weight:800;margin-bottom:8px">Instructor</div>
           <div class="small">${esc(getWorkshopHostName(workshop))}</div>
           ${host ? `<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="openWorkshopHostProfile('${esc(host.id)}')">View Profile</button>` : ''}
@@ -6603,12 +6624,12 @@ function renderMediaCarousel(images=[], size=84){
   const height = Math.max(180, Number(size) * 3);
   return `
     <div style="max-width:420px">
-      <div style="position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#f8fafc">
+      <div style="position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#F9FAFB">
         <img id="${carouselId}_image" src="${esc(imageViews[0].url)}" loading="lazy" style="width:100%;height:${height}px;object-fit:cover;display:block">
         <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', -1)" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">\u2039</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', 1)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">\u203A</button>
       </div>
-      <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">${imageViews.map((_, index) => `<button type="button" data-carousel-dot="${carouselId}" onclick="setMediaCarouselIndex('${carouselId}', ${index})" style="width:10px;height:10px;border-radius:50%;border:0;background:#2563eb;opacity:${index === 0 ? 1 : .35};cursor:pointer"></button>`).join('')}</div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:10px">${imageViews.map((_, index) => `<button type="button" data-carousel-dot="${carouselId}" onclick="setMediaCarouselIndex('${carouselId}', ${index})" style="width:10px;height:10px;border-radius:50%;border:0;background:var(--color-link);opacity:${index === 0 ? 1 : .35};cursor:pointer"></button>`).join('')}</div>
     </div>
   `;
 }
@@ -6783,7 +6804,7 @@ function renderEmbeddedVideoFrame(embedUrl='', label='Video preview', autoplay=f
     if (typeof location !== 'undefined' && /^https?:/i.test(location.origin || '')) addParam('origin', location.origin);
   }
   return `
-    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000">
+    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937">
       <iframe src="${esc(src)}" title="${esc(label)}" frameborder="0" allow="${esc(allow)}" allowfullscreen referrerpolicy="origin" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
     </div>
   `;
@@ -6798,7 +6819,7 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
     const encodedVideo = encodeURIComponent(JSON.stringify({ type:'youtube', videoId, id:videoId, url:embedUrl }));
     return `
       <div id="${containerId}">
-        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
           ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : ''}
           <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">\u25B6</div>
         </div>
@@ -6813,7 +6834,7 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
     const encodedVideo = encodeURIComponent(JSON.stringify({ type:'vimeo', videoId, id:videoId, url:embedUrl }));
     return `
       <div id="${containerId}">
-        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+        <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
           ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : ''}
           <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(37,99,235,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">\u25B6</div>
         </div>
@@ -6824,7 +6845,7 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
   if (video.type === 'upload' && video.url) {
     const mimeType = getVideoMimeType(video.url);
     return `
-      <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
+      <video controls playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#1F2937">
         ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
       </video>
     `;
@@ -6846,7 +6867,7 @@ function getVideoPlaybackHtml(video=null, label='Video preview'){
   if (video.type === 'upload' && video.url) {
     const mimeType = getVideoMimeType(video.url);
     return `
-      <video controls autoplay playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#000">
+      <video controls autoplay playsinline webkit-playsinline preload="metadata" src="${esc(video.url)}" style="width:100%;border:1px solid var(--border);border-radius:12px;background:#1F2937">
         ${mimeType ? `<source src="${esc(video.url)}" type="${esc(mimeType)}">` : `<source src="${esc(video.url)}">`}
       </video>
     `;
@@ -6890,8 +6911,8 @@ function renderVideo(video=null, containerId='video-container', options={}){
   }
   const encodedVideo = encodeURIComponent(JSON.stringify(video));
   container.innerHTML = `
-    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#000;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
-      ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
+    <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
+      ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1F2937,#374151);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
       <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">\u25B6</div>
     </div>
     ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}">Watch on YouTube</a></div>` : ''}
@@ -7823,13 +7844,13 @@ function renderPost(p){
       <div style="margin-bottom:10px">${esc(p.content)}</div>
       ${mediaHtml}
       ${p.isJob ? `
-        <div class="card" style="padding:14px;background:#FCFCFF;border-color:#E5E7EB">
+        <div class="card" style="padding:14px;background:#F9FAFB;border-color:#E5E7EB">
           <div style="font-weight:800;font-size:1.05rem">${esc(p.jobTitle)}</div>
           <div class="meta-row" style="margin:8px 0">
             <span>\u{1F4B0} $${esc(p.rate)}/hr</span>
             <span>\u23F1\uFE0F ${esc(p.hoursNeeded)} hours</span>
             <span>\u{1F4CD} ${esc(p.location)}</span>
-            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#DBEAFE' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#1D4ED8' : '#374151')};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#E0F2FE' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#0369A1' : '#374151')};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
           </div>
           <div class="small">${esc(p.description)}</div>
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
@@ -8079,7 +8100,7 @@ function openBookDirect(studentId, serviceId=''){
   const selectedService = services.find(service => service.id === serviceId) || services[0] || {};
   openModal(`Book / Offer Job to ${s.name}`, `
     <div class="warning" style="margin-bottom:14px">This creates a direct employer-to-student offer flow similar to Fiverr/Upwork.</div>
-    ${selectedService.title ? `<div class="card" style="padding:12px;margin-bottom:14px;background:#f8fafc"><div style="font-weight:800">${esc(selectedService.title)}</div><div class="small muted" style="margin-top:4px">$${esc(selectedService.rate || s.rate || 0)}/hr \u00B7 ${esc(selectedService.location || s.location || '')}</div></div>` : ''}
+    ${selectedService.title ? `<div class="card" style="padding:12px;margin-bottom:14px;background:#F9FAFB"><div style="font-weight:800">${esc(selectedService.title)}</div><div class="small money" style="margin-top:4px">$${esc(selectedService.rate || s.rate || 0)}/hr \u00B7 ${esc(selectedService.location || s.location || '')}</div></div>` : ''}
     <div class="field"><label>Job Title</label><input id="directJobTitle" value="${esc(selectedService.title || '')}" placeholder="e.g. Website updates" /></div>
     <div class="field"><label>Employer Scope of Work</label><textarea id="directJobScope" placeholder="Describe your requirements..."></textarea></div>
     <div class="row">
@@ -8165,7 +8186,7 @@ function renderDashboard(){
   document.getElementById('app').innerHTML = `
     <div class="dashboard">
       <div class="sidebar">
-        ${isAdminImpersonating() ? `<div class="card" style="padding:12px;margin-bottom:12px;background:#eff6ff;border:1px solid #bfdbfe"><div class="small muted">Viewing as ${esc(currentUser.name)}</div><button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="stopAdminImpersonation()">Return to Admin Dashboard</button></div>` : ''}
+        ${isAdminImpersonating() ? `<div class="card" style="padding:12px;margin-bottom:12px;background:#E0F2FE;border:1px solid #E0F2FE"><div class="small muted">Viewing as ${esc(currentUser.name)}</div><button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="stopAdminImpersonation()">Return to Admin Dashboard</button></div>` : ''}
         ${currentUser.role === 'admin' ? `
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">\u{1F6E1}\uFE0F Admin Panel</a>
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">\u{1F465} Users</a>
@@ -8253,7 +8274,7 @@ function renderEmployerProfile(el){
     ${showProfile ? `
       <div class="card form-card" style="margin-top:16px">
         <div class="split" style="align-items:center;margin-bottom:14px">
-          <div style="display:flex;gap:14px;align-items:center">${user.photo ? renderManagedImage(user.photo, user.publicName || user.name || 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #dbeafe', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(user.emoji || '\u{1F3E0}')}</div>`}<div><div style="font-weight:800;font-size:1.05rem">${esc(user.publicName || user.name || '')}</div><div class="small muted">${esc(user.city || '')}</div></div></div>
+          <div style="display:flex;gap:14px;align-items:center">${user.photo ? renderManagedImage(user.photo, user.publicName || user.name || 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(user.emoji || '\u{1F3E0}')}</div>`}<div><div style="font-weight:800;font-size:1.05rem">${esc(user.publicName || user.name || '')}</div><div class="small muted">${esc(user.city || '')}</div></div></div>
         </div>
         <div class="row">
           <div><div class="small muted">Name</div><div style="font-weight:700">${esc(user.publicName || user.name || '')}</div></div>
@@ -8956,10 +8977,10 @@ function openSubmitCompletion(projectId){
       <div class="field"><label>Location</label><input value="${esc(snapshot.location || '')}" readonly></div>
     </div>
     <div class="field">
-      <label>Hours Worked <span class="small" style="color:#2563eb;font-weight:700">(editable)</span></label>
-      <input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#e0f2fe;border:2px solid #60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.12)">
+      <label>Hours Worked <span class="small" style="color:var(--color-link);font-weight:700">(editable)</span></label>
+      <input id="finalHours" type="number" min="0.5" step="0.5" value="${esc(p.estimatedHours)}" oninput="updateCompletionPreview('${esc(projectId)}')" style="background:#FFFFFF;border:2px solid #FFE600;box-shadow:0 0 0 3px rgba(255,230,0,.24)">
     </div>
-    <div id="student-completion-breakdown" class="card" style="padding:12px;background:#f8fafc;border:1px solid var(--border);margin-top:12px">${renderStudentCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
+    <div id="student-completion-breakdown" class="card" style="padding:12px;background:#F9FAFB;border:1px solid var(--border);margin-top:12px">${renderStudentCommissionBreakdownHtml(estimatedBreakdown, 'Estimated')}</div>
     <button class="btn btn-blue" onclick="submitFinalInvoice('${esc(projectId)}')">Complete Project</button>
   `, '620px');
 }
@@ -10507,7 +10528,7 @@ function renderMessages(el){
       <div class="thread-list">
         ${threadList.length ? threadList.map(t => `
           <div class="thread ${t.unread ? 'unread' : ''}" onclick="activeThreadUserId='${esc(t.threadKey)}';renderDashboard()">
-            <div class="thread-title" style="display:flex;align-items:center;gap:6px;font-weight:800">${renderMessagePartnerName(t.partnerId, t.partnerName, true)} ${t.threadId && t.threadId.startsWith('system:') ? `<span class="thread-unread-badge" style="background:#1e3a8a">CoGo Team</span>` : ''} ${t.unread ? `<span class="thread-unread-badge">NEW${t.unread > 1 ? ` (${t.unread})` : ''}</span>` : ''}</div>
+            <div class="thread-title" style="display:flex;align-items:center;gap:6px;font-weight:800">${renderMessagePartnerName(t.partnerId, t.partnerName, true)} ${t.threadId && t.threadId.startsWith('system:') ? `<span class="thread-unread-badge" style="background:#0369A1">CoGo Team</span>` : ''} ${t.unread ? `<span class="thread-unread-badge">NEW${t.unread > 1 ? ` (${t.unread})` : ''}</span>` : ''}</div>
             ${t.threadLabel ? `<div class="small muted" style="margin-top:4px">${esc(t.threadLabel)}</div>` : ''}
             <div class="thread-preview muted small">${esc(t.preview.slice(0,80))}</div>
           </div>
@@ -10961,7 +10982,7 @@ function applyAdminRoleValue(user, roleValue){
 }
 function roleStatusPill(status){
   const active = status !== 'suspended';
-  return `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:.78rem;font-weight:700;background:${active ? '#dcfce7' : '#fee2e2'};color:${active ? '#166534' : '#991b1b'}">${active ? 'Active' : 'Suspended'}</span>`;
+  return `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:.78rem;font-weight:700;background:${active ? '#DCFCE7' : '#FEE2E2'};color:${active ? '#166534' : '#991B1B'}">${active ? 'Active' : 'Suspended'}</span>`;
 }
 function openCreateAdminUserModal(){
   openModal('Create New User', `
@@ -11349,7 +11370,7 @@ function openAdminUserEditModal(userId){
       <div class="field"><label>City</label><input id="adminEditUserCity" value="${esc(draft.city || '')}"></div>
     </div>
     <div class="field"><label>Address</label><input id="adminEditUserAddress" value="${esc(draft.address || '')}"></div>
-    <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
+    <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
       <div style="font-weight:800;margin-bottom:10px">Profile Photo</div>
       <input type="hidden" id="adminEditUserPhoto" value="${esc(draft.photo || '')}">
       <div id="admin-edit-user-photo-preview" style="margin-bottom:12px">${renderAdminModalSingleImagePreview(draft.photo || '', 'Profile photo', 'No profile photo selected yet.')}</div>
@@ -11357,7 +11378,7 @@ function openAdminUserEditModal(userId){
       <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('single','photo',1)">Select from Library</button></div>
     </div>
     ${draft.student ? `
-      <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
+      <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
         <div style="font-weight:800;margin-bottom:10px">Student Portfolio</div>
         <div class="row">
           <div class="field"><label>Age</label><input id="adminEditStudentAge" type="number" min="13" value="${esc(draft.student.age || '')}"></div>
@@ -11391,7 +11412,7 @@ function openAdminUserEditModal(userId){
       </div>
     ` : ''}
     ${draft.roleValue === 'employer' ? `
-      <div class="card" style="padding:14px;margin:16px 0;background:#f8fafc;border:1px solid var(--border)">
+      <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
         <div style="font-weight:800;margin-bottom:10px">Business Details</div>
         <div class="field"><label>Company / Business Name</label><input id="adminEditBusinessName" value="${esc(draft.company || '')}"></div>
         <div class="field"><label>About</label><textarea id="adminEditBusinessAbout" rows="3">${esc(draft.businessAbout || '')}</textarea></div>
@@ -11538,7 +11559,7 @@ function renderAdminUsersResults(){
     <div style="overflow:auto">
       <table style="width:100%;border-collapse:collapse;font-size:.92rem">
         <thead>
-          <tr style="background:#f8fafc;text-align:left">
+          <tr style="background:#F9FAFB;text-align:left">
             <th style="padding:12px;border-bottom:1px solid var(--border);width:54px">Select</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">First Name</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Last Name</th>
@@ -11554,7 +11575,7 @@ function renderAdminUsersResults(){
           ${users.map(user => {
             const nameParts = splitAdminUserName(user);
             return `
-              <tr onclick="selectAdminUser('${esc(user.id)}')" style="cursor:pointer;background:${adminSelectedUserId === user.id ? '#eff6ff' : 'transparent'}">
+              <tr onclick="selectAdminUser('${esc(user.id)}')" style="cursor:pointer;background:${adminSelectedUserId === user.id ? '#E0F2FE' : 'transparent'}">
                 <td style="padding:12px;border-bottom:1px solid var(--border)"><input type="radio" name="adminUserSelection" ${adminSelectedUserId === user.id ? 'checked' : ''} onclick="event.stopPropagation();selectAdminUser('${esc(user.id)}')"></td>
                 <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(nameParts.firstName || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(nameParts.lastName || '\u2014')}</td>
@@ -11586,8 +11607,8 @@ function renderAdminUsersSection(el){
     </div>
     <div class="card form-card" style="margin-bottom:18px">
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-        <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Users in Current View</div><div id="admin-users-count" style="font-size:1.5rem;font-weight:800">0</div></div>
-        <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Users in Database</div><div style="font-size:1.5rem;font-weight:800">${totalDatabaseUsers}</div></div>
+        <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Users in Current View</div><div id="admin-users-count" style="font-size:1.5rem;font-weight:800">0</div></div>
+        <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Users in Database</div><div style="font-size:1.5rem;font-weight:800">${totalDatabaseUsers}</div></div>
       </div>
       <div class="row" style="align-items:end">
         <div class="field"><label>Search</label><input value="${esc(adminUsersQuery)}" placeholder="Search by name or email" oninput="adminUsersQuery=this.value;renderAdminUsersResults()"></div>
@@ -12252,22 +12273,22 @@ function renderTransactionsResults(){
   const totalPaid = rows.reduce((sum, tx) => sum + Number(tx.total_amount || 0), 0);
   const totalPlatformFees = rows.reduce((sum, tx) => sum + Number(tx.platform_fee_total || 0), 0);
   const roleSummary = isAdmin
-    ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Platform Fees</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPlatformFees)}</div></div>`
+    ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Platform Fees</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div></div>`
     : isEmployer
-      ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPaid)}</div></div>`
-      : `<div class="card" style="padding:14px;margin-bottom:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPayout)}</div></div>`;
+      ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div class="money" style="font-size:1.2rem">$${money(totalPaid)}</div></div>`
+      : `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div></div>`;
   summaryWrap.innerHTML = isAdmin ? `
     <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
-      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
-      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Work</div><div style="font-weight:800;font-size:1.2rem">$${money(totalWork)}</div></div>
-      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div style="font-weight:800;font-size:1.2rem">$${money(totalPaid)}</div></div>
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Work</div><div class="money" style="font-size:1.2rem">$${money(totalWork)}</div></div>
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div class="money" style="font-size:1.2rem">$${money(totalPaid)}</div></div>
       ${roleSummary}
     </div>
   ` : `
     <div class="grid" style="grid-template-columns:repeat(${isEmployer ? 3 : 2},1fr);gap:12px;margin-bottom:14px">
-      <div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
       ${roleSummary}
-      ${isEmployer ? `<div class="card" style="padding:14px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Subscription Spend</div><div style="font-weight:800;font-size:1.2rem">$${money(employerSubscriptionSpend)}</div></div>` : ''}
+      ${isEmployer ? `<div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Subscription Spend</div><div class="money" style="font-size:1.2rem">$${money(employerSubscriptionSpend)}</div></div>` : ''}
     </div>
   `;
 
@@ -12322,11 +12343,11 @@ function renderTransactionsResults(){
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:12px 8px">${esc(formatTransactionDate(txDate))}</td>
         <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
-        <td style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
+        <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
-        <td style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
-        <td style="padding:12px 8px">${platformFeeLabel}</td>
-        ${isAdmin ? '' : `<td style="padding:12px 8px">${finalValue}</td>`}
+        <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
+        <td class="money" style="padding:12px 8px">${platformFeeLabel}</td>
+        ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
       </tr>
     `;
   }).join('');
@@ -12381,11 +12402,11 @@ function renderTransactionsResults(){
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:12px 8px">${esc(formatTransactionDate(txDate))}</td>
         <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
-        <td style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
+        <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
-        <td style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
-        <td style="padding:12px 8px">${platformFeeLabel}</td>
-        ${isAdmin ? '' : `<td style="padding:12px 8px">${finalValue}</td>`}
+        <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
+        <td class="money" style="padding:12px 8px">${platformFeeLabel}</td>
+        ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
       </tr>
     `;
   }).join('');
@@ -12442,9 +12463,9 @@ function renderSubscriptionTransactionsResults(){
     <div class="card form-card" style="margin-top:16px">
       <div class="section-title" style="margin:0 0 10px">Employer Subscription Transactions</div>
       <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
-        <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Subscriptions</div><div style="font-weight:800;font-size:1.1rem">${totals.count}</div></div>
-        <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Active Listings</div><div style="font-weight:800;font-size:1.1rem">${totals.active}</div></div>
-        <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Subscription Total</div><div style="font-weight:800;font-size:1.1rem">$${money(totals.total)}</div></div>
+        <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Subscriptions</div><div style="font-weight:800;font-size:1.1rem">${totals.count}</div></div>
+        <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Active Listings</div><div style="font-weight:800;font-size:1.1rem">${totals.active}</div></div>
+        <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Subscription Total</div><div class="money" style="font-size:1.1rem">$${money(totals.total)}</div></div>
       </div>
       ${rows.length ? `
         ${renderTransactionTableControls('subscription', rows, 'Subscriptions')}
@@ -12464,7 +12485,7 @@ function renderSubscriptionTransactionsResults(){
                   <td style="padding:12px 8px">${esc(row.jobName)}</td>
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.dateStarted))}</td>
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.expirationDate))}</td>
-                  <td style="padding:12px 8px">$${esc(money(row.total || 0))}</td>
+                  <td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -12554,10 +12575,10 @@ function renderWorkshopTransactionsResults(){
   const bodyHtml = displayRows.map(row => {
     const workshop = row.workshop;
     return isAdmin
-      ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td style="padding:12px 8px">$${esc(money(row.total || 0))}</td><td style="padding:12px 8px">$${esc(money(row.commission || 0))}</td></tr>`
+      ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td><td class="money" style="padding:12px 8px">$${esc(money(row.commission || 0))}</td></tr>`
       : isHost
-        ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td style="padding:12px 8px">$${esc(money(row.totalEarned || 0))}</td></tr>`
-        : `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td style="padding:12px 8px">$${esc(money(row.totalPaid || 0))}</td></tr>`;
+        ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.totalEarned || 0))}</td></tr>`
+        : `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.totalPaid || 0))}</td></tr>`;
   }).join('');
   const adminWorkshopTotals = isAdmin ? rows.reduce((acc, row) => {
     acc.participants += Number(row.participants || 0);
@@ -12570,9 +12591,9 @@ function renderWorkshopTransactionsResults(){
       <div class="section-title" style="margin:0 0 10px">Workshops & Classes Transactions</div>
       ${isAdmin ? `
         <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
-          <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total Participants</div><div style="font-weight:800;font-size:1.1rem">${esc(adminWorkshopTotals.participants)}</div></div>
-          <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Total</div><div style="font-weight:800;font-size:1.1rem">$${esc(money(adminWorkshopTotals.total))}</div></div>
-          <div class="card" style="padding:10px;background:#f8fafc;border:1px solid var(--border)"><div class="small muted">Commissions</div><div style="font-weight:800;font-size:1.1rem">$${esc(money(adminWorkshopTotals.commission))}</div></div>
+          <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Participants</div><div style="font-weight:800;font-size:1.1rem">${esc(adminWorkshopTotals.participants)}</div></div>
+          <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total</div><div class="money" style="font-size:1.1rem">$${esc(money(adminWorkshopTotals.total))}</div></div>
+          <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Commissions</div><div class="money" style="font-size:1.1rem">$${esc(money(adminWorkshopTotals.commission))}</div></div>
         </div>
       ` : ''}
       ${rows.length ? `
