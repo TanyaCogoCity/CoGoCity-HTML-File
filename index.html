@@ -1167,6 +1167,17 @@ function mapBackendUser(apiUser={}, fallback={}){
   const first = apiUser.first_name || apiUser.firstName || fallback.firstName || '';
   const last = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
   const display = apiUser.display_name || apiUser.displayName || fallback.name || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User';
+  const profile = apiUser.profile || apiUser.userProfile || {};
+  const metadata = profile.metadata || {};
+  const businessProfile = profile.businessName || profile.business_name || fallback.businessProfile ? Object.assign({}, fallback.businessProfile || {}, {
+    name: profile.businessName || profile.business_name || fallback.businessProfile?.name || fallback.company || '',
+    about: profile.businessAbout || profile.business_about || fallback.businessProfile?.about || '',
+    phone: profile.businessPhone || profile.business_phone || fallback.businessProfile?.phone || '',
+    address: profile.businessAddress || profile.business_address || fallback.businessProfile?.address || '',
+    city: profile.businessCity || profile.business_city || fallback.businessProfile?.city || '',
+    tin: profile.businessTin || profile.business_tin || fallback.businessProfile?.tin || '',
+    logo: metadata.business_logo || fallback.businessProfile?.logo || ''
+  }) : (fallback.businessProfile || null);
   const merged = Object.assign({}, fallback, {
     id: apiUser.id || fallback.id || uid('u'),
     backendUserId: apiUser.id || fallback.backendUserId || '',
@@ -1176,9 +1187,16 @@ function mapBackendUser(apiUser={}, fallback={}){
     name: display,
     publicName: fallback.publicName || display,
     role: apiUser.role || fallback.role || 'student',
+    type: profile.type || fallback.type || (apiUser.role === 'neighbor' ? 'neighbor' : (apiUser.role === 'employer' ? 'business' : fallback.type)),
     status: apiUser.status || fallback.status || 'active',
-    city: apiUser.city || fallback.city || '',
+    city: apiUser.city || fallback.city || profile.businessCity || profile.business_city || '',
     phone: apiUser.phone || fallback.phone || '',
+    address: profile.address || fallback.address || '',
+    about: profile.about || fallback.about || '',
+    photo: metadata.photo || fallback.photo || '',
+    emoji: profile.avatar || fallback.emoji || '',
+    company: businessProfile?.name || fallback.company || '',
+    businessProfile,
     stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
     backendAuth:true
   });
@@ -3604,7 +3622,7 @@ async function doLogin(){
       setCurrentUser(user);
       closeModal();
       toast(`Welcome back, ${firstName(user.name)}!`);
-      location.hash = '#/';
+      location.hash = needsMigrationOnboarding(user) ? '#/dashboard' : '#/';
       renderPage();
       return;
     } catch (error) {
@@ -4743,6 +4761,10 @@ function renderPage(){
     applySiteSettings();
     renderNav();
     const route = getRoute();
+    if (currentUser && needsMigrationOnboarding() && route !== '#/dashboard') {
+      location.hash = '#/dashboard';
+      return;
+    }
     if (route === '#/about-us') return renderAboutPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
@@ -8241,6 +8263,7 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
+  if (needsMigrationOnboarding() && currentUser.role !== 'admin') return renderMigrationOnboarding(el);
   if (currentUser.role === 'admin'){
     if (dashSection === 'admin') return renderAdminPanel(el);
     if (dashSection === 'users') return renderAdminUsersSection(el);
@@ -8268,6 +8291,231 @@ function renderDashboard(){
     if (dashSection === 'transactions') return renderTransactionsSection(el);
     if (dashSection === 'settings') return renderSettings(el);
   }
+}
+
+function migrationOnboardingStore(){
+  return ls('cogo_migration_onboarding_completed') || {};
+}
+function saveMigrationOnboardingStore(store){
+  ls('cogo_migration_onboarding_completed', store || {});
+}
+function migrationOnboardingEmail(user=currentUser){
+  return String(user?.email || '').trim().toLowerCase();
+}
+function isMigrationOnboardingTestUser(user=currentUser){
+  const email = migrationOnboardingEmail(user);
+  return ['tanya.lipovich@gmail.com','ilya.lipovich@getcider.com','dan.lipovich+staging@gmail.com','dan.lipovich@gmail.com'].includes(email);
+}
+function migrationOnboardingComplete(user=currentUser){
+  const email = migrationOnboardingEmail(user);
+  return !!(email && migrationOnboardingStore()[email]);
+}
+function needsMigrationOnboarding(user=currentUser){
+  return !!(user && isMigrationOnboardingTestUser(user) && !migrationOnboardingComplete(user));
+}
+function markMigrationOnboardingComplete(user=currentUser){
+  const email = migrationOnboardingEmail(user);
+  if (!email) return;
+  const store = migrationOnboardingStore();
+  store[email] = new Date().toISOString();
+  saveMigrationOnboardingStore(store);
+}
+function routeToMigrationOnboardingIfNeeded(){
+  if (!needsMigrationOnboarding()) return false;
+  dashSection = 'profile';
+  if (getRoute() !== '#/dashboard') {
+    location.hash = '#/dashboard';
+    return true;
+  }
+  return false;
+}
+function currentStudentServiceReady(){
+  const profile = currentStudentProfile();
+  if (!profile) return false;
+  const services = getRenderableStudentServices(profile);
+  return services.some(service => service.title && service.description && Number(service.rate || 0) > 0 && service.availability && service.location);
+}
+
+function migrationIsValidEmailAddress(value=''){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+function migrationPhoneDigits(value=''){
+  return String(value || '').replace(/\D/g, '');
+}
+function migrationIsValidUsPhone(value=''){
+  const digits = migrationPhoneDigits(value);
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
+}
+function migrationFormatUsPhone(value=''){
+  let digits = migrationPhoneDigits(value);
+  if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+  if (digits.length !== 10) return String(value || '').trim();
+  return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+function migrationIsPlausibleUsAddress(value=''){
+  const raw = String(value || '').trim();
+  return /^\d+\s+/.test(raw) && raw.includes(',') && /[A-Z]{2}/i.test(raw) && /\d{5}/.test(raw);
+}
+function renderMigrationRequiredList(items=[]){
+  return `<ul class="small" style="margin:8px 0 0 18px;color:#475569">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
+}
+function renderMigrationOnboarding(el){
+  const user = getUserById(currentUser.id) || currentUser;
+  const isStudent = user.role === 'student';
+  const isEmployer = user.role === 'employer' && user.type !== 'neighbor';
+  const title = isStudent ? 'Review your student profile' : isEmployer ? 'Complete your employer onboarding' : 'Review your neighbor profile';
+  const intro = isStudent
+    ? 'We imported your old CoGo City information. Please review it, update anything that changed, and confirm before you apply, message, or publish services.'
+    : isEmployer
+      ? 'We imported your old CoGo City account. Before you post jobs or contact students, please complete the new required business and contact fields.'
+      : 'Please review your account details before using the new CoGo City platform.';
+  const business = user.businessProfile || {};
+  const profile = currentStudentProfile();
+  el.innerHTML = `
+    <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:8px">${esc(title)}</div>
+      <div class="small muted">${esc(intro)}</div>
+      ${renderMigrationRequiredList(isStudent
+        ? ['Confirm name, private email, phone, school, city, about, and experience.', 'Confirm at least one service with title, description, rate, availability, and location.', 'After you finish, you will land on My Profile to verify how everything looks.']
+        : isEmployer
+          ? ['Confirm personal name, email, phone, and home address.', 'Add business name, description, business phone, full business address, and TIN.', 'You cannot post jobs, message students, or take hiring actions until this is complete.']
+          : ['Confirm name, email, phone, and home address.', 'After you finish, you can post jobs and use your dashboard.']
+      )}
+    </div>
+    ${isStudent ? renderStudentMigrationOnboardingForm(profile) : renderEmployerMigrationOnboardingForm(user, business, isEmployer)}
+  `;
+}
+function renderStudentMigrationOnboardingForm(profile){
+  if (!profile) return `<div class="card form-card"><div class="warning">No student profile was found yet.</div><div style="margin-top:12px"><button class="btn btn-blue" onclick="openStudentSignupWorkflow()">Start Student Onboarding</button></div></div>`;
+  const service = getRenderableStudentServices(profile)[0] || {};
+  return `
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:12px">Profile information</div>
+      <div class="row"><div class="field"><label>Name</label><input id="migStudentName" value="${esc(profile.name || currentUser.name || '')}"></div><div class="field"><label>Age</label><input id="migStudentAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div></div>
+      <div class="row"><div class="field"><label>School(s)</label><input id="migStudentSchool" value="${esc(profile.school || '')}"></div><div class="field"><label>City</label><input id="migStudentCity" value="${esc((profile.location || currentUser.city || '').replace(', CA',''))}" placeholder="Danville"></div></div>
+      <div class="row"><div class="field"><label>Email (private)</label><input id="migStudentEmail" type="email" value="${esc(profile.privateEmail || currentUser.email || '')}"></div><div class="field"><label>Phone (private)</label><input id="migStudentPhone" type="tel" value="${esc(profile.phone || currentUser.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div></div>
+      <div class="field"><label>About</label><textarea id="migStudentAbout">${esc((profile.about || [])[0] || '')}</textarea></div>
+      <div class="field"><label>Experience</label><textarea id="migStudentExperience">${esc((profile.highlights || [])[0] || '')}</textarea></div>
+    </div>
+    <div class="card form-card" style="margin-top:16px">
+      <div style="font-weight:800;margin-bottom:12px">Primary service</div>
+      <div class="field"><label>Service title</label><input id="migServiceTitle" value="${esc(service.title || profile.title || '')}" placeholder="Tutoring, babysitting, yard help..."></div>
+      <div class="field"><label>Service description</label><textarea id="migServiceDescription">${esc(service.description || '')}</textarea></div>
+      <div class="row"><div class="field"><label>Hourly rate</label><input id="migServiceRate" type="number" min="0" value="${esc(service.rate || profile.rate || 20)}"></div><div class="field"><label>Availability</label><input id="migServiceAvailability" value="${esc(service.availability || profile.availability || '')}"></div></div>
+      <div class="field"><label>Service location</label><input id="migServiceLocation" value="${esc(service.location || profile.location || currentUser.city || '')}"></div>
+      <button class="btn btn-blue" onclick="submitStudentMigrationOnboarding()">Confirm profile & continue</button>
+    </div>
+  `;
+}
+async function submitStudentMigrationOnboarding(){
+  const profile = currentStudentProfile();
+  if (!profile) return toast('No student profile found.');
+  const name = String(document.getElementById('migStudentName')?.value || '').trim();
+  const age = Number(document.getElementById('migStudentAge')?.value || 0) || profile.age || 17;
+  const school = String(document.getElementById('migStudentSchool')?.value || '').trim();
+  const city = String(document.getElementById('migStudentCity')?.value || '').trim();
+  const email = String(document.getElementById('migStudentEmail')?.value || '').trim().toLowerCase();
+  let phone = String(document.getElementById('migStudentPhone')?.value || '').trim();
+  const about = String(document.getElementById('migStudentAbout')?.value || '').trim();
+  const experience = String(document.getElementById('migStudentExperience')?.value || '').trim();
+  const serviceTitle = String(document.getElementById('migServiceTitle')?.value || '').trim();
+  const serviceDescription = String(document.getElementById('migServiceDescription')?.value || '').trim();
+  const serviceRate = Number(document.getElementById('migServiceRate')?.value || 0) || 0;
+  const serviceAvailability = String(document.getElementById('migServiceAvailability')?.value || '').trim();
+  const serviceLocation = String(document.getElementById('migServiceLocation')?.value || '').trim();
+  if (!name || !school || !city || !email || !phone || !about || !experience) return toast('Please complete all profile fields before continuing.');
+  if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
+  if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
+  if (!serviceTitle || !serviceDescription || !serviceRate || !serviceAvailability || !serviceLocation) return toast('Please complete all primary service fields.');
+  phone = migrationFormatUsPhone(phone);
+  const students = getStudents();
+  const idx = students.findIndex(s => String(s.id) === String(profile.id));
+  const updatedProfile = Object.assign({}, profile, { name, age, school, location: city.includes(',') ? city : `${city}, CA`, phone, privateEmail: email, about:[about], highlights:[experience], updatedAt:new Date().toISOString() });
+  const services = getRenderableStudentServices(updatedProfile);
+  const updatedService = Object.assign({}, services[0] || {}, { id:(services[0] || {}).id || uid('svc'), title:serviceTitle, description:serviceDescription, rate:serviceRate, availability:serviceAvailability, location:serviceLocation });
+  updatedProfile.services = [updatedService].concat(services.slice(1));
+  if (idx >= 0) students[idx] = updatedProfile; else students.push(updatedProfile);
+  saveStudents(students);
+  const users = getUsers();
+  const user = users.find(u => String(u.id) === String(currentUser.id));
+  if (user) { user.name = name; user.publicName = name; user.phone = phone; user.city = city; saveUsers(users); setCurrentUser(user); }
+  if (backendAuthEnabled() && getBackendAccessToken() && updatedProfile.backendSource && updatedProfile.backendProfileId) {
+    try {
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, city, profile:{ age, school, address:updatedProfile.location, about, type:'student' } }) });
+      await backendAuthRequest(`/student-profiles/${encodeURIComponent(updatedProfile.backendProfileId)}`, { method:'PATCH', body: JSON.stringify({ title:serviceTitle, bio:about, experience, is_active:true }) });
+    } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
+  }
+  markMigrationOnboardingComplete();
+  studentProfileTab = 'all';
+  dashSection = 'profile';
+  toast('Profile confirmed. Please review how it looks.');
+  renderDashboard();
+}
+function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=false){
+  return `
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:12px">Personal information</div>
+      <div class="row"><div class="field"><label>First name</label><input id="migFirstName" value="${esc(user.firstName || firstName(user.name) || '')}"></div><div class="field"><label>Last name</label><input id="migLastName" value="${esc(user.lastName || '')}"></div></div>
+      <div class="field"><label>Email</label><input id="migEmail" type="email" value="${esc(user.email || '')}"></div>
+      <div class="field"><label>Phone</label><input id="migPhone" type="tel" value="${esc(user.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
+      <div class="field"><label>Home address</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="123 Main St, Danville, CA 94526"></div>
+      <div class="field"><label>About me</label><textarea id="migAbout">${esc(user.about || '')}</textarea></div>
+    </div>
+    ${isEmployer ? `<div class="card form-card" style="margin-top:16px">
+      <div style="font-weight:800;margin-bottom:12px">Business information</div>
+      <div class="field"><label>Business name</label><input id="migBusinessName" value="${esc(business.name || user.company || '')}"></div>
+      <div class="field"><label>Business description</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
+      <div class="field"><label>Business phone</label><input id="migBusinessPhone" type="tel" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
+      <div class="field"><label>Business address</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="456 Business Ave, Walnut Creek, CA 94596"></div>
+      <div class="field"><label>TIN</label><input id="migBusinessTin" value="${esc(business.tin || '')}" placeholder="12-3456789"></div>
+    </div>` : ''}
+    <div style="margin-top:16px"><button class="btn btn-blue" onclick="submitEmployerMigrationOnboarding(${isEmployer ? 'true' : 'false'})">Confirm profile & continue</button></div>
+  `;
+}
+async function submitEmployerMigrationOnboarding(isEmployer=false){
+  const first = String(document.getElementById('migFirstName')?.value || '').trim();
+  const last = String(document.getElementById('migLastName')?.value || '').trim();
+  const email = String(document.getElementById('migEmail')?.value || '').trim().toLowerCase();
+  let phone = String(document.getElementById('migPhone')?.value || '').trim();
+  const address = String(document.getElementById('migAddress')?.value || '').replace(/\s+/g,' ').trim();
+  const about = String(document.getElementById('migAbout')?.value || '').trim();
+  if (!first || !last || !email || !phone || !address || !about) return toast('Please complete all personal fields before continuing.');
+  if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
+  if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
+  if (!migrationIsPlausibleUsAddress(address)) return toast('Please enter a full U.S. home address like 123 Main St, Danville, CA 94526.');
+  phone = migrationFormatUsPhone(phone);
+  let business = null;
+  if (isEmployer) {
+    business = {
+      name:String(document.getElementById('migBusinessName')?.value || '').trim(),
+      about:String(document.getElementById('migBusinessAbout')?.value || '').trim(),
+      phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
+      address:String(document.getElementById('migBusinessAddress')?.value || '').replace(/\s+/g,' ').trim(),
+      tin:String(document.getElementById('migBusinessTin')?.value || '').trim()
+    };
+    if (!business.name || !business.about || !business.phone || !business.address || !business.tin) return toast('Please complete all business fields before continuing.');
+    if (!migrationIsValidUsPhone(business.phone)) return toast('Please enter a valid 10-digit U.S. business phone number.');
+    if (!migrationIsPlausibleUsAddress(business.address)) return toast('Please enter a full U.S. business address like 456 Business Ave, Walnut Creek, CA 94596.');
+    business.phone = migrationFormatUsPhone(business.phone);
+    business.city = extractCity(business.address);
+  }
+  const users = getUsers();
+  const user = users.find(u => String(u.id) === String(currentUser.id));
+  if (user) {
+    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, address, about, city:extractCity(address) });
+    if (isEmployer) { user.company = business.name; user.businessProfile = Object.assign({}, user.businessProfile || {}, business); }
+    saveUsers(users); setCurrentUser(user);
+  }
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business }) });
+    } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
+  }
+  markMigrationOnboardingComplete();
+  employerProfileTab = 'all';
+  dashSection = 'profile';
+  toast('Profile confirmed. Please review how it looks.');
+  renderDashboard();
 }
 
 function renderEmployerProfile(el){
