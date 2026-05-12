@@ -3991,6 +3991,7 @@ function createDefaultStudentSignupDraft(){
   return {
     name:'',
     birthDate:'',
+    birthday:'',
     birthYear:'',
     age:'',
     school:'',
@@ -4007,6 +4008,8 @@ function createDefaultStudentSignupDraft(){
     serviceForm:{ title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location:'', availability:'' },
     email:'',
     phone:'',
+    phoneVerificationCode:'',
+    phoneVerified:false,
     address:'',
     password:'',
     confirmPassword:'',
@@ -4020,7 +4023,6 @@ function getStudentSignupStrength(){
     !!d.name,
     !!(d.birthDate || d.birthYear),
     !!d.school,
-    !!d.city,
     !!(d.photo || d.avatar),
     !!d.about,
     !!d.experience,
@@ -4052,13 +4054,12 @@ function renderStudentSignupModal(){
   const suggestions = getStudentSignupSuggestions();
   const stepTitles = {
     1:'Basic Info',
-    2:'Profile Photo',
+    2:'Profile Photo + Video',
     3:'About + Experience',
-    4:'Profile Media',
-    5:'Create First Service',
-    6:'Private Contact Info',
-    7:'Preview Profile',
-    8:'Create Password'
+    4:'Create First Service',
+    5:'Private Contact Info',
+    6:'Preview Profile',
+    7:'Create Password'
   };
   const footer = renderStudentSignupFooter();
   openModal('Student Signup', `
@@ -4071,7 +4072,7 @@ function renderStudentSignupModal(){
     <div class="card form-card" style="margin-bottom:16px">
       <div class="split" style="align-items:flex-start">
         <div>
-          <div class="small muted">Step ${studentSignupStep} of 8</div>
+          <div class="small muted">Step ${studentSignupStep} of 7</div>
           <div style="font-weight:800;font-size:1.1rem">${esc(stepTitles[studentSignupStep])}</div>
         </div>
         <div style="min-width:180px;text-align:right">
@@ -4094,10 +4095,9 @@ function renderStudentSignupStepContent(){
     <div class="card form-card">
       <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name"></div>
       <div class="row">
-        <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || '')}"><div class="small muted" style="margin-top:6px">We calculate and update age automatically every year on this birthday.</div></div>
+        <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || d.birthday || '')}"><div class="small muted" style="margin-top:6px">You must be between 14–25 years old to sign up as a student on CoGo City. Your age will automatically update each year based on your birth date.</div></div>
         <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name"></div>
       </div>
-      <div class="field"><label>City</label><input id="studentFlowCity" value="${esc(d.city)}" placeholder="Danville"></div>
     </div>
   `;
   if (studentSignupStep === 2) return `
@@ -4111,6 +4111,8 @@ function renderStudentSignupStepContent(){
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
         ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
       </div>
+      <div class="field" style="margin-top:16px"><label>YouTube Video (optional)</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/..." oninput="previewStudentSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">Want to introduce yourself in a more personal way? Add a short YouTube video to tell people about yourself, your skills, interests, or the type of work you’re looking for.</div></div>
+      <div id="student-profile-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video preview')}</div>
     </div>
   `;
   if (studentSignupStep === 3) return `
@@ -4120,15 +4122,6 @@ function renderStudentSignupStepContent(){
     </div>
   `;
   if (studentSignupStep === 4) return `
-    <div class="card form-card">
-      <div class="field"><label>Profile Images (optional, 1\u20133)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupProfileImagesUpload(this)"></div>
-      ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupProfileImageFromLibrary')}</div>` : ''}
-      ${renderSignupImageGallery(d.profileImages || [], 120)}
-      <div class="field"><label>Add a short intro video about yourself</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupProfileVideo(this.value)"></div>
-      <div id="student-profile-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video preview')}</div>
-    </div>
-  `;
-  if (studentSignupStep === 5) return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Create your first service before you continue. You can add more than one.</div>
       ${(d.services || []).length ? `
@@ -4160,7 +4153,7 @@ function renderStudentSignupStepContent(){
       <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || 20)}" oninput="syncStudentSignupServiceForm()"></div>
-        <div class="field"><label>Location</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || d.city || '')}" placeholder="Danville, CA" oninput="syncStudentSignupServiceForm()"></div>
+        <div class="field"><label>Service Area</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || extractCity(d.address || ''))}" placeholder="Danville, CA or online" oninput="syncStudentSignupServiceForm()"><div class="small muted" style="margin-top:6px">This can be a general service area; your full home address stays private.</div></div>
       </div>
       <div class="field"><label>Availability</label><input id="studentFlowServiceAvailability" value="${esc((d.serviceForm || {}).availability || '')}" placeholder="Weekday afternoons \u00B7 Weekends" oninput="syncStudentSignupServiceForm()"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -4169,14 +4162,15 @@ function renderStudentSignupStepContent(){
       </div>
     </div>
   `;
-  if (studentSignupStep === 6) return `
+  if (studentSignupStep === 5) return `
     <div class="card form-card">
       <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com"></div>
       <div class="field"><label>Phone</label><input id="studentFlowPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555"></div>
-      <div class="field"><label>Address</label><input id="studentFlowAddress" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA"></div>
+      <div class="field"><label>Phone Verification Code</label><input id="studentFlowPhoneCode" value="${esc(d.phoneVerificationCode || '')}" placeholder="Enter 123456 in staging"><div class="small muted" style="margin-top:6px">Staging uses code 123456. Production will send a real SMS code.</div></div>
+      <div class="field"><label>Home Address</label><input id="studentFlowAddress" list="studentAddressSuggestions" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA"><datalist id="studentAddressSuggestions"><option value="123 Main St, Danville, CA"><option value="456 Hartz Ave, Danville, CA"><option value="100 School St, Danville, CA"></datalist><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile.</div></div>
     </div>
   `;
-  if (studentSignupStep === 7) return `
+  if (studentSignupStep === 6) return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">You\u2019re almost done. This is how others will see your profile.</div>
       ${renderStudentSignupPreviewHtml()}
@@ -4187,7 +4181,7 @@ function renderStudentSignupStepContent(){
       </div>
     </div>
   `;
-  if (studentSignupStep === 8) return `
+  if (studentSignupStep === 7) return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Create your password last. Your email verification is skipped in test mode for now.</div>
       <div class="field"><label>Create Password</label><input id="studentFlowPassword" type="password" value="${esc(d.password)}" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"></div>
@@ -4207,8 +4201,8 @@ function renderStudentSignupStepContent(){
 }
 function renderStudentSignupFooter(){
   const prev = studentSignupStep > 1 ? `<button class="btn btn-outline" onclick="goStudentSignupStep(${studentSignupStep - 1})">Back</button>` : `<span></span>`;
-  if (studentSignupStep === 7) return `${prev}<button class="btn btn-blue" onclick="submitStudentSignupProfile()">Submit and Publish Profile</button>`;
-  if (studentSignupStep === 8) return `${prev}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Create Password</button>`;
+  if (studentSignupStep === 6) return `${prev}<button class="btn btn-blue" onclick="submitStudentSignupProfile()">Submit and Publish Profile</button>`;
+  if (studentSignupStep === 7) return `${prev}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Create Password</button>`;
   return `${prev}<button class="btn btn-blue" onclick="goStudentSignupStep(${studentSignupStep + 1})">Next</button>`;
 }
 function saveStudentSignupStep(step){
@@ -4216,16 +4210,17 @@ function saveStudentSignupStep(step){
   if (step === 1){
     const name = (document.getElementById('studentFlowName').value || '').trim();
     const birthDate = normalizeBirthDateInput(document.getElementById('studentFlowBirthday').value || '');
-    const age = calculateAgeFromBirthday(birthDate);
     const school = (document.getElementById('studentFlowSchool').value || '').trim();
-    const city = (document.getElementById('studentFlowCity').value || '').trim();
-    if (toastRequiredFields({ Name:name, Birthday:birthDate, School:school, City:city }, 'Student profile')) return false;
-    if (age < 13 || age > 25) return toast('Student signup is for ages 13 to 25.'), false;
-    Object.assign(studentSignupDraft, { name, birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school, city });
+    const age = calculateAgeFromBirthday(birthDate);
+    if (toastRequiredFields({ Name:name, Birthday:birthDate, School:school }, 'Student profile')) return false;
+    if (age < 14 || age > 25) return toast('You must be between 14–25 years old to sign up as a student on CoGo City.'), false;
+    Object.assign(studentSignupDraft, { name, birthDate, birthday:birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school });
     return true;
   }
   if (step === 2){
     if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
+    const videoEl = document.getElementById('studentFlowProfileVideoLink');
+    if (videoEl) applyVideoState(studentSignupDraft, (videoEl.value || '').trim());
     return true;
   }
   if (step === 3){
@@ -4236,11 +4231,6 @@ function saveStudentSignupStep(step){
     return true;
   }
   if (step === 4){
-    const videoUrl = (document.getElementById('studentFlowProfileVideoLink').value || '').trim();
-    applyVideoState(studentSignupDraft, videoUrl);
-    return true;
-  }
-  if (step === 5){
     syncStudentSignupServiceForm();
     const services = studentSignupDraft.services || [];
     const form = studentSignupDraft.serviceForm || {};
@@ -4263,20 +4253,24 @@ function saveStudentSignupStep(step){
       };
       studentSignupDraft.services.push(service);
       studentSignupEditingServiceIndex = null;
-      studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+      studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: extractCity(studentSignupDraft.address || ''), availability:'' };
     }
     if (!(studentSignupDraft.services || []).length) return toast('Please save at least one service before continuing.'), false;
     return true;
   }
-  if (step === 6){
+  if (step === 5){
     const email = (document.getElementById('studentFlowEmail').value || '').trim().toLowerCase();
     const phone = (document.getElementById('studentFlowPhone').value || '').trim();
+    const phoneVerificationCode = (document.getElementById('studentFlowPhoneCode').value || '').trim();
     const address = (document.getElementById('studentFlowAddress').value || '').trim();
-    if (toastRequiredFields({ Email:email, Phone:phone, Address:address }, 'Contact details')) return false;
-    Object.assign(studentSignupDraft, { email, phone, address });
+    if (toastRequiredFields({ Email:email, Phone:phone, 'Phone verification code':phoneVerificationCode, 'Home Address':address }, 'Contact details')) return false;
+    if (!isValidPhoneVerificationCode(phoneVerificationCode)) return toast('Please verify your phone number with the 6-digit code. In staging, use 123456.'), false;
+    const addressProblem = getAddressValidationMessage(address);
+    if (addressProblem) return toast(addressProblem), false;
+    Object.assign(studentSignupDraft, { email, phone, phoneVerificationCode, phoneVerified:true, address, city:extractCity(address) });
     return true;
   }
-  if (step === 8){
+  if (step === 7){
     const password = document.getElementById('studentFlowPassword').value || '';
     const confirmPassword = document.getElementById('studentFlowConfirmPassword').value || '';
     if (!password || password.length < 8) return toast('Please create a password with at least 8 characters.'), false;
@@ -4288,7 +4282,7 @@ function saveStudentSignupStep(step){
 }
 function goStudentSignupStep(targetStep){
   if (targetStep > studentSignupStep && !saveStudentSignupStep(studentSignupStep)) return;
-  studentSignupStep = Math.max(1, Math.min(8, targetStep));
+  studentSignupStep = Math.max(1, Math.min(7, targetStep));
   renderStudentSignupModal();
 }
 function handleStudentSignupPhotoUpload(input){
@@ -4363,7 +4357,7 @@ function addStudentSignupServiceImageFromLibrary(imageId){
 }
 function startNewStudentSignupService(){
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: extractCity(studentSignupDraft.address || ''), availability:'' };
   renderStudentSignupModal();
 }
 function editStudentSignupService(index){
@@ -4371,7 +4365,7 @@ function editStudentSignupService(index){
   if (!service) return;
   studentSignupEditingServiceIndex = index;
   studentSignupDraft.serviceForm = Object.assign({ images:[], video_url:'', video_type:'', video_id:'' }, service);
-  studentSignupStep = 5;
+  studentSignupStep = 4;
   renderStudentSignupModal();
 }
 function removeStudentSignupService(index){
@@ -4407,7 +4401,7 @@ function saveStudentSignupService(){
   if (studentSignupEditingServiceIndex !== null) studentSignupDraft.services[studentSignupEditingServiceIndex] = service;
   else studentSignupDraft.services.push(service);
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: studentSignupDraft.city || '', availability:'' };
+  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'20', location: extractCity(studentSignupDraft.address || ''), availability:'' };
   toast('Service saved.');
   renderStudentSignupModal();
 }
@@ -4500,18 +4494,21 @@ function renderStudentSignupPreviewHtml(){
 }
 function submitStudentSignupProfile(){
   const d = studentSignupDraft || {};
-  if (toastRequiredFields({ Name:d.name, Birthday:(d.birthDate || d.birthYear), School:d.school, City:d.city }, 'Basic profile')) return;
+  if (toastRequiredFields({ Name:d.name, Birthday:(d.birthDate || d.birthday || d.birthYear), School:d.school }, 'Basic profile')) return;
   if (!(d.photo || d.avatar)) return toast('Please add a photo or avatar first.');
   if (toastRequiredFields({ 'About me':d.about, Experience:d.experience }, 'Profile')) return;
   if (!(d.services || []).length) return toast('Please add at least one service.');
-  if (toastRequiredFields({ Email:d.email, Phone:d.phone, Address:d.address }, 'Contact details')) return;
+  if (toastRequiredFields({ Email:d.email, Phone:d.phone, 'Home Address':d.address }, 'Contact details')) return;
+  if (!d.phoneVerified) return toast('Please verify your phone number before publishing.');
+  const addressProblem = getAddressValidationMessage(d.address);
+  if (addressProblem) return toast(addressProblem);
   studentSignupDraft.profileReady = true;
-  studentSignupStep = 8;
+  studentSignupStep = 7;
   renderStudentSignupModal();
 }
 async function publishStudentSignupProfile(){
   if (!studentSignupDraft.profileReady) return toast('Please submit and publish your profile first.');
-  if (!saveStudentSignupStep(8)) return;
+  if (!saveStudentSignupStep(7)) return;
   const d = studentSignupDraft;
   if (!(d.services || []).length) return toast('Please add at least one service.');
   const users = getUsers();
@@ -4531,11 +4528,13 @@ async function publishStudentSignupProfile(){
           password: d.password,
           role: 'student',
           phone: d.phone,
+          phoneVerified: !!d.phoneVerified,
           city: d.city || extractCity(d.address),
           profile: {
-            birthDate: d.birthDate || '',
-            birthYear: d.birthYear || '',
-            age: getStudentAge(d) || null,
+            birthDate: d.birthDate || d.birthday || '',
+            birthday: d.birthDate || d.birthday || '',
+            birthYear: d.birthYear || ((d.birthDate || d.birthday) ? Number(String(d.birthDate || d.birthday).slice(0, 4)) : ''),
+            age: getStudentAge(d) || Number(d.age) || null,
             school: d.school,
             about: d.about,
             experience: d.experience,
@@ -4554,6 +4553,7 @@ async function publishStudentSignupProfile(){
             location: service.location || d.city || '',
             availability: service.availability || '',
             images: service.images || [],
+            entity_images: service.images || [],
             video_url: service.video_url || ''
           }))
         })
@@ -4581,17 +4581,18 @@ async function publishStudentSignupProfile(){
     photo:d.photo || ((d.profileImages || [])[0]) || '',
     profile_image_id:d.photo || ((d.profileImages || [])[0]) || '',
     createdAt,
-    verificationStatus:backendAuthEnabled() ? 'backend_auth_created' : 'skipped_test_mode'
+    verificationStatus:backendAuthEnabled() ? 'phone_verified_backend_created' : 'phone_verified_staging'
   });
   const newStudent = {
     id:studentId,
     userId,
     name:d.name,
-    birthDate:d.birthDate || '',
-    birthYear:d.birthYear || '',
-    age:getStudentAge(d) || 17,
+    birthDate:d.birthDate || d.birthday || '',
+    birthday:d.birthDate || d.birthday || '',
+    birthYear:d.birthYear || ((d.birthDate || d.birthday) ? Number(String(d.birthDate || d.birthday).slice(0, 4)) : ''),
+    age:getStudentAge(d) || Number(d.age) || 17,
     school:d.school,
-    location:String(d.city || '').includes(',') ? d.city : `${d.city}, CA`,
+    location:String(d.city || extractCity(d.address) || '').includes(',') ? (d.city || extractCity(d.address)) : `${d.city || extractCity(d.address)}, CA`,
     photo:d.photo || ((d.profileImages || [])[0]) || '',
     profile_image_id:d.photo || ((d.profileImages || [])[0]) || '',
     profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
@@ -4613,6 +4614,7 @@ async function publishStudentSignupProfile(){
     phone:d.phone,
     address:d.address,
     privateEmail:d.email,
+    phoneVerified:!!d.phoneVerified,
     createdAt
   };
   users.push(newUser);
@@ -4630,6 +4632,17 @@ async function publishStudentSignupProfile(){
   location.hash = '#/dashboard';
   renderPage();
   setTimeout(() => openPostSignupStripeOnboardingPrompt('connect'), 250);
+}
+function isValidPhoneVerificationCode(code=''){
+  return /^\d{6}$/.test(String(code || '').trim()) && String(code || '').trim() === '123456';
+}
+function getAddressValidationMessage(address=''){
+  const value = String(address || '').trim();
+  if (!value) return 'Please enter a valid street address.';
+  if (!/^\d+\s+[^,]+/.test(value)) return 'Please enter a valid street address.';
+  if (/\b(apt|apartment|unit|ste|suite|#)\s*$/i.test(value)) return 'Apartment number appears incomplete.';
+  if (!/,\s*[^,]+/.test(value)) return 'Please include the city in your home address.';
+  return '';
 }
 function extractCity(address=''){
   const clean = String(address || '').trim();
@@ -4654,6 +4667,8 @@ function createDefaultEmployerSignupDraft(mode='neighbor'){
     businessLogo:'',
     businessAbout:'',
     businessPhone:'',
+    phoneVerificationCode:'',
+    phoneVerified:false,
     businessAddress:'',
     businessCity:'',
     tin:'',
@@ -4694,6 +4709,8 @@ function syncEmployerSignupPersonalDraft(){
     employerSignupDraft.address = (addressEl.value || '').trim();
     employerSignupDraft.city = extractCity(employerSignupDraft.address);
   }
+  const phoneCodeEl = document.getElementById('employerSignupPhoneCode');
+  if (phoneCodeEl) employerSignupDraft.phoneVerificationCode = (phoneCodeEl.value || '').trim();
 }
 function syncEmployerSignupBusinessDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
@@ -4757,6 +4774,7 @@ function renderEmployerSignupStepContent(){
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
       <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
+      <div class="field"><label>Phone Verification Code</label><input id="employerSignupPhoneCode" value="${esc(d.phoneVerificationCode || '')}" placeholder="Enter 123456 in staging" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">Staging uses code 123456. Production will send a real SMS code.</div></div>
       <div class="field"><label>Home Address (private)</label><input id="employerSignupAddress" value="${esc(d.address)}" placeholder="123 Main St, Walnut Creek, CA" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">Full address is stored internally and only the city is shown publicly.</div></div>
     </div>
   `;
@@ -4822,7 +4840,11 @@ function saveEmployerSignupStep(step){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
   if (step === 1) {
     syncEmployerSignupPersonalDraft();
-    if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, Address:employerSignupDraft.address }, 'Personal profile')) return false;
+    if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, 'Phone verification code':employerSignupDraft.phoneVerificationCode, Address:employerSignupDraft.address }, 'Personal profile')) return false;
+    if (!isValidPhoneVerificationCode(employerSignupDraft.phoneVerificationCode)) return toast('Please verify your phone number with the 6-digit code. In staging, use 123456.'), false;
+    const addressProblem = getAddressValidationMessage(employerSignupDraft.address);
+    if (addressProblem) return toast(addressProblem), false;
+    employerSignupDraft.phoneVerified = true;
     return true;
   }
   if (employerSignupMode === 'employer' && step === 2) {
@@ -4911,6 +4933,7 @@ async function publishEmployerSignupProfile(){
           role,
           type: employerSignupMode === 'employer' ? 'business' : 'neighbor',
           phone: d.phone,
+          phoneVerified: !!d.phoneVerified,
           city: d.city || extractCity(d.address),
           profile: {
             about: d.about,
@@ -4955,9 +4978,10 @@ async function publishEmployerSignupProfile(){
     phone:d.phone,
     address:d.address,
     city:d.city || extractCity(d.address),
-    verificationStatus:'test_skip',
+    verificationStatus:'phone_verified_staging',
     paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' },
     paymentSetupComplete:true,
+    phoneVerified:!!d.phoneVerified,
     company:employerSignupMode === 'employer' ? d.businessName : '',
     businessProfile:employerSignupMode === 'employer' ? {
       name:d.businessName,
@@ -8865,7 +8889,7 @@ function renderMigrationOnboarding(el){
       ${!isStudent && !isEmployer ? `<div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;margin:0 0 12px;color:#334155;line-height:1.55">${esc(safetyTrustMessage)}</div>` : ''}
       <div class="small muted">${esc(intro)}</div>
       ${renderMigrationRequiredList(isStudent
-        ? ['Confirm name, private email, phone, school, city, about, and experience.', 'Confirm at least one service with title, description, rate, availability, and location.', 'After you finish, you will land on My Profile to verify how everything looks.']
+        ? ['Confirm name, private email, phone, home address, school, about, and experience.', 'Confirm at least one service with title, description, rate, availability, and location.', 'After you finish, you will land on My Profile to verify how everything looks.']
         : isEmployer
           ? ['Confirm personal name, email, phone, and home address.', 'Add business name, description, business phone, full business address, and TIN.', 'You cannot post jobs, message students, or take hiring actions until this is complete.']
           : ['Confirm name, email, phone, and home address.', 'After you finish, you can post jobs and use your dashboard.']
@@ -8882,8 +8906,10 @@ function renderStudentMigrationOnboardingForm(profile){
       <div style="font-weight:800;margin-bottom:12px">Profile information</div>
       <div class="small muted" style="margin-bottom:12px">All fields marked required must be completed before the rest of the dashboard unlocks.</div>
       <div class="row"><div class="field"><label>Name *</label><input id="migStudentName" value="${esc(profile.name || currentUser.name || '')}"></div><div class="field"><label>Age *</label><input id="migStudentAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div></div>
-      <div class="row"><div class="field"><label>School(s) *</label><input id="migStudentSchool" value="${esc(profile.school || '')}"></div><div class="field"><label>City *</label><input id="migStudentCity" value="${esc((profile.location || currentUser.city || '').replace(', CA',''))}" placeholder="Danville"></div></div>
+      <div class="field"><label>School(s) *</label><input id="migStudentSchool" value="${esc(profile.school || '')}"></div>
       <div class="row"><div class="field"><label>Email (private) *</label><input id="migStudentEmail" type="email" value="${esc(profile.privateEmail || currentUser.email || '')}"></div><div class="field"><label>Phone (private) *</label><input id="migStudentPhone" type="tel" placeholder="(555) 555-5555" value="${esc(profile.phone || currentUser.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div></div>
+      <div class="field"><label>Phone Verification Code *</label><input id="migStudentPhoneCode" value="" placeholder="Enter 123456 in staging"><div class="small muted" style="margin-top:6px">Staging uses code 123456. Production will send a real SMS code.</div></div>
+      <div class="field"><label>Home Address *</label><input id="migStudentAddress" list="studentAddressSuggestions" value="${esc(profile.address || currentUser.address || '')}" placeholder="123 Main St, Danville, CA"><datalist id="studentAddressSuggestions"><option value="123 Main St, Danville, CA"><option value="456 Hartz Ave, Danville, CA"><option value="100 School St, Danville, CA"></datalist><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile.</div></div>
       <div class="field"><label>About *</label><textarea id="migStudentAbout">${esc((profile.about || [])[0] || '')}</textarea></div>
       <div class="field"><label>Experience *</label><textarea id="migStudentExperience">${esc((profile.highlights || [])[0] || '')}</textarea></div>
     </div>
@@ -8903,9 +8929,11 @@ async function submitStudentMigrationOnboarding(){
   const name = String(document.getElementById('migStudentName')?.value || '').trim();
   const age = Number(document.getElementById('migStudentAge')?.value || 0) || profile.age || 17;
   const school = String(document.getElementById('migStudentSchool')?.value || '').trim();
-  const city = String(document.getElementById('migStudentCity')?.value || '').trim();
   const email = String(document.getElementById('migStudentEmail')?.value || '').trim().toLowerCase();
   let phone = String(document.getElementById('migStudentPhone')?.value || '').trim();
+  const phoneCode = String(document.getElementById('migStudentPhoneCode')?.value || '').trim();
+  const address = String(document.getElementById('migStudentAddress')?.value || '').trim();
+  const city = extractCity(address);
   const about = String(document.getElementById('migStudentAbout')?.value || '').trim();
   const experience = String(document.getElementById('migStudentExperience')?.value || '').trim();
   const serviceTitle = String(document.getElementById('migServiceTitle')?.value || '').trim();
@@ -8913,14 +8941,17 @@ async function submitStudentMigrationOnboarding(){
   const serviceRate = Number(document.getElementById('migServiceRate')?.value || 0) || 0;
   const serviceAvailability = String(document.getElementById('migServiceAvailability')?.value || '').trim();
   const serviceLocation = String(document.getElementById('migServiceLocation')?.value || '').trim();
-  if (toastRequiredFields({ Name:name, School:school, City:city, Email:email, Phone:phone, 'About me':about, Experience:experience }, 'Student profile')) return;
+  if (toastRequiredFields({ Name:name, School:school, Email:email, Phone:phone, 'Phone verification code':phoneCode, 'Home Address':address, 'About me':about, Experience:experience }, 'Student profile')) return;
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
+  if (!isValidPhoneVerificationCode(phoneCode)) return toast('Please verify your phone number with the 6-digit code. In staging, use 123456.');
+  const studentAddressProblem = getAddressValidationMessage(address);
+  if (studentAddressProblem) return toast(studentAddressProblem);
   if (toastRequiredFields({ 'Service title':serviceTitle, 'Service description':serviceDescription, 'Hourly rate':serviceRate, Availability:serviceAvailability, Location:serviceLocation }, 'Primary service')) return;
   phone = migrationFormatUsPhone(phone);
   const students = getStudents();
   const idx = students.findIndex(s => String(s.id) === String(profile.id));
-  const updatedProfile = Object.assign({}, profile, { name, age, school, location: city.includes(',') ? city : `${city}, CA`, phone, privateEmail: email, about:[about], highlights:[experience], updatedAt:new Date().toISOString() });
+  const updatedProfile = Object.assign({}, profile, { name, age, school, location: city.includes(',') ? city : `${city}, CA`, address, phone, phoneVerified:true, privateEmail: email, about:[about], highlights:[experience], updatedAt:new Date().toISOString() });
   const services = getRenderableStudentServices(updatedProfile);
   const updatedService = Object.assign({}, services[0] || {}, { id:(services[0] || {}).id || uid('svc'), title:serviceTitle, description:serviceDescription, rate:serviceRate, availability:serviceAvailability, location:serviceLocation });
   updatedProfile.services = [updatedService].concat(services.slice(1));
@@ -8928,10 +8959,10 @@ async function submitStudentMigrationOnboarding(){
   saveStudents(students);
   const users = getUsers();
   const user = users.find(u => String(u.id) === String(currentUser.id));
-  if (user) { user.name = name; user.publicName = name; user.phone = phone; user.city = city; saveUsers(users); setCurrentUser(user); }
+  if (user) { user.name = name; user.publicName = name; user.phone = phone; user.phoneVerified = true; user.address = address; user.city = city; saveUsers(users); setCurrentUser(user); }
   if (backendAuthEnabled() && getBackendAccessToken() && updatedProfile.backendSource && updatedProfile.backendProfileId) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, city, profile:{ age, school, address:updatedProfile.location, about, type:'student' } }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, phoneVerified:true, city, address, profile:{ age, school, address, about, type:'student' } }) });
       await backendAuthRequest(`/student-profiles/${encodeURIComponent(updatedProfile.backendProfileId)}`, { method:'PATCH', body: JSON.stringify({ title:serviceTitle, bio:about, experience, is_active:true }) });
     } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
   }
@@ -8949,6 +8980,7 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div class="row"><div class="field"><label>First name *</label><input id="migFirstName" value="${esc(user.firstName || firstName(user.name) || '')}"></div><div class="field"><label>Last name *</label><input id="migLastName" value="${esc(user.lastName || '')}"></div></div>
       <div class="field"><label>Email *</label><input id="migEmail" type="email" value="${esc(user.email || '')}"></div>
       <div class="field"><label>Phone *</label><input id="migPhone" type="tel" placeholder="(555) 555-5555" value="${esc(user.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
+      <div class="field"><label>Phone Verification Code *</label><input id="migPhoneCode" value="" placeholder="Enter 123456 in staging"><div class="small muted" style="margin-top:6px">Staging uses code 123456. Production will send a real SMS code.</div></div>
       <div class="field"><label>Home address *</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="Street, City, State ZIP — e.g. 123 Main St, Danville, CA 94526" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. If you type something like “123 Main St Danville CA 94526,” we’ll format it for you.</div></div>
       <div class="field"><label>About me *</label><textarea id="migAbout">${esc(user.about || '')}</textarea></div>
     </div>
@@ -8969,13 +9001,15 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   const last = String(document.getElementById('migLastName')?.value || '').trim();
   const email = String(document.getElementById('migEmail')?.value || '').trim().toLowerCase();
   let phone = String(document.getElementById('migPhone')?.value || '').trim();
+  const phoneCode = String(document.getElementById('migPhoneCode')?.value || '').trim();
   let address = migrationFormatUsAddress(document.getElementById('migAddress')?.value || '');
   const addressInput = document.getElementById('migAddress');
   if (addressInput) addressInput.value = address;
   const about = String(document.getElementById('migAbout')?.value || '').trim();
-  if (toastRequiredFields({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile')) return;
+  if (toastRequiredFields({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Phone verification code':phoneCode, 'Home address':address, 'About me':about }, 'Personal profile')) return;
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
+  if (!isValidPhoneVerificationCode(phoneCode)) return toast('Please verify your phone number with the 6-digit code. In staging, use 123456.');
   const addressError = migrationAddressValidationMessage(address, 'home address');
   if (addressError) return toast(addressError);
   phone = migrationFormatUsPhone(phone);
@@ -9000,13 +9034,13 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   const users = getUsers();
   const user = users.find(u => String(u.id) === String(currentUser.id));
   if (user) {
-    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, address, about, city:extractCity(address) });
+    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:true, address, about, city:extractCity(address) });
     if (isEmployer) { user.company = business.name; user.businessProfile = Object.assign({}, user.businessProfile || {}, business); }
     saveUsers(users); setCurrentUser(user);
   }
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:true, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business }) });
     } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
@@ -9456,6 +9490,8 @@ async function saveStudentServiceForm(serviceIndex=''){
         hourlyRate: service.rate,
         availability: service.availability,
         location: service.location,
+        images: service.images || [],
+        entity_images: service.images || [],
         is_active: true
       };
       // Images are kept in the local image registry for now; do not send base64 image data with
