@@ -681,24 +681,57 @@ function clearBackendAuthSession(){
   localStorage.removeItem('cogo_backend_access_token');
   localStorage.removeItem('cogo_backend_refresh_token');
 }
-async function backendAuthRequest(path, options={}){
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), BACKEND_AUTH.timeoutMs || 10000);
-  try {
-    const headers = Object.assign({ 'content-type':'application/json' }, options.headers || {});
-    const token = localStorage.getItem('cogo_backend_access_token');
-    if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
-    const text = await response.text();
-    let payload = null;
-    try { payload = text ? JSON.parse(text) : null; } catch (error) {}
-    if (!response.ok || !payload || payload.ok === false) {
-      throw new Error(payload?.error?.message || `Backend auth request failed (${response.status})`);
-    }
-    return payload.data || {};
-  } finally {
-    clearTimeout(timer);
+function backendSessionExpiredError(){
+  return new Error('Your session expired. Please sign in again, then retry your last action.');
+}
+async function refreshBackendAccessToken(){
+  const refreshToken = localStorage.getItem('cogo_backend_refresh_token');
+  if (!refreshToken) throw backendSessionExpiredError();
+  const response = await fetch(`${BACKEND_AUTH.baseUrl}/auth/refresh`, {
+    method:'POST',
+    headers:{ 'content-type':'application/json' },
+    body: JSON.stringify({ refresh_token:refreshToken })
+  });
+  const text = await response.text();
+  let payload = null;
+  try { payload = text ? JSON.parse(text) : null; } catch (error) {}
+  if (!response.ok || !payload || payload.ok === false || !payload.data?.access_token) {
+    clearBackendAuthSession();
+    throw backendSessionExpiredError();
   }
+  saveBackendAuthSession(payload.data);
+  return payload.data.access_token;
+}
+async function backendAuthRequest(path, options={}){
+  const attemptRequest = async (accessToken='') => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), BACKEND_AUTH.timeoutMs || 10000);
+    try {
+      const headers = Object.assign({ 'content-type':'application/json' }, options.headers || {});
+      const token = accessToken || localStorage.getItem('cogo_backend_access_token');
+      if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
+      const text = await response.text();
+      let payload = null;
+      try { payload = text ? JSON.parse(text) : null; } catch (error) {}
+      return { response, payload };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  let { response, payload } = await attemptRequest();
+  if (response.status === 401 && options.retryOnAuthFailure !== false) {
+    try {
+      const refreshedToken = await refreshBackendAccessToken();
+      ({ response, payload } = await attemptRequest(refreshedToken));
+    } catch (error) {
+      throw error;
+    }
+  }
+  if (!response.ok || !payload || payload.ok === false) {
+    throw new Error(payload?.error?.message || `Backend auth request failed (${response.status})`);
+  }
+  return payload.data || {};
 }
 async function createBackendStripeCheckoutSession(projectId){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId) return null;
