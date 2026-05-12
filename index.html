@@ -8483,11 +8483,13 @@ function renderMigrationOnboarding(el){
     : isEmployer
       ? 'We imported your old CoGo City account. Before you post jobs or contact students, please complete the new required business and contact fields.'
       : 'Please review your account details before using the new CoGo City platform.';
+  const safetyTrustMessage = 'To help keep CoGo City safe and trustworthy, we ask all users to verify their profile information. Your information is securely stored and helps us protect students, families, and local businesses within our community.';
   const business = user.businessProfile || {};
   const profile = currentStudentProfile();
   el.innerHTML = `
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">${esc(title)}</div>
+      ${!isStudent && !isEmployer ? `<div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;margin:0 0 12px;color:#334155;line-height:1.55">${esc(safetyTrustMessage)}</div>` : ''}
       <div class="small muted">${esc(intro)}</div>
       ${renderMigrationRequiredList(isStudent
         ? ['Confirm name, private email, phone, school, city, about, and experience.', 'Confirm at least one service with title, description, rate, availability, and location.', 'After you finish, you will land on My Profile to verify how everything looks.']
