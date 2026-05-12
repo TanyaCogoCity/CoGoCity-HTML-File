@@ -2839,6 +2839,25 @@ function toast(msg){
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2500);
 }
+function isBlankRequiredValue(value){
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'number') return !Number.isFinite(value) || value <= 0;
+  return value === undefined || value === null || String(value).trim() === '';
+}
+function missingRequiredLabels(fields={}){
+  return Object.entries(fields).filter(([, value]) => isBlankRequiredValue(value)).map(([label]) => label);
+}
+function requiredFieldsMessage(fields={}, context=''){
+  const missing = missingRequiredLabels(fields);
+  if (!missing.length) return '';
+  const list = missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`;
+  return `${context ? `${context}: ` : ''}Please complete ${list}.`;
+}
+function toastRequiredFields(fields={}, context=''){
+  const msg = requiredFieldsMessage(fields, context);
+  if (msg) toast(msg);
+  return !!msg;
+}
 function detectContactInfo(text=''){
   const emailRe = /[\w.+-]+@[\w.-]+\.\w+/i;
   const phoneRe = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
@@ -3473,7 +3492,7 @@ function submitContactUsForm(){
   const email = String((document.getElementById('contactEmail') || {}).value || '').trim();
   const subject = String((document.getElementById('contactSubject') || {}).value || '').trim();
   const message = String((document.getElementById('contactMessage') || {}).value || '').trim();
-  if (!name || !email || !subject || !message) return toast('Please complete all contact form fields.');
+  if (toastRequiredFields({ Name:name, Email:email, Subject:subject, Message:message }, 'Contact form')) return;
   const body = `Name: ${name}\\nEmail: ${email}\\n\\n${message}`;
   const mailto = `mailto:tanya@cogocity.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.location.href = mailto;
@@ -3703,6 +3722,7 @@ function resetDemoData(){
 async function doLogin(){
   let email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
   const password = document.getElementById('loginPassword').value || '';
+  if (toastRequiredFields({ Email:email, Password:password }, 'Sign in')) return;
   if (email === 'tanya.lipovich@gmail.com' && password === 'cKL3h9kT7*PvZ%') {
     email = 'admin@cogocity.com';
   }
@@ -3772,9 +3792,10 @@ function submitPasswordReset(){
   const email = String((document.getElementById('resetEmail') || {}).value || '').trim().toLowerCase();
   const nextPassword = String((document.getElementById('resetNewPassword') || {}).value || '');
   const confirmPassword = String((document.getElementById('resetConfirmPassword') || {}).value || '');
-  if (!email) return toast('Please enter your email.');
-  if (!nextPassword || nextPassword.length < 6) return toast('New password must be at least 6 characters.');
-  if (nextPassword !== confirmPassword) return toast('Passwords do not match.');
+  if (toastRequiredFields({ Email:email })) return;
+  if (toastRequiredFields({ 'New password':nextPassword, 'Confirm new password':confirmPassword }, 'Password reset')) return;
+  if (nextPassword.length < 6) return toast('New password must be at least 6 characters.');
+  if (nextPassword !== confirmPassword) return toast('Confirm new password must match New password.');
   const users = getUsers();
   const user = users.find(item => String(item.email || '').toLowerCase() === email);
   if (!user) return toast('No account found with that email.');
@@ -4016,7 +4037,7 @@ function saveStudentSignupStep(step){
     const age = Number(document.getElementById('studentFlowAge').value || 0);
     const school = (document.getElementById('studentFlowSchool').value || '').trim();
     const city = (document.getElementById('studentFlowCity').value || '').trim();
-    if (!name || !age || !school || !city) return toast('Please complete name, age, school, and city.'), false;
+    if (toastRequiredFields({ Name:name, Age:age, School:school, City:city }, 'Student profile')) return false;
     if (age < 13 || age > 25) return toast('Student signup is for ages 13 to 25.'), false;
     Object.assign(studentSignupDraft, { name, age, school, city });
     return true;
@@ -4028,7 +4049,7 @@ function saveStudentSignupStep(step){
   if (step === 3){
     const about = (document.getElementById('studentFlowAbout').value || '').trim();
     const experience = (document.getElementById('studentFlowExperience').value || '').trim();
-    if (!about || !experience) return toast('Please complete About and Experience.'), false;
+    if (toastRequiredFields({ 'About me':about, Experience:experience }, 'Student profile')) return false;
     Object.assign(studentSignupDraft, { about, experience });
     return true;
   }
@@ -4044,7 +4065,7 @@ function saveStudentSignupStep(step){
     const hasDraftValues = !!(form.title || form.description || getRenderableVideoUrl(form) || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
     if (!services.length && hasDraftValues) {
       const draftRate = Number(form.rate || 0);
-      if (!form.title || !form.description || !draftRate || !form.location || !form.availability) return toast('Please complete all required service fields.'), false;
+      if (toastRequiredFields({ 'Service title':form.title, 'Service description':form.description, 'Hourly rate':draftRate, Location:form.location, Availability:form.availability }, 'Service')) return false;
       const service = {
         id: uid('service'),
         title: form.title,
@@ -4069,7 +4090,7 @@ function saveStudentSignupStep(step){
     const email = (document.getElementById('studentFlowEmail').value || '').trim().toLowerCase();
     const phone = (document.getElementById('studentFlowPhone').value || '').trim();
     const address = (document.getElementById('studentFlowAddress').value || '').trim();
-    if (!email || !phone || !address) return toast('Please complete email, phone, and address.'), false;
+    if (toastRequiredFields({ Email:email, Phone:phone, Address:address }, 'Contact details')) return false;
     Object.assign(studentSignupDraft, { email, phone, address });
     return true;
   }
@@ -4185,7 +4206,7 @@ function saveStudentSignupService(){
   const rate = Number(form.rate || 0);
   const location = (form.location || '').trim();
   const availability = (form.availability || '').trim();
-  if (!title || !description || !rate || !location || !availability) return toast('Please complete all required service fields.');
+  if (toastRequiredFields({ 'Service title':title, Description:description, 'Hourly rate':rate, Location:location, Availability:availability }, 'Service')) return;
   const service = {
     id: studentSignupEditingServiceIndex !== null && studentSignupDraft.services[studentSignupEditingServiceIndex]
       ? studentSignupDraft.services[studentSignupEditingServiceIndex].id
@@ -4295,11 +4316,11 @@ function renderStudentSignupPreviewHtml(){
 }
 function submitStudentSignupProfile(){
   const d = studentSignupDraft || {};
-  if (!d.name || !d.age || !d.school || !d.city) return toast('Please complete the basic profile information first.');
+  if (toastRequiredFields({ Name:d.name, Age:d.age, School:d.school, City:d.city }, 'Basic profile')) return;
   if (!(d.photo || d.avatar)) return toast('Please add a photo or avatar first.');
-  if (!d.about || !d.experience) return toast('Please complete About and Experience first.');
+  if (toastRequiredFields({ 'About me':d.about, Experience:d.experience }, 'Profile')) return;
   if (!(d.services || []).length) return toast('Please add at least one service.');
-  if (!d.email || !d.phone || !d.address) return toast('Please complete your contact details first.');
+  if (toastRequiredFields({ Email:d.email, Phone:d.phone, Address:d.address }, 'Contact details')) return;
   studentSignupDraft.profileReady = true;
   studentSignupStep = 8;
   renderStudentSignupModal();
@@ -4613,12 +4634,12 @@ function saveEmployerSignupStep(step){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
   if (step === 1) {
     syncEmployerSignupPersonalDraft();
-    if (!employerSignupDraft.firstName || !employerSignupDraft.lastName || !(employerSignupDraft.photo || employerSignupDraft.avatar) || !employerSignupDraft.email || !employerSignupDraft.phone || !employerSignupDraft.address) return toast('Please complete all required personal profile fields.'), false;
+    if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, Address:employerSignupDraft.address }, 'Personal profile')) return false;
     return true;
   }
   if (employerSignupMode === 'employer' && step === 2) {
     syncEmployerSignupBusinessDraft();
-    if (!employerSignupDraft.businessName || !employerSignupDraft.businessAbout || !employerSignupDraft.businessPhone || !employerSignupDraft.businessAddress || !employerSignupDraft.tin) return toast('Please complete all required business fields.'), false;
+    if (toastRequiredFields({ 'Business name':employerSignupDraft.businessName, 'Business description':employerSignupDraft.businessAbout, 'Business phone':employerSignupDraft.businessPhone, 'Business address':employerSignupDraft.businessAddress, TIN:employerSignupDraft.tin }, 'Business profile')) return false;
     return true;
   }
   const passwordStep = employerSignupMode === 'employer' ? 4 : 2;
@@ -5406,7 +5427,7 @@ async function submitDirectJobApplication(jobId=''){
   const job = getDirectJobById(jobId);
   if (!job || !currentUser) return;
   const message = String((document.getElementById('directJobApplicationMessage') || {}).value || '').trim();
-  if (!message) return toast('Please add a message for the employer.');
+  if (toastRequiredFields({ 'Message for the employer':message })) return;
   if (!blockTextCheck(message)) return;
   const user = getUserById(currentUser.id) || currentUser;
   const savedResume = getStudentResume(user);
@@ -5897,12 +5918,12 @@ function completeWorkshopRegistration(workshopId=''){
   if (!workshop || !currentUser) return;
   const attendeeName = String((document.getElementById('workshopAttendeeName') || {}).value || '').trim();
   const attendeeEmail = String((document.getElementById('workshopAttendeeEmail') || {}).value || '').trim().toLowerCase();
-  if (!attendeeName) return toast('Please enter your name.');
+  if (toastRequiredFields({ Name:attendeeName })) return;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendeeEmail)) return toast('Please enter a valid email.');
   const spotsLeft = getWorkshopSpotsLeft(workshop);
   const qtyRaw = String((document.getElementById('workshopTicketQty') || {}).value || '').trim();
   const quantity = Math.max(0, Number(qtyRaw.replace(/[^\d]/g, '') || 0));
-  if (!quantity) return toast('Enter a number of tickets you need to purchars');
+  if (toastRequiredFields({ 'Number of tickets':quantity })) return;
   if (spotsLeft !== null && quantity > spotsLeft) return toast(`Only ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left.`);
   const mode = (document.querySelector('input[name=\"workshopPmMode\"]:checked') || {}).value || 'saved';
   const users = getUsers();
@@ -6416,9 +6437,9 @@ function persistWorkshopDraft(mode='draft'){
     syncWorkshopDraftFromForm();
   }
   const isPublish = mode === 'active';
-  if (!workshopDraft.title || !workshopDraft.description || !workshopDraft.date_time || !workshopDraft.duration) return toast('Please complete all required fields.');
-  if (workshopDraft.format === 'in_person' && !workshopDraft.location) return toast('Location is required for in-person workshops.');
-  if (workshopDraft.format === 'online' && !workshopDraft.online_url) return toast('Online link is required for online workshops.');
+  if (toastRequiredFields({ Title:workshopDraft.title, Description:workshopDraft.description, Date:workshopDraft.date_time, Duration:workshopDraft.duration }, 'Workshop')) return;
+  if (workshopDraft.format === 'in_person' && toastRequiredFields({ Location:workshopDraft.location }, 'In-person workshop')) return;
+  if (workshopDraft.format === 'online' && toastRequiredFields({ 'Online link':workshopDraft.online_url }, 'Online workshop')) return;
   if (isPublish && !(workshopDraft.images || []).length) return toast('Please add at least one image before publishing.');
   workshopDraft.host_id = workshopDraft.host_id || currentUser.id;
   workshopDraft.status = isPublish ? 'active' : 'draft';
@@ -6548,7 +6569,7 @@ function sendWorkshopBroadcast(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return;
   const content = ((document.getElementById('workshopBroadcastMessage') || {}).value || '').trim();
-  if (!content) return toast('Please write a message.');
+  if (toastRequiredFields({ Message:content })) return;
   if (!blockTextCheck(content)) return;
   const recipients = getWorkshopRegistrationsFor(workshop.id).filter(item => item.status !== 'refunded');
   recipients.forEach(item => {
@@ -6609,7 +6630,7 @@ function cancelWorkshopEvent(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return;
   const reason = ((document.getElementById('workshopCancelReason') || {}).value || '').trim();
-  if (!reason) return toast('Cancellation message is required.');
+  if (toastRequiredFields({ 'Cancellation message':reason })) return;
   const workshops = getWorkshops();
   const target = workshops.find(item => item.id === workshop.id);
   if (!target) return;
@@ -7926,7 +7947,7 @@ function submitPost(){
   const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 5);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
   const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
-  if (!content) return toast('Please write a post.');
+  if (toastRequiredFields({ Post:content })) return;
   if (!blockTextCheck(content)) return;
   const post = {
     id: uid('p'),
@@ -7954,7 +7975,7 @@ function submitPost(){
     post.hoursNeeded = Number(document.getElementById('jobHours').value || 0);
     post.location = (document.getElementById('jobLocation').value || '').trim();
     if (!post.jobTitle || !post.description || !post.rate || !post.hoursNeeded || !post.location){
-      return toast('Please complete all job fields.');
+      return toast(requiredFieldsMessage({ 'Job title':post.jobTitle, Description:post.description, Rate:post.rate, Hours:post.hoursNeeded, Location:post.location }, 'Job post') || 'Please complete the missing job fields.');
     }
     if (!blockTextCheck(post.description)) return;
   }
@@ -8027,7 +8048,7 @@ function addPostComment(postId){
   if (!currentUser) return openLoginModal();
   const input = document.getElementById(`postCommentInput_${postId}`);
   const content = String((input || {}).value || '').trim();
-  if (!content) return toast('Please enter a comment.');
+  if (toastRequiredFields({ Comment:content })) return;
   if (!blockTextCheck(content)) return;
   const posts = getPosts();
   const post = posts.find(item => item.id === postId);
@@ -8136,7 +8157,7 @@ function savePostEdit(postId){
     const rate = Number(document.getElementById('editJobRate').value || 0);
     const hoursNeeded = Number(document.getElementById('editJobHours').value || 0);
     const location = (document.getElementById('editJobLocation').value || '').trim();
-    if (!jobTitle || !description || !rate || !hoursNeeded || !location) return toast('Please complete all job fields.');
+    if (toastRequiredFields({ 'Job title':jobTitle, Description:description, Rate:rate, Hours:hoursNeeded, Location:location }, 'Job post')) return;
     if (!blockTextCheck(description)) return;
     Object.assign(p, { jobTitle, description, rate, hoursNeeded, location });
   }
@@ -8175,7 +8196,7 @@ function applyToPost(postId){
 }
 function submitApplication(postId){
   const msg = (document.getElementById('applyMessage').value || '').trim();
-  if (!msg) return toast('Please write a message.');
+  if (toastRequiredFields({ Message:msg })) return;
   if (!blockTextCheck(msg)) return;
   const p = getPosts().find(x => x.id === postId);
   const student = currentStudentProfile();
@@ -8278,7 +8299,7 @@ function sendDirectOffer(studentId, serviceId=''){
   const rate = Number(document.getElementById('directJobRate').value || 0);
   const hours = Number(document.getElementById('directJobHours').value || 0);
   const location = (document.getElementById('directJobLocation').value || '').trim();
-  if (!title || !scope || !rate || !hours || !location) return toast('Please complete all fields.');
+  if (toastRequiredFields({ Title:title, Scope:scope, Rate:rate, Hours:hours, Location:location }, 'Booking request')) return;
   if (!blockTextCheck(scope)) return;
 
   const s = getStudents().find(x => x.id === studentId);
@@ -8590,10 +8611,10 @@ async function submitStudentMigrationOnboarding(){
   const serviceRate = Number(document.getElementById('migServiceRate')?.value || 0) || 0;
   const serviceAvailability = String(document.getElementById('migServiceAvailability')?.value || '').trim();
   const serviceLocation = String(document.getElementById('migServiceLocation')?.value || '').trim();
-  if (!name || !school || !city || !email || !phone || !about || !experience) return toast('Please complete all required profile fields, including phone, before continuing.');
+  if (toastRequiredFields({ Name:name, School:school, City:city, Email:email, Phone:phone, 'About me':about, Experience:experience }, 'Student profile')) return;
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
-  if (!serviceTitle || !serviceDescription || !serviceRate || !serviceAvailability || !serviceLocation) return toast('Please complete all primary service fields.');
+  if (toastRequiredFields({ 'Service title':serviceTitle, 'Service description':serviceDescription, 'Hourly rate':serviceRate, Availability:serviceAvailability, Location:serviceLocation }, 'Primary service')) return;
   phone = migrationFormatUsPhone(phone);
   const students = getStudents();
   const idx = students.findIndex(s => String(s.id) === String(profile.id));
@@ -8650,7 +8671,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   const addressInput = document.getElementById('migAddress');
   if (addressInput) addressInput.value = address;
   const about = String(document.getElementById('migAbout')?.value || '').trim();
-  if (!first || !last || !email || !phone || !address || !about) return toast('Please complete all required personal fields before continuing.');
+  if (toastRequiredFields({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile')) return;
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
   const addressError = migrationAddressValidationMessage(address, 'home address');
@@ -8665,7 +8686,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
       address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || ''),
       tin:String(document.getElementById('migBusinessTin')?.value || '').trim()
     };
-    if (!business.name || !business.about || !business.phone || !business.address || !business.tin) return toast('Please complete all business fields before continuing.');
+    if (toastRequiredFields({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address, TIN:business.tin }, 'Business profile')) return;
     if (!migrationIsValidUsPhone(business.phone)) return toast('Please enter a valid 10-digit U.S. business phone number.');
     const businessAddressInput = document.getElementById('migBusinessAddress');
     if (businessAddressInput) businessAddressInput.value = business.address;
@@ -8919,7 +8940,7 @@ async function saveStudentProfileForm(profileId=''){
   const user = users.find(u => u.id === currentUser.id);
   syncStudentProfileDraftFromForm();
   const draft = studentProfileDraft || createStudentProfileFormDraft(profile);
-  if (!draft.name || !draft.city || !draft.email) return toast('Name, location, and email are required.');
+  if (toastRequiredFields({ Name:draft.name, Location:draft.city, Email:draft.email }, 'Student profile')) return;
   profile.name = draft.name;
   profile.age = Number(draft.age || 0) || profile.age || 17;
   profile.school = draft.school || '';
@@ -9091,7 +9112,7 @@ async function saveStudentServiceForm(serviceIndex=''){
   const rate = Number(draft.rate || 0);
   const availability = (draft.availability || '').trim();
   const location = (draft.location || '').trim();
-  if (!title || !description || !rate || !availability) return toast('Please complete the required service fields.');
+  if (toastRequiredFields({ 'Service title':title, Description:description, 'Hourly rate':rate, Availability:availability }, 'Service')) return;
   const service = {
     id: serviceIndex === '' || serviceIndex === null || serviceIndex === undefined || !profile.services[Number(serviceIndex)]
       ? uid('service')
@@ -9440,7 +9461,7 @@ async function submitFinalInvoice(projectId){
   const p = pList.find(x => x.id === projectId);
   if (!p) return;
   const actualHours = Number(document.getElementById('finalHours').value || 0);
-  if (!actualHours) return toast('Please enter actual hours.');
+  if (toastRequiredFields({ 'Actual hours':actualHours })) return;
   const breakdown = calculateCommissionBreakdown(actualHours, p.rate || 0);
   const subtotal = breakdown.workTotal;
   const platformFee = breakdown.employerCommissionAmount;
@@ -9577,7 +9598,7 @@ function submitEmployerDashboardPost(){
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('empPostVideoUrl') || {}).value || '').trim());
   const isJobToggle = document.getElementById('empIsJob');
   const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(isJobToggle && isJobToggle.checked);
-  if (!content) return toast('Please write a post.');
+  if (toastRequiredFields({ Post:content })) return;
   if (!blockTextCheck(content)) return;
   const post = {
     id: uid('p'),
@@ -9604,7 +9625,7 @@ function submitEmployerDashboardPost(){
     post.hoursNeeded = Number(document.getElementById('empJobHours').value || 0);
     post.location = (document.getElementById('empJobLocation').value || '').trim();
     if (!post.jobTitle || !post.description || !post.rate || !post.hoursNeeded || !post.location) {
-      return toast('Please complete all job fields.');
+      return toast(requiredFieldsMessage({ 'Job title':post.jobTitle, Description:post.description, Rate:post.rate, Hours:post.hoursNeeded, Location:post.location }, 'Job post') || 'Please complete the missing job fields.');
     }
     if (!blockTextCheck(post.description)) return;
   }
@@ -9717,7 +9738,7 @@ async function saveDirectJobEdit(jobId=''){
   const requirements = String((document.getElementById('directJobEditRequirements') || {}).value || '').trim();
   const compensation = String((document.getElementById('directJobEditComp') || {}).value || '').trim();
   const location = String((document.getElementById('directJobEditLocation') || {}).value || '').trim();
-  if (!title || !description || !requirements || !compensation || !location) return toast('Please complete all required fields.');
+  if (toastRequiredFields({ 'Job title':title, Description:description, Requirements:requirements, Compensation:compensation, Location:location }, 'Job')) return;
   job.job_title = title;
   job.job_type = String((document.getElementById('directJobEditType') || {}).value || 'full_time');
   job.work_mode = String((document.getElementById('directJobEditMode') || {}).value || 'on_site');
@@ -9759,7 +9780,7 @@ async function saveEmployerDirectHireJob(){
   const schedule = String((document.getElementById('directJobSchedule') || {}).value || '').trim();
   const postingPkg = getSelectedDirectJobPackageFromForm();
   const selectedMonths = Math.max(1, Number((document.getElementById('directJobListingMonths') || {}).value || 1) || 1);
-  if (!title || !compensation || !location || !description || !requirements) return toast('Please complete all required job fields.');
+  if (toastRequiredFields({ 'Job title':title, Compensation:compensation, Location:location, Description:description, Requirements:requirements }, 'Direct-hire job')) return;
   if (!blockTextCheck(description) || !blockTextCheck(requirements)) return;
   const companyName = getEmployerCompanyName(currentUser);
   const feePerMonth = Number(postingPkg.fee || 0) || 0;
@@ -9977,8 +9998,9 @@ function submitDirectHireReview(applicationId=''){
   if (app.review_submitted) return toast('Review already submitted.');
   const rating = Number((document.getElementById('directHireReviewRating') || {}).value || 0);
   const comment = String((document.getElementById('directHireReviewComment') || {}).value || '').trim();
-  if (!rating || rating < 1 || rating > 5) return toast('Please enter a rating between 1 and 5.');
-  if (!comment) return toast('Please add a short review comment.');
+  if (!rating) return toast('Please choose a rating from 1 to 5.');
+  if (rating < 1 || rating > 5) return toast('Rating must be between 1 and 5.');
+  if (toastRequiredFields({ 'Review comment':comment })) return;
   if (!blockTextCheck(comment)) return;
   const students = getStudents();
   const student = students.find(item => String(item.userId) === String(app.student_id) && item.status !== 'archived');
@@ -10344,7 +10366,7 @@ function confirmSendOffer(appId){
   const rate = Number(document.getElementById('offerRate').value || 0);
   const hours = Number(document.getElementById('offerHours').value || 0);
   const location = (document.getElementById('offerLocation').value || '').trim();
-  if (!title || !scope || !rate || !hours || !location) return toast('Please complete all offer fields.');
+  if (toastRequiredFields({ Title:title, Scope:scope, Rate:rate, Hours:hours, Location:location }, 'Offer')) return;
   if (!blockTextCheck(scope)) return;
   Object.assign(a, {
     jobTitle:title,
@@ -11453,7 +11475,7 @@ function createAdminUser(){
   const email = (document.getElementById('adminCreateUserEmail').value || '').trim().toLowerCase();
   const roleValue = document.getElementById('adminCreateUserRole').value || 'student';
   const password = (document.getElementById('adminCreateUserPassword').value || '').trim() || 'welcome123';
-  if (!name || !email) return toast('Name and email are required.');
+  if (toastRequiredFields({ Name:name, Email:email })) return;
   if (users.some(user => user.email.toLowerCase() === email)) return toast('That email is already in use.');
   const user = applyAdminRoleValue(normalizeUserRecord({
     id: uid('u'),
@@ -11488,7 +11510,7 @@ function sendAdminMessageToUser(userId){
   const user = getUserById(userId);
   if (!user) return toast('User not found.');
   const content = (document.getElementById('adminMessageBody').value || '').trim();
-  if (!content) return toast('Please enter a message.');
+  if (toastRequiredFields({ Message:content })) return;
   if (!blockTextCheck(content)) return;
   const msgs = getMessages();
   msgs.push({
@@ -11888,7 +11910,7 @@ function saveAdminUserEdit(userId){
   const address = (draft.address || '').trim();
   const nextRole = draft.roleValue || 'student';
   const nextStatus = draft.statusValue || 'active';
-  if (!firstName || !lastName || !email) return toast('First name, last name, and email are required.');
+  if (toastRequiredFields({ 'First name':firstName, 'Last name':lastName, Email:email })) return;
   const duplicate = users.find(item => item.id !== user.id && String(item.email || '').toLowerCase() === email);
   if (duplicate) return toast('That email is already in use.');
   if (user.id === currentUser.id && nextRole !== 'admin') return toast('You cannot remove your own admin role.');
@@ -12408,7 +12430,7 @@ function persistAdminBlogPost(mode='draft'){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
   adminBlogDraft.videoUrl = (document.getElementById('blog-video-url') || { value:'' }).value.trim();
-  if (!adminBlogDraft.title.trim()) return toast('Article title is required.');
+  if (toastRequiredFields({ 'Article title':adminBlogDraft.title.trim() })) return;
   adminBlogDraft.slug = ensureUniqueBlogSlug(adminBlogDraft.slug || adminBlogDraft.title, adminBlogDraft.id);
   if (!adminBlogDraft.excerpt.trim()) adminBlogDraft.excerpt = stripHtmlTags(adminBlogDraft.content || '').slice(0, 240);
   adminBlogDraft.publishRequested = mode === 'publish';
@@ -13082,8 +13104,9 @@ async function changePassword(){
   const currentPassword = document.getElementById('currentPassword').value || '';
   const newPassword = document.getElementById('newPassword').value || '';
   const confirmNewPassword = document.getElementById('confirmNewPassword').value || '';
-  if (!newPassword || newPassword.length < 8) return toast('New password must be at least 8 characters.');
-  if (newPassword !== confirmNewPassword) return toast('New passwords do not match.');
+  if (toastRequiredFields({ 'Current password':currentPassword, 'New password':newPassword, 'Confirm new password':confirmNewPassword }, 'Change password')) return;
+  if (newPassword.length < 8) return toast('New password must be at least 8 characters.');
+  if (newPassword !== confirmNewPassword) return toast('Confirm new password must match New password.');
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
       await backendAuthRequest('/auth/password', {
