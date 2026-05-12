@@ -3507,14 +3507,18 @@ function renderNav(){
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
   const settings = getSiteSettings();
   const btnLabels = settings.nav_primary_buttons || {};
-  const primaryButton = currentUser.role === 'admin'
-    ? `<button class="btn btn-blue btn-sm" onclick="goDashboard()">${esc(btnLabels.admin || 'Admin Panel')}</button>`
-    : currentUser.role === 'student'
-      ? `<button class="btn btn-blue btn-sm" onclick="goToAddService()">${esc(btnLabels.student || 'Add Service')}</button>`
-      : (currentUser.type === 'neighbor'
-          ? `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.neighbor || 'Post to Community')}</button>`
-          : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.employer || 'Post a Job')}</button>`);
-  const avatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}';
+  const onboardingLocked = needsMigrationOnboarding() && currentUser.role !== 'admin';
+  const primaryButton = onboardingLocked
+    ? `<button class="btn btn-blue btn-sm" onclick="dashSection='profile';goDashboard()">Complete Review</button>`
+    : currentUser.role === 'admin'
+      ? `<button class="btn btn-blue btn-sm" onclick="goDashboard()">${esc(btnLabels.admin || 'Admin Panel')}</button>`
+      : currentUser.role === 'student'
+        ? `<button class="btn btn-blue btn-sm" onclick="goToAddService()">${esc(btnLabels.student || 'Add Service')}</button>`
+        : (currentUser.type === 'neighbor'
+            ? `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.neighbor || 'Post to Community')}</button>`
+            : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.employer || 'Post a Job')}</button>`);
+  const rawAvatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}';
+  const avatarLabel = /^https?:\/\//i.test(String(rawAvatarLabel || '')) ? firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}' : rawAvatarLabel;
   const avatarMenuButtons = currentUser.role === 'student'
     ? `
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
@@ -4857,12 +4861,15 @@ function renderPage(){
     if (!syncCurrentUserRecord()) return;
     processWorkshopPayouts();
     applySiteSettings();
-    renderNav();
     const route = getRoute();
     if (currentUser && needsMigrationOnboarding() && route !== '#/dashboard') {
+      dashSection = 'profile';
+      if (typeof toast === 'function') toast('Please complete your profile review before using the rest of the site.');
       location.hash = '#/dashboard';
+      renderNav();
       return;
     }
+    renderNav();
     if (route === '#/about-us') return renderAboutPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
@@ -8361,7 +8368,16 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
-  if (needsMigrationOnboarding() && currentUser.role !== 'admin') return renderMigrationOnboarding(el);
+  if (needsMigrationOnboarding() && currentUser.role !== 'admin') {
+    const sidebar = document.querySelector('.dashboard .sidebar');
+    if (sidebar) sidebar.innerHTML = `
+      <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
+        <div style="font-weight:800;margin-bottom:6px">Profile review required</div>
+        <div class="small muted">Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.</div>
+      </div>
+    `;
+    return renderMigrationOnboarding(el);
+  }
   if (currentUser.role === 'admin'){
     if (dashSection === 'admin') return renderAdminPanel(el);
     if (dashSection === 'users') return renderAdminUsersSection(el);
@@ -8489,11 +8505,12 @@ function renderStudentMigrationOnboardingForm(profile){
   return `
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:12px">Profile information</div>
-      <div class="row"><div class="field"><label>Name</label><input id="migStudentName" value="${esc(profile.name || currentUser.name || '')}"></div><div class="field"><label>Age</label><input id="migStudentAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div></div>
-      <div class="row"><div class="field"><label>School(s)</label><input id="migStudentSchool" value="${esc(profile.school || '')}"></div><div class="field"><label>City</label><input id="migStudentCity" value="${esc((profile.location || currentUser.city || '').replace(', CA',''))}" placeholder="Danville"></div></div>
-      <div class="row"><div class="field"><label>Email (private)</label><input id="migStudentEmail" type="email" value="${esc(profile.privateEmail || currentUser.email || '')}"></div><div class="field"><label>Phone (private)</label><input id="migStudentPhone" type="tel" value="${esc(profile.phone || currentUser.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div></div>
-      <div class="field"><label>About</label><textarea id="migStudentAbout">${esc((profile.about || [])[0] || '')}</textarea></div>
-      <div class="field"><label>Experience</label><textarea id="migStudentExperience">${esc((profile.highlights || [])[0] || '')}</textarea></div>
+      <div class="small muted" style="margin-bottom:12px">All fields marked required must be completed before the rest of the dashboard unlocks.</div>
+      <div class="row"><div class="field"><label>Name *</label><input id="migStudentName" value="${esc(profile.name || currentUser.name || '')}"></div><div class="field"><label>Age *</label><input id="migStudentAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div></div>
+      <div class="row"><div class="field"><label>School(s) *</label><input id="migStudentSchool" value="${esc(profile.school || '')}"></div><div class="field"><label>City *</label><input id="migStudentCity" value="${esc((profile.location || currentUser.city || '').replace(', CA',''))}" placeholder="Danville"></div></div>
+      <div class="row"><div class="field"><label>Email (private) *</label><input id="migStudentEmail" type="email" value="${esc(profile.privateEmail || currentUser.email || '')}"></div><div class="field"><label>Phone (private) *</label><input id="migStudentPhone" type="tel" placeholder="(555) 555-5555" value="${esc(profile.phone || currentUser.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div></div>
+      <div class="field"><label>About *</label><textarea id="migStudentAbout">${esc((profile.about || [])[0] || '')}</textarea></div>
+      <div class="field"><label>Experience *</label><textarea id="migStudentExperience">${esc((profile.highlights || [])[0] || '')}</textarea></div>
     </div>
     <div class="card form-card" style="margin-top:16px">
       <div style="font-weight:800;margin-bottom:12px">Primary service</div>
@@ -8521,7 +8538,7 @@ async function submitStudentMigrationOnboarding(){
   const serviceRate = Number(document.getElementById('migServiceRate')?.value || 0) || 0;
   const serviceAvailability = String(document.getElementById('migServiceAvailability')?.value || '').trim();
   const serviceLocation = String(document.getElementById('migServiceLocation')?.value || '').trim();
-  if (!name || !school || !city || !email || !phone || !about || !experience) return toast('Please complete all profile fields before continuing.');
+  if (!name || !school || !city || !email || !phone || !about || !experience) return toast('Please complete all required profile fields, including phone, before continuing.');
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
   if (!serviceTitle || !serviceDescription || !serviceRate || !serviceAvailability || !serviceLocation) return toast('Please complete all primary service fields.');
