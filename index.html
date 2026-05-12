@@ -107,6 +107,17 @@
     .student-filter-row{display:grid;grid-template-columns:1fr 160px auto;gap:10px;align-items:end}
     .student-filter-row .field{margin-bottom:0}
     .student-filter-summary{margin-top:10px;color:var(--gray);font-size:.9rem}
+    .formatted-long-text{line-height:1.7;color:var(--color-text-main);overflow-wrap:anywhere}
+    .formatted-long-text.small{font-size:.9rem}
+    .formatted-long-text p{margin:.35rem 0 .75rem}
+    .formatted-long-text p:last-child{margin-bottom:0}
+    .formatted-long-text ul{margin:.35rem 0 .75rem;padding-left:1.25rem}
+    .formatted-long-text li{margin:.25rem 0}
+    .long-field-textarea{min-height:120px;line-height:1.55;white-space:pre-wrap}
+    .long-field-format{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 8px}
+    .long-field-format button{border:1px solid var(--border);background:#fff;color:var(--color-text-main);border-radius:999px;padding:5px 10px;font-size:.78rem;font-weight:700;cursor:pointer}
+    .long-field-format button:hover{border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(255,230,0,.18)}
+    .long-field-help{margin:-2px 0 8px;color:var(--gray);font-size:.78rem;line-height:1.45}
     .profile-top{background:linear-gradient(135deg,#1F2937,#374151);padding:18px;color:#fff;display:flex;gap:12px}
     .avatar{
       width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.18);
@@ -2879,6 +2890,92 @@ function esc(s){
     .replaceAll('>','&gt;')
     .replaceAll('"','&quot;');
 }
+function renderFormattedLongText(value='', options={}){
+  const text = Array.isArray(value) ? value.filter(Boolean).join('\n\n') : String(value || '');
+  const trimmed = text.trim();
+  if (!trimmed) return options.emptyHtml || '';
+  const classes = ['formatted-long-text'];
+  if (options.small) classes.push('small');
+  const bulletRe = /^\s*(?:[-*•‣–—]|\d+[.)])\s+/;
+  const blocks = trimmed.replace(/\r\n?/g, '\n').split(/\n{2,}/).map(block => block.trim()).filter(Boolean);
+  const html = blocks.map(block => {
+    const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
+    if (!lines.length) return '';
+    const bulletLike = lines.filter(line => bulletRe.test(line)).length;
+    if (bulletLike && bulletLike >= Math.max(1, Math.ceil(lines.length / 2))) {
+      return `<ul>${lines.map(line => `<li>${esc(line.replace(bulletRe, ''))}</li>`).join('')}</ul>`;
+    }
+    return `<p>${lines.map(esc).join('<br>')}</p>`;
+  }).join('');
+  return `<div class="${classes.join(' ')}">${html}</div>`;
+}
+function insertTextareaSnippet(textarea, snippet='', wrapSelection=false){
+  if (!textarea) return;
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || start;
+  const before = textarea.value.slice(0, start);
+  const selected = textarea.value.slice(start, end);
+  const after = textarea.value.slice(end);
+  const needsLeadingBreak = before && !before.endsWith('\n') ? '\n' : '';
+  const value = wrapSelection && selected
+    ? `${before}${selected.split('\n').map(line => line.trim() ? `• ${line.replace(/^\s*(?:[-*•‣–—]|\d+[.)])\s+/, '')}` : line).join('\n')}${after}`
+    : `${before}${needsLeadingBreak}${snippet}${after}`;
+  textarea.value = value;
+  const cursor = wrapSelection && selected ? start + selected.length : start + needsLeadingBreak.length + snippet.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursor, cursor);
+  textarea.dispatchEvent(new Event('input', { bubbles:true }));
+}
+function formatTextareaSelectionAsBullets(textarea){
+  if (!textarea) return;
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || start;
+  if (end > start) return insertTextareaSnippet(textarea, '', true);
+  insertTextareaSnippet(textarea, '• First point\n• Second point\n');
+}
+function attachLongFieldFormatting(root=document){
+  const scope = root || document;
+  scope.querySelectorAll('textarea').forEach(textarea => {
+    if (textarea.dataset.longFieldFormatted === 'true') return;
+    textarea.dataset.longFieldFormatted = 'true';
+    textarea.classList.add('long-field-textarea');
+    if (!textarea.getAttribute('rows')) textarea.setAttribute('rows', '5');
+    if (textarea.readOnly || textarea.disabled) return;
+    const toolbar = document.createElement('div');
+    toolbar.className = 'long-field-format';
+    toolbar.setAttribute('aria-label', 'Text formatting options');
+    toolbar.innerHTML = `
+      <button type="button" data-format-action="bullet">• Bullet list</button>
+      <button type="button" data-format-action="paragraph">New paragraph</button>
+      <button type="button" data-format-action="line">Line break</button>
+    `;
+    toolbar.addEventListener('click', event => {
+      const button = event.target.closest('button[data-format-action]');
+      if (!button) return;
+      const action = button.dataset.formatAction;
+      if (action === 'bullet') return formatTextareaSelectionAsBullets(textarea);
+      if (action === 'paragraph') return insertTextareaSnippet(textarea, '\n\n');
+      if (action === 'line') return insertTextareaSnippet(textarea, '\n');
+    });
+    const help = document.createElement('div');
+    help.className = 'long-field-help';
+    help.textContent = 'Tip: use paragraphs or bullets to keep longer text easy to scan.';
+    textarea.insertAdjacentElement('beforebegin', toolbar);
+    toolbar.insertAdjacentElement('afterend', help);
+  });
+}
+let longFieldFormattingObserverStarted = false;
+function startLongFieldFormattingObserver(){
+  if (longFieldFormattingObserverStarted) return;
+  longFieldFormattingObserverStarted = true;
+  attachLongFieldFormatting(document);
+  const observer = new MutationObserver(mutations => {
+    mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
+      if (node.nodeType === 1) attachLongFieldFormatting(node);
+    }));
+  });
+  observer.observe(document.body, { childList:true, subtree:true });
+}
 function toast(msg){
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -3500,7 +3597,7 @@ function renderPageContentBlock(pageKey='', fallback={}){
   return `
     <section class="hero">
       <h1>${esc(block.title || '')}</h1>
-      ${block.body ? `<p>${esc(block.body)}</p>` : ''}
+      ${block.body ? renderFormattedLongText(block.body) : ''}
       ${imageHtml}
     </section>
   `;
@@ -3515,7 +3612,7 @@ function renderAboutPage(){
       <div class="card form-card">
         <div class="section-title">${esc(about.title || 'About Us')}</div>
         ${imageHtml}
-        <div style="line-height:1.75">${esc(about.body || '')}</div>
+        ${renderFormattedLongText(about.body || '')}
       </div>
     </div>
   `;
@@ -4310,7 +4407,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
       <div style="font-weight:800;font-size:1.15rem">${esc(service.title || 'Service')}</div>
       <div class="small muted" style="margin-top:6px">$${esc(service.rate || 0)}/hr \u00B7 ${esc(service.location || '')}</div>
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
-      <div style="margin-top:14px">${esc(service.description || '')}</div>
+      ${renderFormattedLongText(service.description || '', { emptyHtml:'', small:false }).replace('formatted-long-text', 'formatted-long-text service-description')}
       <div style="margin-top:14px">${renderSignupImageGallery(service.images || [], 120)}</div>
       <div style="margin-top:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
       <div style="margin-top:16px">${backButtonHtml}</div>
@@ -4338,9 +4435,9 @@ function renderStudentSignupPreviewHtml(){
     <div style="height:16px"></div>
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:8px">About</div>
-      <p class="small">${esc((student.about || [])[0] || '')}</p>
+      ${renderFormattedLongText((student.about || [])[0] || '', { small:true })}
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
-      <div class="small">${esc((student.highlights || [])[0] || '')}</div>
+      ${renderFormattedLongText((student.highlights || [])[0] || '', { small:true })}
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(getStudentProfileImageList(student), 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
@@ -4643,7 +4740,7 @@ function renderEmployerSignupStepContent(){
           <div><div class="small muted">Phone</div><div style="font-weight:700">${esc(d.phone || 'Not added yet')}</div></div>
         </div>
         <div style="margin-top:12px"><div class="small muted">Home Address</div><div style="font-weight:700">${esc(d.address || 'Not added yet')}</div></div>
-        <div style="margin-top:12px"><div class="small muted">About</div><div>${esc(d.about || 'No about section added yet.')}</div></div>
+        <div style="margin-top:12px"><div class="small muted">About</div>${renderFormattedLongText(d.about || 'No about section added yet.', { small:true })}</div>
       </div>
       <div class="card" style="padding:14px;background:#fff">
         <div class="split" style="align-items:center;gap:14px;flex-wrap:wrap">
@@ -5417,7 +5514,7 @@ function renderDirectJobCard(job){
             <span>\u{1F5D3}\uFE0F Posted: ${esc(formatDirectJobCreatedDate(job.created_at))}</span>
             <span>\u{1F465} Applicants: ${applicationsCount}</span>
           </div>
-          <div class="small" style="margin-top:10px;line-height:1.6">${esc((job.description || '').slice(0, 220))}${String(job.description || '').length > 220 ? '\u2026' : ''}</div>
+          <div style="margin-top:10px">${renderFormattedLongText(`${String(job.description || '').slice(0, 220)}${String(job.description || '').length > 220 ? '\u2026' : ''}`, { small:true })}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="location.hash='#/jobs/${esc(job.id)}';renderPage()">View Job</button>
@@ -5495,11 +5592,11 @@ function renderDirectJobDetailPage(jobId=''){
         </div>
         <div class="card form-card" style="margin-top:14px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Job Description</div>
-          <div class="small" style="line-height:1.7">${esc(job.description || '')}</div>
+          ${renderFormattedLongText(job.description || '', { small:true })}
         </div>
         <div class="card form-card" style="margin-top:12px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Requirements</div>
-          <div class="small" style="line-height:1.7">${esc(job.requirements || 'No specific requirements listed.')}</div>
+          ${renderFormattedLongText(job.requirements || 'No specific requirements listed.', { small:true })}
         </div>
         <div class="card form-card" style="margin-top:12px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Employer</div>
@@ -5933,7 +6030,7 @@ function renderWorkshopDetailPage(workshopId=''){
           <span class="workshop-chip">${esc(workshop.duration || 'Duration TBD')}</span>
           ${spotsLeft !== null ? `<span class="workshop-chip">${esc(spotsLeft)} spot${spotsLeft === 1 ? '' : 's'} left</span>` : ''}
         </div>
-        <p style="line-height:1.75">${esc(workshop.description)}</p>
+        <div style="margin-top:14px">${renderFormattedLongText(workshop.description || '')}</div>
         <div class="card form-card" style="margin-top:12px;background:#F9FAFB">
           <div style="font-weight:800;margin-bottom:8px">Instructor</div>
           <div class="small">${esc(getWorkshopHostName(workshop))}</div>
@@ -5974,7 +6071,7 @@ function openWorkshopHostProfile(userId=''){
     <div class="card form-card">
       <div style="font-weight:800;font-size:1.1rem">${esc(user.publicName || user.name)}</div>
       <div class="small muted" style="margin-top:6px">${esc(user.city || extractCity(user.address || ''))}</div>
-      <div style="margin-top:10px">${esc(user.about || 'Instructor on CoGo City')}</div>
+      <div style="margin-top:10px">${renderFormattedLongText(user.about || 'Instructor on CoGo City', { small:true })}</div>
       ${currentUser && currentUser.id !== user.id ? `<button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="closeModal();activeThreadUserId='${esc(user.id)}';dashSection='messages';goDashboard()">Message Instructor</button>` : ''}
     </div>
   `, '560px');
@@ -7515,7 +7612,7 @@ function getProfileReviewSummary(student){
 function openReviewListModal(title, reviews=[]){
   openModal(title, `
     <div style="max-height:420px;overflow:auto">
-      ${reviews.length ? reviews.map(r => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${esc(r.comment || '')}</div></div>`).join('') : `<div class="muted">No reviews yet.</div>`}
+      ${reviews.length ? reviews.map(r => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="muted">No reviews yet.</div>`}
     </div>
   `, '620px');
 }
@@ -7787,7 +7884,7 @@ function openStudentServiceDetail(studentId, serviceId){
     <div class="card form-card" style="margin-top:14px">
       <div style="font-weight:800;margin-bottom:8px">Reviews</div>
       <div class="small muted" style="margin-bottom:10px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
-      ${summary.reviews.length ? summary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${esc(r.comment || '')}</div></div>`).join('') : `<div class="small muted">No reviews yet.</div>`}
+      ${summary.reviews.length ? summary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No reviews yet.</div>`}
       ${summary.reviews.length > 3 ? `<button class="btn btn-outline btn-sm" onclick="openReviewListModal('${esc(service.title || 'Service')} reviews', getServiceReviewSummary(getStudents().find(x => x.id === '${esc(student.id)}'), getRenderableStudentServices(getStudents().find(x => x.id === '${esc(student.id)}')).find(s => s.id === '${esc(service.id || '')}') || {}, ${serviceIndex}).reviews)">View All Reviews</button>` : ''}
       ${actionButtons}
     </div>`, '680px');
@@ -7849,9 +7946,9 @@ function openProfile(studentId){
     <div style="height:16px"></div>
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:8px">About</div>
-      ${(s.about||[]).map(p => `<p class="small">${esc(p)}</p>`).join('')}
+      ${renderFormattedLongText(s.about || [], { small:true, emptyHtml:'<div class="small muted">No about details yet.</div>' })}
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
-      ${(s.highlights||[]).map(p => `<div class="small">\u2022 ${esc(p)}</div>`).join('')}
+      ${renderFormattedLongText((s.highlights || []).map(item => `• ${item}`).join('\n'), { small:true, emptyHtml:'<div class="small muted">No experience details yet.</div>' })}
       <div style="font-weight:800;margin:14px 0 8px">Images</div>
       ${renderSignupImageGallery(getStudentProfileImageList(s), 120)}
       <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
@@ -7865,7 +7962,7 @@ function openProfile(studentId){
             <div>
               <div style="font-weight:800">${esc(service.title)}</div>
               <div class="small muted">$${esc(service.rate)}/hr \u00B7 ${esc(service.location || '')}</div>
-              <div class="small" style="margin-top:6px">${esc(service.description || '')}</div>
+              <div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div>
               <div class="small muted" style="margin-top:6px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
             </div>
             <div class="small muted">View</div>
@@ -7873,7 +7970,7 @@ function openProfile(studentId){
         </button>`;
       }).join('')}
       <div style="font-weight:800;margin:14px 0 8px">Recent Reviews</div>
-      ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${esc(r.comment || '')}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
+      ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
       ${reviewSummary.reviews.length > 3 ? `<div style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="openReviewListModal('${esc(s.name)} reviews', getProfileReviewSummary(getStudents().find(x => x.id === '${esc(s.id)}')).reviews)">View All Reviews</button></div>` : ''}
     </div>
     <div style="height:16px"></div>
@@ -8155,7 +8252,7 @@ function renderPost(p){
           <div class="muted small">${timeAgo(p.createdAt)}</div>
         </div>
       </div>
-      <div style="margin-bottom:10px">${esc(p.content)}</div>
+      <div style="margin-bottom:10px">${renderFormattedLongText(p.content || '')}</div>
       ${mediaHtml}
       ${p.isJob ? `
         <div class="card" style="padding:14px;background:#F9FAFB;border-color:#E5E7EB">
@@ -8166,7 +8263,7 @@ function renderPost(p){
             <span>\u{1F4CD} ${esc(p.location)}</span>
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#E0F2FE' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#0369A1' : '#374151')};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
           </div>
-          <div class="small">${esc(p.description)}</div>
+          ${renderFormattedLongText(p.description || '', { small:true })}
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
         </div>
       ` : ''}
@@ -8179,7 +8276,7 @@ function renderPost(p){
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
       <div style="margin-top:10px;${commentsOpen ? '' : 'display:none'}">
-        ${comments.length ? comments.map(comment => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(comment.userName || 'User')}</div><div class="muted small">${timeAgo(comment.createdAt)}</div><div style="margin-top:6px">${esc(comment.content || '')}</div></div>`).join('') : `<div class="small muted">No comments yet.</div>`}
+        ${comments.length ? comments.map(comment => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(comment.userName || 'User')}</div><div class="muted small">${timeAgo(comment.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(comment.content || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No comments yet.</div>`}
         ${currentUser ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="postCommentInput_${esc(p.id)}" placeholder="Write a comment..." style="flex:1"><button class="btn btn-blue btn-sm" onclick="addPostComment('${esc(p.id)}')">Post</button></div>` : `<div class="small muted" style="margin-top:8px">Sign in to comment.</div>`}
       </div>
     </div>
@@ -8894,14 +8991,14 @@ function renderEmployerProfile(el){
           <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(user.phone || 'Not added yet')}</div></div>
           <div><div class="small muted">Email (private)</div><div style="font-weight:700">${esc(user.email || '')}</div></div>
         </div>
-        <div style="margin-top:14px"><div class="small muted">About</div><div>${esc(user.about || 'No about section added yet.')}</div></div>
+        <div style="margin-top:14px"><div class="small muted">About</div>${renderFormattedLongText(user.about || 'No about section added yet.', { small:true })}</div>
       </div>
     ` : ''}
     ${showBusiness ? `
       <div class="card form-card" style="margin-top:16px">
         <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Business</div>
         <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">${business.logo ? renderManagedImage(business.logo, business.name || 'Business logo', 'width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">\u{1F3E2}</div>`}<div><div style="font-weight:800">${esc(business.name || user.company || '')}</div><div class="small muted">${esc(business.city || '')}</div></div></div>
-        <div style="margin-top:14px"><div class="small muted">About</div><div>${esc(business.about || 'No business about section added yet.')}</div></div>
+        <div style="margin-top:14px"><div class="small muted">About</div>${renderFormattedLongText(business.about || 'No business about section added yet.', { small:true })}</div>
         <div class="row" style="margin-top:12px">
           <div><div class="small muted">Business phone (private)</div><div style="font-weight:700">${esc(business.phone || 'Not added yet')}</div></div>
           <div><div class="small muted">TIN (private, not editable)</div><div style="font-weight:700">${esc(business.tin || 'Not added yet')}</div></div>
@@ -8962,8 +9059,8 @@ function renderStudentProfile(el){
             <div><div class="small muted">Email (private)</div><div style="font-weight:700">${esc(profile.privateEmail || currentUser.email || '')}</div></div>
             <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(profile.phone || 'Not added yet')}</div></div>
           </div>
-          <div style="margin-top:14px"><div class="small muted">About</div><div>${esc((profile.about || [])[0] || '')}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Experience</div><div>${esc((profile.highlights || [])[0] || '')}</div></div>
+          <div style="margin-top:14px"><div class="small muted">About</div>${renderFormattedLongText((profile.about || [])[0] || '', { small:true })}</div>
+          <div style="margin-top:14px"><div class="small muted">Experience</div>${renderFormattedLongText((profile.highlights || [])[0] || '', { small:true })}</div>
           <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(getStudentProfileImageList(profile), 120)}</div></div>
           <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(getRenderableVideoUrl(profile), 'Profile video')}</div></div>
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">\u2B50 ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
@@ -8984,7 +9081,7 @@ function renderStudentProfile(el){
             <div style="font-weight:800;font-size:1.05rem">My Reviews</div>
             <div class="small muted">${esc(filteredReviews.length)} review${filteredReviews.length === 1 ? '' : 's'}</div>
           </div>
-          ${filteredReviews.length ? filteredReviews.map(review => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(review.reviewerName || 'Employer')} \u00B7 ${esc(review.rating || 5)}/5</div><div class="muted small">${esc(review.serviceTitle || 'Service')} \u00B7 ${timeAgo(review.createdAt)}</div><div style="margin-top:6px">${esc(review.comment || '')}</div></div>`).join('') : `<div class="muted">No reviews match your search yet.</div>`}
+          ${filteredReviews.length ? filteredReviews.map(review => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(review.reviewerName || 'Employer')} \u00B7 ${esc(review.rating || 5)}/5</div><div class="muted small">${esc(review.serviceTitle || 'Service')} \u00B7 ${timeAgo(review.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(review.comment || '', { small:true })}</div></div>`).join('') : `<div class="muted">No reviews match your search yet.</div>`}
         </div>
       ` : ''}
     </div>
@@ -8997,7 +9094,7 @@ function renderStudentServiceManagerCard(service, index){
       <div class="split">
         <div style="max-width:720px">
           <div style="font-weight:800">${esc(service.title || '')}</div>
-          <div class="small" style="margin-top:6px">${esc(service.description || '')}</div>
+          <div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div>
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr \u00B7 ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
           <div style="margin-top:10px">${renderSignupImageGallery(service.images || [], 120)}</div>
@@ -13324,6 +13421,7 @@ function initializePrototype(){
     handleStripeReturnParams();
     startWorkshopPayoutProcessor();
     attachConnectivityHandlers();
+    startLongFieldFormattingObserver();
     renderPage();
   } catch (error) {
     console.error('CoGo init error', error);
@@ -13335,6 +13433,7 @@ function initializePrototype(){
       handleStripeReturnParams();
       startWorkshopPayoutProcessor();
       attachConnectivityHandlers();
+      startLongFieldFormattingObserver();
       renderPage();
     } catch (recoveryError) {
       renderAppErrorState(recoveryError, location.hash || '#/');
