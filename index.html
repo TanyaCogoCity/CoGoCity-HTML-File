@@ -8570,19 +8570,21 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
   return `
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:12px">Personal information</div>
-      <div class="row"><div class="field"><label>First name</label><input id="migFirstName" value="${esc(user.firstName || firstName(user.name) || '')}"></div><div class="field"><label>Last name</label><input id="migLastName" value="${esc(user.lastName || '')}"></div></div>
-      <div class="field"><label>Email</label><input id="migEmail" type="email" value="${esc(user.email || '')}"></div>
-      <div class="field"><label>Phone</label><input id="migPhone" type="tel" value="${esc(user.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
-      <div class="field"><label>Home address</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="123 Main St, Danville, CA 94526"></div>
-      <div class="field"><label>About me</label><textarea id="migAbout">${esc(user.about || '')}</textarea></div>
+      <div class="small muted" style="margin-bottom:12px">All fields marked required must be completed before the rest of the dashboard unlocks.</div>
+      <div class="row"><div class="field"><label>First name *</label><input id="migFirstName" value="${esc(user.firstName || firstName(user.name) || '')}"></div><div class="field"><label>Last name *</label><input id="migLastName" value="${esc(user.lastName || '')}"></div></div>
+      <div class="field"><label>Email *</label><input id="migEmail" type="email" value="${esc(user.email || '')}"></div>
+      <div class="field"><label>Phone *</label><input id="migPhone" type="tel" placeholder="(555) 555-5555" value="${esc(user.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
+      <div class="field"><label>Home address *</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="123 Main St, Danville, CA 94526"></div>
+      <div class="field"><label>About me *</label><textarea id="migAbout">${esc(user.about || '')}</textarea></div>
     </div>
     ${isEmployer ? `<div class="card form-card" style="margin-top:16px">
       <div style="font-weight:800;margin-bottom:12px">Business information</div>
-      <div class="field"><label>Business name</label><input id="migBusinessName" value="${esc(business.name || user.company || '')}"></div>
-      <div class="field"><label>Business description</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
-      <div class="field"><label>Business phone</label><input id="migBusinessPhone" type="tel" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
-      <div class="field"><label>Business address</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="456 Business Ave, Walnut Creek, CA 94596"></div>
-      <div class="field"><label>TIN</label><input id="migBusinessTin" value="${esc(business.tin || '')}" placeholder="12-3456789"></div>
+      <div class="small muted" style="margin-bottom:12px">Employer accounts must also complete all required business fields before posting jobs.</div>
+      <div class="field"><label>Business name *</label><input id="migBusinessName" value="${esc(business.name || user.company || '')}"></div>
+      <div class="field"><label>Business description *</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
+      <div class="field"><label>Business phone *</label><input id="migBusinessPhone" type="tel" placeholder="(555) 555-5555" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
+      <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="456 Business Ave, Walnut Creek, CA 94596"></div>
+      <div class="field"><label>TIN *</label><input id="migBusinessTin" value="${esc(business.tin || '')}" placeholder="12-3456789"></div>
     </div>` : ''}
     <div style="margin-top:16px"><button class="btn btn-blue" onclick="submitEmployerMigrationOnboarding(${isEmployer ? 'true' : 'false'})">Confirm profile & continue</button></div>
   `;
@@ -8594,7 +8596,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   let phone = String(document.getElementById('migPhone')?.value || '').trim();
   const address = String(document.getElementById('migAddress')?.value || '').replace(/\s+/g,' ').trim();
   const about = String(document.getElementById('migAbout')?.value || '').trim();
-  if (!first || !last || !email || !phone || !address || !about) return toast('Please complete all personal fields before continuing.');
+  if (!first || !last || !email || !phone || !address || !about) return toast('Please complete all required personal fields before continuing.');
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
   if (!migrationIsPlausibleUsAddress(address)) return toast('Please enter a full U.S. home address like 123 Main St, Danville, CA 94526.');
