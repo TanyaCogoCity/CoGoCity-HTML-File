@@ -97,6 +97,16 @@
     .grid{display:grid;gap:18px}
     .profiles-grid{grid-template-columns:repeat(3,1fr)}
     .profile-card{overflow:hidden}
+    .student-search-panel{padding:18px;margin-bottom:18px;background:linear-gradient(135deg,#FFFFFF,#F9FAFB);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}
+    .student-search-primary{position:relative;margin-bottom:12px}
+    .student-search-primary input{width:100%;padding:14px 44px 14px 44px;border:2px solid var(--color-input-border);border-radius:14px;font-size:1.02rem;outline:none;background:#fff}
+    .student-search-primary input:focus{border-color:var(--color-primary);box-shadow:0 0 0 4px rgba(255,230,0,.22)}
+    .student-search-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--gray);font-size:1.1rem}
+    .student-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--gray);font-weight:800;cursor:pointer;padding:8px;border-radius:999px}
+    .student-search-clear:hover{background:var(--color-bg-light);color:var(--color-text-main)}
+    .student-filter-row{display:grid;grid-template-columns:1fr 160px auto;gap:10px;align-items:end}
+    .student-filter-row .field{margin-bottom:0}
+    .student-filter-summary{margin-top:10px;color:var(--gray);font-size:.9rem}
     .profile-top{background:linear-gradient(135deg,#1F2937,#374151);padding:18px;color:#fff;display:flex;gap:12px}
     .avatar{
       width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.18);
@@ -336,6 +346,8 @@
       .home-hero .btn{width:100%;margin-bottom:8px}
       .container{padding:20px 14px}
       .profiles-grid,.blog-grid,.workshop-grid{grid-template-columns:1fr}
+      .student-search-panel{padding:14px}
+      .student-filter-row{grid-template-columns:1fr}
       .profile-top{padding:14px;gap:10px}
       .profile-body{padding:14px}
       .profile-actions{padding:0 14px 14px;flex-direction:column}
@@ -474,6 +486,7 @@ let activeStudentServiceFormIndex = '';
 let studentProfileDraft = null;
 let studentServiceDraft = null;
 let directJobsSearchQuery = '';
+let browseStudentFilters = { query: '', location: '', maxRate: '' };
 let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
 let directJobApplyDraft = null;
@@ -4947,9 +4960,107 @@ function renderPage(){
   }
 }
 
+function getBrowseStudentSearchText(card){
+  const student = card.student || {};
+  const service = card.service || {};
+  return [
+    service.title,
+    service.description,
+    service.category_id,
+    service.categoryId,
+    service.location,
+    service.availability,
+    service.rate,
+    student.name,
+    student.location,
+    student.school,
+    student.title,
+    student.rate,
+    ...(Array.isArray(service.tags) ? service.tags : []),
+    ...(Array.isArray(student.tags) ? student.tags : []),
+    ...(Array.isArray(student.highlights) ? student.highlights : [])
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+function getBrowseStudentRate(card){
+  const rawRate = (card.service && card.service.rate !== undefined && card.service.rate !== '') ? card.service.rate : ((card.student || {}).rate || '');
+  const match = String(rawRate || '').match(/\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : 0;
+}
+function filterBrowseStudentCards(cards=[]){
+  const query = String(browseStudentFilters.query || '').trim().toLowerCase();
+  const locationQuery = String(browseStudentFilters.location || '').trim().toLowerCase();
+  const maxRate = Number(String(browseStudentFilters.maxRate || '').replace(/[^\d.]/g, ''));
+  return cards.filter(card => {
+    const searchText = getBrowseStudentSearchText(card);
+    if (query && !searchText.includes(query)) return false;
+    if (locationQuery) {
+      const locationText = [card.service?.location, card.student?.location].filter(Boolean).join(' ').toLowerCase();
+      if (!locationText.includes(locationQuery)) return false;
+    }
+    if (Number.isFinite(maxRate) && maxRate > 0 && getBrowseStudentRate(card) > maxRate) return false;
+    return true;
+  });
+}
+function renderBrowseStudentSearchControls(totalCount=0, filteredCount=0){
+  const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
+  return `
+    <div class="student-search-panel" aria-label="Search student services">
+      <div class="student-search-primary">
+        <span class="student-search-icon" aria-hidden="true">\u{1F50D}</span>
+        <input id="browseStudentQuery" type="search" value="${esc(browseStudentFilters.query || '')}" placeholder="Search by service, student name, location, or rate..." oninput="updateBrowseStudentFilter('query', this.value)" aria-label="Search by service, student name, location, or rate">
+        <button class="student-search-clear" type="button" onclick="clearBrowseStudentFilters()" aria-label="Clear search" style="${hasFilters ? '' : 'display:none'}">\u00D7</button>
+      </div>
+      <div class="student-filter-row">
+        <div class="field">
+          <label for="browseStudentLocation">Location</label>
+          <input id="browseStudentLocation" value="${esc(browseStudentFilters.location || '')}" placeholder="Any city or neighborhood" oninput="updateBrowseStudentFilter('location', this.value)">
+        </div>
+        <div class="field">
+          <label for="browseStudentMaxRate">Max rate</label>
+          <input id="browseStudentMaxRate" inputmode="numeric" value="${esc(browseStudentFilters.maxRate || '')}" placeholder="$ / hr" oninput="updateBrowseStudentFilter('maxRate', this.value)">
+        </div>
+        <button id="browseStudentClearButton" class="btn btn-outline btn-sm" type="button" onclick="clearBrowseStudentFilters()" ${hasFilters ? '' : 'disabled'}>Clear</button>
+      </div>
+      <div id="browseStudentSummary" class="student-filter-summary">${esc(getBrowseStudentSummaryText(totalCount, filteredCount))}</div>
+    </div>
+  `;
+}
+function getBrowseStudentSummaryText(totalCount=0, filteredCount=0){
+  if (!totalCount) return 'No approved student services are available yet.';
+  if (filteredCount === totalCount) return `${totalCount} student service${totalCount === 1 ? '' : 's'} available`;
+  return `${filteredCount} of ${totalCount} student service${totalCount === 1 ? '' : 's'} match your search`;
+}
+function renderBrowseStudentResults(cards=[]){
+  if (cards.length) return cards.map(renderProfileCard).join('');
+  return `<div class="card form-card" style="grid-column:1/-1;text-align:center"><div style="font-weight:800;margin-bottom:6px">No students found</div><div class="small muted">Try a different service, name, location, or higher max rate.</div></div>`;
+}
+function updateBrowseStudentFilter(key='', value=''){
+  if (!Object.prototype.hasOwnProperty.call(browseStudentFilters, key)) return;
+  browseStudentFilters[key] = String(value || '');
+  const allCards = getHomepageOrderedServiceCards();
+  const filteredCards = filterBrowseStudentCards(allCards);
+  const grid = document.getElementById('browseStudentResults');
+  if (grid) grid.innerHTML = renderBrowseStudentResults(filteredCards);
+  const summary = document.getElementById('browseStudentSummary');
+  if (summary) summary.textContent = getBrowseStudentSummaryText(allCards.length, filteredCards.length);
+  const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
+  const clearButtons = document.querySelectorAll('.student-search-clear');
+  clearButtons.forEach(button => { button.style.display = hasFilters ? '' : 'none'; });
+  const panelClearButton = document.getElementById('browseStudentClearButton');
+  if (panelClearButton) panelClearButton.disabled = !hasFilters;
+}
+function clearBrowseStudentFilters(){
+  browseStudentFilters = { query: '', location: '', maxRate: '' };
+  ['browseStudentQuery','browseStudentLocation','browseStudentMaxRate'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  updateBrowseStudentFilter('query', '');
+}
 function renderHome(){
   if (backendAuthEnabled() && !backendBrowseStudentsLoaded && !backendBrowseStudentsLoading) refreshBackendBrowseStudents({ rerender:true });
   const serviceCards = getHomepageOrderedServiceCards();
+  const filteredServiceCards = filterBrowseStudentCards(serviceCards);
   const publicBlogPosts = getPublicBlogPosts();
   const homeBlock = Object.assign({
     title:'Find Skilled Local Students for Real Work',
@@ -4971,8 +5082,9 @@ function renderHome(){
     </section>
     <div class="container">
       <div class="section-title">Browse Student Services</div>
-      <div class="grid profiles-grid">
-        ${serviceCards.map(renderProfileCard).join('')}
+      ${renderBrowseStudentSearchControls(serviceCards.length, filteredServiceCards.length)}
+      <div id="browseStudentResults" class="grid profiles-grid">
+        ${renderBrowseStudentResults(filteredServiceCards)}
       </div>
       <div style="height:28px"></div>
       <div class="split" style="align-items:flex-end;margin-bottom:18px">
@@ -4987,7 +5099,7 @@ function renderHome(){
       </div>
     </div>
   `;
-  markHomepageServicesShown(serviceCards);
+  markHomepageServicesShown(filteredServiceCards);
 }
 function formatBlogDate(value){
   if (!value) return '\u2014';
