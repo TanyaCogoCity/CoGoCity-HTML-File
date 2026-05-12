@@ -8502,7 +8502,23 @@ function migrationFormatUsAddress(value=''){
 }
 function migrationIsPlausibleUsAddress(value=''){
   const raw = migrationFormatUsAddress(value);
-  return /^\d+\s+.+,\s*[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?$/i.test(raw);
+  return /^\d+\s+.+,\s*[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i.test(raw);
+}
+function migrationAddressValidationMessage(value='', label='home address'){
+  const raw = String(value || '').replace(/\s+/g,' ').trim();
+  if (!raw) return `Please enter your ${label}.`;
+  const formatted = migrationFormatUsAddress(raw);
+  if (!/^\d+\s+/.test(formatted)) return `Please add the street number at the beginning of your ${label}, like 123 Main St.`;
+  const parts = formatted.split(',').map(part => part.trim()).filter(Boolean);
+  if (parts.length < 2) return `Please add the city after the street address, like 123 Main St, Danville.`;
+  if (parts.length < 3 || !/\b[A-Z]{2}\b/i.test(parts[2] || '')) return `Please add the state, like CA.`;
+  if (!/\d{5}(?:-\d{4})?\b/.test(formatted)) {
+    const city = parts[1] || '';
+    const defaultZip = migrationDefaultZipForCity(city, (parts[2] || '').split(/\s+/)[0] || '');
+    return defaultZip ? `Please add the ZIP code. For ${city}, CA, use ${defaultZip}.` : `Please add the ZIP code.`;
+  }
+  if (!migrationIsPlausibleUsAddress(formatted)) return `Please check the ${label}. It should include street, city, state, and ZIP — for example 123 Main St, Danville, CA 94526.`;
+  return '';
 }
 function renderMigrationRequiredList(items=[]){
   return `<ul class="small" style="margin:8px 0 0 18px;color:#475569">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
@@ -8637,7 +8653,8 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   if (!first || !last || !email || !phone || !address || !about) return toast('Please complete all required personal fields before continuing.');
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
-  if (!migrationIsPlausibleUsAddress(address)) return toast('Please enter a full U.S. home address with street, city, state, and ZIP — for example 123 Main St, Danville, CA 94526.');
+  const addressError = migrationAddressValidationMessage(address, 'home address');
+  if (addressError) return toast(addressError);
   phone = migrationFormatUsPhone(phone);
   let business = null;
   if (isEmployer) {
@@ -8652,7 +8669,8 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
     if (!migrationIsValidUsPhone(business.phone)) return toast('Please enter a valid 10-digit U.S. business phone number.');
     const businessAddressInput = document.getElementById('migBusinessAddress');
     if (businessAddressInput) businessAddressInput.value = business.address;
-    if (!migrationIsPlausibleUsAddress(business.address)) return toast('Please enter a full U.S. business address with street, city, state, and ZIP — for example 456 Business Ave, Walnut Creek, CA 94596.');
+    const businessAddressError = migrationAddressValidationMessage(business.address, 'business address');
+    if (businessAddressError) return toast(businessAddressError);
     business.phone = migrationFormatUsPhone(business.phone);
     business.city = extractCity(business.address);
   }
