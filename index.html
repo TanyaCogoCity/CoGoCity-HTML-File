@@ -2569,7 +2569,7 @@ function danielProfileHighlights(){
 }
 function ensureDanielStagingProfileForUser(user={}){
   const email = String(user.email || '').toLowerCase();
-  if (!['daniel.lipoivch@gmail.com','dan.lipovich+staging@gmail.com','dan.lipovich@gmail.com','student@cogocity.com'].includes(email)) return null;
+  if (!['dan.lipovich@gmail.com','dan.lipovich+staging@gmail.com','student@cogocity.com'].includes(email)) return null;
   const students = getStudents();
   let profile = students.find(s => String(s.userId) === String(user.id));
   if (!profile) {
@@ -8402,7 +8402,7 @@ function migrationOnboardingEmail(user=currentUser){
 }
 function isMigrationOnboardingTestUser(user=currentUser){
   const email = migrationOnboardingEmail(user);
-  return ['tanya.lipovich@gmail.com','ilya.lipovich@getcider.com','daniel.lipoivch@gmail.com','dan.lipovich+staging@gmail.com','dan.lipovich@gmail.com'].includes(email);
+  return ['tanya.lipovich@gmail.com','ilya.lipovich@getcider.com','dan.lipovich@gmail.com','dan.lipovich+staging@gmail.com'].includes(email);
 }
 function migrationOnboardingComplete(user=currentUser){
   const email = migrationOnboardingEmail(user);
