@@ -1004,6 +1004,7 @@ function cacheBackendAuthUser(apiUser){
   upsertBackendBrowseUser(user);
   const student = mapBackendAuthStudent(apiUser);
   if (student) upsertBackendBrowseStudent(student);
+  ensureDanielStagingProfileForUser(user);
   if (currentUser && String(currentUser.id) === String(user.id)) {
     currentUser = Object.assign({}, currentUser, user);
     ls('cogo_current_user', currentUser);
@@ -2538,6 +2539,52 @@ function getDanielServiceTemplates(student={}){
       images:[], video_url:'', reviews:[]
     }
   ];
+}
+
+function danielProfileAbout(){
+  return [
+    'Hi, I’m Daniel. I’m a motivated and hardworking student with a strong passion for bikes, technology, and hands-on projects. I enjoy learning how things work, solving problems independently, and helping people with practical day-to-day tasks in my community.',
+    'A big part of my experience has come from working on bikes, helping neighbors with small jobs, and developing technical skills through website building and general tech support. I enjoy both physical outdoor work and technology-focused projects, which has helped me become adaptable, responsible, and comfortable working independently.',
+    'I’ve been riding bikes since I was 3 years old and currently race with the SRV Mountain Bike Team and participate in NICA. Through biking and team activities, I’ve developed discipline, consistency, teamwork, and attention to detail. I also enjoy helping other riders with bike setup, maintenance, troubleshooting, and beginner riding skills.',
+    'Alongside my biking experience, I’ve also worked on building websites for local businesses, helping with profile setup, basic redesigns, and technical support for phones and computers. I enjoy technology and like helping people make things work more smoothly and efficiently.'
+  ];
+}
+function danielProfileHighlights(){
+  return [
+    'Bike Maintenance & Repair — washing and maintaining bikes, lubricating chains, replacing tires, installing accessories, and troubleshooting common bike issues.',
+    'Website & Technical Support — building and redesigning websites, profile setup, phone and computer support, and basic website organization.',
+    'Community & Team Experience — bike wash fundraisers, team bike cleaning and repair, odd jobs for neighbors, and working independently or as part of a team.',
+    'Activities & Interests — mountain biking and trail riding, teaching beginner bike skills and tricks, and building websites for SMBs.'
+  ];
+}
+function ensureDanielStagingProfileForUser(user={}){
+  const email = String(user.email || '').toLowerCase();
+  if (!['dan.lipovich+staging@gmail.com','dan.lipovich@gmail.com','student@cogocity.com'].includes(email)) return null;
+  const students = getStudents();
+  let profile = students.find(s => String(s.userId) === String(user.id));
+  if (!profile) {
+    profile = { id:`s_daniel_${String(user.id || uid('u')).replace(/[^a-z0-9_-]/gi,'_')}`, userId:user.id, status:'live', createdAt:new Date().toISOString(), reviews:[], balance:0 };
+    students.push(profile);
+  }
+  Object.assign(profile, {
+    name:user.name || 'Daniel',
+    age:17,
+    school:'Tilden Prep School · San Ramon High School',
+    location:user.city ? `${user.city}, CA`.replace(', CA, CA', ', CA') : 'Danville, CA',
+    emoji:'🎓',
+    title:'Bike Cleaning & Basic Repair',
+    tags:['bike repair','bike cleaning','tech support','websites','mountain biking'],
+    services:getDanielServiceTemplates({ location:user.city ? `${user.city}, CA`.replace(', CA, CA', ', CA') : 'Danville, CA' }),
+    about:danielProfileAbout(),
+    whyHire:['Responsible and independent','Hands-on bike maintenance experience','Comfortable with tech and website support','Helpful with beginner bike skills and troubleshooting'],
+    highlights:danielProfileHighlights(),
+    rate:35,
+    availability:'Flexible after school and weekends',
+    privateEmail:email || profile.privateEmail || '',
+    phone:user.phone || profile.phone || ''
+  });
+  saveStudents(students);
+  return profile;
 }
 function ensureDanielDemoServices(students=[]){
   let changed = false;
