@@ -2516,10 +2516,27 @@ function isWorkshopTransaction(tx){
 
 function getDanielServiceTemplates(student={}){
   const location = student.location || 'Danville, CA';
-  const availability = student.availability || 'Weekday afternoons \u00B7 Weekends';
   return [
-    { id:'svc_daniel_1', title:'Reliable Student Helper', description:'Dependable local student help for families, neighbors, and small businesses: light errands, event setup, tutoring support, and general tasks.', rate:20, location, availability, images:[], video_url:'', reviews:[] },
-    { id:'svc_daniel_2', title:'Help with Docs and Files', description:'Organize documents, scan or upload files, rename folders, prepare forms, and help keep paperwork easy to find.', rate:20, location, availability, images:[], video_url:'', reviews:[] }
+    {
+      id:'svc_daniel_1',
+      title:'Bike Cleaning & Basic Repair',
+      description:'I provide bike cleaning, maintenance, and basic repair support for kids, teens, and neighborhood riders. I have been biking since I was very young and regularly work on bikes independently, including chain cleaning, tire replacement, installing accessories, and general bike setup. I can help with bike washing and detailing, tire and tube replacement, chain lubrication, accessory installation, basic bike adjustments, and beginner troubleshooting. Great for families, young riders, mountain bikers, and neighborhood bike owners.',
+      rate:35,
+      yearsExperience:'Several years of hands-on bike experience',
+      location,
+      availability:'Ongoing · Flexible after school and weekends',
+      images:[], video_url:'', reviews:[]
+    },
+    {
+      id:'svc_daniel_2',
+      title:'Website Setup & Basic Tech Support',
+      description:'I help local businesses and families with basic website setup, profile updates, website organization, and general technology support. I enjoy working with technology and helping people solve everyday tech issues in a simple and easy-to-understand way. I can help with basic website building, website updates and redesign support, business profile setup, phone and computer setup, general technical troubleshooting, and online account organization. Great for local small businesses, families, small startups, and community members needing simple tech help.',
+      rate:43,
+      yearsExperience:'Hands-on website and tech support experience',
+      location,
+      availability:'Remote · Flexible after school and weekends',
+      images:[], video_url:'', reviews:[]
+    }
   ];
 }
 function ensureDanielDemoServices(students=[]){
@@ -2550,8 +2567,24 @@ function ensureDanielDemoServices(students=[]){
       }
     });
     student.services = normalized.map((service, index) => normalizeStudentServiceRecord(student, service, index));
-    student.title = 'Reliable Student Helper';
-    student.rate = student.rate || 20;
+    student.title = 'Bike Cleaning & Basic Repair';
+    student.rate = 35;
+    student.school = 'Tilden Prep School · San Ramon High School';
+    student.availability = 'Flexible after school and weekends';
+    student.tags = ['bike repair','bike cleaning','tech support','websites','mountain biking'];
+    student.about = [
+      'Hi, I’m Daniel. I’m a motivated and hardworking student with a strong passion for bikes, technology, and hands-on projects. I enjoy learning how things work, solving problems independently, and helping people with practical day-to-day tasks in my community.',
+      'A big part of my experience has come from working on bikes, helping neighbors with small jobs, and developing technical skills through website building and general tech support. I enjoy both physical outdoor work and technology-focused projects, which has helped me become adaptable, responsible, and comfortable working independently.',
+      'I’ve been riding bikes since I was 3 years old and currently race with the SRV Mountain Bike Team and participate in NICA. Through biking and team activities, I’ve developed discipline, consistency, teamwork, and attention to detail. I also enjoy helping other riders with bike setup, maintenance, troubleshooting, and beginner riding skills.',
+      'Alongside my biking experience, I’ve also worked on building websites for local businesses, helping with profile setup, basic redesigns, and technical support for phones and computers. I enjoy technology and like helping people make things work more smoothly and efficiently.'
+    ];
+    student.whyHire = ['Responsible and independent','Hands-on bike maintenance experience','Comfortable with tech and website support','Helpful with beginner bike skills and troubleshooting'];
+    student.highlights = [
+      'Bike Maintenance & Repair — washing and maintaining bikes, lubricating chains, replacing tires, installing accessories, and troubleshooting common bike issues.',
+      'Website & Technical Support — building and redesigning websites, profile setup, phone and computer support, and basic website organization.',
+      'Community & Team Experience — bike wash fundraisers, team bike cleaning and repair, odd jobs for neighbors, and working independently or as part of a team.',
+      'Activities & Interests — mountain biking and trail riding, teaching beginner bike skills and tricks, and building websites for SMBs.'
+    ];
     changed = true;
   });
   return changed;
@@ -2624,22 +2657,29 @@ function seedData(){
       userId:'u_student_test',
       name:'Daniel',
       age:17,
-      school:'San Ramon Valley High',
+      school:'Tilden Prep School · San Ramon High School',
       location:'Danville, CA',
       emoji:'\u{1F393}',
-      title:'Reliable Student Helper',
-      tags:['tutoring','admin','events','documents'],
-      services:getDanielServiceTemplates({ location:'Danville, CA', availability:'Weekday afternoons \u00B7 Weekends' }),
+      title:'Bike Cleaning & Basic Repair',
+      tags:['bike repair','bike cleaning','tech support','websites','mountain biking'],
+      services:getDanielServiceTemplates({ location:'Danville, CA' }),
       about:[
-        'I am a motivated student who enjoys helping local families and businesses.',
-        'I am dependable, easy to work with, and excited to build experience through real projects.'
+        'Hi, I’m Daniel. I’m a motivated and hardworking student with a strong passion for bikes, technology, and hands-on projects. I enjoy learning how things work, solving problems independently, and helping people with practical day-to-day tasks in my community.',
+        'A big part of my experience has come from working on bikes, helping neighbors with small jobs, and developing technical skills through website building and general tech support. I enjoy both physical outdoor work and technology-focused projects, which has helped me become adaptable, responsible, and comfortable working independently.',
+        'I’ve been riding bikes since I was 3 years old and currently race with the SRV Mountain Bike Team and participate in NICA. Through biking and team activities, I’ve developed discipline, consistency, teamwork, and attention to detail. I also enjoy helping other riders with bike setup, maintenance, troubleshooting, and beginner riding skills.',
+        'Alongside my biking experience, I’ve also worked on building websites for local businesses, helping with profile setup, basic redesigns, and technical support for phones and computers. I enjoy technology and like helping people make things work more smoothly and efficiently.'
       ],
-      whyHire:['Responsible and on time','Friendly and professional','Fast learner','Local and flexible'],
-      highlights:['Helps with school projects','Comfortable with basic tech tasks','Available weekends and afternoons'],
-      rate:20,
+      whyHire:['Responsible and independent','Hands-on bike maintenance experience','Comfortable with tech and website support','Helpful with beginner bike skills and troubleshooting'],
+      highlights:[
+        'Bike Maintenance & Repair — washing and maintaining bikes, lubricating chains, replacing tires, installing accessories, and troubleshooting common bike issues.',
+        'Website & Technical Support — building and redesigning websites, profile setup, phone and computer support, and basic website organization.',
+        'Community & Team Experience — bike wash fundraisers, team bike cleaning and repair, odd jobs for neighbors, and working independently or as part of a team.',
+        'Activities & Interests — mountain biking and trail riding, teaching beginner bike skills and tricks, and building websites for SMBs.'
+      ],
+      rate:35,
       reviews:[],
       balance:0,
-      availability:'Weekday afternoons \u00B7 Weekends',
+      availability:'Flexible after school and weekends',
       status:'live',
       createdAt:new Date().toISOString()
     },
