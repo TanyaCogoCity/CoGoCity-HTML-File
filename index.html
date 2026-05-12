@@ -2584,6 +2584,7 @@ function ensureDanielStagingProfileForUser(user={}){
     phone:user.phone || profile.phone || ''
   });
   saveStudents(students);
+  upsertBackendBrowseStudent(profile);
   return profile;
 }
 function ensureDanielDemoServices(students=[]){
