@@ -8469,29 +8469,40 @@ function migrationFormatUsPhone(value=''){
 function migrationTitleCaseAddressPart(value=''){
   return String(value || '').toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase()).replace(/\b(Apt|Unit|Ste|Suite|Po|Pob)\b/g, m => m.toUpperCase()).replace(/\b(St|Ave|Rd|Dr|Ln|Ct|Cir|Pl|Blvd|Ter|Trl|Pkwy|Hwy)\.?$/i, m => m.replace(/\.$/, '').replace(/^./, c => c.toUpperCase()));
 }
+function migrationDefaultZipForCity(city='', state=''){
+  if (!/^CA$/i.test(String(state || '').trim())) return '';
+  const key = String(city || '').trim().toLowerCase();
+  return ({ danville:'94526', alamo:'94507', 'san ramon':'94583', dublin:'94568', pleasanton:'94566', 'walnut creek':'94596', lafayette:'94549', moraga:'94556', orinda:'94563' })[key] || '';
+}
 function migrationFormatUsAddress(value=''){
   let raw = String(value || '').replace(/\s+/g,' ').trim();
   if (!raw) return '';
-  raw = raw.replace(/\s*,\s*/g, ', ').replace(/,{2,}/g, ',').replace(/, $/, '');
-  const stateZip = raw.match(/\b([A-Z]{2}|California)\s+(\d{5}(?:-\d{4})?)$/i);
-  if (!stateZip) return raw;
-  const state = /^california$/i.test(stateZip[1]) ? 'CA' : stateZip[1].toUpperCase();
-  const zip = stateZip[2];
-  let beforeState = raw.slice(0, stateZip.index).replace(/[,\s]+$/,'').trim();
+  raw = raw.replace(/\s*,\s*/g, ', ').replace(/,{2,}/g, ',').replace(/, $/, '').replace(/\b(California)\b/i, 'CA');
+  const stateZip = raw.match(/\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+  const stateOnly = raw.match(/\b([A-Z]{2})\.?$/i);
+  if (!stateZip && !stateOnly) return raw;
+  const state = (stateZip ? stateZip[1] : stateOnly[1]).toUpperCase();
+  let zip = stateZip ? stateZip[2] : '';
+  let beforeState = raw.slice(0, stateZip ? stateZip.index : stateOnly.index).replace(/[,\s]+$/,'').trim();
   const parts = beforeState.split(',').map(part => part.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const street = migrationTitleCaseAddressPart(parts.slice(0, -1).join(', '));
-    const city = migrationTitleCaseAddressPart(parts[parts.length - 1]);
-    return `${street}, ${city}, ${state} ${zip}`;
-  }
   const streetSuffix = '(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Way|Cir|Circle|Pl|Place|Ter|Terrace|Pkwy|Parkway|Loop|Trail|Trl)';
-  const noCommaMatch = beforeState.match(new RegExp(`^(\\d+\\s+.+?\\b${streetSuffix}\\.?)\\s+(.+)$`, 'i'));
-  if (noCommaMatch) return `${migrationTitleCaseAddressPart(noCommaMatch[1])}, ${migrationTitleCaseAddressPart(noCommaMatch[2])}, ${state} ${zip}`;
-  return raw;
+  let street = '';
+  let city = '';
+  if (parts.length >= 2) {
+    street = parts.slice(0, -1).join(', ');
+    city = parts[parts.length - 1];
+  } else {
+    const noCommaMatch = beforeState.match(new RegExp(`^(\\d+\\s+.+?\\b${streetSuffix}\\.?)\\s+(.+)$`, 'i'));
+    if (!noCommaMatch) return raw;
+    street = noCommaMatch[1];
+    city = noCommaMatch[2];
+  }
+  if (!zip) zip = migrationDefaultZipForCity(city, state);
+  return `${migrationTitleCaseAddressPart(street)}, ${migrationTitleCaseAddressPart(city)}, ${state}${zip ? ` ${zip}` : ''}`;
 }
 function migrationIsPlausibleUsAddress(value=''){
   const raw = migrationFormatUsAddress(value);
-  return /^\d+\s+.+,\s*[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/i.test(raw);
+  return /^\d+\s+.+,\s*[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?$/i.test(raw);
 }
 function renderMigrationRequiredList(items=[]){
   return `<ul class="small" style="margin:8px 0 0 18px;color:#475569">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
