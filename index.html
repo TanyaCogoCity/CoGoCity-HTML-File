@@ -81,7 +81,7 @@
     .hero p{max-width:680px;margin:0 auto 24px;color:var(--color-text-secondary)}
     .home-hero{
       min-height:392px;padding:56px 20px;display:flex;align-items:center;border-bottom:1px solid var(--color-border);
-      background-image:linear-gradient(90deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.86) 32%,rgba(255,255,255,.32) 54%,rgba(255,255,255,0) 100%),url('assets/home-hero-students.jpg');
+      background-image:url('assets/home-hero-students.jpg');
       background-size:cover;background-position:center right;color:var(--color-text-main)
     }
     .home-hero-content{max-width:1120px;width:100%;margin:0 auto}
@@ -349,7 +349,7 @@
       .hero h1{font-size:1.85rem;line-height:1.12}
       .hero p{font-size:.98rem;margin-left:0;margin-right:0}
       .hero .btn,.hero a.btn{width:100%;margin-bottom:8px}
-      .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:linear-gradient(180deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.94) 34%,rgba(255,255,255,.28) 62%,rgba(255,255,255,0) 100%),url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:cover}
+      .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:cover}
       .home-hero-copy{max-width:100%}
       .home-hero h1{font-size:2rem;line-height:1.08}
       .home-hero p{font-size:.98rem}
@@ -1008,6 +1008,8 @@ function mapBackendStudentProfile(row={}){
     backendProfileId: row.id || '',
     userId,
     name,
+    birthDate: profile.metadata?.birth_date || profile.metadata?.birthday || profile.birthDate || profile.birthday || '',
+    birthYear: profile.metadata?.birth_year || profile.birthYear || '',
     age: Number(profile.age || 0) || '',
     school: profile.school || '',
     location: primaryService.location || user.city || profile.address || '',
@@ -1559,6 +1561,36 @@ function getBlogPostStatusLabel(post){
 function getPublicBlogPosts(){
   return getBlogPosts().filter(post => getBlogPostStatus(post) === 'published').sort((a,b) => new Date(b.date) - new Date(a.date));
 }
+function normalizeBirthDateInput(value=''){
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+function calculateAgeFromBirthday(birthDate='', asOf=new Date()){
+  const normalized = normalizeBirthDateInput(birthDate);
+  if (!normalized) return '';
+  const [year, month, day] = normalized.split('-').map(Number);
+  if (!year || !month || !day) return '';
+  let age = asOf.getFullYear() - year;
+  const birthdayThisYear = new Date(asOf.getFullYear(), month - 1, day);
+  const today = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate());
+  if (today < birthdayThisYear) age -= 1;
+  return age >= 0 ? age : '';
+}
+function getStudentAge(student={}){
+  const fromBirthday = calculateAgeFromBirthday(student.birthDate || student.birthday || student.birth_date || student.dateOfBirth || '');
+  if (fromBirthday !== '') return fromBirthday;
+  const birthYear = Number(student.birthYear || student.birth_year || 0);
+  if (birthYear) return Math.max(0, new Date().getFullYear() - birthYear);
+  return Number(student.age || 0) || '';
+}
 function normalizeStudentRecord(student){
   const normalized = Object.assign({
     profile_image_id: '',
@@ -1576,6 +1608,10 @@ function normalizeStudentRecord(student){
   normalized.profileImages = upsertImageRecords(rawProfileImages, { source:'profile_gallery', entity_type:'student', entity_id: normalized.id || '', owner_id: normalized.userId || '' });
   if (!normalized.profile_image_id && normalized.profileImages[0]) normalized.profile_image_id = normalized.profileImages[0];
   normalized.photo = normalized.profile_image_id || '';
+  normalized.birthDate = normalizeBirthDateInput(normalized.birthDate || normalized.birthday || normalized.birth_date || normalized.dateOfBirth || '');
+  normalized.birthday = normalized.birthDate;
+  normalized.birthYear = normalized.birthDate ? Number(normalized.birthDate.slice(0, 4)) : (Number(normalized.birthYear || normalized.birth_year || 0) || '');
+  normalized.age = getStudentAge(normalized);
   if (!normalized.video_url && normalized.profileVideoLink) normalized.video_url = normalized.profileVideoLink;
   delete normalized.profileVideoLink;
   applyVideoState(normalized, getRenderableVideoUrl(normalized) || normalized.video_url || '');
@@ -3954,6 +3990,8 @@ const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}',
 function createDefaultStudentSignupDraft(){
   return {
     name:'',
+    birthDate:'',
+    birthYear:'',
     age:'',
     school:'',
     city:'',
@@ -3980,7 +4018,7 @@ function getStudentSignupStrength(){
   const d = studentSignupDraft || createDefaultStudentSignupDraft();
   const checks = [
     !!d.name,
-    !!d.age,
+    !!(d.birthDate || d.birthYear),
     !!d.school,
     !!d.city,
     !!(d.photo || d.avatar),
@@ -4056,7 +4094,7 @@ function renderStudentSignupStepContent(){
     <div class="card form-card">
       <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name"></div>
       <div class="row">
-        <div class="field"><label>Age</label><input id="studentFlowAge" type="number" min="13" max="25" value="${esc(d.age)}" placeholder="17"></div>
+        <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || '')}"><div class="small muted" style="margin-top:6px">We calculate and update age automatically every year on this birthday.</div></div>
         <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name"></div>
       </div>
       <div class="field"><label>City</label><input id="studentFlowCity" value="${esc(d.city)}" placeholder="Danville"></div>
@@ -4177,12 +4215,13 @@ function saveStudentSignupStep(step){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   if (step === 1){
     const name = (document.getElementById('studentFlowName').value || '').trim();
-    const age = Number(document.getElementById('studentFlowAge').value || 0);
+    const birthDate = normalizeBirthDateInput(document.getElementById('studentFlowBirthday').value || '');
+    const age = calculateAgeFromBirthday(birthDate);
     const school = (document.getElementById('studentFlowSchool').value || '').trim();
     const city = (document.getElementById('studentFlowCity').value || '').trim();
-    if (toastRequiredFields({ Name:name, Age:age, School:school, City:city }, 'Student profile')) return false;
+    if (toastRequiredFields({ Name:name, Birthday:birthDate, School:school, City:city }, 'Student profile')) return false;
     if (age < 13 || age > 25) return toast('Student signup is for ages 13 to 25.'), false;
-    Object.assign(studentSignupDraft, { name, age, school, city });
+    Object.assign(studentSignupDraft, { name, birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school, city });
     return true;
   }
   if (step === 2){
@@ -4379,7 +4418,9 @@ function buildStudentSignupPreviewStudent(){
     id:'signup_preview',
     userId:'signup_preview_user',
     name:d.name,
-    age:d.age,
+    birthDate:d.birthDate || '',
+    birthYear:d.birthYear || '',
+    age:getStudentAge(d),
     school:d.school,
     location:d.city ? (String(d.city).includes(',') ? d.city : `${d.city}, CA`) : '',
     photo:d.photo || ((d.profileImages || [])[0]) || '',
@@ -4401,15 +4442,18 @@ function buildStudentSignupPreviewStudent(){
     status:'preview'
   };
 }
-function renderServiceDetailBody(service, backButtonHtml=''){
+function renderServiceDetailBody(service, backButtonHtml='', options={}){
+  const showStudentCreationGuidance = options.showStudentCreationGuidance === true;
+  const imageHtml = renderSignupImageGallery(service.images || [], 120, { showEmptyMessage: showStudentCreationGuidance });
+  const videoHtml = renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video', { emptyHtml: showStudentCreationGuidance ? undefined : '' });
   return `
     <div class="card form-card">
       <div style="font-weight:800;font-size:1.15rem">${esc(service.title || 'Service')}</div>
       <div class="small muted" style="margin-top:6px">$${esc(service.rate || 0)}/hr \u00B7 ${esc(service.location || '')}</div>
       <div class="small muted" style="margin-top:6px">Availability: ${esc(service.availability || '')}</div>
       ${renderFormattedLongText(service.description || '', { emptyHtml:'', small:false }).replace('formatted-long-text', 'formatted-long-text service-description')}
-      <div style="margin-top:14px">${renderSignupImageGallery(service.images || [], 120)}</div>
-      <div style="margin-top:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
+      ${imageHtml ? `<div style="margin-top:14px">${imageHtml}</div>` : ''}
+      ${videoHtml ? `<div style="margin-top:14px">${videoHtml}</div>` : ''}
       <div style="margin-top:16px">${backButtonHtml}</div>
     </div>
   `;
@@ -4417,7 +4461,7 @@ function renderServiceDetailBody(service, backButtonHtml=''){
 function openStudentSignupServicePreview(index){
   const service = (studentSignupDraft.services || [])[index];
   if (!service) return;
-  openModal('Service Preview', renderServiceDetailBody(service, `<button class="btn btn-outline" onclick="renderStudentSignupModal()">Back to Preview</button>`), '680px');
+  openModal('Service Preview', renderServiceDetailBody(service, `<button class="btn btn-outline" onclick="renderStudentSignupModal()">Back to Preview</button>`, { showStudentCreationGuidance: true }), '680px');
 }
 function renderStudentSignupPreviewHtml(){
   const student = buildStudentSignupPreviewStudent();
@@ -4428,7 +4472,7 @@ function renderStudentSignupPreviewHtml(){
         ${renderStudentAvatar(student, 72, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
         <div>
           <div style="font-size:1.25rem;font-weight:800">${esc(student.name || 'Your Name')}</div>
-          <div class="muted">${esc(student.location || '')}</div>
+          <div class="muted">${esc(student.location || '')}${getStudentAge(student) !== '' ? ` · Age ${esc(getStudentAge(student))}` : ''}</div>
         </div>
       </div>
     </div>
@@ -4438,10 +4482,7 @@ function renderStudentSignupPreviewHtml(){
       ${renderFormattedLongText((student.about || [])[0] || '', { small:true })}
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       ${renderFormattedLongText((student.highlights || [])[0] || '', { small:true })}
-      <div style="font-weight:800;margin:14px 0 8px">Images</div>
-      ${renderSignupImageGallery(getStudentProfileImageList(student), 120)}
-      <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoPreviewHtml(getRenderableVideoUrl(student), 'Profile video')}
+      ${renderStudentProfileMediaSections(student)}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.length ? services.map((service, index) => `
         <button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentSignupServicePreview(${index})">
@@ -4459,7 +4500,7 @@ function renderStudentSignupPreviewHtml(){
 }
 function submitStudentSignupProfile(){
   const d = studentSignupDraft || {};
-  if (toastRequiredFields({ Name:d.name, Age:d.age, School:d.school, City:d.city }, 'Basic profile')) return;
+  if (toastRequiredFields({ Name:d.name, Birthday:(d.birthDate || d.birthYear), School:d.school, City:d.city }, 'Basic profile')) return;
   if (!(d.photo || d.avatar)) return toast('Please add a photo or avatar first.');
   if (toastRequiredFields({ 'About me':d.about, Experience:d.experience }, 'Profile')) return;
   if (!(d.services || []).length) return toast('Please add at least one service.');
@@ -4492,7 +4533,9 @@ async function publishStudentSignupProfile(){
           phone: d.phone,
           city: d.city || extractCity(d.address),
           profile: {
-            age: Number(d.age) || null,
+            birthDate: d.birthDate || '',
+            birthYear: d.birthYear || '',
+            age: getStudentAge(d) || null,
             school: d.school,
             about: d.about,
             experience: d.experience,
@@ -4544,7 +4587,9 @@ async function publishStudentSignupProfile(){
     id:studentId,
     userId,
     name:d.name,
-    age:Number(d.age) || 17,
+    birthDate:d.birthDate || '',
+    birthYear:d.birthYear || '',
+    age:getStudentAge(d) || 17,
     school:d.school,
     location:String(d.city || '').includes(',') ? d.city : `${d.city}, CA`,
     photo:d.photo || ((d.profileImages || [])[0]) || '',
@@ -7048,8 +7093,9 @@ function renderImagePreviewHtml(images=[], size=72){
   if (!images.length) return `<div class="small muted">No images added yet.</div>`;
   return images.length > 1 && size >= 80 ? renderMediaCarousel(images, size) : renderMediaThumbs(images, 3, size, '');
 }
-function renderSignupImageGallery(images=[], size=120){
-  if (!images.length) return `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They\u2019ll appear in a carousel on your preview, profile, and service views.</div>`;
+function renderSignupImageGallery(images=[], size=120, options={}){
+  const showEmptyMessage = options.showEmptyMessage !== false;
+  if (!images.length) return showEmptyMessage ? `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They\u2019ll appear in a carousel on your preview, profile, and service views.</div>` : '';
   return `<div style="margin-bottom:14px">${renderMediaCarousel(images, size)}</div>`;
 }
 function getStudentProfileImageList(student={}){
@@ -7057,6 +7103,23 @@ function getStudentProfileImageList(student={}){
   const primary = student.profile_image_id || student.photo || '';
   if (primary && !images.some(image => String(image) === String(primary))) images.unshift(primary);
   return images.slice(0, 3);
+}
+function renderStudentProfileMediaSections(student={}, options={}){
+  const labelClass = options.labelClass || '';
+  const images = getStudentProfileImageList(student);
+  const videoUrl = getRenderableVideoUrl(student);
+  return `
+    ${images.length ? `<div style="margin-top:14px"><div class="${esc(labelClass)}" style="font-weight:${labelClass ? '400' : '800'};margin-bottom:8px">Images</div>${renderSignupImageGallery(images, 120, { showEmptyMessage:false })}</div>` : ''}
+    ${videoUrl ? `<div style="margin-top:14px"><div class="${esc(labelClass)}" style="font-weight:${labelClass ? '400' : '800'};margin-bottom:8px">Intro Video</div>${renderVideoPreviewHtml(videoUrl, 'Profile video')}</div>` : ''}
+  `;
+}
+function renderStudentServiceMediaSections(service={}){
+  const imageHtml = renderSignupImageGallery(service.images || [], 120, { showEmptyMessage:false });
+  const videoUrl = getRenderableVideoUrl(service);
+  return `
+    ${imageHtml ? `<div style="margin-top:10px">${imageHtml}</div>` : ''}
+    ${videoUrl ? `<div style="margin-top:10px">${renderVideoPreviewHtml(videoUrl, 'Service video')}</div>` : ''}
+  `;
 }
 function renderStudentAvatarOptions(selected=''){
   return `<div style="display:flex;flex-wrap:wrap;gap:10px">${STUDENT_AVATAR_OPTIONS.map(avatar => `
@@ -7335,7 +7398,7 @@ function renderVideoPreviewHtml(videoValue='', label='Video preview', options={}
     : (videoValue && typeof videoValue === 'object'
       ? Object.assign({}, videoValue, { videoId: videoValue.videoId || videoValue.id || '', id: videoValue.id || videoValue.videoId || '' })
       : null);
-  if (!video) return `<div class="small muted">No video link added yet.</div>`;
+  if (!video) return options.emptyHtml !== undefined ? options.emptyHtml : `<div class="small muted">No video link added yet.</div>`;
   const maxWidth = options.maxWidth || '420px';
   const showLabel = options.showLabel !== false;
   const labelHtml = showLabel ? `<div class="small muted" style="margin-bottom:8px">${esc(label)}</div>` : '';
@@ -7880,7 +7943,7 @@ function openStudentServiceDetail(studentId, serviceId){
   const actionButtons = studentId === 'signup_preview' || (currentUser && currentUser.id === student.userId)
     ? ''
     : `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-outline" onclick="closeModal();openStudentMessage('${esc(student.id)}')">Message</button><button class="btn btn-blue" onclick="closeModal();openBookDirect('${esc(student.id)}','${esc(service.id || '')}')">Book</button></div>`;
-  openModal(service.title || 'Service', `${renderServiceDetailBody(service, backButton)}
+  openModal(service.title || 'Service', `${renderServiceDetailBody(service, backButton, { showStudentCreationGuidance: studentId === 'signup_preview' })}
     <div class="card form-card" style="margin-top:14px">
       <div style="font-weight:800;margin-bottom:8px">Reviews</div>
       <div class="small muted" style="margin-bottom:10px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
@@ -7949,10 +8012,7 @@ function openProfile(studentId){
       ${renderFormattedLongText(s.about || [], { small:true, emptyHtml:'<div class="small muted">No about details yet.</div>' })}
       <div style="font-weight:800;margin:14px 0 8px">Experience</div>
       ${renderFormattedLongText((s.highlights || []).map(item => `• ${item}`).join('\n'), { small:true, emptyHtml:'<div class="small muted">No experience details yet.</div>' })}
-      <div style="font-weight:800;margin:14px 0 8px">Images</div>
-      ${renderSignupImageGallery(getStudentProfileImageList(s), 120)}
-      <div style="font-weight:800;margin:14px 0 8px">Intro Video</div>
-      ${renderVideoPreviewHtml(getRenderableVideoUrl(s), 'Profile video')}
+      ${renderStudentProfileMediaSections(s)}
       <div style="font-weight:800;margin:14px 0 8px">Services</div>
       ${services.map((service, index) => {
         const summary = getServiceReviewSummary(s, service, index);
@@ -9049,7 +9109,7 @@ function renderStudentProfile(el){
           </div>
           <div class="row">
             <div><div class="small muted">Name</div><div style="font-weight:700">${esc(profile.name || '')}</div></div>
-            <div><div class="small muted">Age</div><div style="font-weight:700">${esc(profile.age || '')}</div></div>
+            <div><div class="small muted">Age</div><div style="font-weight:700">${esc(getStudentAge(profile) || '')}</div></div>
           </div>
           <div class="row" style="margin-top:12px">
             <div><div class="small muted">Location</div><div style="font-weight:700">${esc(profile.location || '')}</div></div>
@@ -9061,8 +9121,7 @@ function renderStudentProfile(el){
           </div>
           <div style="margin-top:14px"><div class="small muted">About</div>${renderFormattedLongText((profile.about || [])[0] || '', { small:true })}</div>
           <div style="margin-top:14px"><div class="small muted">Experience</div>${renderFormattedLongText((profile.highlights || [])[0] || '', { small:true })}</div>
-          <div style="margin-top:14px"><div class="small muted">Images</div><div style="margin-top:8px">${renderSignupImageGallery(getStudentProfileImageList(profile), 120)}</div></div>
-          <div style="margin-top:14px"><div class="small muted">Intro Video</div><div style="margin-top:8px">${renderVideoPreviewHtml(getRenderableVideoUrl(profile), 'Profile video')}</div></div>
+          ${renderStudentProfileMediaSections(profile, { labelClass:'small muted' })}
           <div style="margin-top:14px"><div class="small muted">Review Summary</div><div style="font-weight:700">\u2B50 ${esc(profileSummary.average)} (${esc(profileSummary.total)} reviews)</div></div>
         </div>
       ` : ''}
@@ -9097,8 +9156,7 @@ function renderStudentServiceManagerCard(service, index){
           <div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div>
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr \u00B7 ${esc(service.availability || '')}</div>
           <div class="small muted" style="margin-top:8px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
-          <div style="margin-top:10px">${renderSignupImageGallery(service.images || [], 120)}</div>
-          <div style="margin-top:10px">${renderVideoPreviewHtml(getRenderableVideoUrl(service), 'Service video')}</div>
+          ${renderStudentServiceMediaSections(service)}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="openStudentServiceForm(${index})">Edit</button>
@@ -9112,7 +9170,9 @@ function createStudentProfileFormDraft(profile){
   return {
     id: profile.id,
     name: profile.name || currentUser?.name || '',
-    age: profile.age || '',
+    birthDate: profile.birthDate || profile.birthday || '',
+    birthYear: profile.birthYear || '',
+    age: getStudentAge(profile) || '',
     school: profile.school || '',
     city: (profile.location || '').replace(', CA',''),
     phone: profile.phone || '',
@@ -9128,7 +9188,7 @@ function createStudentProfileFormDraft(profile){
 function syncStudentProfileDraftFromForm(){
   if (!studentProfileDraft) return;
   const nameEl = document.getElementById('studentProfileName');
-  const ageEl = document.getElementById('studentProfileAge');
+  const birthDateEl = document.getElementById('studentProfileBirthday');
   const schoolEl = document.getElementById('studentProfileSchool');
   const cityEl = document.getElementById('studentProfileCity');
   const phoneEl = document.getElementById('studentProfilePhone');
@@ -9137,7 +9197,11 @@ function syncStudentProfileDraftFromForm(){
   const highlightsEl = document.getElementById('studentProfileHighlights');
   const videoEl = document.getElementById('studentProfileVideoLink');
   if (nameEl) studentProfileDraft.name = (nameEl.value || '').trim();
-  if (ageEl) studentProfileDraft.age = ageEl.value || '';
+  if (birthDateEl) {
+    studentProfileDraft.birthDate = normalizeBirthDateInput(birthDateEl.value || '');
+    studentProfileDraft.birthYear = studentProfileDraft.birthDate ? Number(studentProfileDraft.birthDate.slice(0, 4)) : '';
+    studentProfileDraft.age = getStudentAge(studentProfileDraft);
+  }
   if (schoolEl) studentProfileDraft.school = (schoolEl.value || '').trim();
   if (cityEl) studentProfileDraft.city = (cityEl.value || '').trim();
   if (phoneEl) studentProfileDraft.phone = (phoneEl.value || '').trim();
@@ -9156,7 +9220,7 @@ function openStudentProfileForm(profileId=''){
   openModal('Edit Profile', `
     <div class="field"><label>Name</label><input id="studentProfileName" value="${esc(studentProfileDraft.name || '')}"></div>
     <div class="row">
-      <div class="field"><label>Age</label><input id="studentProfileAge" type="number" min="13" max="25" value="${esc(studentProfileDraft.age || '')}"></div>
+      <div class="field"><label>Birthday</label><input id="studentProfileBirthday" type="date" value="${esc(studentProfileDraft.birthDate || '')}"><div class="small muted" style="margin-top:6px">Age shown to neighbors updates automatically every year on this birthday.</div></div>
       <div class="field"><label>School(s)</label><input id="studentProfileSchool" value="${esc(studentProfileDraft.school || '')}"></div>
     </div>
     <div class="row">
@@ -9184,7 +9248,10 @@ async function saveStudentProfileForm(profileId=''){
   const draft = studentProfileDraft || createStudentProfileFormDraft(profile);
   if (toastRequiredFields({ Name:draft.name, Location:draft.city, Email:draft.email }, 'Student profile')) return;
   profile.name = draft.name;
-  profile.age = Number(draft.age || 0) || profile.age || 17;
+  profile.birthDate = normalizeBirthDateInput(draft.birthDate || profile.birthDate || '');
+  profile.birthday = profile.birthDate;
+  profile.birthYear = profile.birthDate ? Number(profile.birthDate.slice(0, 4)) : (draft.birthYear || profile.birthYear || '');
+  profile.age = getStudentAge(profile) || profile.age || 17;
   profile.school = draft.school || '';
   profile.location = draft.city.includes(',') ? draft.city : `${draft.city}, CA`;
   profile.phone = draft.phone || '';
@@ -9216,6 +9283,8 @@ async function saveStudentProfileForm(profileId=''){
           phone: draft.phone,
           city: draft.city,
           profile: {
+            birthDate: profile.birthDate || '',
+            birthYear: profile.birthYear || '',
             age: profile.age,
             school: profile.school,
             address: profile.location,
@@ -9389,11 +9458,19 @@ async function saveStudentServiceForm(serviceIndex=''){
         location: service.location,
         is_active: true
       };
+      // Images are kept in the local image registry for now; do not send base64 image data with
+      // this auth-backed service save. Large image payloads can exceed/prolong gateway requests.
       if (isNewService || String(service.id || '').startsWith('service_')) {
-        await backendAuthRequest(`/student-profiles/${encodeURIComponent(profile.backendProfileId)}/services`, {
+        const savedBackendService = await backendAuthRequest(`/student-profiles/${encodeURIComponent(profile.backendProfileId)}/services`, {
           method:'POST',
           body: JSON.stringify(servicePayload)
         });
+        if (savedBackendService?.id) {
+          service.id = savedBackendService.id;
+          const savedIndex = profile.services.findIndex(item => item === service);
+          if (savedIndex >= 0) profile.services[savedIndex] = service;
+          saveStudents(students);
+        }
       } else {
         await backendAuthRequest(`/services/${encodeURIComponent(service.id)}`, {
           method:'PATCH',
@@ -11949,7 +12026,9 @@ function createAdminUserEditDraft(userId){
     businessAbout: user.businessProfile?.about || user.about || '',
     businessLogo: user.businessProfile?.logo || user.businessProfile?.image_id || '',
     student: student ? {
-      age: student.age || '',
+      birthDate: student.birthDate || student.birthday || '',
+      birthYear: student.birthYear || '',
+      age: getStudentAge(student) || '',
       school: student.school || '',
       about: (student.about || []).join('\n'),
       highlights: (student.highlights || []).join('\n'),
@@ -11985,8 +12064,10 @@ function syncAdminUserEditDraftFromForm(){
   if (document.getElementById('adminEditBusinessName')) adminUserEditDraft.company = (document.getElementById('adminEditBusinessName').value || '').trim();
   if (document.getElementById('adminEditBusinessAbout')) adminUserEditDraft.businessAbout = document.getElementById('adminEditBusinessAbout').value || '';
   if (document.getElementById('adminEditBusinessLogo')) adminUserEditDraft.businessLogo = (document.getElementById('adminEditBusinessLogo').value || '').trim();
-  if (adminUserEditDraft.student && document.getElementById('adminEditStudentAge')) {
-    adminUserEditDraft.student.age = (document.getElementById('adminEditStudentAge').value || '').trim();
+  if (adminUserEditDraft.student && document.getElementById('adminEditStudentBirthday')) {
+    adminUserEditDraft.student.birthDate = normalizeBirthDateInput((document.getElementById('adminEditStudentBirthday').value || '').trim());
+    adminUserEditDraft.student.birthYear = adminUserEditDraft.student.birthDate ? Number(adminUserEditDraft.student.birthDate.slice(0, 4)) : '';
+    adminUserEditDraft.student.age = getStudentAge(adminUserEditDraft.student);
     adminUserEditDraft.student.school = (document.getElementById('adminEditStudentSchool').value || '').trim();
     adminUserEditDraft.student.about = document.getElementById('adminEditStudentAbout').value || '';
     adminUserEditDraft.student.highlights = document.getElementById('adminEditStudentHighlights').value || '';
@@ -12089,7 +12170,7 @@ function openAdminUserEditModal(userId){
       <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
         <div style="font-weight:800;margin-bottom:10px">Student Portfolio</div>
         <div class="row">
-          <div class="field"><label>Age</label><input id="adminEditStudentAge" type="number" min="13" value="${esc(draft.student.age || '')}"></div>
+          <div class="field"><label>Birthday</label><input id="adminEditStudentBirthday" type="date" value="${esc(draft.student.birthDate || '')}"><div class="small muted" style="margin-top:6px">Displayed age recalculates yearly on this birthday.</div></div>
           <div class="field"><label>School</label><input id="adminEditStudentSchool" value="${esc(draft.student.school || '')}"></div>
         </div>
         <div class="field"><label>About</label><textarea id="adminEditStudentAbout" rows="4">${esc(draft.student.about || '')}</textarea></div>
@@ -12189,7 +12270,9 @@ function saveAdminUserEdit(userId){
       userId: user.id,
       name: user.publicName || user.name,
       school: '',
-      age: 16,
+      birthDate: '',
+      birthYear: '',
+      age: '',
       location: city ? (city.includes(',') ? city : `${city}, CA`) : '',
       photo: user.photo || '',
       profileImages: user.photo ? [user.photo] : [],
@@ -12220,7 +12303,10 @@ function saveAdminUserEdit(userId){
     student.phone = phone;
     student.location = city ? (city.includes(',') ? city : `${city}, CA`) : student.location;
     student.school = draft.student?.school || student.school || '';
-    student.age = Number(draft.student?.age || student.age || 16);
+    student.birthDate = normalizeBirthDateInput(draft.student?.birthDate || student.birthDate || '');
+    student.birthday = student.birthDate;
+    student.birthYear = student.birthDate ? Number(student.birthDate.slice(0, 4)) : (draft.student?.birthYear || student.birthYear || '');
+    student.age = getStudentAge(student) || student.age || '';
     student.about = String(draft.student?.about || '').split('\n').map(line => line.trim()).filter(Boolean);
     student.highlights = String(draft.student?.highlights || '').split('\n').map(line => line.trim()).filter(Boolean);
     student.profileImages = profileImages;

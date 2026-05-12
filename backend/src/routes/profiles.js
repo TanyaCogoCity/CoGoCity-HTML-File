@@ -3,7 +3,7 @@ const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
-const { serializeService } = require('../lib/compat');
+const { normalizeServicePayload, serializeService } = require('../lib/compat');
 
 const router = express.Router();
 
@@ -47,6 +47,9 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
     photo: profilePayload.photo || '',
     profile_images: profilePayload.profileImages || profilePayload.profile_images || [],
     video_url: profilePayload.video_url || profilePayload.videoUrl || '',
+    birth_date: profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '',
+    birthday: profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '',
+    birth_year: profilePayload.birthYear || profilePayload.birth_year || '',
   };
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -143,57 +146,73 @@ router.patch('/student-profiles/:id', requireAuth, async (req, res) => {
 });
 
 router.post('/student-profiles/:id/services', requireAuth, async (req, res) => {
-  const profile = await prisma.studentProfile.findFirst({ where: { id: req.params.id, deletedAt: null } });
-  if (!profile) return fail(res, 404, 'Profile not found');
-  if (req.user.role !== 'admin' && profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
+  try {
+    const profile = await prisma.studentProfile.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    if (!profile) return fail(res, 404, 'Profile not found');
+    if (req.user.role !== 'admin' && profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
 
-  const payload = req.body || {};
-  const service = await prisma.service.create({
-    data: {
-      profileId: profile.id,
-      title: String(payload.title || 'Student Service').trim(),
-      description: payload.description || '',
-      hourlyRate: Number(payload.hourly_rate ?? payload.hourlyRate ?? payload.rate ?? 0) || 0,
-      availability: payload.availability || '',
-      location: payload.location || '',
-      isActive: payload.is_active ?? payload.isActive ?? true,
-    },
-  });
+    const payload = normalizeServicePayload({ ...(req.body || {}), profileId: profile.id });
+    if (!payload.title || payload.hourlyRate <= 0) return fail(res, 400, 'title and rate are required');
 
-  await writeAuditLog({ userId: req.user.id, action: 'service.create', entityType: 'service', entityId: service.id, payload: req.body });
-  return created(res, serializeService(service));
+    const service = await prisma.service.create({
+      data: {
+        profileId: profile.id,
+        title: payload.title,
+        description: payload.description,
+        hourlyRate: payload.hourlyRate,
+        availability: payload.availability,
+        location: payload.location,
+        isActive: Boolean(payload.isActive),
+      },
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'service.create', entityType: 'service', entityId: service.id, payload: req.body });
+    return created(res, serializeService(service));
+  } catch (error) {
+    return fail(res, 400, 'Invalid service payload', error.message);
+  }
 });
 
 router.patch('/services/:id', requireAuth, async (req, res) => {
-  const service = await prisma.service.findFirst({ where: { id: req.params.id, deletedAt: null }, include: { profile: true } });
-  if (!service) return fail(res, 404, 'Service not found');
-  if (req.user.role !== 'admin' && service.profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
+  try {
+    const service = await prisma.service.findFirst({ where: { id: req.params.id, deletedAt: null }, include: { profile: true } });
+    if (!service) return fail(res, 404, 'Service not found');
+    if (req.user.role !== 'admin' && service.profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
 
-  const payload = req.body || {};
-  const updated = await prisma.service.update({
-    where: { id: service.id },
-    data: {
-      title: payload.title ?? service.title,
-      description: payload.description ?? service.description,
-      hourlyRate: payload.hourly_rate ?? payload.hourlyRate ?? payload.rate ?? service.hourlyRate,
-      availability: payload.availability ?? service.availability,
-      location: payload.location ?? service.location,
-      isActive: payload.is_active ?? payload.isActive ?? service.isActive,
-    },
-  });
+    const payload = normalizeServicePayload({ ...service, ...(req.body || {}) });
+    if (!payload.title || payload.hourlyRate <= 0) return fail(res, 400, 'title and rate are required');
 
-  await writeAuditLog({ userId: req.user.id, action: 'service.update', entityType: 'service', entityId: service.id, payload: req.body });
-  return ok(res, serializeService(updated));
+    const updated = await prisma.service.update({
+      where: { id: service.id },
+      data: {
+        title: payload.title,
+        description: payload.description,
+        hourlyRate: payload.hourlyRate,
+        availability: payload.availability,
+        location: payload.location,
+        isActive: Boolean(payload.isActive),
+      },
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'service.update', entityType: 'service', entityId: service.id, payload: req.body });
+    return ok(res, serializeService(updated));
+  } catch (error) {
+    return fail(res, 400, 'Invalid service update payload', error.message);
+  }
 });
 
 router.delete('/services/:id', requireAuth, async (req, res) => {
-  const service = await prisma.service.findFirst({ where: { id: req.params.id, deletedAt: null }, include: { profile: true } });
-  if (!service) return fail(res, 404, 'Service not found');
-  if (req.user.role !== 'admin' && service.profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
+  try {
+    const service = await prisma.service.findFirst({ where: { id: req.params.id, deletedAt: null }, include: { profile: true } });
+    if (!service) return fail(res, 404, 'Service not found');
+    if (req.user.role !== 'admin' && service.profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
 
-  await prisma.service.update({ where: { id: service.id }, data: { deletedAt: new Date(), isActive: false } });
-  await writeAuditLog({ userId: req.user.id, action: 'service.delete', entityType: 'service', entityId: service.id });
-  return ok(res, { deleted: true });
+    await prisma.service.update({ where: { id: service.id }, data: { deletedAt: new Date(), isActive: false } });
+    await writeAuditLog({ userId: req.user.id, action: 'service.delete', entityType: 'service', entityId: service.id });
+    return ok(res, { deleted: true });
+  } catch (error) {
+    return fail(res, 400, 'Invalid service delete request', error.message);
+  }
 });
 
 module.exports = router;
