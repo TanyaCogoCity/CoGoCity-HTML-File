@@ -8466,9 +8466,25 @@ function migrationFormatUsPhone(value=''){
   if (digits.length !== 10) return String(value || '').trim();
   return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
 }
+function migrationFormatUsAddress(value=''){
+  let raw = String(value || '').replace(/\s+/g,' ').trim();
+  if (!raw) return '';
+  raw = raw.replace(/\s*,\s*/g, ', ').replace(/,{2,}/g, ',').replace(/, $/, '');
+  const stateZip = raw.match(/\b([A-Z]{2}|California)\s+(\d{5}(?:-\d{4})?)$/i);
+  if (!stateZip) return raw;
+  const state = /^california$/i.test(stateZip[1]) ? 'CA' : stateZip[1].toUpperCase();
+  const zip = stateZip[2];
+  let beforeState = raw.slice(0, stateZip.index).replace(/[,\s]+$/,'').trim();
+  const parts = beforeState.split(',').map(part => part.trim()).filter(Boolean);
+  if (parts.length >= 2) return `${parts.slice(0, -1).join(', ')}, ${parts[parts.length - 1]}, ${state} ${zip}`;
+  const streetSuffix = '(?:St|Street|Ave|Avenue|Rd|Road|Dr|Drive|Ln|Lane|Ct|Court|Blvd|Way|Cir|Circle|Pl|Place|Ter|Terrace|Pkwy|Parkway|Loop|Trail|Trl)';
+  const noCommaMatch = beforeState.match(new RegExp(`^(\\d+\\s+.+?\\b${streetSuffix}\\.?)\\s+(.+)$`, 'i'));
+  if (noCommaMatch) return `${noCommaMatch[1]}, ${noCommaMatch[2].trim()}, ${state} ${zip}`;
+  return raw;
+}
 function migrationIsPlausibleUsAddress(value=''){
-  const raw = String(value || '').trim();
-  return /^\d+\s+/.test(raw) && raw.includes(',') && /[A-Z]{2}/i.test(raw) && /\d{5}/.test(raw);
+  const raw = migrationFormatUsAddress(value);
+  return /^\d+\s+.+,\s*[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/.test(raw);
 }
 function renderMigrationRequiredList(items=[]){
   return `<ul class="small" style="margin:8px 0 0 18px;color:#475569">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
@@ -8576,7 +8592,7 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div class="row"><div class="field"><label>First name *</label><input id="migFirstName" value="${esc(user.firstName || firstName(user.name) || '')}"></div><div class="field"><label>Last name *</label><input id="migLastName" value="${esc(user.lastName || '')}"></div></div>
       <div class="field"><label>Email *</label><input id="migEmail" type="email" value="${esc(user.email || '')}"></div>
       <div class="field"><label>Phone *</label><input id="migPhone" type="tel" placeholder="(555) 555-5555" value="${esc(user.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
-      <div class="field"><label>Home address *</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="123 Main St, Danville, CA 94526"></div>
+      <div class="field"><label>Home address *</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="Street, City, State ZIP — e.g. 123 Main St, Danville, CA 94526" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. If you type something like “123 Main St Danville CA 94526,” we’ll format it for you.</div></div>
       <div class="field"><label>About me *</label><textarea id="migAbout">${esc(user.about || '')}</textarea></div>
     </div>
     ${isEmployer ? `<div class="card form-card" style="margin-top:16px">
@@ -8585,7 +8601,7 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div class="field"><label>Business name *</label><input id="migBusinessName" value="${esc(business.name || user.company || '')}"></div>
       <div class="field"><label>Business description *</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
       <div class="field"><label>Business phone *</label><input id="migBusinessPhone" type="tel" placeholder="(555) 555-5555" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
-      <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="456 Business Ave, Walnut Creek, CA 94596"></div>
+      <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="Street, City, State ZIP — e.g. 456 Business Ave, Walnut Creek, CA 94596" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. We’ll clean up common formatting automatically.</div></div>
       <div class="field"><label>TIN *</label><input id="migBusinessTin" value="${esc(business.tin || '')}" placeholder="12-3456789"></div>
     </div>` : ''}
     <div style="margin-top:16px"><button class="btn btn-blue" onclick="submitEmployerMigrationOnboarding(${isEmployer ? 'true' : 'false'})">Confirm profile & continue</button></div>
@@ -8596,12 +8612,14 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   const last = String(document.getElementById('migLastName')?.value || '').trim();
   const email = String(document.getElementById('migEmail')?.value || '').trim().toLowerCase();
   let phone = String(document.getElementById('migPhone')?.value || '').trim();
-  const address = String(document.getElementById('migAddress')?.value || '').replace(/\s+/g,' ').trim();
+  let address = migrationFormatUsAddress(document.getElementById('migAddress')?.value || '');
+  const addressInput = document.getElementById('migAddress');
+  if (addressInput) addressInput.value = address;
   const about = String(document.getElementById('migAbout')?.value || '').trim();
   if (!first || !last || !email || !phone || !address || !about) return toast('Please complete all required personal fields before continuing.');
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
-  if (!migrationIsPlausibleUsAddress(address)) return toast('Please enter a full U.S. home address like 123 Main St, Danville, CA 94526.');
+  if (!migrationIsPlausibleUsAddress(address)) return toast('Please enter a full U.S. home address with street, city, state, and ZIP — for example 123 Main St, Danville, CA 94526.');
   phone = migrationFormatUsPhone(phone);
   let business = null;
   if (isEmployer) {
@@ -8609,12 +8627,14 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
       name:String(document.getElementById('migBusinessName')?.value || '').trim(),
       about:String(document.getElementById('migBusinessAbout')?.value || '').trim(),
       phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
-      address:String(document.getElementById('migBusinessAddress')?.value || '').replace(/\s+/g,' ').trim(),
+      address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || ''),
       tin:String(document.getElementById('migBusinessTin')?.value || '').trim()
     };
     if (!business.name || !business.about || !business.phone || !business.address || !business.tin) return toast('Please complete all business fields before continuing.');
     if (!migrationIsValidUsPhone(business.phone)) return toast('Please enter a valid 10-digit U.S. business phone number.');
-    if (!migrationIsPlausibleUsAddress(business.address)) return toast('Please enter a full U.S. business address like 456 Business Ave, Walnut Creek, CA 94596.');
+    const businessAddressInput = document.getElementById('migBusinessAddress');
+    if (businessAddressInput) businessAddressInput.value = business.address;
+    if (!migrationIsPlausibleUsAddress(business.address)) return toast('Please enter a full U.S. business address with street, city, state, and ZIP — for example 456 Business Ave, Walnut Creek, CA 94596.');
     business.phone = migrationFormatUsPhone(business.phone);
     business.city = extractCity(business.address);
   }
