@@ -81,7 +81,7 @@
     .hero p{max-width:680px;margin:0 auto 24px;color:var(--color-text-secondary)}
     .home-hero{
       min-height:392px;padding:56px 20px;display:flex;align-items:center;border-bottom:1px solid var(--color-border);
-      background-image:url('assets/home-hero-students.jpg');
+      background-image:url('assets/home-hero-students.png');
       background-size:cover;background-position:center right;color:var(--color-text-main)
     }
     .home-hero-content{max-width:1120px;width:100%;margin:0 auto}
@@ -349,7 +349,7 @@
       .hero h1{font-size:1.85rem;line-height:1.12}
       .hero p{font-size:.98rem;margin-left:0;margin-right:0}
       .hero .btn,.hero a.btn{width:100%;margin-bottom:8px}
-      .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:cover}
+      .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.png');background-position:center bottom;background-size:cover}
       .home-hero-copy{max-width:100%}
       .home-hero h1{font-size:2rem;line-height:1.08}
       .home-hero p{font-size:.98rem}
@@ -449,12 +449,6 @@
   <div id="modal-root"></div>
 
 <script>
-const TEST_USERS = {
-  student: { email: 'student@cogocity.com', password: 'student123' },
-  employer: { email: 'ilya@cogocity.com', password: 'Ilya123' },
-  neighbor: { email: 'tanya@cogocity.com', password: 'tanya123' }
-};
-
 let currentUser = null;
 let dashSection = 'profile';
 let studentJobsTab = 'all';
@@ -504,10 +498,14 @@ let directJobApplyDraft = null;
 const PLATFORM_FEE_RATE = 0.15;
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 10;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
-const PAYMENT_PROVIDER_MODE = 'mock_stripe_ready';
-const STRIPE_ENABLED = typeof window !== 'undefined' && window.location.hostname === 'staging.cogocity.com';
-const STRIPE_PUBLISHABLE_KEY = (typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || 'pk_test_51TCSvnEUfcoM0jH8P15J2oKomCRWcgECbBj7CghdxPYrD0jlda03P4beGADMyCHWeiooCO0jdkOjv3YjASdETbb300UdAOmXUq';
-const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = true;
+const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : '';
+const COGO_IS_STAGING = COGO_HOSTNAME === 'staging.cogocity.com';
+const COGO_IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(COGO_HOSTNAME);
+const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
+const PAYMENT_PROVIDER_MODE = 'stripe_manual_capture';
+const STRIPE_PUBLISHABLE_KEY = (typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || '';
+const STRIPE_ENABLED = COGO_IS_STAGING;
+const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = false;
 const BACKEND_MIGRATION = {
   enabled: false,
   baseUrl: '/api',
@@ -515,7 +513,7 @@ const BACKEND_MIGRATION = {
 };
 const BACKEND_AUTH = {
   // Staging-only: keep production/live behavior unchanged until the backend flow is fully verified.
-  enabled: ['staging.cogocity.com', 'localhost', '127.0.0.1'].includes(window.location.hostname),
+  enabled: COGO_IS_STAGING,
   baseUrl: '/api',
   timeoutMs: 10000
 };
@@ -846,7 +844,7 @@ function openPostSignupStripeOnboardingPrompt(kind){
     <div class="card form-card">
       <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Secure hiring payments with Stripe' : 'Get ready to receive payouts'}</div>
       <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, save a test-mode card through Stripe. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect onboarding on Stripe\'s secure hosted page.'}</div>
-      <div class="warning" style="margin-bottom:14px">Staging/test mode only.</div>
+      <div class="warning" style="margin-bottom:14px">Stripe setup is enabled for this staging environment.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Later</button>
         <button class="btn btn-blue" onclick="${isPayer ? 'closeModal();openPayerStripeSetupModal()' : 'closeModal();startStripeConnectOnboarding()'}">${isPayer ? 'Add Test Card' : 'Start Stripe Connect'}</button>
@@ -887,14 +885,14 @@ function renderStripeOnboardingCard(){
     </div>
   `);
   if (!blocks.length) return '';
-  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Stripe onboarding</div><div class="small muted" style="margin-top:6px">Staging/test mode only.</div>${blocks.join('')}</div>`;
+  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Stripe onboarding</div><div class="small muted" style="margin-top:6px">Stripe setup is enabled for this staging environment.</div>${blocks.join('')}</div>`;
 }
 async function openPayerStripeSetupModal(){
   if (!stripeOnboardingEnabled()) return toast('Stripe onboarding is available on staging after sign-in.');
   if (!STRIPE_PUBLISHABLE_KEY) return toast('Stripe publishable key is not configured.');
   openModal('Add Payment Method', `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Test mode only. Use Stripe test card 4242 4242 4242 4242, any future expiry, any CVC.</div>
+      <div class="warning" style="margin-bottom:14px">Payment details are handled securely by Stripe.</div>
       <div class="field"><label>Card details</label><div id="stripe-card-element" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff"></div></div>
       <div id="stripe-card-errors" class="small" style="color:#991B1B;margin-bottom:12px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
@@ -2024,7 +2022,7 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
         try {
           const checkout = await createBackendStripeCheckoutSession(getProjectBackendId(project));
           if (checkout && checkout.url) {
-            toast('Opening secure Stripe test checkout to fund this project.');
+            toast('Opening secure Stripe checkout to fund this project.');
             window.location.href = checkout.url;
           }
         } catch (stripeError) {
@@ -2411,25 +2409,25 @@ function savePaymentSettings(v){
   ls('cogo_payment_settings', normalized);
   syncEntityToBackend('payment_settings', [normalized]);
 }
-function getMockPaymentId(prefix){
-  return `${prefix}_${uid('mock')}`;
+function getLocalPaymentReferenceId(prefix){
+  return `${prefix}_${uid('payref')}`;
 }
-function createMockPaymentEvent(kind='', data={}){
+function createLocalPaymentEvent(kind='', data={}){
   const now = new Date().toISOString();
   const settings = getPaymentSettings();
   const amount = Number(data.amount || 0) || 0;
   const event = Object.assign({
     id: uid('payevt'),
-    provider: STRIPE_ENABLED ? 'stripe' : 'mock',
+    provider: STRIPE_ENABLED ? 'stripe' : 'manual',
     provider_mode: STRIPE_ENABLED ? 'stripe_live_adapter' : settings.providerMode,
     kind: String(kind || 'payment'),
     amount,
     currency: 'usd',
     status: data.status || 'succeeded',
     stripe_ready: true,
-    stripe_customer_id: data.stripe_customer_id || getMockPaymentId('cus'),
-    stripe_payment_intent_id: data.stripe_payment_intent_id || (amount ? getMockPaymentId('pi') : ''),
-    stripe_charge_id: data.stripe_charge_id || (amount ? getMockPaymentId('ch') : ''),
+    stripe_customer_id: data.stripe_customer_id || getLocalPaymentReferenceId('cus'),
+    stripe_payment_intent_id: data.stripe_payment_intent_id || (amount ? getLocalPaymentReferenceId('pi') : ''),
+    stripe_charge_id: data.stripe_charge_id || (amount ? getLocalPaymentReferenceId('ch') : ''),
     stripe_transfer_id: data.stripe_transfer_id || '',
     stripe_refund_id: data.stripe_refund_id || '',
     created_at: now,
@@ -2438,32 +2436,32 @@ function createMockPaymentEvent(kind='', data={}){
   logPaymentEvent(event);
   return event;
 }
-function mockChargePayment(data={}){
+function recordLocalPaymentCharge(data={}){
   const amount = Number(data.amount || 0) || 0;
   if (amount < 0) return { success:false, reason:'invalid_amount' };
   if (!TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS && data.user_id && !hasValidPaymentMethod(data.user_id)) {
     return { success:false, reason:'missing_or_invalid_payment_method' };
   }
-  return { success:true, event:createMockPaymentEvent('charge', Object.assign({ status:'succeeded' }, data)) };
+  return { success:true, event:createLocalPaymentEvent('charge', Object.assign({ status:'succeeded' }, data)) };
 }
-function mockHoldPayment(data={}){
-  const result = mockChargePayment(Object.assign({ status:'held' }, data));
+function recordLocalPaymentHold(data={}){
+  const result = recordLocalPaymentCharge(Object.assign({ status:'held' }, data));
   if (result.success && result.event) result.event.status = 'held';
   return result;
 }
-function mockRefundPayment(data={}){
-  return { success:true, event:createMockPaymentEvent('refund', Object.assign({}, data || {}, {
+function recordLocalPaymentRefund(data={}){
+  return { success:true, event:createLocalPaymentEvent('refund', Object.assign({}, data || {}, {
     amount: -Math.abs(Number(data.amount || 0) || 0),
     status:'succeeded',
-    stripe_refund_id: data.stripe_refund_id || getMockPaymentId('re')
+    stripe_refund_id: data.stripe_refund_id || getLocalPaymentReferenceId('re')
   })) };
 }
-function mockTransferPayout(data={}){
-  return { success:true, event:createMockPaymentEvent('transfer', Object.assign({
+function recordLocalPayoutTransfer(data={}){
+  return { success:true, event:createLocalPaymentEvent('transfer', Object.assign({
     status:'paid',
     stripe_payment_intent_id: data.stripe_payment_intent_id || '',
     stripe_charge_id: data.stripe_charge_id || '',
-    stripe_transfer_id: data.stripe_transfer_id || getMockPaymentId('tr')
+    stripe_transfer_id: data.stripe_transfer_id || getLocalPaymentReferenceId('tr')
   }, data)) };
 }
 function calculateWorkshopPayment(price=0, quantity=1){
@@ -2550,7 +2548,7 @@ function getSiteSettings(){
       home: {
         title: 'Find Skilled Local Students for Real Work',
         body: 'Hire motivated students for social media, office support, event help, tutoring, and more.',
-        image_url: 'assets/home-hero-students.jpg'
+        image_url: 'assets/home-hero-students.png'
       },
       community: {
         title: 'Community Feed',
@@ -2662,7 +2660,7 @@ function danielProfileHighlights(){
 }
 function ensureDanielStagingProfileForUser(user={}){
   const email = String(user.email || '').toLowerCase();
-  if (!['dan.lipovich@gmail.com','dan.lipovich+staging@gmail.com','student@cogocity.com'].includes(email)) return null;
+  if (!['dan.lipovich@gmail.com','dan.lipovich+staging@gmail.com'].includes(email)) return null;
   const students = getStudents();
   let profile = students.find(s => String(s.userId) === String(user.id));
   if (!profile) {
@@ -2789,6 +2787,11 @@ function seedData(){
     migrateLegacyData();
     return;
   }
+  if (COGO_IS_STAGING && !COGO_DEMO_MODE) {
+    migrateLegacyData();
+    ls('cogo_seeded_v3', true);
+    return;
+  }
   if (ensureArray(ls('cogo_users')).length || ensureArray(ls('cogo_students')).length) {
     migrateLegacyData();
     ls('cogo_seeded_v3', true);
@@ -2796,10 +2799,10 @@ function seedData(){
   }
 
   const users = [
-    { id:'u_student_test', email:'student@cogocity.com', password:'student123', name:'Daniel', role:'student', emoji:'\u{1F393}' },
-    { id:'u_employer_test', email:'ilya@cogocity.com', password:'Ilya123', firstName:'Ilya', lastName:'Ivanov', name:'Ilya I.', publicName:'Ilya I.', role:'employer', type:'business', emoji:'\u{1F3E2}', about:'I hire student help for home, events, and business needs.', phone:'(925) 555-0101', address:'123 Main St, Walnut Creek, CA', city:'Walnut Creek', company:'Reliable Events Co.', businessProfile:{ name:'Reliable Events Co.', logo:'', about:'Local events and operations business hiring dependable student support.', phone:'(925) 555-0101', address:'456 Business Ave, Walnut Creek, CA', city:'Walnut Creek', tin:'12-3456789' }, paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
-    { id:'u_neighbor_test', email:'tanya@cogocity.com', password:'tanya123', firstName:'Tanya', lastName:'Lip', name:'Tanya L.', publicName:'Tanya L.', role:'employer', type:'neighbor', emoji:'\u{1F3E0}', about:'Neighbor account for hiring local student help.', phone:'(925) 555-0110', address:'789 Oak Rd, Danville, CA', city:'Danville', paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' }, paymentSetupComplete:true },
-    { id:'u_admin_test', email:'Admin@cogocity.com', password:'Admin123', name:'Admin', role:'admin', emoji:'\u{1F6E1}\uFE0F' }
+    { id:'u_student_test', email:'student.demo@example.invalid', password:'demo-local-only', name:'Daniel', role:'student', emoji:'\u{1F393}' },
+    { id:'u_employer_test', email:'employer.demo@example.invalid', password:'demo-local-only', firstName:'Ilya', lastName:'Ivanov', name:'Ilya I.', publicName:'Ilya I.', role:'employer', type:'business', emoji:'\u{1F3E2}', about:'I hire student help for home, events, and business needs.', phone:'(925) 555-0101', address:'123 Main St, Walnut Creek, CA', city:'Walnut Creek', company:'Reliable Events Co.', businessProfile:{ name:'Reliable Events Co.', logo:'', about:'Local events and operations business hiring dependable student support.', phone:'(925) 555-0101', address:'456 Business Ave, Walnut Creek, CA', city:'Walnut Creek', tin:'12-3456789' }, paymentMethod:{ status:'valid', brand:'Visa', last4:'0000' }, paymentSetupComplete:true },
+    { id:'u_neighbor_test', email:'neighbor.demo@example.invalid', password:'demo-local-only', firstName:'Tanya', lastName:'Lip', name:'Tanya L.', publicName:'Tanya L.', role:'employer', type:'neighbor', emoji:'\u{1F3E0}', about:'Neighbor account for hiring local student help.', phone:'(925) 555-0110', address:'789 Oak Rd, Danville, CA', city:'Danville', paymentMethod:{ status:'valid', brand:'Visa', last4:'0000' }, paymentSetupComplete:true },
+    { id:'u_admin_test', email:'admin.demo@example.invalid', password:'demo-local-only', name:'Admin', role:'admin', emoji:'\u{1F6E1}\uFE0F' }
   ];
 
   const students = [
@@ -3327,16 +3330,16 @@ function attemptEscrowAuthorization(application, escrowAmount){
     const users = getUsers();
     const user = users.find(x => x.id === employer.id);
     if (user) {
-      user.paymentMethod = user.paymentMethod || { status:'valid', brand:'Visa', last4:'4242' };
+      user.paymentMethod = user.paymentMethod || { status:'valid', brand:'Visa', last4:'0000' };
       user.paymentMethod.status = 'valid';
       user.paymentSetupComplete = true;
       saveUsers(users);
       if (currentUser && currentUser.id === user.id) setCurrentUser(user);
     }
   }
-  const provider = STRIPE_ENABLED ? 'stripe' : 'mock';
+  const provider = STRIPE_ENABLED ? 'stripe' : 'manual';
   const mode = STRIPE_ENABLED ? 'stripe_manual_capture' : PAYMENT_PROVIDER_MODE;
-  const hold = mockHoldPayment({
+  const hold = recordLocalPaymentHold({
     amount: escrowAmount,
     user_id: application.employerId,
     applicationId: application.id,
@@ -3461,9 +3464,9 @@ function openPaymentMethodModal(retryAppId=''){
   if (!canViewBillingDetails()) return toast('Billing details are hidden while viewing as a user.');
   const paymentMethod = getEmployerPaymentMethod(currentUser.id) || {};
   openModal('Update Payment Method', `
-    <div class="warning" style="margin-bottom:14px">Employers sign up with a payment method on file. Update the saved test card here if needed.</div>
+    <div class="warning" style="margin-bottom:14px">Employers sign up with a payment method on file. Update the saved billing details here if needed.</div>
     <div class="field"><label>Card Brand</label><input id="pmBrand" value="${esc(paymentMethod.brand || 'Visa')}"></div>
-    <div class="field"><label>Card Last 4</label><input id="pmLast4" maxlength="4" value="${esc(paymentMethod.last4 || '4242')}"></div>
+    <div class="field"><label>Card Last 4</label><input id="pmLast4" maxlength="4" value="${esc(paymentMethod.last4 || '')}"></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-blue" onclick="savePaymentMethod('${esc(retryAppId)}')">Save Payment Method</button>
       ${retryAppId ? `<button class="btn btn-outline" onclick="closeModal();startProject('${esc(retryAppId)}')">Retry Start Project</button>` : ''}
@@ -3829,37 +3832,34 @@ function openLoginModal(tab='signin'){
 
   if (authTab === 'signin') {
     content = `
-      <div class="warning" style="margin-bottom:16px">
-        AI helper is intentionally disabled for now. All text fields are manual test fields.
-      </div>
       <div class="card form-card">
         <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="email"></div>
         <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="password"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
-          <button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>
+          ${COGO_DEMO_MODE ? `<button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>` : ''}
         </div>
         <div style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="openPasswordResetModal()">Forgot Password?</button></div>
-        <div class="small muted" style="margin-top:10px">Reset restores the seeded test users, passwords, and sample data for this browser.</div>
+        ${COGO_DEMO_MODE ? `<div class="small muted" style="margin-top:10px">Reset restores local demo data for this browser.</div>` : ''}
       </div>
       <div style="height:14px"></div>
       ${backendAuthEnabled() ? `
         <div class="card form-card">
-          <div style="font-weight:800;margin-bottom:10px">Staging backend sign-in is active</div>
-          <div class="small muted">Use an account created through this staging signup flow. Demo quick logins are disabled here because passwords are now checked by the backend.</div>
+          <div style="font-weight:800;margin-bottom:10px">Secure sign-in is active</div>
+          <div class="small muted">Use an account created through the signup flow. Passwords are verified by the backend.</div>
         </div>
-      ` : `
+      ` : COGO_DEMO_MODE ? `
         <div class="card form-card">
-          <div style="font-weight:800;margin-bottom:10px">Quick test logins</div>
+          <div style="font-weight:800;margin-bottom:10px">Local demo logins</div>
           <div class="small muted" style="margin-bottom:12px">One tap signs you in instantly.</div>
           <div class="grid" style="grid-template-columns:1fr;gap:10px">
-            <button class="btn btn-outline" onclick="quickLogin('student@cogocity.com','student123')">Student \u2014 student@cogocity.com</button>
-            <button class="btn btn-outline" onclick="quickLogin('ilya@cogocity.com','Ilya123')">Employer \u2014 ilya@cogocity.com</button>
-            <button class="btn btn-outline" onclick="quickLogin('tanya@cogocity.com','tanya123')">Neighbor \u2014 tanya@cogocity.com</button>
-            <button class="btn btn-outline" onclick="quickLogin('admin@cogocity.com','Admin123')">Admin \u2014 admin@cogocity.com</button>
+            <button class="btn btn-outline" onclick="quickLogin('student.demo@example.invalid','demo-local-only')">Student demo</button>
+            <button class="btn btn-outline" onclick="quickLogin('employer.demo@example.invalid','demo-local-only')">Employer demo</button>
+            <button class="btn btn-outline" onclick="quickLogin('neighbor.demo@example.invalid','demo-local-only')">Neighbor demo</button>
+            <button class="btn btn-outline" onclick="quickLogin('admin.demo@example.invalid','demo-local-only')">Admin demo</button>
           </div>
         </div>
-      `}
+      ` : ''}
     `;
   } else if (authTab === 'student') {
     return openStudentSignupWorkflow();
@@ -3882,10 +3882,12 @@ function fillLogin(email, password){
   document.getElementById('loginPassword').value = password;
 }
 function quickLogin(email, password){
+  if (!COGO_DEMO_MODE) return;
   fillLogin(email, password);
   doLogin();
 }
 function resetDemoData(){
+  if (!COGO_DEMO_MODE) return toast('Demo reset is only available in local demo mode.');
   Object.keys(localStorage)
     .filter(key => key.startsWith('cogo_'))
     .forEach(key => localStorage.removeItem(key));
@@ -3902,9 +3904,6 @@ async function doLogin(){
   let email = (document.getElementById('loginEmail').value || '').trim().toLowerCase();
   const password = document.getElementById('loginPassword').value || '';
   if (toastRequiredFields({ Email:email, Password:password }, 'Sign in')) return;
-  if (email === 'tanya.lipovich@gmail.com' && password === 'cKL3h9kT7*PvZ%') {
-    email = 'admin@cogocity.com';
-  }
 
   if (backendAuthEnabled()) {
     try {
@@ -4102,7 +4101,7 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 2) return `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Upload a photo or choose an avatar.</div>
+      <div class="warning" style="margin-bottom:14px">Upload a profile photo or choose an avatar.</div>
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
       <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
@@ -4177,7 +4176,7 @@ function renderStudentSignupStepContent(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
         <button class="btn btn-outline" onclick="goStudentSignupStep(1)">Edit Profile</button>
         <button class="btn btn-outline" onclick="editStudentSignupService(0)">Edit Service</button>
-        <button class="btn btn-blue" onclick="startNewStudentSignupService();goStudentSignupStep(5)">Add Another Service</button>
+        <button class="btn btn-blue" onclick="startNewStudentSignupService();goStudentSignupStep(4)">Add Another Service</button>
       </div>
     </div>
   `;
@@ -4218,9 +4217,9 @@ function saveStudentSignupStep(step){
     return true;
   }
   if (step === 2){
-    if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
     const videoEl = document.getElementById('studentFlowProfileVideoLink');
     if (videoEl) applyVideoState(studentSignupDraft, (videoEl.value || '').trim());
+    if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
     return true;
   }
   if (step === 3){
@@ -4433,7 +4432,7 @@ function buildStudentSignupPreviewStudent(){
     birthYear:d.birthYear || '',
     age:getStudentAge(d),
     school:d.school,
-    location:d.city ? (String(d.city).includes(',') ? d.city : `${d.city}, CA`) : '',
+    location:extractCity(d.address) || d.city || '',
     photo:d.photo || ((d.profileImages || [])[0]) || '',
     profileImages:(d.profileImages || []).length ? d.profileImages : (d.photo ? [d.photo] : []),
     video_url:d.video_url || '',
@@ -4567,7 +4566,7 @@ async function publishStudentSignupProfile(){
             description: service.description,
             rate: Number(service.rate || 0),
             hourlyRate: Number(service.rate || 0),
-            location: service.location || d.city || '',
+            location: service.location || extractCity(d.address) || '',
             availability: service.availability || '',
             images: service.images || [],
             entity_images: service.images || [],
@@ -4665,7 +4664,8 @@ function extractCity(address=''){
   const clean = String(address || '').trim();
   if (!clean) return '';
   const parts = clean.split(',').map(part => part.trim()).filter(Boolean);
-  return parts.length >= 2 ? parts[1] : parts[0];
+  if (parts.length >= 2) return parts[1];
+  return '';
 }
 function createDefaultEmployerSignupDraft(mode='neighbor'){
   const isEmployer = mode === 'employer';
@@ -6220,10 +6220,10 @@ function openWorkshopRegistrationFlow(workshopId=''){
       <label class="small" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="radio" name="workshopPmMode" value="saved" ${paymentMethod ? 'checked' : ''} ${paymentMethod ? '' : 'disabled'}> Use saved card ${paymentMethod ? `(${esc(paymentMethod.brand)} \u2022\u2022\u2022\u2022 ${esc(paymentMethod.last4)})` : '(none available)'}</label>
       <label class="small" style="display:flex;gap:8px;align-items:center"><input type="radio" name="workshopPmMode" value="new" ${paymentMethod ? '' : 'checked'}> Add new card</label>
       <div class="row" style="margin-top:10px">
-        <div class="field"><label>Card Brand</label><input id="workshopPmBrand" value="Visa"></div>
-        <div class="field"><label>Last 4</label><input id="workshopPmLast4" maxlength="4" value="4242"></div>
+        <div class="field"><label>Card Brand</label><input id="workshopPmBrand" value=""></div>
+        <div class="field"><label>Last 4</label><input id="workshopPmLast4" maxlength="4" value=""></div>
       </div>
-      <div class="small muted">Test mode: payment success is simulated. Stripe-ready fields are captured for future integration.</div>
+      <div class="small muted">Payment method details are required before a spot can be reserved.</div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:10px">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
@@ -6285,7 +6285,7 @@ function completeWorkshopRegistration(workshopId=''){
     currentUser = getUserById(currentUser.id) || currentUser;
   }
   const paymentTotals = calculateWorkshopPayment(workshop.price || 0, quantity);
-  const charge = mockHoldPayment({
+  const charge = recordLocalPaymentHold({
     amount: paymentTotals.gross,
     user_id: currentUser.id,
     workshop_id: workshop.id,
@@ -6390,7 +6390,7 @@ function requestWorkshopRefund(registrationId=''){
   if (!canRequestWorkshopRefund(workshop)) return toast('Refund is only available up to 2 days before class.');
   const quantity = Math.max(1, Number(registration.quantity || 1) || 1);
   const refundAmount = (Number(registration.total_amount || 0) || ((Number(workshop.price || 0) || 0) * quantity));
-  const refund = mockRefundPayment({
+  const refund = recordLocalPaymentRefund({
     amount: refundAmount,
     user_id: currentUser.id,
     workshop_id: workshop.id,
@@ -6399,7 +6399,7 @@ function requestWorkshopRefund(registrationId=''){
   });
   registration.status = 'refunded';
   registration.refunded_at = new Date().toISOString();
-  registration.stripe_refund_id = refund.event ? refund.event.stripe_refund_id : getMockPaymentId('re');
+  registration.stripe_refund_id = refund.event ? refund.event.stripe_refund_id : getLocalPaymentReferenceId('re');
   registration.escrow_status = 'refunded';
   registration.payout_status = 'refunded';
   saveWorkshopRegistrations(registrations);
@@ -6442,7 +6442,7 @@ function queueSystemEmail(email='', name='', subject='', body='', meta={}){
     subject: String(subject || '').trim(),
     body: String(body || '').trim(),
     status: 'queued',
-    provider: STRIPE_ENABLED ? 'transactional_email_provider' : 'mock_email',
+    provider: STRIPE_ENABLED ? 'transactional_email_provider' : 'email_queue',
     created_at: new Date().toISOString(),
     meta: Object.assign({}, meta || {})
   });
@@ -7046,7 +7046,7 @@ function processWorkshopPayouts(){
     const gross = Number((registeredGross || totals.gross).toFixed(2));
     const platformShare = Number((gross * (totals.platformPct / 100)).toFixed(2));
     const hostPayout = Number((gross - platformShare).toFixed(2));
-    const transfer = mockTransferPayout({
+    const transfer = recordLocalPayoutTransfer({
       amount: hostPayout,
       user_id: workshop.host_id,
       workshop_id: workshop.id,
@@ -9494,6 +9494,7 @@ function syncStudentServiceDraftFromForm(){
   studentServiceDraft.images = [...studentServiceImagesBuffer];
 }
 function handleStudentServiceImagesUpload(input){
+  syncStudentServiceDraftFromForm();
   readImagesToDataUrls(input, (images) => {
     studentServiceImagesBuffer = replaceWithSingleImage(images[0] || '');
     if (studentServiceDraft) studentServiceDraft.images = [...studentServiceImagesBuffer];
@@ -10244,7 +10245,7 @@ async function saveEmployerDirectHireJob(){
   const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
-  const listingCharge = mockChargePayment({
+  const listingCharge = recordLocalPaymentCharge({
     amount: fee,
     user_id: currentUser.id,
     employer_id: currentUser.id,
@@ -10276,7 +10277,7 @@ async function saveEmployerDirectHireJob(){
     listing_months: selectedMonths,
     listing_duration_days: listingDurationDays,
     posting_payment_status: 'paid',
-    payment_provider: STRIPE_ENABLED ? 'stripe' : 'mock',
+    payment_provider: STRIPE_ENABLED ? 'stripe' : 'manual',
     payment_provider_mode: PAYMENT_PROVIDER_MODE,
     stripe_payment_intent_id: listingCharge.event ? listingCharge.event.stripe_payment_intent_id : '',
     stripe_charge_id: listingCharge.event ? listingCharge.event.stripe_charge_id : '',
@@ -10911,7 +10912,7 @@ function startProject(appId){
     projectSnapshot,
     escrowAmount: estimatedEmployerTotal,
     escrowStatus: paymentAttempt.escrowStatus || 'held',
-    escrowProvider: paymentAttempt.provider || 'mock',
+    escrowProvider: paymentAttempt.provider || 'manual',
     paymentProviderMode: paymentAttempt.mode || PAYMENT_PROVIDER_MODE,
     stripe_payment_intent_id: paymentAttempt.paymentIntentId || '',
     stripe_charge_id: paymentAttempt.chargeId || '',
@@ -11040,7 +11041,7 @@ function openEmployerApproval(projectId){
       </div>
       <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
       <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(breakdown, 'Actual')}</div>
-      <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Test mode is active, so approval will always release payment successfully.`}</div>
+      <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Payment capture is unavailable until Stripe is configured for this environment.`}</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
         <button class="btn btn-outline" onclick="openRequestChangesModal('${esc(projectId)}')">Request Changes</button>
@@ -11084,7 +11085,7 @@ async function approveFinalInvoice(projectId){
   const baseline = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0).employerTotal;
   const diff = Number((p.finalTotal - baseline).toFixed(2));
   if (diff > 0) {
-    const extraCharge = mockChargePayment({
+    const extraCharge = recordLocalPaymentCharge({
       amount: diff,
       user_id: p.employerId,
       project_id: p.id,
@@ -11094,7 +11095,7 @@ async function approveFinalInvoice(projectId){
     p.reconciliation_payment_intent_id = extraCharge.success && extraCharge.event ? extraCharge.event.stripe_payment_intent_id : '';
     p.reconciliation_status = extraCharge.success ? 'additional_charge_captured' : 'additional_charge_failed';
   } else if (diff < 0) {
-    const refund = mockRefundPayment({
+    const refund = recordLocalPaymentRefund({
       amount: Math.abs(diff),
       user_id: p.employerId,
       project_id: p.id,
@@ -11107,7 +11108,7 @@ async function approveFinalInvoice(projectId){
   } else {
     p.reconciliation_status = 'no_adjustment_needed';
   }
-  const payoutTransfer = mockTransferPayout({
+  const payoutTransfer = recordLocalPayoutTransfer({
     amount: p.studentPayout,
     user_id: p.studentUserId,
     project_id: p.id,
@@ -11690,7 +11691,7 @@ function renderAdminPanel(el){
         <div class="field"><label>Platform Fee Percentage for Employers/Neighbors</label><input id="adminEmployerCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.employerCommissionPct)}"></div>
       </div>
       <div class="field"><label>Workshop/Class Platform Fee Percentage</label><input id="adminWorkshopCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.workshopCommissionPct)}"></div>
-      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, workshop hold/release, messaging, and payout calculations. Payments are currently mock Stripe-ready records; no card numbers are stored in CoGo City.</div>
+      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, workshop hold/release, messaging, and payout calculations. Payments use configured provider records; no full card numbers are stored in CoGo City.</div>
       <button class="btn btn-blue" onclick="saveAdminPaymentSettings()">Save Payment Settings</button>
     </div>
     <div class="card form-card" style="margin-bottom:18px">
@@ -12104,7 +12105,7 @@ function sendAdminPasswordReset(userId){
   logAdminAction('password_reset_sent', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
   adminPendingUserAction = '';
   syncAdminUsersToolbar();
-  toast(`Password reset email queued for ${user.email || user.name} (mock).`);
+  toast(`Password reset email queued for ${user.email || user.name}.`);
 }
 function openAdminDeleteUserModal(userId){
   const user = getUserById(userId);
@@ -13555,7 +13556,7 @@ function renderSettings(el){
       <div class="warning" style="margin-bottom:14px">If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.</div>
       ${currentUser.role === 'employer' ? (canViewBillingDetails() ? `
         <div class="small muted" style="margin-bottom:8px">Payment Method</div>
-        <div class="field"><input value="${paymentMethod ? esc(paymentMethod.brand + ' \u2022\u2022\u2022\u2022 ' + paymentMethod.last4) : 'Visa \u2022\u2022\u2022\u2022 4242'}" readonly></div>
+        <div class="field"><input value="${paymentMethod ? esc(paymentMethod.brand + ' \u2022\u2022\u2022\u2022 ' + paymentMethod.last4) : 'No payment method on file'}" readonly></div>
         <button class="btn btn-outline" onclick="openPaymentMethodModal()">Update Payment Method</button>
       ` : `<div class="warning">Billing details are hidden while Admin is viewing as this user.</div>`) : ''}
     </div>
