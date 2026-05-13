@@ -622,12 +622,14 @@ window.CoGoBackend.getSyncState = function(){
 const transientStorageFallback = {};
 function ls(key, value){
   if (value === undefined) {
+    if (Object.prototype.hasOwnProperty.call(transientStorageFallback, key)) return transientStorageFallback[key];
     try { return JSON.parse(localStorage.getItem(key)); } catch(e){
-      return Object.prototype.hasOwnProperty.call(transientStorageFallback, key) ? transientStorageFallback[key] : null;
+      return null;
     }
   }
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    if (Object.prototype.hasOwnProperty.call(transientStorageFallback, key)) delete transientStorageFallback[key];
   } catch (error) {
     transientStorageFallback[key] = value;
     console.warn('Storage write failed. Falling back to in-memory cache for key:', key, error);
@@ -1369,7 +1371,7 @@ function optimizeImageDataUrlForStorage(dataUrl='', file=null){
       const width = img.naturalWidth || img.width || 0;
       const height = img.naturalHeight || img.height || 0;
       if (!width || !height) return resolve(raw);
-      const maxDimension = 1600;
+      const maxDimension = 900;
       const scale = Math.min(1, maxDimension / Math.max(width, height));
       const targetWidth = Math.max(1, Math.round(width * scale));
       const targetHeight = Math.max(1, Math.round(height * scale));
@@ -1381,8 +1383,8 @@ function optimizeImageDataUrlForStorage(dataUrl='', file=null){
       ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
       let next = raw;
       try {
-        const keepPng = /^image\/png/i.test(String(file && file.type || '')) && raw.length < 450000 && scale === 1;
-        next = keepPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.82);
+        const keepPng = /^image\/png/i.test(String(file && file.type || '')) && raw.length < 120000 && scale === 1;
+        next = keepPng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.72);
       } catch (error) {
         next = raw;
       }
@@ -4345,10 +4347,20 @@ function previewStudentSignupServiceVideo(value){
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
+  const existingImages = ((studentSignupDraft.serviceForm || {}).images || []).filter(Boolean);
+  const remainingSlots = Math.max(0, 3 - existingImages.length);
+  if (!remainingSlots) {
+    toast('You can add up to 3 service images. Remove one before adding another.');
+    if (input) input.value = '';
+    return;
+  }
   readImagesToDataUrls(input, (images) => {
-    studentSignupDraft.serviceForm.images = images;
+    const nextImages = [...existingImages, ...images.filter(Boolean)].slice(0, 3);
+    studentSignupDraft.serviceForm.images = nextImages;
+    if (images.length) toast(`${images.length} service image${images.length === 1 ? '' : 's'} added.`);
+    if (input) input.value = '';
     renderStudentSignupModal();
-  });
+  }, remainingSlots, { source:'student_service', entity_type:'service_signup' });
 }
 function addStudentSignupServiceImageFromLibrary(imageId){
   syncStudentSignupServiceForm();
