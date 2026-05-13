@@ -1457,12 +1457,10 @@ function renderManagedImage(source='', alt='', style='', variant='full', extraAt
   if (!image || !image.url) return '';
   return `<img src="${esc(image.url)}" alt="${esc(alt)}" style="${style}" ${extraAttrs}>`;
 }
-function addImageIdToList(list=[], imageId='', limit=3){
-  const next = Array.isArray(list) ? [...list] : [];
+function addImageIdToList(list=[], imageId='', limit=1){
   const cleanId = String(imageId || '').trim();
-  if (!cleanId) return next;
-  if (!next.includes(cleanId)) next.push(cleanId);
-  return next.slice(0, limit);
+  if (!cleanId) return [];
+  return [cleanId];
 }
 function removeImageIdFromList(list=[], imageId=''){
   return (Array.isArray(list) ? list : []).filter(value => String(value) !== String(imageId));
@@ -1690,7 +1688,7 @@ function normalizePostRecord(post){
   normalized.comments = ensureArray(normalized.comments).map(normalizeCommunityComment).filter(item => item.content);
   normalized.shares = Number(normalized.shares || 0);
   const rawImages = ensureArray(normalized.entity_images).length ? normalized.entity_images : normalized.images;
-  normalized.entity_images = upsertImageRecords(rawImages, { source:'community_post', entity_type:'post', entity_id: normalized.id || '', owner_id: normalized.authorId || '' }).slice(0,5);
+  normalized.entity_images = upsertImageRecords(rawImages, { source:'community_post', entity_type:'post', entity_id: normalized.id || '', owner_id: normalized.authorId || '' }).slice(0,1);
   normalized.images = [...normalized.entity_images];
   if (!normalized.video_url && normalized.videoLink) normalized.video_url = normalized.videoLink;
   applyVideoState(normalized, getRenderableVideoUrl(normalized) || normalized.video_url || '');
@@ -4108,7 +4106,7 @@ function renderStudentSignupStepContent(){
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
       <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
-      <div style="margin-bottom:14px">${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:120px;height:120px;border-radius:20px;object-fit:cover;border:3px solid #E0F2FE', 'full', 'loading="eager"') : `<div class="small muted">No photo uploaded yet.</div>`}</div>
+      <div style="margin-bottom:14px">${renderEditableSingleImage(d.photo || '', 'Profile preview', 'removeStudentSignupPhoto()', 120, 'No photo uploaded yet.')}</div>
       <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
         ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
@@ -4148,9 +4146,9 @@ function renderStudentSignupStepContent(){
       <div style="font-weight:800;margin-bottom:10px">${studentSignupEditingServiceIndex === null ? 'Create Service' : 'Edit Service'}</div>
       <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
       <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
-      <div class="field"><label>Add Images (optional, 1\u20133)</label><input type="file" multiple accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
+      <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
-      ${renderSignupImageGallery((d.serviceForm || {}).images || [], 120)}
+      ${renderEditableSingleImage(((d.serviceForm || {}).images || [])[0] || '', 'Service image', 'removeStudentSignupServiceImage()', 120, 'No service image added yet.')}
       <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"></div>
       <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
@@ -4290,19 +4288,28 @@ function goStudentSignupStep(targetStep){
 function handleStudentSignupPhotoUpload(input){
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const imageId = upsertImageRecord(reader.result, { source:'signup_profile' });
-    studentSignupDraft.photo = imageId;
-    if (!(studentSignupDraft.profileImages || []).length) studentSignupDraft.profileImages = [imageId];
-    renderStudentSignupModal();
-  };
-  reader.readAsDataURL(file);
+  prepareUploadedImageRecord(file, { source:'signup_profile', entity_type:'profile_signup' })
+    .then(imageId => {
+      studentSignupDraft.photo = imageId;
+      studentSignupDraft.profileImages = replaceWithSingleImage(imageId);
+      if (input) input.value = '';
+      renderStudentSignupModal();
+    })
+    .catch(error => {
+      console.error('Profile photo upload failed', error);
+      toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    });
 }
 function selectStudentSignupPhotoFromLibrary(imageId){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupDraft.photo = imageId;
-  if (!(studentSignupDraft.profileImages || []).length) studentSignupDraft.profileImages = [imageId];
+  studentSignupDraft.profileImages = replaceWithSingleImage(imageId);
+  renderStudentSignupModal();
+}
+function removeStudentSignupPhoto(){
+  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+  studentSignupDraft.photo = '';
+  studentSignupDraft.profileImages = [];
   renderStudentSignupModal();
 }
 function previewStudentSignupProfileVideo(value){
@@ -4312,15 +4319,16 @@ function previewStudentSignupProfileVideo(value){
 }
 function handleStudentSignupProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
-    studentSignupDraft.profileImages = images;
-    if (images[0]) studentSignupDraft.photo = images[0];
+    studentSignupDraft.profileImages = replaceWithSingleImage(images[0] || '');
+    studentSignupDraft.photo = studentSignupDraft.profileImages[0] || '';
+    if (input) input.value = '';
     renderStudentSignupModal();
-  });
+  }, 1, { source:'signup_profile' });
 }
 function addStudentSignupProfileImageFromLibrary(imageId){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
-  studentSignupDraft.profileImages = addImageIdToList(studentSignupDraft.profileImages || [], imageId, 3);
-  if (!studentSignupDraft.photo) studentSignupDraft.photo = studentSignupDraft.profileImages[0] || '';
+  studentSignupDraft.profileImages = replaceWithSingleImage(imageId);
+  studentSignupDraft.photo = studentSignupDraft.profileImages[0] || '';
   renderStudentSignupModal();
 }
 function syncStudentSignupServiceForm(){
@@ -4347,24 +4355,21 @@ function previewStudentSignupServiceVideo(value){
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
-  const existingImages = ((studentSignupDraft.serviceForm || {}).images || []).filter(Boolean);
-  const remainingSlots = Math.max(0, 3 - existingImages.length);
-  if (!remainingSlots) {
-    toast('You can add up to 3 service images. Remove one before adding another.');
-    if (input) input.value = '';
-    return;
-  }
   readImagesToDataUrls(input, (images) => {
-    const nextImages = [...existingImages, ...images.filter(Boolean)].slice(0, 3);
-    studentSignupDraft.serviceForm.images = nextImages;
-    if (images.length) toast(`${images.length} service image${images.length === 1 ? '' : 's'} added.`);
+    studentSignupDraft.serviceForm.images = replaceWithSingleImage(images[0] || '');
     if (input) input.value = '';
+    if (images[0]) toast('Service image updated.');
     renderStudentSignupModal();
-  }, remainingSlots, { source:'student_service', entity_type:'service_signup' });
+  }, 1, { source:'student_service', entity_type:'service_signup' });
 }
 function addStudentSignupServiceImageFromLibrary(imageId){
   syncStudentSignupServiceForm();
-  studentSignupDraft.serviceForm.images = addImageIdToList((studentSignupDraft.serviceForm || {}).images || [], imageId, 3);
+  studentSignupDraft.serviceForm.images = replaceWithSingleImage(imageId);
+  renderStudentSignupModal();
+}
+function removeStudentSignupServiceImage(){
+  syncStudentSignupServiceForm();
+  if (studentSignupDraft && studentSignupDraft.serviceForm) studentSignupDraft.serviceForm.images = [];
   renderStudentSignupModal();
 }
 function startNewStudentSignupService(){
@@ -4782,7 +4787,7 @@ function renderEmployerSignupStepContent(){
       <div class="field"><label>Profile Photo</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
-      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderManagedImage(d.photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
+      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderEditableSingleImage(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
       <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
@@ -4795,7 +4800,7 @@ function renderEmployerSignupStepContent(){
       <div class="field"><label>Business Name</label><input id="employerBusinessName" value="${esc(d.businessName)}" placeholder="Business name" oninput="syncEmployerSignupBusinessDraft()"></div>
       <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/*" onchange="handleEmployerSignupBusinessLogoUpload(this)"></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupBusinessLogoFromLibrary')}</div>` : ''}
-      <div style="margin-bottom:14px">${d.businessLogo ? renderManagedImage(d.businessLogo, 'Business logo', 'width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"') : `<div class="small muted">No business logo added yet.</div>`}</div>
+      <div style="margin-bottom:14px">${renderEditableSingleImage(d.businessLogo || '', 'Business logo', 'removeEmployerSignupBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business..." oninput="syncEmployerSignupBusinessDraft()">${esc(d.businessAbout)}</textarea></div>
       <div class="field"><label>Business Phone Number (private)</label><input id="employerBusinessPhone" value="${esc(d.businessPhone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">This is a separate field from the personal phone number.</div></div>
       <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">Only the city is shown publicly.</div></div>
@@ -4887,32 +4892,50 @@ function handleEmployerSignupPhotoUpload(input){
   syncEmployerSignupPersonalDraft();
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    employerSignupDraft.photo = upsertImageRecord(reader.result, { source:'employer_profile' });
-    renderEmployerSignupModal();
-  };
-  reader.readAsDataURL(file);
+  prepareUploadedImageRecord(file, { source:'employer_profile', entity_type:'profile_signup' })
+    .then(imageId => {
+      employerSignupDraft.photo = imageId;
+      if (input) input.value = '';
+      renderEmployerSignupModal();
+    })
+    .catch(error => {
+      console.error('Profile photo upload failed', error);
+      toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    });
 }
 function selectEmployerSignupPhotoFromLibrary(imageId){
   syncEmployerSignupPersonalDraft();
-  employerSignupDraft.photo = imageId;
+  employerSignupDraft.photo = imageId || '';
+  renderEmployerSignupModal();
+}
+function removeEmployerSignupPhoto(){
+  syncEmployerSignupPersonalDraft();
+  employerSignupDraft.photo = '';
   renderEmployerSignupModal();
 }
 function handleEmployerSignupBusinessLogoUpload(input){
   syncEmployerSignupBusinessDraft();
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    employerSignupDraft.businessLogo = upsertImageRecord(reader.result, { source:'business_logo' });
-    renderEmployerSignupModal();
-  };
-  reader.readAsDataURL(file);
+  prepareUploadedImageRecord(file, { source:'business_logo', entity_type:'business_signup' })
+    .then(imageId => {
+      employerSignupDraft.businessLogo = imageId;
+      if (input) input.value = '';
+      renderEmployerSignupModal();
+    })
+    .catch(error => {
+      console.error('Business logo upload failed', error);
+      toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    });
 }
 function selectEmployerSignupBusinessLogoFromLibrary(imageId){
   syncEmployerSignupBusinessDraft();
-  employerSignupDraft.businessLogo = imageId;
+  employerSignupDraft.businessLogo = imageId || '';
+  renderEmployerSignupModal();
+}
+function removeEmployerSignupBusinessLogo(){
+  syncEmployerSignupBusinessDraft();
+  employerSignupDraft.businessLogo = '';
   renderEmployerSignupModal();
 }
 function editEmployerSignupPreview(section='personal'){
@@ -5881,7 +5904,7 @@ function normalizeWorkshopRecord(workshop){
   normalized.price = Number(normalized.price || 0) || 0;
   normalized.capacity = normalized.capacity === '' ? '' : (Number(normalized.capacity || 0) || 0);
   normalized.status = ['draft','active','canceled','completed'].includes(normalized.status) ? normalized.status : 'draft';
-  normalized.images = upsertImageRecords(normalized.images || [], { source:'workshop', entity_type:'workshop', entity_id: normalized.id }).slice(0,3);
+  normalized.images = upsertImageRecords(normalized.images || [], { source:'workshop', entity_type:'workshop', entity_id: normalized.id }).slice(0,1);
   const videoState = normalizeVideoInputValue(normalized.video_url || '');
   normalized.video_url = (videoState.video_type === 'youtube' || videoState.video_type === 'vimeo') ? videoState.input_url : '';
   normalized.included = ensureArray(normalized.included).map(item => String(item || '').trim()).filter(Boolean);
@@ -6717,7 +6740,7 @@ function openWorkshopEditor(workshopId=''){
         <div class="field"><label>Capacity (optional)</label><input id="workshopCapacity" type="number" min="1" value="${esc(workshopDraft.capacity)}"></div>
       </div>
       <div class="field"><label>Included (one item per line)</label><textarea id="workshopIncluded" rows="4">${esc((workshopDraft.included || []).join('\n'))}</textarea></div>
-      <div class="field"><label>Workshop Images (1-3)</label><input type="file" multiple accept="image/*" onchange="handleWorkshopImagesUpload(this)"></div>
+      <div class="field"><label>Workshop Image (one image)</label><input type="file" accept="image/*" onchange="handleWorkshopImagesUpload(this)"></div>
       ${coverViews.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${coverViews.map((image, index) => `<div style="position:relative">${renderManagedImage(image.id || image.url, 'Workshop image', 'width:88px;height:88px;border-radius:12px;object-fit:cover;border:1px solid var(--border)', 'thumb')}<button class="btn btn-danger btn-sm" style="position:absolute;top:4px;right:4px;padding:2px 6px" onclick="removeWorkshopImage(${index})">\u00D7</button></div>`).join('')}</div>` : `<div class="small muted" style="margin-bottom:10px">No workshop images uploaded yet.</div>`}
       <div class="field"><label>Optional Video URL (YouTube/Vimeo only)</label><input id="workshopVideoUrl" value="${esc(workshopDraft.video_url)}" placeholder="https://youtube.com/..."></div>
       <div style="margin-bottom:12px">${workshopDraft.video_url ? renderVideoPreviewHtml(workshopDraft.video_url, 'Workshop video') : `<div class="small muted">No video URL added.</div>`}</div>
@@ -6732,11 +6755,11 @@ function openWorkshopEditor(workshopId=''){
 function handleWorkshopImagesUpload(input){
   if (!workshopDraft) return;
   syncWorkshopDraftFromForm();
-  const files = Array.from((input && input.files) || []).slice(0, 3);
-  if (!files.length) return;
-  Promise.all(files.map(file => prepareUploadedImageRecord(file, { source:'workshop', entity_type:'workshop', entity_id: workshopDraft.id })))
-    .then(imageIds => {
-      workshopDraft.images = [...new Set([...(workshopDraft.images || []), ...imageIds.filter(Boolean)])].slice(0,3);
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  prepareUploadedImageRecord(file, { source:'workshop', entity_type:'workshop', entity_id: workshopDraft.id })
+    .then(imageId => {
+      workshopDraft.images = replaceWithSingleImage(imageId);
       if (input) input.value = '';
       openWorkshopEditor('__current__');
     })
@@ -7131,14 +7154,33 @@ function renderImagePreviewHtml(images=[], size=72){
 }
 function renderSignupImageGallery(images=[], size=120, options={}){
   const showEmptyMessage = options.showEmptyMessage !== false;
-  if (!images.length) return showEmptyMessage ? `<div class="small muted" style="margin-bottom:14px">Upload up to 3 images. They\u2019ll appear in a carousel on your preview, profile, and service views.</div>` : '';
+  if (!images.length) return showEmptyMessage ? `<div class="small muted" style="margin-bottom:14px">Upload one image. You can replace or remove it anytime.</div>` : '';
   return `<div style="margin-bottom:14px">${renderMediaCarousel(images, size)}</div>`;
+}
+function renderEditableSingleImage(imageId='', alt='Image', removeAction='', size=120, emptyLabel='No image uploaded yet.'){
+  const cleanId = String(imageId || '').trim();
+  if (!cleanId) return `<div class="small muted" style="margin-bottom:14px">${esc(emptyLabel)}</div>`;
+  const safeAction = String(removeAction || '').replace(/"/g, '&quot;');
+  return `
+    <div style="display:inline-flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      ${renderManagedImage(cleanId, alt, `width:${size}px;height:${size}px;border-radius:14px;object-fit:cover;border:1px solid var(--border)`, 'thumb', 'loading="eager"')}
+      ${safeAction ? `<button class="btn btn-outline btn-sm" type="button" onclick="${safeAction}">Remove image</button>` : ''}
+    </div>
+  `;
+}
+function singleImageList(value){
+  const list = Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
+  return list.slice(0, 1);
+}
+function replaceWithSingleImage(imageId=''){
+  const cleanId = String(imageId || '').trim();
+  return cleanId ? [cleanId] : [];
 }
 function getStudentProfileImageList(student={}){
   const images = Array.isArray(student.profileImages) ? student.profileImages.filter(Boolean) : [];
   const primary = student.profile_image_id || student.photo || '';
   if (primary && !images.some(image => String(image) === String(primary))) images.unshift(primary);
-  return images.slice(0, 3);
+  return images.slice(0, 1);
 }
 function renderStudentProfileMediaSections(student={}, options={}){
   const labelClass = options.labelClass || '';
@@ -7717,7 +7759,7 @@ function openReviewListModal(title, reviews=[]){
 }
 function readImagesToDataUrls(input, callback, limit=3, meta={}){
   const allFiles = Array.from((input && input.files) || []);
-  if (allFiles.length > limit) toast(`You can upload up to ${limit} images. The first ${limit} were kept.`);
+  if (allFiles.length > limit) toast(limit === 1 ? 'You can upload one image. The first image was kept.' : `You can upload up to ${limit} images. The first ${limit} were kept.`);
   const files = allFiles.slice(0, limit);
   if (!files.length) return callback([]);
   Promise.all(files.map(file => prepareUploadedImageRecord(file, Object.assign({ source:'upload' }, meta))))
@@ -7752,14 +7794,26 @@ function setAdminModalSingleImage(inputId='', previewId='', imageId='', alt='Ima
   const input = document.getElementById(inputId);
   if (input) input.value = imageId || '';
   const preview = document.getElementById(previewId);
-  if (preview) preview.innerHTML = renderAdminModalSingleImagePreview(imageId, alt, emptyLabel);
+  if (preview) {
+    const removeAction = `clearAdminModalSingleImage('${String(inputId).replace(/'/g, "\'")}','${String(previewId).replace(/'/g, "\'")}','${String(alt).replace(/'/g, "\'")}','${String(emptyLabel).replace(/'/g, "\'")}')`;
+    preview.innerHTML = imageId ? renderEditableSingleImage(imageId, alt, removeAction, 96, emptyLabel) : renderAdminModalSingleImagePreview('', alt, emptyLabel);
+  }
 }
-function setAdminModalImageList(inputId='', previewId='', imageIds=[], limit=3){
-  const nextImages = Array.isArray(imageIds) ? imageIds.filter(Boolean).slice(0, limit) : [];
+function clearAdminModalSingleImage(inputId='', previewId='', alt='Image', emptyLabel='No image selected yet.'){
+  setAdminModalSingleImage(inputId, previewId, '', alt, emptyLabel);
+}
+function setAdminModalImageList(inputId='', previewId='', imageIds=[], limit=1){
+  const nextImages = Array.isArray(imageIds) ? imageIds.filter(Boolean).slice(0, 1) : [];
   const input = document.getElementById(inputId);
   if (input) input.value = JSON.stringify(nextImages);
   const preview = document.getElementById(previewId);
-  if (preview) preview.innerHTML = renderSignupImageGallery(nextImages, 120);
+  if (preview) {
+    const removeAction = `clearAdminModalImageList('${String(inputId).replace(/'/g, "\'")}','${String(previewId).replace(/'/g, "\'")}')`;
+    preview.innerHTML = renderEditableSingleImage(nextImages[0] || '', 'Image', removeAction, 120, 'No image uploaded yet.');
+  }
+}
+function clearAdminModalImageList(inputId='', previewId=''){
+  setAdminModalImageList(inputId, previewId, [], 1);
 }
 function openAdminModalImageLibrary(mode='single', inputId='', previewId='', limit=1, alt='Image', emptyLabel='No image selected yet.'){
   adminModalImageLibraryTarget = { mode, inputId, previewId, limit, alt, emptyLabel };
@@ -7767,10 +7821,9 @@ function openAdminModalImageLibrary(mode='single', inputId='', previewId='', lim
 }
 function selectAdminModalImageFromLibrary(imageId=''){
   if (!adminModalImageLibraryTarget) return toast('Image target is unavailable.');
-  const { mode, inputId, previewId, limit, alt, emptyLabel } = adminModalImageLibraryTarget;
+  const { mode, inputId, previewId, alt, emptyLabel } = adminModalImageLibraryTarget;
   if (mode === 'list') {
-    const nextImages = addImageIdToList(getAdminModalImageList(inputId), imageId, limit || 3);
-    setAdminModalImageList(inputId, previewId, nextImages, limit || 3);
+    setAdminModalImageList(inputId, previewId, replaceWithSingleImage(imageId), 1);
   } else {
     setAdminModalSingleImage(inputId, previewId, imageId, alt, emptyLabel);
   }
@@ -7788,12 +7841,12 @@ function handleAdminModalSingleImageUpload(input, inputId='', previewId='', sour
       toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
     });
 }
-function handleAdminModalImageListUpload(input, inputId='', previewId='', source='gallery', limit=3){
+function handleAdminModalImageListUpload(input, inputId='', previewId='', source='gallery', limit=1){
   readImagesToDataUrls(input, (images) => {
-    const taggedImages = upsertImageRecords(images, { source });
-    setAdminModalImageList(inputId, previewId, taggedImages, limit);
+    const taggedImages = upsertImageRecords(images.slice(0, 1), { source });
+    setAdminModalImageList(inputId, previewId, taggedImages, 1);
     if (input) input.value = '';
-  }, limit, { source });
+  }, 1, { source });
 }
 function selectImageFromLibrary(callbackName, imageId){
   const fn = window[callbackName];
@@ -8154,31 +8207,53 @@ function getPostComposerDraft(){
     video_id: ''
   }, ls('cogo_draft_post') || {});
   const rawImages = ensureArray(draft.entity_images).length ? draft.entity_images : ensureArray(draft.images);
-  draft.entity_images = upsertImageRecords(rawImages, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,5);
+  draft.entity_images = upsertImageRecords(rawImages, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,1);
   draft.images = [...draft.entity_images];
   applyVideoState(draft, getRenderableVideoUrl(draft) || draft.video_url || '');
   return draft;
 }
 function renderCommunityPostImages(images=[], size=120){
-  const safe = ensureArray(images).slice(0, 5);
+  const safe = ensureArray(images).slice(0, 1);
   if (!safe.length) return '';
   return safe.length > 2 ? renderMediaCarousel(safe, size) : renderMediaThumbs(safe, 2, size, '');
 }
-function renderPostComposerImagePreview(images=[]){
-  const safe = ensureArray(images).slice(0, 5);
-  if (!safe.length) return `<div class="small muted">Images are optional. Upload up to 5 pictures for this community post.</div>`;
-  return renderCommunityPostImages(safe, 110);
+function renderPostComposerImagePreview(images=[], removeAction='removePostComposerImage'){
+  const safe = ensureArray(images).filter(Boolean).slice(0, 1);
+  if (!safe.length) return `<div class="small muted">Image is optional. Upload one picture for this community post.</div>`;
+  const action = removeAction ? `${removeAction}()` : '';
+  return renderEditableSingleImage(safe[0], 'Post image', action, 110, 'No post image added yet.');
+}
+function setHiddenSingleImage(inputId='', imageId=''){
+  const hidden = document.getElementById(inputId);
+  const list = replaceWithSingleImage(imageId);
+  if (hidden) hidden.value = JSON.stringify(list);
+  return list;
+}
+function removePostComposerImage(){
+  setHiddenSingleImage('postImagesValue', '');
+  const preview = document.getElementById('post-images-preview');
+  if (preview) preview.innerHTML = renderPostComposerImagePreview([]);
+  savePostComposerDraft();
+}
+function removeEditPostImage(){
+  setHiddenSingleImage('editPostImagesValue', '');
+  const preview = document.getElementById('edit-post-images-preview');
+  if (preview) preview.innerHTML = renderPostComposerImagePreview([], 'removeEditPostImage');
+}
+function removeEmpPostImage(){
+  setHiddenSingleImage('empPostImagesValue', '');
+  const preview = document.getElementById('emp-post-images-preview');
+  if (preview) preview.innerHTML = renderPostComposerImagePreview([], 'removeEmpPostImage');
 }
 function handlePostComposerImagesUpload(input){
-  const current = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]');
   readImagesToDataUrls(input, (images) => {
-    const merged = upsertImageRecords([...(current || []), ...(images || [])], { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,5);
-    const hidden = document.getElementById('postImagesValue');
-    if (hidden) hidden.value = JSON.stringify(merged);
+    const uploaded = upsertImageRecords(images.slice(0, 1), { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
+    const next = setHiddenSingleImage('postImagesValue', uploaded[0] || '');
     const preview = document.getElementById('post-images-preview');
-    if (preview) preview.innerHTML = renderPostComposerImagePreview(merged);
+    if (preview) preview.innerHTML = renderPostComposerImagePreview(next);
+    if (input) input.value = '';
     savePostComposerDraft();
-  }, 5, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
+  }, 1, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
 }
 function previewPostComposerVideo(value){
   const state = normalizeVideoInputValue(value || '');
@@ -8221,9 +8296,9 @@ function togglePostComposer(){
         <label>Your post</label><textarea id="postContent" placeholder="Share something with the community..." oninput="syncCommunityJobDescriptionFromPost();savePostComposerDraft()">${esc(draft.content || '')}</textarea>
       </div>
       <div class="field">
-        <label>Post Images (optional, up to 5)</label>
-        <input type="file" multiple accept="image/*" onchange="handlePostComposerImagesUpload(this)">
-        <input type="hidden" id="postImagesValue" value="${esc(JSON.stringify(draft.entity_images || []))}">
+        <label>Post Image (optional, one image)</label>
+        <input type="file" accept="image/*" onchange="handlePostComposerImagesUpload(this)">
+        <input type="hidden" id="postImagesValue" value="${esc(JSON.stringify(singleImageList(draft.entity_images || [])))}">
       </div>
       <div id="post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(draft.entity_images || [])}</div>
       <div class="field"><label>Post Video Link (optional)</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"></div>
@@ -8282,7 +8357,7 @@ function syncCommunityJobDescriptionFromPost(force=false){
 function submitPost(){
   if (!currentUser) return openLoginModal();
   const content = (document.getElementById('postContent').value || '').trim();
-  const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 5);
+  const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 1);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
   const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
   if (toastRequiredFields({ Post:content })) return;
@@ -8333,7 +8408,7 @@ function renderPost(p){
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
   const comments = ensureArray(p.comments);
   const commentsOpen = openPostCommentId === p.id;
-  const postImages = ensureArray((p.entity_images && p.entity_images.length) ? p.entity_images : p.images).slice(0,5);
+  const postImages = ensureArray((p.entity_images && p.entity_images.length) ? p.entity_images : p.images).slice(0,1);
   const postVideoUrl = getRenderableVideoUrl(p);
   const mediaHtml = `
     ${postImages.length ? `<div style="margin-bottom:10px;max-width:540px">${renderCommunityPostImages(postImages, 120)}</div>` : ''}
@@ -8433,11 +8508,11 @@ function editPost(postId){
   openModal('Edit Post', `
     <div class="field"><label>Post</label><textarea id="editPostContent">${esc(p.content)}</textarea></div>
     <div class="field">
-      <label>Post Images (optional, up to 5)</label>
-      <input type="file" multiple accept="image/*" onchange="handleEditPostImagesUpload(this)">
-      <input type="hidden" id="editPostImagesValue" value="${esc(JSON.stringify(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || []))}">
+      <label>Post Image (optional, one image)</label>
+      <input type="file" accept="image/*" onchange="handleEditPostImagesUpload(this)">
+      <input type="hidden" id="editPostImagesValue" value="${esc(JSON.stringify(singleImageList(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [])))}">
     </div>
-    <div id="edit-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [])}</div>
+    <div id="edit-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [], 'removeEditPostImage')}</div>
     <div class="field"><label>Post Video Link (optional)</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"></div>
     <div class="field"><label>Or upload a video (optional)</label><input type="file" accept="video/*" onchange="handleEditPostVideoUpload(this)"></div>
     <div id="edit-post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(p) ? renderVideoPreviewHtml(getRenderableVideoUrl(p), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
@@ -8454,14 +8529,13 @@ function editPost(postId){
   `);
 }
 function handleEditPostImagesUpload(input){
-  const current = parseJsonArray((document.getElementById('editPostImagesValue') || {}).value || '[]');
   readImagesToDataUrls(input, (images) => {
-    const merged = upsertImageRecords([...(current || []), ...(images || [])], { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,5);
-    const hidden = document.getElementById('editPostImagesValue');
-    if (hidden) hidden.value = JSON.stringify(merged);
+    const uploaded = upsertImageRecords(images.slice(0, 1), { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
+    const next = setHiddenSingleImage('editPostImagesValue', uploaded[0] || '');
     const preview = document.getElementById('edit-post-images-preview');
-    if (preview) preview.innerHTML = renderPostComposerImagePreview(merged);
-  }, 5, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
+    if (preview) preview.innerHTML = renderPostComposerImagePreview(next, 'removeEditPostImage');
+    if (input) input.value = '';
+  }, 1, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
 }
 function previewEditPostVideo(value){
   const state = normalizeVideoInputValue(value || '');
@@ -8482,7 +8556,7 @@ function savePostEdit(postId){
   const content = (document.getElementById('editPostContent').value || '').trim();
   if (!content || !blockTextCheck(content)) return;
   p.content = content;
-  const postImages = parseJsonArray((document.getElementById('editPostImagesValue') || {}).value || '[]').slice(0, 5);
+  const postImages = parseJsonArray((document.getElementById('editPostImagesValue') || {}).value || '[]').slice(0, 1);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('editPostVideoUrl') || {}).value || '').trim());
   p.entity_images = [...postImages];
   p.images = [...postImages];
@@ -9276,9 +9350,9 @@ function openStudentProfileForm(profileId=''){
     <div class="field"><label>Email (private)</label><input id="studentProfileEmail" type="email" value="${esc(studentProfileDraft.email || '')}"></div>
     <div class="field"><label>About</label><textarea id="studentProfileAbout">${esc(studentProfileDraft.about || '')}</textarea></div>
     <div class="field"><label>Experience</label><textarea id="studentProfileHighlights">${esc(studentProfileDraft.highlights || '')}</textarea></div>
-    <div class="field"><label>Profile Images (optional, 1\u20133)</label><input type="file" multiple accept="image/*" onchange="handleStudentProfileImagesUpload(this)"></div>
+    <div class="field"><label>Profile Image (optional, one image)</label><input type="file" accept="image/*" onchange="handleStudentProfileImagesUpload(this)"></div>
     ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentProfileImageFromLibrary')}</div>` : ''}
-    <div id="student-profile-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentProfileImagesBuffer, 120)}</div>
+    <div id="student-profile-images-preview" style="margin-bottom:14px">${renderEditableSingleImage((studentProfileImagesBuffer || [])[0] || '', 'Profile image', 'removeStudentProfileImage()', 120, 'No profile image uploaded yet.')}</div>
     <div class="field"><label>Video Link (optional)</label><input id="studentProfileVideoLink" value="${esc(getEditableVideoInputValue(studentProfileDraft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentProfileVideoLink(this.value)"></div>
     <div id="student-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(studentProfileDraft), 'Profile video')}</div>
     <button class="btn btn-blue" onclick="saveStudentProfileForm('${esc(profile.id)}')">Save Profile</button>
@@ -9364,17 +9438,25 @@ async function saveStudentProfileForm(profileId=''){
 }
 function handleStudentProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
-    studentProfileImagesBuffer = images;
-    if (studentProfileDraft) studentProfileDraft.profileImages = [...images];
+    studentProfileImagesBuffer = replaceWithSingleImage(images[0] || '');
+    if (studentProfileDraft) studentProfileDraft.profileImages = [...studentProfileImagesBuffer];
     const el = document.getElementById('student-profile-images-preview');
-    if (el) el.innerHTML = renderSignupImageGallery(studentProfileImagesBuffer, 120);
-  });
+    if (el) el.innerHTML = renderEditableSingleImage(studentProfileImagesBuffer[0] || '', 'Profile image', 'removeStudentProfileImage()', 120, 'No profile image uploaded yet.');
+    if (input) input.value = '';
+  }, 1, { source:'profile_gallery', entity_type:'student_profile', owner_id: currentUser ? currentUser.id : '' });
 }
 function addStudentProfileImageFromLibrary(imageId){
   syncStudentProfileDraftFromForm();
-  studentProfileImagesBuffer = addImageIdToList(studentProfileImagesBuffer, imageId, 3);
+  studentProfileImagesBuffer = replaceWithSingleImage(imageId);
   if (studentProfileDraft) studentProfileDraft.profileImages = [...studentProfileImagesBuffer];
   openStudentProfileForm(activeStudentProfileFormId);
+}
+function removeStudentProfileImage(){
+  syncStudentProfileDraftFromForm();
+  studentProfileImagesBuffer = [];
+  if (studentProfileDraft) studentProfileDraft.profileImages = [];
+  const el = document.getElementById('student-profile-images-preview');
+  if (el) el.innerHTML = renderEditableSingleImage('', 'Profile image', 'removeStudentProfileImage()', 120, 'No profile image uploaded yet.');
 }
 function previewStudentProfileVideoLink(value){
   if (studentProfileDraft) applyVideoState(studentProfileDraft, value || '');
@@ -9413,17 +9495,25 @@ function syncStudentServiceDraftFromForm(){
 }
 function handleStudentServiceImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
-    studentServiceImagesBuffer = images;
-    if (studentServiceDraft) studentServiceDraft.images = [...images];
+    studentServiceImagesBuffer = replaceWithSingleImage(images[0] || '');
+    if (studentServiceDraft) studentServiceDraft.images = [...studentServiceImagesBuffer];
     const el = document.getElementById('student-service-images-preview');
-    if (el) el.innerHTML = renderSignupImageGallery(studentServiceImagesBuffer, 120);
-  });
+    if (el) el.innerHTML = renderEditableSingleImage(studentServiceImagesBuffer[0] || '', 'Service image', 'removeStudentServiceImage()', 120, 'No service image uploaded yet.');
+    if (input) input.value = '';
+  }, 1, { source:'student_service', entity_type:'service', owner_id: currentUser ? currentUser.id : '' });
 }
 function addStudentServiceImageFromLibrary(imageId){
   syncStudentServiceDraftFromForm();
-  studentServiceImagesBuffer = addImageIdToList(studentServiceImagesBuffer, imageId, 3);
+  studentServiceImagesBuffer = replaceWithSingleImage(imageId);
   if (studentServiceDraft) studentServiceDraft.images = [...studentServiceImagesBuffer];
   openStudentServiceForm(activeStudentServiceFormIndex);
+}
+function removeStudentServiceImage(){
+  syncStudentServiceDraftFromForm();
+  studentServiceImagesBuffer = [];
+  if (studentServiceDraft) studentServiceDraft.images = [];
+  const el = document.getElementById('student-service-images-preview');
+  if (el) el.innerHTML = renderEditableSingleImage('', 'Service image', 'removeStudentServiceImage()', 120, 'No service image uploaded yet.');
 }
 function previewStudentServiceVideoLink(value){
   if (studentServiceDraft) applyVideoState(studentServiceDraft, value || '');
@@ -9443,9 +9533,9 @@ function openStudentServiceForm(serviceIndex=''){
   openModal(existing ? 'Edit Service' : 'Add Service', `
     <div class="field"><label>Title</label><input id="studentServiceTitle" value="${esc(studentServiceDraft.title || '')}"></div>
     <div class="field"><label>Description</label><textarea id="studentServiceDescription">${esc(studentServiceDraft.description || '')}</textarea></div>
-    <div class="field"><label>Images (optional, 1\u20133)</label><input type="file" multiple accept="image/*" onchange="handleStudentServiceImagesUpload(this)"></div>
+    <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/*" onchange="handleStudentServiceImagesUpload(this)"></div>
     ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentServiceImageFromLibrary')}</div>` : ''}
-    <div id="student-service-images-preview" style="margin-bottom:14px">${renderSignupImageGallery(studentServiceImagesBuffer, 120)}</div>
+    <div id="student-service-images-preview" style="margin-bottom:14px">${renderEditableSingleImage((studentServiceImagesBuffer || [])[0] || '', 'Service image', 'removeStudentServiceImage()', 120, 'No service image uploaded yet.')}</div>
     <div class="field"><label>Video Link (optional)</label><input id="studentServiceVideoLink" value="${esc(getEditableVideoInputValue(studentServiceDraft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentServiceVideoLink(this.value)"></div>
     <div id="student-service-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(studentServiceDraft), 'Service video')}</div>
     <div class="row">
@@ -9893,8 +9983,8 @@ function renderEmployerCommunityJobs(el){
     <div class="card form-card">
       <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..." oninput="syncJobDescriptionFromPost()"></textarea></div>
       <div class="field">
-        <label>Post Images (optional, up to 5)</label>
-        <input type="file" multiple accept="image/*" onchange="handleEmpPostImagesUpload(this)">
+        <label>Post Image (optional, one image)</label>
+        <input type="file" accept="image/*" onchange="handleEmpPostImagesUpload(this)">
         <input type="hidden" id="empPostImagesValue" value="[]">
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
@@ -9924,14 +10014,13 @@ function renderEmployerCommunityJobs(el){
   `;
 }
 function handleEmpPostImagesUpload(input){
-  const current = parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]');
   readImagesToDataUrls(input, (images) => {
-    const merged = upsertImageRecords([...(current || []), ...(images || [])], { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,5);
-    const hidden = document.getElementById('empPostImagesValue');
-    if (hidden) hidden.value = JSON.stringify(merged);
+    const uploaded = upsertImageRecords(images.slice(0, 1), { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
+    const next = setHiddenSingleImage('empPostImagesValue', uploaded[0] || '');
     const preview = document.getElementById('emp-post-images-preview');
-    if (preview) preview.innerHTML = renderPostComposerImagePreview(merged);
-  }, 5, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
+    if (preview) preview.innerHTML = renderPostComposerImagePreview(next, 'removeEmpPostImage');
+    if (input) input.value = '';
+  }, 1, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
 }
 function previewEmpPostVideo(value){
   const state = normalizeVideoInputValue(value || '');
@@ -9961,7 +10050,7 @@ function syncJobDescriptionFromPost(force=false){
 }
 function submitEmployerDashboardPost(){
   const content = (document.getElementById('empPostContent').value || '').trim();
-  const postImages = parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]').slice(0, 5);
+  const postImages = parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]').slice(0, 1);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('empPostVideoUrl') || {}).value || '').trim());
   const isJobToggle = document.getElementById('empIsJob');
   const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(isJobToggle && isJobToggle.checked);
@@ -11219,8 +11308,8 @@ function renderMyPosts(el){
     <div class="card form-card">
       <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..." oninput="syncJobDescriptionFromPost()"></textarea></div>
       <div class="field">
-        <label>Post Images (optional, up to 5)</label>
-        <input type="file" multiple accept="image/*" onchange="handleEmpPostImagesUpload(this)">
+        <label>Post Image (optional, one image)</label>
+        <input type="file" accept="image/*" onchange="handleEmpPostImagesUpload(this)">
         <input type="hidden" id="empPostImagesValue" value="[]">
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
@@ -12162,10 +12251,9 @@ function openAdminUserEditImageLibrary(mode='single', path='', limit=1){
 }
 function selectAdminUserEditImageFromLibrary(imageId=''){
   if (!adminUserEditDraft || !adminModalImageLibraryTarget) return toast('Admin edit image target is unavailable.');
-  const { mode, path, limit } = adminModalImageLibraryTarget;
+  const { mode, path } = adminModalImageLibraryTarget;
   if (mode === 'list') {
-    const currentImages = Array.isArray(getAdminUserEditDraftValue(path)) ? getAdminUserEditDraftValue(path) : [];
-    setAdminUserEditDraftValue(path, addImageIdToList(currentImages, imageId, limit || 3));
+    setAdminUserEditDraftValue(path, replaceWithSingleImage(imageId));
   } else {
     setAdminUserEditDraftValue(path, imageId || '');
   }
@@ -12210,7 +12298,7 @@ function openAdminUserEditModal(userId){
     <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
       <div style="font-weight:800;margin-bottom:10px">Profile Photo</div>
       <input type="hidden" id="adminEditUserPhoto" value="${esc(draft.photo || '')}">
-      <div id="admin-edit-user-photo-preview" style="margin-bottom:12px">${renderAdminModalSingleImagePreview(draft.photo || '', 'Profile photo', 'No profile photo selected yet.')}</div>
+      <div id="admin-edit-user-photo-preview" style="margin-bottom:12px">${renderEditableSingleImage(draft.photo || '', 'Profile photo', "clearAdminModalSingleImage('adminEditUserPhoto','admin-edit-user-photo-preview','Profile photo','No profile photo selected yet.')", 96, 'No profile photo selected yet.')}</div>
       <div class="field"><label>Upload Profile Photo</label><input type="file" accept="image/*" onchange="handleAdminModalSingleImageUpload(this,'adminEditUserPhoto','admin-edit-user-photo-preview','profile','Profile photo','No profile photo selected yet.')"></div>
       <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('single','photo',1)">Select from Library</button></div>
     </div>
@@ -12223,21 +12311,21 @@ function openAdminUserEditModal(userId){
         </div>
         <div class="field"><label>About</label><textarea id="adminEditStudentAbout" rows="4">${esc(draft.student.about || '')}</textarea></div>
         <div class="field"><label>Highlights / Experience</label><textarea id="adminEditStudentHighlights" rows="4">${esc(draft.student.highlights || '')}</textarea></div>
-        <input type="hidden" id="adminEditStudentProfileImages" value="${esc(JSON.stringify(studentProfileImages))}">
-        <div style="font-weight:700;margin:14px 0 8px">Profile Images</div>
-        <div id="admin-edit-student-profile-images-preview" style="margin-bottom:12px">${renderSignupImageGallery(studentProfileImages, 120)}</div>
-        <div class="field"><label>Upload Profile Images</label><input type="file" multiple accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditStudentProfileImages','admin-edit-student-profile-images-preview','profile_gallery',3)"></div>
-        <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.profileImages',3)">Select from Library</button></div>
+        <input type="hidden" id="adminEditStudentProfileImages" value="${esc(JSON.stringify(singleImageList(studentProfileImages)))}">
+        <div style="font-weight:700;margin:14px 0 8px">Profile Image</div>
+        <div id="admin-edit-student-profile-images-preview" style="margin-bottom:12px">${renderEditableSingleImage((studentProfileImages || [])[0] || '', 'Profile image', "clearAdminModalImageList('adminEditStudentProfileImages','admin-edit-student-profile-images-preview')", 120, 'No profile image uploaded yet.')}</div>
+        <div class="field"><label>Upload Profile Image</label><input type="file" accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditStudentProfileImages','admin-edit-student-profile-images-preview','profile_gallery',1)"></div>
+        <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.profileImages',1)">Select from Library</button></div>
         <div class="field"><label>Profile Video Link</label><input id="adminEditStudentVideo" value="${esc(getEditableVideoInputValue(draft.student || {}))}"></div>
         <div style="font-weight:700;margin:14px 0 8px">Services</div>
         ${services.length ? services.map((service, index) => `
           <div class="card" style="padding:12px;margin-top:10px;border:1px solid var(--border)">
             <div class="field"><label>Service Title</label><input id="adminEditServiceTitle_${index}" value="${esc(service.title || '')}"></div>
             <div class="field"><label>Description</label><textarea id="adminEditServiceDescription_${index}" rows="3">${esc(service.description || '')}</textarea></div>
-            <input type="hidden" id="adminEditServiceImages_${index}" value="${esc(JSON.stringify(service.images || []))}">
-            <div id="admin-edit-service-images-preview_${index}" style="margin-bottom:12px">${renderSignupImageGallery(service.images || [], 120)}</div>
-            <div class="field"><label>Upload Service Images</label><input type="file" multiple accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditServiceImages_${index}','admin-edit-service-images-preview_${index}','service',3)"></div>
-            <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.services.${index}.images',3)">Select from Library</button></div>
+            <input type="hidden" id="adminEditServiceImages_${index}" value="${esc(JSON.stringify(singleImageList(service.images || [])))}">
+            <div id="admin-edit-service-images-preview_${index}" style="margin-bottom:12px">${renderEditableSingleImage(((service.images || [])[0]) || '', 'Service image', "clearAdminModalImageList('adminEditServiceImages_${index}','admin-edit-service-images-preview_${index}')", 120, 'No service image uploaded yet.')}</div>
+            <div class="field"><label>Upload Service Image</label><input type="file" accept="image/*" onchange="handleAdminModalImageListUpload(this,'adminEditServiceImages_${index}','admin-edit-service-images-preview_${index}','service',1)"></div>
+            <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('list','student.services.${index}.images',1)">Select from Library</button></div>
             <div class="field"><label>Video Link</label><input id="adminEditServiceVideo_${index}" value="${esc(getEditableVideoInputValue(service || {}))}"></div>
             <div class="row">
               <div class="field"><label>Rate</label><input id="adminEditServiceRate_${index}" type="number" min="0" value="${esc(service.rate || 0)}"></div>
@@ -12254,7 +12342,7 @@ function openAdminUserEditModal(userId){
         <div class="field"><label>Company / Business Name</label><input id="adminEditBusinessName" value="${esc(draft.company || '')}"></div>
         <div class="field"><label>About</label><textarea id="adminEditBusinessAbout" rows="3">${esc(draft.businessAbout || '')}</textarea></div>
         <input type="hidden" id="adminEditBusinessLogo" value="${esc(draft.businessLogo || '')}">
-        <div id="admin-edit-business-logo-preview" style="margin-bottom:12px">${renderAdminModalSingleImagePreview(draft.businessLogo || '', 'Business logo', 'No business logo selected yet.')}</div>
+        <div id="admin-edit-business-logo-preview" style="margin-bottom:12px">${renderEditableSingleImage(draft.businessLogo || '', 'Business logo', "clearAdminModalSingleImage('adminEditBusinessLogo','admin-edit-business-logo-preview','Business logo','No business logo selected yet.')", 96, 'No business logo selected yet.')}</div>
         <div class="field"><label>Upload Business Logo</label><input type="file" accept="image/*" onchange="handleAdminModalSingleImageUpload(this,'adminEditBusinessLogo','admin-edit-business-logo-preview','business_logo','Business logo','No business logo selected yet.')"></div>
         <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('single','businessLogo',1)">Select from Library</button></div>
       </div>
@@ -12345,7 +12433,7 @@ function saveAdminUserEdit(userId){
   if (student) {
     let profileImages = draft.student ? [...(draft.student.profileImages || [])] : [];
     if (!profileImages.length && user.photo) profileImages = [user.photo];
-    else if (user.photo && !profileImages.some(id => String(id) === String(user.photo))) profileImages = addImageIdToList(profileImages, user.photo, 3);
+    else if (user.photo && !profileImages.some(id => String(id) === String(user.photo))) profileImages = replaceWithSingleImage(user.photo);
     student.name = user.publicName || user.name;
     student.privateEmail = email;
     student.phone = phone;
