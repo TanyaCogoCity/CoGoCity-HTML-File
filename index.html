@@ -3981,35 +3981,79 @@ function getDirectJobListingOptions(pkg){
 function openPasswordResetModal(){
   openModal('Reset Password', `
     <div class="card form-card">
-      <div class="small muted" style="margin-bottom:10px">Enter your account email and choose a new password.</div>
-      <div class="field"><label>Email</label><input id="resetEmail" type="email" placeholder="you@example.com"></div>
-      <div class="field"><label>New Password</label><input id="resetNewPassword" type="password" placeholder="At least 6 characters"></div>
-      <div class="field"><label>Confirm New Password</label><input id="resetConfirmPassword" type="password" placeholder="Repeat password"></div>
+      <div class="small muted" style="margin-bottom:10px">Enter your account email and we’ll send a secure password reset link to that address.</div>
+      <div class="field"><label>Email</label><input id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openLoginModal('signin')">Back to Sign In</button>
-        <button class="btn btn-blue" onclick="submitPasswordReset()">Reset Password</button>
+        <button class="btn btn-blue" onclick="submitPasswordResetRequest()">Send Reset Link</button>
       </div>
     </div>
   `, '620px');
 }
-function submitPasswordReset(){
+async function submitPasswordResetRequest(){
   const email = String((document.getElementById('resetEmail') || {}).value || '').trim().toLowerCase();
+  if (toastRequiredFields({ Email:email })) return;
+  if (backendAuthEnabled()) {
+    try {
+      await backendAuthRequest('/auth/password-reset/request', {
+        method:'POST',
+        body: JSON.stringify({ email }),
+        retryOnAuthFailure:false
+      });
+      toast('If an account exists for that email, a password reset link has been sent.');
+      openLoginModal('signin');
+      const loginEmail = document.getElementById('loginEmail');
+      if (loginEmail) loginEmail.value = email;
+      return;
+    } catch (error) {
+      toast(error.message || 'Could not send password reset email.');
+      return;
+    }
+  }
+  toast('Password reset email is available only when backend auth is enabled.');
+}
+function getPasswordResetTokenFromHash(){
+  const route = String(location.hash || '');
+  const marker = '#/reset-password';
+  if (!route.startsWith(marker)) return '';
+  const queryStart = route.indexOf('?');
+  if (queryStart < 0) return '';
+  const params = new URLSearchParams(route.slice(queryStart + 1));
+  return params.get('token') || '';
+}
+function openPasswordResetConfirmModal(token=''){
+  if (!token) return openLoginModal('signin');
+  openModal('Choose New Password', `
+    <div class="card form-card">
+      <div class="small muted" style="margin-bottom:10px">Enter a new password for your CoGo City account.</div>
+      <div class="field"><label>New Password</label><input id="resetNewPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password"></div>
+      <div class="field"><label>Confirm New Password</label><input id="resetConfirmPassword" type="password" placeholder="Repeat password" autocomplete="new-password"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openLoginModal('signin')">Back to Sign In</button>
+        <button class="btn btn-blue" onclick="submitPasswordResetConfirm('${esc(token)}')">Update Password</button>
+      </div>
+    </div>
+  `, '620px');
+}
+async function submitPasswordResetConfirm(token=''){
   const nextPassword = String((document.getElementById('resetNewPassword') || {}).value || '');
   const confirmPassword = String((document.getElementById('resetConfirmPassword') || {}).value || '');
-  if (toastRequiredFields({ Email:email })) return;
   if (toastRequiredFields({ 'New password':nextPassword, 'Confirm new password':confirmPassword }, 'Password reset')) return;
-  if (nextPassword.length < 6) return toast('New password must be at least 6 characters.');
+  if (nextPassword.length < 8) return toast('New password must be at least 8 characters.');
   if (nextPassword !== confirmPassword) return toast('Confirm new password must match New password.');
-  const users = getUsers();
-  const user = users.find(item => String(item.email || '').toLowerCase() === email);
-  if (!user) return toast('No account found with that email.');
-  user.password = nextPassword;
-  saveUsers(users);
-  if (currentUser && currentUser.id === user.id) setCurrentUser(user);
-  toast('Password reset successful. You can sign in now.');
-  openLoginModal('signin');
-  const loginEmail = document.getElementById('loginEmail');
-  if (loginEmail) loginEmail.value = email;
+  try {
+    await backendAuthRequest('/auth/password-reset/confirm', {
+      method:'POST',
+      body: JSON.stringify({ token, new_password:nextPassword }),
+      retryOnAuthFailure:false
+    });
+    clearBackendAuthSession();
+    toast('Password updated. Please sign in with your new password.');
+    location.hash = '#/';
+    openLoginModal('signin');
+  } catch (error) {
+    toast(error.message || 'Password reset failed. Please request a new link.');
+  }
 }
 const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}','\u{1F3B5}','\u26BD','\u{1F9E0}','\u{1F6B2}','\u{1F4F7}','\u{1F6E0}\uFE0F','\u{1F31F}','\u{1F3AC}','\u{1F9D1}\u200D\u{1F373}','\u{1F9EA}'];
 function createDefaultStudentSignupDraft(){
@@ -5164,6 +5208,7 @@ function renderPage(){
       return;
     }
     renderNav();
+    if (route.startsWith('#/reset-password')) return openPasswordResetConfirmModal(getPasswordResetTokenFromHash());
     if (route === '#/about-us') return renderAboutPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();

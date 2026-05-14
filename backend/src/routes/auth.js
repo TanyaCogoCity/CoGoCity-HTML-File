@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../lib/prisma');
@@ -6,8 +7,27 @@ const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
+const { sendEmail } = require('../lib/email');
+const config = require('../config');
 
 const router = express.Router();
+
+
+function passwordResetEmailHtml({ displayName, resetUrl }) {
+  const safeName = String(displayName || 'there').replace(/[<>&"']/g, '');
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#18212f;max-width:600px;margin:0 auto;padding:24px">
+      <h2 style="margin:0 0 12px;color:#18212f">Reset your CoGo City password</h2>
+      <p style="margin:0 0 16px">Hi ${safeName},</p>
+      <p style="margin:0 0 20px">We received a request to reset your CoGo City password. Use the button below to choose a new password. This link expires in 60 minutes.</p>
+      <p style="margin:0 0 24px">
+        <a href="${resetUrl}" style="display:inline-block;background:#2251ff;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">Reset Password</a>
+      </p>
+      <p style="font-size:13px;color:#667085;margin:0 0 12px">If you did not request this, you can ignore this email.</p>
+      <p style="font-size:12px;color:#667085;word-break:break-all;margin-top:24px">${resetUrl}</p>
+    </div>
+  `;
+}
 
 function buildUserProfileData(userId, payload = {}) {
   const profile = payload.profile || {};
@@ -191,6 +211,62 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     return fail(res, 400, 'Invalid login payload', error.message);
+  }
+});
+
+
+router.post('/password-reset/request', async (req, res) => {
+  try {
+    const schema = z.object({ email: z.string().email() });
+    const payload = schema.parse(req.body || {});
+    const email = payload.email.toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Always return a generic success when the account does not exist to avoid account enumeration.
+    if (!user || user.deletedAt || user.status !== 'active') return ok(res, { requested: true });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+
+    const resetUrl = `${config.appUrl.replace(/\/$/, '')}/#/reset-password?token=${encodeURIComponent(token)}`;
+    const displayName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+    const emailResult = await sendEmail({
+      to: { email: user.email, name: displayName },
+      subject: 'Reset your CoGo City password',
+      htmlContent: passwordResetEmailHtml({ displayName, resetUrl }),
+      textContent: `Reset your CoGo City password\n\nOpen this link to choose a new password. It expires in 60 minutes:\n${resetUrl}\n\nIf you did not request this, ignore this email.`,
+    });
+
+    if (emailResult?.skipped) return fail(res, 503, 'Password reset email is not configured');
+    await writeAuditLog({ userId: user.id, action: 'auth.password_reset_requested', entityType: 'user', entityId: user.id });
+    return ok(res, { requested: true });
+  } catch (error) {
+    return fail(res, 400, 'Invalid password reset request', error.message);
+  }
+});
+
+router.post('/password-reset/confirm', async (req, res) => {
+  try {
+    const schema = z.object({ token: z.string().min(32), new_password: z.string().min(8) });
+    const payload = schema.parse(req.body || {});
+    const tokenHash = hashToken(payload.token);
+    const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= new Date()) return fail(res, 400, 'This password reset link is invalid or expired');
+    if (!resetToken.user || resetToken.user.deletedAt || resetToken.user.status !== 'active') return fail(res, 400, 'This password reset link is invalid or expired');
+
+    const passwordHash = await hashPassword(payload.new_password);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: resetToken.userId }, data: { passwordHash } }),
+      prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
+      prisma.passwordResetToken.updateMany({ where: { userId: resetToken.userId, usedAt: null, id: { not: resetToken.id } }, data: { usedAt: new Date() } }),
+      prisma.refreshToken.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    await writeAuditLog({ userId: resetToken.userId, action: 'auth.password_reset_completed', entityType: 'user', entityId: resetToken.userId });
+    return ok(res, { updated: true });
+  } catch (error) {
+    return fail(res, 400, 'Invalid password reset confirmation', error.message);
   }
 });
 
