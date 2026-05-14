@@ -79,6 +79,9 @@
     }
     .hero h1{margin:0 0 10px;font-size:2.6rem}
     .hero p{max-width:680px;margin:0 auto 24px;color:var(--color-text-secondary)}
+    .community-hero{text-align:center}
+    .community-hero .formatted-long-text{max-width:680px;margin:0 auto;text-align:center}
+    .community-hero .formatted-long-text p{color:var(--color-text-secondary);margin-left:auto;margin-right:auto}
     .home-hero{
       min-height:392px;padding:56px 20px;display:flex;align-items:center;border-bottom:1px solid var(--color-border);
       background-image:url('assets/home-hero-students.png');
@@ -348,6 +351,8 @@
       .hero{padding:38px 16px 34px;text-align:left}
       .hero h1{font-size:1.85rem;line-height:1.12}
       .hero p{font-size:.98rem;margin-left:0;margin-right:0}
+      .community-hero{text-align:center}
+      .community-hero .formatted-long-text{margin-left:auto;margin-right:auto;text-align:center}
       .hero .btn,.hero a.btn{width:100%;margin-bottom:8px}
       .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.png');background-position:center bottom;background-size:cover}
       .home-hero-copy{max-width:100%}
@@ -2582,7 +2587,7 @@ function getSiteSettings(){
         image_url: 'assets/home-hero-students.png'
       },
       community: {
-        title: 'Community Feed',
+        title: 'CoGo Community',
         body: 'Share updates, post opportunities, and connect with your local CoGo City community.',
         image_url: ''
       },
@@ -3672,11 +3677,13 @@ function renderPageContentBlock(pageKey='', fallback={}){
     body: '',
     image_url: ''
   }, fallback || {}, pageBlocks[pageKey] || {});
+  if (pageKey === 'community' && (!block.title || block.title === 'Community Feed')) block.title = 'CoGo Community';
+  const heroClass = pageKey === 'community' ? 'hero community-hero' : 'hero';
   const imageHtml = block.image_url
     ? `<div style="margin:10px auto 14px;max-width:980px"><img src="${esc(block.image_url)}" alt="${esc(block.title || 'Page image')}" style="width:100%;max-height:300px;object-fit:cover;border-radius:14px;border:1px solid var(--border)"></div>`
     : '';
   return `
-    <section class="hero">
+    <section class="${heroClass}">
       <h1>${esc(block.title || '')}</h1>
       ${block.body ? renderFormattedLongText(block.body) : ''}
       ${imageHtml}
@@ -8278,7 +8285,7 @@ function renderCommunity(){
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('community', {
-      title:'Community Feed',
+      title:'CoGo Community',
       body:'Share updates, post opportunities, and connect with your local CoGo City community.'
     })}
     <div class="container feed-wrap">
