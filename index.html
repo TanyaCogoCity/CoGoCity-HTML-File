@@ -3678,6 +3678,9 @@ function renderPageContentBlock(pageKey='', fallback={}){
     image_url: ''
   }, fallback || {}, pageBlocks[pageKey] || {});
   if (pageKey === 'community' && (!block.title || block.title === 'Community Feed')) block.title = 'CoGo Community';
+  if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.'))) {
+    block.body = 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs';
+  }
   const heroClass = pageKey === 'community' ? 'hero community-hero' : 'hero';
   const imageHtml = block.image_url
     ? `<div style="margin:10px auto 14px;max-width:980px"><img src="${esc(block.image_url)}" alt="${esc(block.title || 'Page image')}" style="width:100%;max-height:300px;object-fit:cover;border-radius:14px;border:1px solid var(--border)"></div>`
@@ -5704,9 +5707,38 @@ function getDirectJobPublicItems(){
   const featuredOrdered = orderFeaturedDirectJobsWithRotation(featured);
   return [...featuredOrdered, ...regular];
 }
+function getDirectJobShareUrl(jobId=''){
+  const base = `${location.origin}${location.pathname}${location.search || ''}`;
+  return `${base}#/jobs/${encodeURIComponent(jobId)}`;
+}
+async function shareDirectJob(jobId=''){
+  const job = getDirectJobById(jobId);
+  const url = getDirectJobShareUrl(jobId);
+  const title = job ? `${job.job_title} at ${job.company_name || 'CoGo City'}` : 'CoGo City job';
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, text: `Check out this CoGo City job: ${title}`, url });
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      toast('Job link copied.');
+      return;
+    }
+  } catch (error) {
+    console.warn('Job share failed', error);
+  }
+  prompt('Copy this job link:', url);
+}
+function renderDirectJobApplyAction(job){
+  const isOwner = !!(currentUser && currentUser.id === job.employer_id);
+  if (isOwner) return `<button class="btn btn-blue btn-sm" onclick="dashSection='my_jobs';employerMyJobsTab='manage';goDashboard()">Manage</button>`;
+  if (!currentUser) return `<button class="btn btn-blue btn-sm" onclick="openLoginModal()">Sign In to Apply</button>`;
+  if (currentUser.role !== 'student') return `<button class="btn btn-outline btn-sm" disabled>Students Only</button>`;
+  return `<button class="btn btn-blue btn-sm" onclick="openDirectJobApplyModal('${esc(job.id)}')">Apply</button>`;
+}
 function renderDirectJobCard(job){
   const applicationsCount = getDirectJobApplicationsFor(job.id).length;
-  const isOwner = !!(currentUser && currentUser.id === job.employer_id);
   const featured = isFeaturedDirectJob(job);
   return `
     <article class="card item-card" style="${featured ? 'background:#F9FAFB;border-color:#E5E7EB;box-shadow:0 10px 24px rgba(0,0,0,.06);' : ''}">
@@ -5728,9 +5760,8 @@ function renderDirectJobCard(job){
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="location.hash='#/jobs/${esc(job.id)}';renderPage()">View Job</button>
-          ${isOwner
-            ? `<button class="btn btn-blue btn-sm" onclick="dashSection='my_jobs';employerMyJobsTab='manage';goDashboard()">Manage</button>`
-            : `<button class="btn btn-blue btn-sm" onclick="openDirectJobApplyModal('${esc(job.id)}')">Apply</button>`}
+          <button class="btn btn-outline btn-sm" onclick="shareDirectJob('${esc(job.id)}')">Share</button>
+          ${renderDirectJobApplyAction(job)}
         </div>
       </div>
     </article>
@@ -5746,7 +5777,7 @@ function renderJobsPage(){
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('jobs', {
       title:'Find Jobs Near You',
-      body:'Indeed-style direct hire jobs from local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.'
+      body:'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs'
     })}
     <div class="container">
       <div class="card form-card" style="margin-bottom:16px">
@@ -5814,6 +5845,7 @@ function renderDirectJobDetailPage(jobId=''){
           <div class="small muted" style="margin-top:6px">Posting fee paid to CoGo City: $${esc(money(job.posting_fee || 0))} (${esc(job.posting_package || 'basic')})</div>
         </div>
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="shareDirectJob('${esc(job.id)}')">Share Job</button>
           ${isOwner
             ? `<button class="btn btn-blue" onclick="dashSection='my_jobs';employerMyJobsTab='manage';goDashboard()">Manage This Job</button>`
             : !currentUser
