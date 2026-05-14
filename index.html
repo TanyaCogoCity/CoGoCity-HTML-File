@@ -8401,7 +8401,6 @@ function togglePostComposer(){
       </div>
       <div id="post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(draft.entity_images || [])}</div>
       <div class="field"><label>Post Video Link (optional)</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"></div>
-      <div class="field"><label>Or upload a video (optional)</label><input type="file" accept="video/*" onchange="handlePostComposerVideoUpload(this)"></div>
       <div id="post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(draft) ? renderVideoPreviewHtml(getRenderableVideoUrl(draft), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
       ${canCreateJobPost ? `
         <div class="field">
@@ -8613,7 +8612,6 @@ function editPost(postId){
     </div>
     <div id="edit-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [], 'removeEditPostImage')}</div>
     <div class="field"><label>Post Video Link (optional)</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"></div>
-    <div class="field"><label>Or upload a video (optional)</label><input type="file" accept="video/*" onchange="handleEditPostVideoUpload(this)"></div>
     <div id="edit-post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(p) ? renderVideoPreviewHtml(getRenderableVideoUrl(p), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
     ${p.isJob ? `
       <div class="field"><label>Job Title</label><input id="editJobTitle" value="${esc(p.jobTitle || '')}"></div>
@@ -10103,7 +10101,6 @@ function renderEmployerCommunityJobs(el){
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
       <div class="field"><label>Post Video Link (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"></div>
-      <div class="field"><label>Or upload a video (optional)</label><input type="file" accept="video/*" onchange="handleEmpPostVideoUpload(this)"></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       <div class="field">
         <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
@@ -11441,7 +11438,6 @@ function renderMyPosts(el){
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
       <div class="field"><label>Post Video Link (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"></div>
-      <div class="field"><label>Or upload a video (optional)</label><input type="file" accept="video/*" onchange="handleEmpPostVideoUpload(this)"></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       ${canCreateJobs ? `
         <div class="field">
