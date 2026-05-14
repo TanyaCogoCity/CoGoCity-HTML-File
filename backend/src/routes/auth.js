@@ -5,7 +5,7 @@ const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
 const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRoles } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { sendEmail } = require('../lib/email');
 const config = require('../config');
@@ -329,6 +329,32 @@ router.post('/logout', requireAuth, async (req, res) => {
   if (!token) return ok(res, { revoked: false });
   await prisma.refreshToken.updateMany({ where: { userId: req.user.id, tokenHash: hashToken(token), revokedAt: null }, data: { revokedAt: new Date() } });
   return ok(res, { revoked: true });
+});
+
+
+
+router.get('/admin/users', requireAuth, requireRoles(['admin']), async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { deletedAt: null },
+      include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } }, take: 1 } },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { displayName: 'asc' }],
+    });
+
+    return ok(res, users.map((user) => {
+      const studentProfile = user.studentProfiles?.[0] || null;
+      return {
+        ...serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
+        phone: user.phone,
+        status: user.status,
+        created_at: user.createdAt,
+        updated_at: user.updatedAt,
+        last_login: user.lastLogin,
+      };
+    }));
+  } catch (error) {
+    return fail(res, 500, 'Unable to load users', error.message);
+  }
 });
 
 router.get('/me', requireAuth, async (req, res) => {

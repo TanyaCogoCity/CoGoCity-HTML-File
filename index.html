@@ -470,6 +470,10 @@ let adminUsersRoleFilter = 'all';
 let adminUsersStatusFilter = 'all';
 let adminSelectedUserId = '';
 let adminPendingUserAction = '';
+let adminBackendUsers = [];
+let adminBackendUsersLoaded = false;
+let adminBackendUsersLoading = false;
+let adminBackendUsersError = '';
 let adminBlogQuery = '';
 let adminBlogDraft = null;
 let adminUserEditDraft = null;
@@ -1283,6 +1287,8 @@ function mapBackendUser(apiUser={}, fallback={}){
     company: businessProfile?.name || fallback.company || '',
     businessProfile,
     stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
+    createdAt: apiUser.created_at || apiUser.createdAt || fallback.createdAt || null,
+    lastLogin: apiUser.last_login || apiUser.lastLogin || fallback.lastLogin || null,
     backendAuth:true
   });
   if (merged.stripe_onboarding) {
@@ -12139,8 +12145,30 @@ function splitAdminUserName(user){
     lastName: (user?.lastName || parts.slice(1).join(' ') || '').trim()
   };
 }
+function getAdminUsersSource(){
+  return adminBackendUsersLoaded ? adminBackendUsers : getUsers();
+}
+async function loadBackendAdminUsers(options={}){
+  if (!backendAuthEnabled() || !getBackendAccessToken() || adminBackendUsersLoading) return;
+  adminBackendUsersLoading = true;
+  adminBackendUsersError = '';
+  try {
+    const rows = await backendAuthRequest('/auth/admin/users');
+    adminBackendUsers = ensureArray(rows).map(user => mapBackendUser(user));
+    adminBackendUsersLoaded = true;
+    if (!adminBackendUsers.some(user => user.id === adminSelectedUserId)) adminSelectedUserId = '';
+    if (options.rerender !== false && getRoute() === '#/dashboard' && dashSection === 'users') renderDashboard();
+  } catch (error) {
+    adminBackendUsersError = error.message || 'Could not load backend users.';
+    console.warn('Backend admin users load failed', error);
+  } finally {
+    adminBackendUsersLoading = false;
+    syncAdminUsersToolbar();
+  }
+}
+
 function getFilteredAdminUsers(){
-  return getUsers()
+  return getAdminUsersSource()
     .filter(user => !user.archived)
     .filter(user => {
       const roleValue = getAdminRoleValueForUser(user);
@@ -12625,7 +12653,9 @@ function renderAdminUsersResults(){
 }
 function renderAdminUsersSection(el){
   const logs = getAdminActionLog();
-  const totalDatabaseUsers = getUsers().filter(user => !user.archived).length;
+  if (backendAuthEnabled() && !adminBackendUsersLoaded && !adminBackendUsersLoading) loadBackendAdminUsers();
+  const usersSource = getAdminUsersSource();
+  const totalDatabaseUsers = usersSource.filter(user => !user.archived).length;
   el.innerHTML = `
     <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
       <div>
@@ -12637,7 +12667,7 @@ function renderAdminUsersSection(el){
     <div class="card form-card" style="margin-bottom:18px">
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Users in Current View</div><div id="admin-users-count" style="font-size:1.5rem;font-weight:800">0</div></div>
-        <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Users in Database</div><div style="font-size:1.5rem;font-weight:800">${totalDatabaseUsers}</div></div>
+        <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Users in Database</div><div style="font-size:1.5rem;font-weight:800">${totalDatabaseUsers}</div><div class="small muted" style="margin-top:4px">${backendAuthEnabled() ? (adminBackendUsersLoaded ? 'Loaded from staging DB' : (adminBackendUsersLoading ? 'Loading staging DB…' : 'Using local cache')) : 'Local cache'}</div></div>
       </div>
       <div class="row" style="align-items:end">
         <div class="field"><label>Search</label><input value="${esc(adminUsersQuery)}" placeholder="Search by name or email" oninput="adminUsersQuery=this.value;renderAdminUsersResults()"></div>
@@ -12666,6 +12696,7 @@ function renderAdminUsersSection(el){
         </div>
       </div>
     </div>
+    ${adminBackendUsersError ? `<div class="notice" style="margin-bottom:18px">Could not load staging users: ${esc(adminBackendUsersError)}</div>` : ''}
     <div class="card form-card" style="margin-bottom:18px" id="admin-users-results"></div>
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:12px">Recent Admin Actions</div>
