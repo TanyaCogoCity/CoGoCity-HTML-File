@@ -30,8 +30,13 @@ async function sendEmail({ to, subject, htmlContent, textContent }) {
   if (!config.brevoApiKey || !config.emailNotificationsEnabled) return { skipped: true, reason: 'email_not_configured' };
   if (!to?.email) return { skipped: true, reason: 'missing_recipient' };
 
+  const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+    ? AbortSignal.timeout(15000)
+    : undefined;
+
   const response = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
+    signal,
     headers: {
       accept: 'application/json',
       'api-key': config.brevoApiKey,
