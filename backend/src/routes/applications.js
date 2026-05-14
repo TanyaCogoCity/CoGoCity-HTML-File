@@ -4,6 +4,7 @@ const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { notificationType } = require('../lib/compat');
 const { writeAuditLog } = require('../lib/audit');
+const { createNotification, createNotifications } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ router.patch('/:id/accept', requireAuth, async (req, res) => {
 
   const updated = await prisma.application.update({ where: { id: app.id }, data: { status: 'accepted' } });
 
-  await prisma.notification.create({
+  await createNotification({
     data: {
       userId: updated.studentId,
       type: notificationType('application'),
@@ -45,7 +46,7 @@ router.patch('/:id/reject', requireAuth, async (req, res) => {
   const note = String(req.body?.message || '').trim();
   const updated = await prisma.application.update({ where: { id: app.id }, data: { status: 'rejected', message: note || app.message } });
 
-  await prisma.notification.create({
+  await createNotification({
     data: {
       userId: updated.studentId,
       type: notificationType('application'),

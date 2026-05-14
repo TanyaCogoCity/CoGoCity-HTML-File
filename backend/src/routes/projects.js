@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { normalizeProjectStartPayload, normalizeProjectStatus, serializeProject, notificationType } = require('../lib/compat');
 const { canTransition } = require('../lib/statusPolicy');
 const { writeAuditLog } = require('../lib/audit');
+const { createNotification, createNotifications } = require('../lib/notifications');
 const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/messaging');
 const { getOrCreateSystemUser } = require('../lib/systemUser');
 
@@ -112,7 +113,7 @@ router.post('/start', requireAuth, async (req, res) => {
       text: `Project started for "${app.job.title}". Payment is pending funding.`,
     });
 
-    await prisma.notification.createMany({
+    await createNotifications({
       data: [
         {
           userId: project.studentId,
@@ -175,7 +176,7 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
     await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: totalAmount, platformFee, studentPayout } });
   }
 
-  await prisma.notification.create({
+  await createNotification({
     data: {
       userId: project.employerId,
       type: notificationType('project'),
@@ -214,7 +215,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
 
   if (nextStatus === 'completed') {
     await prisma.job.updateMany({ where: { id: project.jobId || '' }, data: { status: 'closed' } });
-    await prisma.notification.createMany({
+    await createNotifications({
       data: [
         {
           userId: project.studentId,
@@ -233,7 +234,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
       ],
     });
   } else if (nextStatus === 'in_progress') {
-    await prisma.notification.create({
+    await createNotification({
       data: {
         userId: project.studentId,
         type: notificationType('project'),

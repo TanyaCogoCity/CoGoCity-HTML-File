@@ -2,6 +2,8 @@ const express = require('express');
 const { prisma } = require('../lib/prisma');
 const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
+const { notificationType } = require('../lib/compat');
+const { createNotification } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -21,6 +23,24 @@ router.get('/', requireAuth, async (req, res) => {
     link: n.link,
     created_at: n.createdAt,
   })));
+});
+
+router.post('/test-email', requireAuth, async (req, res) => {
+  try {
+    const notification = await createNotification({
+      data: {
+        userId: req.user.id,
+        type: notificationType('system'),
+        title: 'CoGoCity staging email test',
+        body: 'If you received this, Brevo transactional email is connected to staging.',
+        link: '/dashboard?section=notifications',
+      },
+      emailRequired: true,
+    });
+    return ok(res, { sent: !notification.email?.skipped, notification_id: notification.id, email: notification.email });
+  } catch (error) {
+    return fail(res, 502, 'Staging email test failed', error.message);
+  }
 });
 
 router.patch('/:id/read', requireAuth, async (req, res) => {

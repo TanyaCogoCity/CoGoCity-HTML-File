@@ -3,6 +3,7 @@ const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
+const { createNotification, createNotifications } = require('../lib/notifications');
 const { notificationType } = require('../lib/compat');
 
 const router = express.Router();
@@ -65,7 +66,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
     update: { paymentStatus: 'paid' },
   });
 
-  await prisma.notification.create({
+  await createNotification({
     data: {
       userId: workshop.createdBy,
       type: notificationType('workshop'),

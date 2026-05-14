@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { normalizeMessagePayload, serializeMessage, notificationType } = require('../lib/compat');
 const { ensureConversationBetweenUsers } = require('../lib/messaging');
 const { writeAuditLog } = require('../lib/audit');
+const { createNotification, createNotifications } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -108,7 +109,7 @@ router.post('/', requireAuth, async (req, res) => {
     });
 
     if (recipients.length) {
-      await prisma.notification.createMany({
+      await createNotifications({
         data: recipients.map((r) => ({
           userId: r.userId,
           type: notificationType('message'),

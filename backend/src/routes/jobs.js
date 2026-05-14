@@ -4,6 +4,7 @@ const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { normalizeJobPayload, serializeJob, normalizeApplicationStatus, serializeApplication, normalizeApplyPayload, notificationType } = require('../lib/compat');
 const { writeAuditLog } = require('../lib/audit');
+const { createNotification, createNotifications } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -162,7 +163,7 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
   });
 
   const notifyUserId = isOwner ? app.studentId : app.job.createdBy;
-  await prisma.notification.create({
+  await createNotification({
     data: {
       userId: notifyUserId,
       type: notificationType('application'),
@@ -208,7 +209,7 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
       },
     });
 
-    await prisma.notification.create({
+    await createNotification({
       data: {
         userId: job.createdBy,
         type: notificationType('application'),

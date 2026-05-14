@@ -5,6 +5,7 @@ const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 const { writeAuditLog } = require('../lib/audit');
+const { createNotification, createNotifications } = require('../lib/notifications');
 const { notificationType } = require('../lib/compat');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
@@ -440,7 +441,7 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { status: 'paid' } });
     await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date() } });
-    await prisma.notification.create({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
+    await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
     await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id } });
 
     return ok(res, { payment_intent_id: captured.id, status: 'paid', stripe_status: captured.status, project_id: project.id });
@@ -486,7 +487,7 @@ router.post('/transfer-payout', requireAuth, async (req, res) => {
     );
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { stripeTransferId: transfer.id } });
-    await prisma.notification.create({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payout sent', body: 'Your project payout has been sent to Stripe.', link: `/dashboard?section=transactions&project=${project.id}` } });
+    await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payout sent', body: 'Your project payout has been sent to Stripe.', link: `/dashboard?section=transactions&project=${project.id}` } });
     await writeAuditLog({ userId: req.user.id, action: 'payment.transfer.create', entityType: 'transaction', entityId: tx.id, payload: { transferId: transfer.id } });
 
     return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid', project_id: project.id });

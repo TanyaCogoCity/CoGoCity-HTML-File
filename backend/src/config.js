@@ -25,5 +25,10 @@ module.exports = {
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   stripePlatformFeeBps: Number(process.env.STRIPE_PLATFORM_FEE_BPS || 1000),
 
+  brevoApiKey: process.env.BREVO_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || 'support@cogocity.com',
+  emailFromName: process.env.EMAIL_FROM_NAME || 'CoGoCity',
+  emailNotificationsEnabled: process.env.EMAIL_NOTIFICATIONS_ENABLED === 'true',
+
   strictStatusTransitions: process.env.STRICT_STATUS_TRANSITIONS === 'true',
 };
