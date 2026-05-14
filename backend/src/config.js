@@ -26,7 +26,7 @@ module.exports = {
   stripePlatformFeeBps: Number(process.env.STRIPE_PLATFORM_FEE_BPS || 1000),
 
   brevoApiKey: process.env.BREVO_API_KEY || '',
-  emailFrom: process.env.EMAIL_FROM || 'support@cogocity.com',
+  emailFrom: process.env.EMAIL_FROM || process.env.EMAIL_FROM_ADDRESS || 'support@cogocity.com',
   emailFromName: process.env.EMAIL_FROM_NAME || 'CoGoCity',
   emailNotificationsEnabled: process.env.EMAIL_NOTIFICATIONS_ENABLED === 'true',
 
