@@ -502,10 +502,10 @@ const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname :
 const COGO_IS_STAGING = COGO_HOSTNAME === 'staging.cogocity.com';
 const COGO_IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(COGO_HOSTNAME);
 const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
-const PAYMENT_PROVIDER_MODE = 'stripe_manual_capture';
+const PAYMENT_PROVIDER_MODE = COGO_IS_STAGING ? 'mock_stripe_ready' : 'stripe_manual_capture';
 const STRIPE_PUBLISHABLE_KEY = (typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || '';
 const STRIPE_ENABLED = COGO_IS_STAGING;
-const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = false;
+const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = COGO_IS_STAGING || COGO_IS_LOCAL_DEV;
 const BACKEND_MIGRATION = {
   enabled: false,
   baseUrl: '/api',
