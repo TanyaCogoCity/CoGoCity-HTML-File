@@ -1091,14 +1091,39 @@ async function refreshBackendCurrentProfile(options={}){
 function mergeBackendStudentRecords(localStudents=[]){
   const backendStudents = getBackendBrowseStudents().map(normalizeStudentRecord);
   if (!backendStudents.length) return localStudents;
+  const normalizedLocalStudents = ensureArray(localStudents).map(normalizeStudentRecord);
+  const findLocalMatch = student => normalizedLocalStudents.find(local =>
+    (student.userId && local.userId && String(local.userId) === String(student.userId)) ||
+    (student.id && local.id && String(local.id) === String(student.id))
+  );
+  const mergeServices = (backendServices=[], localServices=[]) => {
+    const localList = ensureArray(localServices);
+    return ensureArray(backendServices).map((service, index) => {
+      const localService = localList.find(item => item && service && item.id && service.id && String(item.id) === String(service.id)) || localList[index] || null;
+      if (!localService) return service;
+      return Object.assign({}, service, localService, {
+        reviews: ensureArray(localService.reviews).length ? localService.reviews : service.reviews,
+        review_count: localService.review_count ?? localService.reviewCount ?? service.review_count ?? service.reviewCount,
+        reviewCount: localService.reviewCount ?? localService.review_count ?? service.reviewCount ?? service.review_count,
+        average_rating: localService.average_rating ?? localService.averageRating ?? service.average_rating ?? service.averageRating,
+        averageRating: localService.averageRating ?? localService.average_rating ?? service.averageRating ?? service.average_rating
+      });
+    }).concat(localList.filter(localService => !ensureArray(backendServices).some(service => service && localService && service.id && localService.id && String(service.id) === String(localService.id))));
+  };
   const merged = [];
-  const seenUserIds = new Set();
+  const seenKeys = new Set();
   backendStudents.forEach(student => {
-    merged.push(student);
-    if (student.userId) seenUserIds.add(String(student.userId));
+    const localMatch = findLocalMatch(student);
+    const mergedStudent = localMatch ? Object.assign({}, student, localMatch, {
+      services: mergeServices(student.services, localMatch.services),
+      reviews: ensureArray(localMatch.reviews).length ? localMatch.reviews : student.reviews
+    }) : student;
+    merged.push(normalizeStudentRecord(mergedStudent));
+    if (student.userId) seenKeys.add(`user:${String(student.userId)}`);
+    if (student.id) seenKeys.add(`id:${String(student.id)}`);
   });
-  localStudents.forEach(student => {
-    if (student.userId && seenUserIds.has(String(student.userId))) return;
+  normalizedLocalStudents.forEach(student => {
+    if ((student.userId && seenKeys.has(`user:${String(student.userId)}`)) || (student.id && seenKeys.has(`id:${String(student.id)}`))) return;
     merged.push(student);
   });
   return merged;
