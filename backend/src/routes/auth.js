@@ -118,6 +118,13 @@ router.post('/register', async (req, res) => {
               availability: service.availability || '',
               location: service.location || rawPayload.city || '',
               isActive: service.is_active ?? service.isActive ?? true,
+              metadata: {
+                images: Array.isArray(service.images) ? service.images : Array.isArray(service.entity_images) ? service.entity_images : [],
+                entity_images: Array.isArray(service.entity_images) ? service.entity_images : Array.isArray(service.images) ? service.images : [],
+                video_url: service.video_url || service.videoUrl || '',
+                video_type: service.video_type || service.videoType || '',
+                video_id: service.video_id || service.videoId || '',
+              },
             },
           })));
         }
@@ -249,17 +256,22 @@ router.post('/logout', requireAuth, async (req, res) => {
 });
 
 router.get('/me', requireAuth, async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.id },
-    include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
-  });
-  const studentProfile = user.studentProfiles?.[0] || null;
-  return ok(res, {
-    ...serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
-    phone: user.phone,
-    status: user.status,
-    created_at: user.createdAt,
-  });
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+    });
+    if (!user) return fail(res, 404, 'User not found');
+    const studentProfile = user.studentProfiles?.[0] || null;
+    return ok(res, {
+      ...serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
+      phone: user.phone,
+      status: user.status,
+      created_at: user.createdAt,
+    });
+  } catch (error) {
+    return fail(res, 500, 'Unable to load current user', error.message);
+  }
 });
 
 module.exports = router;

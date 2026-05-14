@@ -38,6 +38,8 @@ function normalizeRegisterPayload(payload = {}) {
 }
 
 function normalizeServicePayload(payload = {}) {
+  const images = Array.isArray(payload.images) ? payload.images : Array.isArray(payload.entity_images) ? payload.entity_images : [];
+  const videoUrl = payload.video_url || payload.videoUrl || null;
   return {
     profileId: payload.profile_id || payload.profileId,
     title: payload.title,
@@ -46,7 +48,16 @@ function normalizeServicePayload(payload = {}) {
     availability: payload.availability || '',
     location: payload.location || '',
     isActive: payload.is_active ?? payload.isActive ?? true,
-    videoUrl: payload.video_url || payload.videoUrl || null,
+    images,
+    entityImages: images,
+    videoUrl,
+    metadata: Object.assign({}, payload.metadata || {}, {
+      images,
+      entity_images: images,
+      video_url: videoUrl || '',
+      video_type: payload.video_type || payload.videoType || '',
+      video_id: payload.video_id || payload.videoId || '',
+    }),
   };
 }
 
@@ -62,6 +73,11 @@ function serializeService(service) {
     rate: Number(service.hourlyRate),
     availability: service.availability,
     location: service.location,
+    images: service.metadata?.images || service.metadata?.entity_images || [],
+    entity_images: service.metadata?.entity_images || service.metadata?.images || [],
+    video_url: service.metadata?.video_url || '',
+    video_type: service.metadata?.video_type || '',
+    video_id: service.metadata?.video_id || '',
     is_active: service.isActive,
     isActive: service.isActive,
     created_at: service.createdAt,

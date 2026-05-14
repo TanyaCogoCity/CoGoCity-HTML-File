@@ -192,6 +192,7 @@ model Service {
   availability String?
   location     String?
   isActive     Boolean   @default(true) @map("is_active")
+  metadata     Json?
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")

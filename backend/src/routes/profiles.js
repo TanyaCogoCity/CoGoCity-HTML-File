@@ -163,6 +163,7 @@ router.post('/student-profiles/:id/services', requireAuth, async (req, res) => {
         availability: payload.availability,
         location: payload.location,
         isActive: Boolean(payload.isActive),
+        metadata: payload.metadata,
       },
     });
 
@@ -191,6 +192,7 @@ router.patch('/services/:id', requireAuth, async (req, res) => {
         availability: payload.availability,
         location: payload.location,
         isActive: Boolean(payload.isActive),
+        metadata: payload.metadata,
       },
     });
 

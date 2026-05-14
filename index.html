@@ -8674,7 +8674,7 @@ function openStudentMessage(studentId){
 }
 function openBookDirect(studentId, serviceId=''){
   if (!currentUser) return openLoginModal();
-  if (currentUser.role !== 'employer') return toast('Only employers and neighbors can book students.');
+  if (!['employer','neighbor'].includes(currentUser.role)) return toast('Only employers and neighbors can book students.');
   const s = getStudents().find(x => x.id === studentId);
   if (!s) return;
   const services = getRenderableStudentServices(s);
@@ -9425,6 +9425,12 @@ async function saveStudentProfileForm(profileId=''){
         })
       });
       await refreshBackendCurrentProfile();
+      const refreshedStudents = getStudents();
+      const refreshedIndex = refreshedStudents.findIndex(item => item.id === profile.id || item.userId === profile.userId);
+      if (refreshedIndex >= 0) {
+        refreshedStudents[refreshedIndex] = Object.assign({}, refreshedStudents[refreshedIndex], profile);
+        saveStudents(refreshedStudents);
+      }
     } catch (error) {
       toast(error.message || 'Profile saved locally, but backend update failed.');
       return;
@@ -9617,6 +9623,14 @@ async function saveStudentServiceForm(serviceIndex=''){
         });
       }
       await refreshBackendCurrentProfile();
+      const refreshedStudents = getStudents();
+      const refreshedIndex = refreshedStudents.findIndex(item => item.id === profile.id || item.userId === profile.userId);
+      if (refreshedIndex >= 0) {
+        const refreshedProfile = Object.assign({}, refreshedStudents[refreshedIndex], profile);
+        refreshedProfile.services = profile.services;
+        refreshedStudents[refreshedIndex] = refreshedProfile;
+        saveStudents(refreshedStudents);
+      }
     } catch (error) {
       toast(error.message || 'Service saved locally, but backend update failed.');
       return;
@@ -11055,7 +11069,8 @@ async function approveFinalInvoice(projectId){
   if (!p) return;
   const now = new Date().toISOString();
   const finalBreakdown = calculateCommissionBreakdown(p.actualHours || p.estimatedHours || 0, p.rate || 0);
-  if (STRIPE_ENABLED && p.stripe_payment_intent_id && backendAuthEnabled() && getBackendAccessToken()) {
+  const isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
+  if (STRIPE_ENABLED && p.stripe_payment_intent_id && !isLocalPaymentReference && backendAuthEnabled() && getBackendAccessToken()) {
     try {
       const captured = await captureBackendStripePayment(p);
       if (captured) {
@@ -11253,7 +11268,13 @@ function submitReview(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return toast('Project not found.');
-  if (p.reviewSubmitted) return toast('Review already submitted.');
+  const hasExistingProjectReview = () => {
+    const existingStudent = getStudents().find(s => s.id === p.studentProfileId) || getStudents().find(s => s.userId === p.studentUserId && s.status !== 'archived');
+    if (!existingStudent) return false;
+    const serviceReviews = getRenderableStudentServices(existingStudent).flatMap(service => service.reviews || []);
+    return [...serviceReviews, ...(existingStudent.reviews || [])].some(review => review.projectId === projectId);
+  };
+  if (p.reviewSubmitted && hasExistingProjectReview()) return toast('Review already submitted.');
   const ratingEl = document.getElementById('reviewRating');
   const commentEl = document.getElementById('reviewComment');
   if (!ratingEl || !commentEl) return toast('Review form is not available. Please reopen it and try again.');
@@ -11268,11 +11289,17 @@ function submitReview(projectId){
   const targetService = services.find(service => service.id === p.studentServiceId) || services[0] || null;
   if (targetService) {
     targetService.reviews = targetService.reviews || [];
+    targetService.reviews = targetService.reviews.filter(existing => existing.projectId !== projectId);
     targetService.reviews.unshift(review);
+    targetService.review_count = targetService.reviews.length;
+    targetService.reviewCount = targetService.reviews.length;
+    targetService.average_rating = Number((targetService.reviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / Math.max(targetService.reviews.length, 1)).toFixed(2));
+    targetService.averageRating = targetService.average_rating;
     if (!p.studentServiceId) p.studentServiceId = targetService.id;
     if (!p.studentServiceTitle) p.studentServiceTitle = targetService.title || '';
   } else {
     student.reviews = student.reviews || [];
+    student.reviews = student.reviews.filter(existing => existing.projectId !== projectId);
     student.reviews.unshift(review);
   }
   p.reviewSubmitted = true;
