@@ -821,7 +821,7 @@ async function refreshStripeOnboardingStatus(options={}){
     if (options.rerender) renderDashboard();
     return status;
   } catch (error) {
-    if (options.toast !== false) toast(error.message || 'Could not load Stripe onboarding status.');
+    if (options.toast !== false) toast(error.message || 'Could not load payment setup status.');
     return null;
   }
 }
@@ -851,12 +851,12 @@ function openPostSignupStripeOnboardingPrompt(kind){
   const isPayer = kind === 'payer';
   openModal(isPayer ? 'Add Payment Method' : 'Set Up Payouts', `
     <div class="card form-card">
-      <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Secure hiring payments with Stripe' : 'Get ready to receive payouts'}</div>
-      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, save a test-mode card through Stripe. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect onboarding on Stripe\'s secure hosted page.'}</div>
-      <div class="warning" style="margin-bottom:14px">Stripe setup is enabled for this staging environment.</div>
+      <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Secure hiring payments' : 'Get ready to receive payouts'}</div>
+      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, add a secure payment method. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete secure payout setup.'}</div>
+      <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled for this staging environment.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Later</button>
-        <button class="btn btn-blue" onclick="${isPayer ? 'closeModal();openPayerStripeSetupModal()' : 'closeModal();startStripeConnectOnboarding()'}">${isPayer ? 'Add Test Card' : 'Start Stripe Connect'}</button>
+        <button class="btn btn-blue" onclick="${isPayer ? 'closeModal();openPayerStripeSetupModal()' : 'closeModal();startStripeConnectOnboarding()'}">${isPayer ? 'Add Card' : 'Set Up Payouts'}</button>
       </div>
     </div>
   `, '620px');
@@ -875,7 +875,7 @@ function renderStripeOnboardingCard(){
         <div>
           <div style="font-weight:800">Payment method for hiring</div>
           <div class="small muted">Status: ${esc(payer.ready ? 'Ready' : stripeStatusLabel(payer.payment_setup_status))}</div>
-          <div class="small muted" style="margin-top:4px">Cards are saved securely by Stripe; CoGo City never stores card numbers.</div>
+          <div class="small muted" style="margin-top:4px">Cards are saved securely; CoGo City never stores card numbers.</div>
         </div>
         <button class="btn ${payer.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="openPayerStripeSetupModal()">${payer.ready ? 'Update Card' : 'Add Card'}</button>
       </div>
@@ -885,23 +885,23 @@ function renderStripeOnboardingCard(){
     <div class="card" style="padding:14px;background:#fff;margin-top:10px">
       <div class="split" style="gap:12px;align-items:center">
         <div>
-          <div style="font-weight:800">Payout setup with Stripe Connect</div>
+          <div style="font-weight:800">Payout setup</div>
           <div class="small muted">Status: ${esc(connect.ready ? 'Ready' : stripeStatusLabel(connect.onboarding_status))}</div>
-          <div class="small muted" style="margin-top:4px">Stripe collects bank, identity, and payout details on its secure hosted page.</div>
+          <div class="small muted" style="margin-top:4px">Bank, identity, and payout details are collected on a secure hosted page.</div>
         </div>
-        <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Stripe' : 'Set Up Payouts'}</button>
+        <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Payouts' : 'Set Up Payouts'}</button>
       </div>
     </div>
   `);
   if (!blocks.length) return '';
-  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Stripe onboarding</div><div class="small muted" style="margin-top:6px">Stripe setup is enabled for this staging environment.</div>${blocks.join('')}</div>`;
+  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">Payment setup is enabled for this staging environment.</div>${blocks.join('')}</div>`;
 }
 async function openPayerStripeSetupModal(){
-  if (!stripeOnboardingEnabled()) return toast('Stripe onboarding is available on staging after sign-in.');
-  if (!STRIPE_PUBLISHABLE_KEY) return toast('Stripe publishable key is not configured.');
+  if (!stripeOnboardingEnabled()) return toast('Secure payment setup is available on staging after sign-in.');
+  if (!STRIPE_PUBLISHABLE_KEY) return toast('Secure payment setup is not configured.');
   openModal('Add Payment Method', `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Payment details are handled securely by Stripe.</div>
+      <div class="warning" style="margin-bottom:14px">Payment details are handled securely.</div>
       <div class="field"><label>Card details</label><div id="stripe-card-element" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff"></div></div>
       <div id="stripe-card-errors" class="small" style="color:#991B1B;margin-bottom:12px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
@@ -923,22 +923,22 @@ async function openPayerStripeSetupModal(){
     });
   } catch (error) {
     const el = document.getElementById('stripe-card-errors');
-    if (el) el.textContent = error.message || 'Could not initialize Stripe payment form.';
+    if (el) el.textContent = error.message || 'Could not initialize the secure payment form.';
   }
 }
 async function submitPayerStripeSetup(){
   const btn = document.getElementById('stripeSavePaymentBtn');
   const err = document.getElementById('stripe-card-errors');
-  if (!stripeCardElement || !stripeSetupIntentContext?.client_secret) return err ? err.textContent = 'Stripe card form is not ready yet.' : toast('Stripe card form is not ready yet.');
+  if (!stripeCardElement || !stripeSetupIntentContext?.client_secret) return err ? err.textContent = 'Secure card form is not ready yet.' : toast('Secure card form is not ready yet.');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
   try {
     const stripe = await getStripeClient();
     const result = await stripe.confirmCardSetup(stripeSetupIntentContext.client_secret, { payment_method: { card: stripeCardElement, billing_details: { email: currentUser.email || undefined, name: currentUser.name || undefined } } });
-    if (result.error) throw new Error(result.error.message || 'Stripe could not save this payment method.');
+    if (result.error) throw new Error(result.error.message || 'Could not save this payment method.');
     const status = await backendAuthRequest('/stripe/onboarding/payment-method', { method:'POST', body: JSON.stringify({ setup_intent_id: result.setupIntent.id }) });
     syncCurrentUserStripeOnboarding(status);
     closeModal();
-    toast('Payment method saved securely with Stripe.');
+    toast('Payment method saved securely.');
     renderDashboard();
   } catch (error) {
     if (err) err.textContent = error.message || 'Could not save payment method.';
@@ -948,16 +948,16 @@ async function submitPayerStripeSetup(){
   }
 }
 async function startStripeConnectOnboarding(){
-  if (!stripeOnboardingEnabled()) return toast('Stripe Connect onboarding is available on staging after sign-in.');
+  if (!stripeOnboardingEnabled()) return toast('Secure payout setup is available on staging after sign-in.');
   try {
     await backendAuthRequest('/stripe/onboarding/connect-account', { method:'POST', body: JSON.stringify({ country:'US' }) });
     const returnUrl = `${window.location.origin}${window.location.pathname}?stripe_connect=return#/dashboard`;
     const refreshUrl = `${window.location.origin}${window.location.pathname}?stripe_connect=refresh#/dashboard`;
     const link = await backendAuthRequest('/stripe/onboarding/connect-account-link', { method:'POST', body: JSON.stringify({ return_url:returnUrl, refresh_url:refreshUrl }) });
-    if (!link.url) throw new Error('Stripe did not return an onboarding link.');
+    if (!link.url) throw new Error('Secure payout setup did not return an onboarding link.');
     window.location.href = link.url;
   } catch (error) {
-    toast(error.message || 'Could not start Stripe Connect onboarding.');
+    toast(error.message || 'Could not start secure payout setup.');
   }
 }
 function handleStripeReturnParams(){
@@ -965,7 +965,7 @@ function handleStripeReturnParams(){
   if (!query.has('stripe_connect')) return;
   if (backendAuthEnabled() && getBackendAccessToken()) {
     refreshStripeOnboardingStatus({ rerender:true, toast:false });
-    toast(query.get('stripe_connect') === 'refresh' ? 'Stripe onboarding link refreshed. Please continue setup.' : 'Returned from Stripe. Status refreshed.');
+    toast(query.get('stripe_connect') === 'refresh' ? 'Payout setup link refreshed. Please continue setup.' : 'Returned from secure payout setup. Status refreshed.');
   }
   query.delete('stripe_connect');
   const clean = `${window.location.pathname}${query.toString() ? `?${query.toString()}` : ''}${window.location.hash || '#/dashboard'}`;
@@ -1939,7 +1939,7 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     ${rate ? `<div>Rate: $${esc(rate)}/hr</div>` : `<div>Compensation: ${esc(formatDirectJobCompensation(job))}</div>`}
     <div>Location: ${esc(projectSnapshot.location || 'TBD')}</div>
     <div>Status: In Progress</div>
-    <div>Direct-hire employer payments are funded through Stripe test-mode checkout on staging when backend Stripe is configured.</div>
+    <div>Direct-hire employer payments are handled securely through CoGo City.</div>
   `;
   const backendStatus = backendProject && backendProject.status;
   const frontendStatus = backendStatus === 'awaiting_approval' ? 'awaiting_employer_approval' : backendStatus;
@@ -3433,12 +3433,9 @@ function projectPaymentStatusText(project={}){
   return 'Outside platform / not funded yet';
 }
 function renderProjectPaymentStatus(project={}){
-  const hasStripe = Boolean(project.stripe_payment_intent_id || project.stripePaymentIntentId);
-  const stripeId = project.stripe_payment_intent_id || project.stripePaymentIntentId || '';
   return `
     <div class="card" style="padding:10px;background:#F9FAFB;border:1px solid var(--border);margin:8px 0">
       <div class="small"><strong>Payment status:</strong> ${esc(projectPaymentStatusText(project))}</div>
-      <div class="small muted">Provider: ${hasStripe ? 'Stripe test-mode' : 'Direct / outside platform'}${stripeId ? ` · ${esc(stripeId)}` : ''}</div>
     </div>
   `;
 }
@@ -3454,7 +3451,7 @@ function renderProjectPaymentSection(project){
       <div class="small">Final payout amount: <strong>$${esc(money(payment.studentPayout))}</strong></div>
     `;
   }
-  if (currentUser.role === 'employer') {
+  if (currentUser.role === 'employer' || isNeighborAccount(currentUser)) {
     return `
       ${renderProjectPaymentStatus(project)}
       <div class="small">Service cost: <strong>$${esc(money(payment.workTotal))}</strong></div>
@@ -8140,7 +8137,14 @@ function viewImageFromLibrary(imageId=''){
 function getRenderableStudentServices(student){
   const rawServices = Array.isArray(student.services) ? student.services.filter(Boolean) : [];
   const services = rawServices.map((service, index) => normalizeStudentServiceRecord(student, service, index)).filter(s => s && (s.title || s.description || s.rate || s.location || s.availability));
-  if (services.length) return services;
+  const seen = new Set();
+  const uniqueServices = services.filter(service => {
+    const key = getStudentServiceKey(service);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (uniqueServices.length) return uniqueServices;
   return [{
     id:'default_service',
     title: student.title || 'Student Service',
@@ -8155,6 +8159,10 @@ function getRenderableStudentServices(student){
     video_id: student.video_id || '',
     reviews: student.reviews || []
   }];
+}
+function getStudentServiceKey(service={}){
+  if (service.id && !String(service.id).startsWith('service_')) return `id:${service.id}`;
+  return [service.title, service.description, service.rate, service.location, service.availability].map(value => String(value || '').trim().toLowerCase()).join('|');
 }
 function openStudentServiceDetail(studentId, serviceId){
   const student = studentId === 'signup_preview' ? buildStudentSignupPreviewStudent() : getStudents().find(x => x.id === studentId);
@@ -9387,7 +9395,7 @@ function renderStudentProfile(el){
             <div style="font-weight:800;font-size:1.05rem">My Services</div>
             <button class="btn btn-blue btn-sm" onclick="openStudentServiceForm()">Add Service</button>
           </div>
-          ${filteredServices.length ? filteredServices.map((service, index) => renderStudentServiceManagerCard(service, services.findIndex(s => s.id === service.id || (s.title === service.title && s.description === service.description)))).join('') : `<div class="muted">No services match your search.</div>`}
+          ${filteredServices.length ? filteredServices.map((service, index) => renderStudentServiceManagerCard(service, services.findIndex(s => getStudentServiceKey(s) === getStudentServiceKey(service)))).join('') : `<div class="muted">No services match your search.</div>`}
         </div>
       ` : ''}
       ${showReviews ? `
@@ -9668,8 +9676,9 @@ function openStudentServiceForm(serviceIndex=''){
   if (!profile) return toast('Create your profile first.');
   profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
   const existing = serviceIndex === '' || serviceIndex === null || serviceIndex === undefined ? null : profile.services[Number(serviceIndex)];
+  const previousFormIndex = activeStudentServiceFormIndex;
   activeStudentServiceFormIndex = serviceIndex;
-  if (!studentServiceDraft || String(studentServiceDraft.id || '') !== String(existing?.id || '') || String(activeStudentServiceFormIndex) !== String(serviceIndex)) {
+  if (!studentServiceDraft || String(studentServiceDraft.id || '') !== String(existing?.id || '') || String(previousFormIndex) !== String(serviceIndex)) {
     studentServiceDraft = createStudentServiceFormDraft(profile, existing);
   }
   studentServiceImagesBuffer = Array.isArray(studentServiceDraft.images) ? [...studentServiceDraft.images] : [];
@@ -10000,7 +10009,7 @@ function renderStudentProjectCard(p, listIndex=0){
         ${collapsed ? '' : `
         <div class="card form-card" style="margin-top:10px;background:#fff">
           <div style="font-weight:800">Messages</div>
-          <div class="small muted" style="margin-top:6px">User-to-user job communication only.</div>
+          <div class="small muted" style="margin-top:6px">Please keep project messages inside CoGo City so everyone stays protected.</div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
         </div>
         <div class="card form-card" style="margin-top:10px;background:#fff">
@@ -10038,10 +10047,10 @@ function openSubmitCompletion(projectId){
   const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
   openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
-      Once your work is complete, click \u201CProject Completed\u201D to notify the employer. After they review and approve it, you\u2019ll get paid. Do your best, great work leads to great reviews and helps you grow your skills.
+      Once your work is complete, click \u201CProject Completed\u201D to notify the employer. After they review and approve it, CoGo City will release your payment. Do your best, great work leads to great reviews and helps you grow your skills.
     </div>
     <div class="small muted" style="margin-bottom:14px">
-      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and your payout will recalculate automatically before employer approval.
+      The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and your earnings preview will recalculate automatically before employer approval.
     </div>
     <div class="field"><label>Job Title</label><input value="${esc(snapshot.title || '')}" readonly></div>
     <div class="field"><label>Job Description</label><textarea readonly>${esc(snapshot.description || '')}</textarea></div>
@@ -10890,7 +10899,7 @@ function renderEmployerAppCard(a){
           <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr \u00B7 ${esc(a.estimatedHours||'')} hours</div>` : ''}
           ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">Platform Fee for employers/neighbors is currently ${formatPercent(getPaymentSettings().employerCommissionPct)} and is added on top of the Work Total.</div>` : ''}
-          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To move forward, please click \u2018Start Project\u2019 to confirm and begin the job. This lets the student know you\u2019re ready to proceed.</div>` : ''}
+          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">When you are ready for the student to begin, click \u2018Start Project\u2019. CoGo City will secure the project payment and notify the student that work can start.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(a.status)}
@@ -11190,7 +11199,7 @@ function openEmployerApproval(projectId){
       </div>
       <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
       <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(breakdown, 'Actual')}</div>
-      <div class="warning" style="margin-top:12px">${STRIPE_ENABLED ? `Approving will capture the held funds and split the payment.` : `Payment capture is unavailable until Stripe is configured for this environment.`}</div>
+      <div class="small muted" style="margin-top:12px">Approving confirms the completed work and releases payment through CoGo City.</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
         <button class="btn btn-outline" onclick="openRequestChangesModal('${esc(projectId)}')">Request Changes</button>
@@ -13235,7 +13244,7 @@ function getCurrentUserTransactions(){
   const all = getTransactions();
   const nonWorkshop = all.filter(tx => !isWorkshopTransaction(tx));
   if (currentUser.role === 'admin') return nonWorkshop;
-  if (currentUser.role === 'employer') return nonWorkshop.filter(tx => tx.employer_id === currentUser.id);
+  if (currentUser.role === 'employer' || isNeighborAccount(currentUser)) return nonWorkshop.filter(tx => tx.employer_id === currentUser.id);
   return nonWorkshop.filter(tx => tx.student_id === currentUser.id);
 }
 function getTransactionTableState(key=''){
@@ -13325,7 +13334,7 @@ function renderTransactionsPanel(){
   const wrap = document.getElementById('transactions-panel');
   if (!wrap) return;
   const isAdmin = currentUser.role === 'admin';
-  const isEmployer = currentUser.role === 'employer';
+  const isEmployer = currentUser.role === 'employer' || isNeighborAccount(currentUser);
   const title = isAdmin ? 'Transactions' : 'My Transactions';
   const helper = isAdmin
     ? 'Admin view shows total Platform Fee collected from both sides.'
@@ -13380,7 +13389,7 @@ function renderTransactionsResults(){
   }).sort((a,b) => new Date(b.date_paid || b.date_completed || 0) - new Date(a.date_paid || a.date_completed || 0));
 
   const isAdmin = currentUser.role === 'admin';
-  const isEmployer = currentUser.role === 'employer';
+  const isEmployer = currentUser.role === 'employer' || isNeighborAccount(currentUser);
   const employerSubscriptionSpend = isEmployer
     ? getDirectJobs()
       .filter(job => String(job.employer_id) === String(currentUser.id))

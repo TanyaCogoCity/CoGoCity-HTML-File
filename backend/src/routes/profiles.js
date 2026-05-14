@@ -180,7 +180,17 @@ router.patch('/services/:id', requireAuth, async (req, res) => {
     if (!service) return fail(res, 404, 'Service not found');
     if (req.user.role !== 'admin' && service.profile.userId !== req.user.id) return fail(res, 403, 'Forbidden');
 
-    const payload = normalizeServicePayload({ ...service, ...(req.body || {}) });
+    const payload = normalizeServicePayload({
+      profileId: service.profileId,
+      title: service.title,
+      description: service.description,
+      hourlyRate: service.hourlyRate,
+      availability: service.availability,
+      location: service.location,
+      isActive: service.isActive,
+      metadata: service.metadata || {},
+      ...(req.body || {}),
+    });
     if (!payload.title || payload.hourlyRate <= 0) return fail(res, 400, 'title and rate are required');
 
     const updated = await prisma.service.update({
