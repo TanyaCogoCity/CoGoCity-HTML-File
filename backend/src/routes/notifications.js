@@ -39,7 +39,8 @@ router.post('/test-email', requireAuth, async (req, res) => {
     });
     return ok(res, { sent: !notification.email?.skipped, notification_id: notification.id, email: notification.email });
   } catch (error) {
-    return fail(res, 502, 'Staging email test failed', error.message);
+    console.error('staging_email_test_failed', error.message);
+    return ok(res, { sent: false, error: error.message });
   }
 });
 
