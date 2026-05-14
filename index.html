@@ -12948,9 +12948,11 @@ function persistAdminBlogPost(mode='draft'){
   syncAdminBlogDraftFromForm();
   adminBlogDraft.videoUrl = (document.getElementById('blog-video-url') || { value:'' }).value.trim();
   if (toastRequiredFields({ 'Article title':adminBlogDraft.title.trim() })) return;
+  const posts = getBlogPosts();
+  const existingPost = posts.find(post => String(post.id) === String(adminBlogDraft.id));
   adminBlogDraft.slug = ensureUniqueBlogSlug(adminBlogDraft.slug || adminBlogDraft.title, adminBlogDraft.id);
   if (!adminBlogDraft.excerpt.trim()) adminBlogDraft.excerpt = stripHtmlTags(adminBlogDraft.content || '').slice(0, 240);
-  adminBlogDraft.publishRequested = mode === 'publish';
+  adminBlogDraft.publishRequested = mode === 'publish' || (mode !== 'publish' && !!existingPost?.publishRequested);
   adminBlogDraft.status = getBlogPostStatus(adminBlogDraft);
   adminBlogDraft.link = `#/blog/${adminBlogDraft.slug}`;
   adminBlogDraft.featured_image = adminBlogDraft.featured_image || adminBlogDraft.featuredImage || adminBlogDraft.image_id || '';
@@ -12965,7 +12967,6 @@ function persistAdminBlogPost(mode='draft'){
     adminBlogDraft.video_id = '';
   }
   adminBlogDraft.updatedAt = new Date().toISOString();
-  const posts = getBlogPosts();
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
   if (index >= 0) posts[index] = normalizeBlogPostRecord(adminBlogDraft);
   else posts.unshift(normalizeBlogPostRecord(adminBlogDraft));
