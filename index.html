@@ -3934,7 +3934,8 @@ async function doLogin(){
     try {
       const data = await backendAuthRequest('/auth/login', {
         method:'POST',
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        retryOnAuthFailure:false
       });
       saveBackendAuthSession(data);
       const users = getUsers();
