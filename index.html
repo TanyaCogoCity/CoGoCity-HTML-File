@@ -2550,7 +2550,7 @@ function getSiteSettings(){
       admin: 'Admin Panel',
       student: 'Add Service',
       employer: 'Post a Job',
-      neighbor: 'Post to Community'
+      neighbor: 'Post or Create a Job'
     },
     footer_about_title: 'About CoGo City',
     footer_about_text: 'Our platform empowers teens and young adults to achieve financial independence by building job experience and entrepreneurial skills in the safe and protective environment of their local communities.',
@@ -3250,17 +3250,22 @@ function isNeighborAccount(user=currentUser){
 function isEmployerAccount(user=currentUser){
   return !!user && (user.role === 'employer' || user.role === 'neighbor');
 }
+function openCommunityComposer(options={}){
+  location.hash = '#/community';
+  renderPage();
+  setTimeout(() => {
+    const wrap = document.getElementById('post-composer-wrap');
+    if (wrap && !wrap.innerHTML.trim()) togglePostComposer();
+    const toggle = document.getElementById('postIsJob');
+    if (options.asJob && toggle && !toggle.checked) toggle.click();
+    const input = document.getElementById('postContent');
+    if (input) input.focus();
+  }, 80);
+}
 function goToPostJob(){
   if (!isEmployerAccount(currentUser)) return;
   if (isNeighborAccount(currentUser)) {
-    dashSection = 'myposts';
-    goDashboard();
-    setTimeout(() => {
-      const toggle = document.getElementById('empIsJob');
-      if (toggle && !toggle.checked) toggle.click();
-      const input = document.getElementById('empPostContent');
-      if (input) input.focus();
-    }, 80);
+    openCommunityComposer();
     return;
   }
   if (!getEmployerCompanyName(currentUser)) {
@@ -3745,6 +3750,7 @@ function renderNav(){
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
   const settings = getSiteSettings();
   const btnLabels = settings.nav_primary_buttons || {};
+  const neighborPrimaryLabel = !btnLabels.neighbor || btnLabels.neighbor === 'Post to Community' ? 'Post or Create a Job' : btnLabels.neighbor;
   const onboardingLocked = needsMigrationOnboarding() && currentUser.role !== 'admin';
   const primaryButton = onboardingLocked
     ? `<button class="btn btn-blue btn-sm" onclick="dashSection='profile';goDashboard()">Complete Review</button>`
@@ -3753,7 +3759,7 @@ function renderNav(){
       : currentUser.role === 'student'
         ? `<button class="btn btn-blue btn-sm" onclick="goToAddService()">${esc(btnLabels.student || 'Add Service')}</button>`
         : (isNeighborAccount(currentUser)
-            ? `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.neighbor || 'Post to Community')}</button>`
+            ? `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(neighborPrimaryLabel)}</button>`
             : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.employer || 'Post a Job')}</button>`);
   const rawAvatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}';
   const avatarLabel = /^https?:\/\//i.test(String(rawAvatarLabel || '')) ? firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}' : rawAvatarLabel;
@@ -8278,7 +8284,7 @@ function renderCommunity(){
     <div class="container feed-wrap">
       <div class="split" style="margin-bottom:18px">
         <div class="section-title" style="margin:0">Latest Posts</div>
-        ${currentUser ? `<button class="btn btn-blue btn-sm" onclick="togglePostComposer()">+ Create Post</button>` : `<button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In to Post</button>`}
+        ${currentUser ? `<button class="btn btn-blue btn-sm" onclick="togglePostComposer()">+ Post or Create a Job</button>` : `<button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In to Post</button>`}
       </div>
       <div id="post-composer-wrap"></div>
       ${posts.map(renderPost).join('')}
@@ -8382,7 +8388,7 @@ function togglePostComposer(){
     return;
   }
   const draft = getPostComposerDraft();
-  const canCreateJobPost = currentUser && ['employer','neighbor'].includes(currentUser.role);
+  const canCreateJobPost = isEmployerAccount(currentUser);
   wrap.innerHTML = `
     <div class="card form-card" style="margin-bottom:16px">
       <div class="field">
@@ -8452,7 +8458,7 @@ function submitPost(){
   const content = (document.getElementById('postContent').value || '').trim();
   const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 1);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
-  const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
+  const isJob = isEmployerAccount(currentUser) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
   if (toastRequiredFields({ Post:content })) return;
   if (!blockTextCheck(content)) return;
   const post = {
