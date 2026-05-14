@@ -1,12 +1,14 @@
 const { app } = require('./app');
 const config = require('./config');
 const { prisma } = require('./lib/prisma');
+const { resetStagingAdmin } = require('./lib/stagingAdminReset');
 
 async function start() {
   try {
     if (config.requireDatabase) {
       await prisma.$connect();
       console.log('Database connection verified.');
+      await resetStagingAdmin(prisma);
     } else {
       prisma.$connect()
         .then(() => console.log('Database connection verified.'))
