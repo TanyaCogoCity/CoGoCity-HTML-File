@@ -5247,7 +5247,7 @@ function renderPage(){
     if (route === '#/about-us') return renderAboutPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
-    if (route === '#/community') return renderCommunity();
+    if (route === '#/community' || route.startsWith('#/community/') || route.startsWith('#post-')) return renderCommunity();
     if (route === '#/dashboard') return renderDashboard();
     if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
     const result = renderHome();
@@ -8347,6 +8347,31 @@ function renderCommunity(){
       ${posts.map(renderPost).join('')}
     </div>
   `;
+  scrollToSharedCommunityPost();
+}
+function getCommunityPostRouteId(){
+  const route = getRoute();
+  const deepLinkMatch = route.match(/^#\/community\/post\/([^?#]+)/);
+  if (deepLinkMatch) return decodeURIComponent(deepLinkMatch[1]);
+  const legacyAnchorMatch = route.match(/^#post-(.+)$/);
+  if (legacyAnchorMatch) return decodeURIComponent(legacyAnchorMatch[1]);
+  return '';
+}
+function getCommunityPostShareUrl(postId=''){
+  const base = `${location.origin}${location.pathname}${location.search || ''}`;
+  return `${base}#/community/post/${encodeURIComponent(postId)}`;
+}
+function scrollToSharedCommunityPost(){
+  const postId = getCommunityPostRouteId();
+  if (!postId) return;
+  setTimeout(() => {
+    const el = document.getElementById(`post-${postId}`);
+    if (el) {
+      el.scrollIntoView({ behavior:'smooth', block:'start' });
+      el.style.boxShadow = '0 0 0 3px rgba(26,115,232,.18), 0 14px 34px rgba(0,0,0,.08)';
+      setTimeout(() => { el.style.boxShadow = ''; }, 2400);
+    }
+  }, 60);
 }
 function getPostComposerDraft(){
   const draft = Object.assign({
@@ -8638,7 +8663,7 @@ function sharePost(postId){
   if (!post) return;
   post.shares = Number(post.shares || 0) + 1;
   savePosts(posts);
-  const shareUrl = `${location.origin}${location.pathname}#post-${post.id}`;
+  const shareUrl = getCommunityPostShareUrl(post.id);
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(shareUrl).then(() => toast('Post link copied.')).catch(() => toast('Post shared.'));
   } else {
