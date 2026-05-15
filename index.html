@@ -5775,12 +5775,20 @@ function renderDirectJobCard(job){
     </article>
   `;
 }
+function renderDirectJobsList(){
+  const jobs = getDirectJobPublicItems();
+  return jobs.length ? jobs.map(renderDirectJobCard).join('') : `<div class="card form-card muted">No active jobs match your search yet.</div>`;
+}
+function updateDirectJobsSearch(value=''){
+  directJobsSearchQuery = String(value || '');
+  const list = document.getElementById('direct-jobs-list');
+  if (list) list.innerHTML = renderDirectJobsList();
+}
 function renderJobsPage(){
   if (backendAuthEnabled() && !backendJobsLoaded && !backendJobsLoading) refreshBackendDirectJobs({ rerender:true });
   const route = getRoute();
   const detailMatch = route.match(/^#\/jobs\/([^?#]+)/);
   if (detailMatch) return renderDirectJobDetailPage(decodeURIComponent(detailMatch[1]));
-  const jobs = getDirectJobPublicItems();
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('jobs', {
@@ -5790,7 +5798,7 @@ function renderJobsPage(){
     <div class="container">
       <div class="card form-card" style="margin-bottom:16px">
         <div class="row">
-          <div class="field"><label>Search jobs</label><input value="${esc(directJobsSearchQuery)}" placeholder="Title, company, location, or keyword" oninput="directJobsSearchQuery=this.value;renderJobsPage()"></div>
+          <div class="field"><label>Search jobs</label><input value="${esc(directJobsSearchQuery)}" placeholder="Title, company, location, or keyword" oninput="updateDirectJobsSearch(this.value)"></div>
           <div class="field"><label>Sort</label>
             <select onchange="directJobsSort=this.value;renderJobsPage()">
               <option value="latest" ${directJobsSort === 'latest' ? 'selected' : ''}>Latest first</option>
@@ -5799,7 +5807,7 @@ function renderJobsPage(){
           </div>
         </div>
       </div>
-      ${jobs.length ? jobs.map(renderDirectJobCard).join('') : `<div class="card form-card muted">No active jobs match your search yet.</div>`}
+      <div id="direct-jobs-list">${renderDirectJobsList()}</div>
     </div>
   `;
 }
