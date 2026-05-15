@@ -2597,8 +2597,8 @@ function getSiteSettings(){
         image_url: ''
       },
       workshops: {
-        title: 'Workshops & Classes Near You',
-        body: 'Discover practical workshops, register in seconds, and track your classes from your dashboard.',
+        title: 'Learn Real Skills. Build Your Future.',
+        body: 'Learn real-world skills from business owners and mentors. Explore entrepreneurship, build confidence, and gain experience for your future.',
         image_url: ''
       }
     }
@@ -3678,7 +3678,7 @@ function renderPageContentBlock(pageKey='', fallback={}){
   if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.'))) {
     block.body = 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs';
   }
-  const heroClass = ['community', 'jobs'].includes(pageKey) ? 'hero community-hero' : 'hero';
+  const heroClass = ['community', 'jobs', 'workshops'].includes(pageKey) ? 'hero community-hero' : 'hero';
   const imageHtml = block.image_url
     ? `<div style="margin:10px auto 14px;max-width:980px"><img src="${esc(block.image_url)}" alt="${esc(block.title || 'Page image')}" style="width:100%;max-height:300px;object-fit:cover;border-radius:14px;border:1px solid var(--border)"></div>`
     : '';
@@ -6240,8 +6240,8 @@ function renderWorkshopsPage(){
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('workshops', {
-      title:'Workshops & Classes Near You',
-      body:'Discover practical workshops, register in seconds, and track your classes from your dashboard.'
+      title:'Learn Real Skills. Build Your Future.',
+      body:'Learn real-world skills from business owners and mentors. Explore entrepreneurship, build confidence, and gain experience for your future.'
     })}
     <div class="container">
       <div class="workshop-grid">
