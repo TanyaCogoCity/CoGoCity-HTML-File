@@ -5268,24 +5268,13 @@ function renderPage(){
 }
 
 function getBrowseStudentSearchText(card){
-  const student = card.student || {};
   const service = card.service || {};
   return [
     service.title,
     service.description,
     service.category_id,
     service.categoryId,
-    service.location,
-    service.availability,
-    service.rate,
-    student.name,
-    student.location,
-    student.school,
-    student.title,
-    student.rate,
-    ...(Array.isArray(service.tags) ? service.tags : []),
-    ...(Array.isArray(student.tags) ? student.tags : []),
-    ...(Array.isArray(student.highlights) ? student.highlights : [])
+    ...(Array.isArray(service.tags) ? service.tags : [])
   ].filter(Boolean).join(' ').toLowerCase();
 }
 function getBrowseStudentRate(card){
@@ -5314,7 +5303,7 @@ function renderBrowseStudentSearchControls(totalCount=0, filteredCount=0){
     <div class="student-search-panel" aria-label="Search student services">
       <div class="student-search-primary">
         <span class="student-search-icon" aria-hidden="true">\u{1F50D}</span>
-        <input id="browseStudentQuery" type="search" value="${esc(browseStudentFilters.query || '')}" placeholder="Search by service, student name, location, or rate..." oninput="updateBrowseStudentFilter('query', this.value)" aria-label="Search by service, student name, location, or rate">
+        <input id="browseStudentQuery" type="search" value="${esc(browseStudentFilters.query || '')}" placeholder="Search by service title or description..." oninput="updateBrowseStudentFilter('query', this.value)" aria-label="Search by service title or description">
         <button class="student-search-clear" type="button" onclick="clearBrowseStudentFilters()" aria-label="Clear search" style="${hasFilters ? '' : 'display:none'}">\u00D7</button>
       </div>
       <div class="student-filter-row">
