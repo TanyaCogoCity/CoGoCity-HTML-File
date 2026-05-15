@@ -5731,8 +5731,19 @@ function renderDirectJobApplyAction(job){
   const isOwner = !!(currentUser && currentUser.id === job.employer_id);
   if (isOwner) return `<button class="btn btn-blue btn-sm" onclick="dashSection='my_jobs';employerMyJobsTab='manage';goDashboard()">Manage</button>`;
   if (!currentUser) return `<button class="btn btn-blue btn-sm" onclick="openLoginModal()">Sign In to Apply</button>`;
-  if (currentUser.role !== 'student') return `<button class="btn btn-outline btn-sm" disabled>Apply</button>`;
+  if (currentUser.role !== 'student') return renderDisabledStudentOnlyApply('btn-sm');
   return `<button class="btn btn-blue btn-sm" onclick="openDirectJobApplyModal('${esc(job.id)}')">Apply</button>`;
+}
+function renderDisabledStudentOnlyApply(buttonClass=''){
+  return `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><div class="small muted">Students only</div><button class="btn btn-outline ${esc(buttonClass)}" disabled>Apply</button></div>`;
+}
+function sanitizeDirectJobPublicText(text='', fallback=''){
+  const cleaned = String(text || '')
+    .split(/\r?\n+/)
+    .map(line => line.trim())
+    .filter(line => line && !/\b(browser\s*qa|system\s*note|internal\s*note|posting\s*fee\s*paid)\b/i.test(line))
+    .join('\n');
+  return cleaned || fallback;
 }
 function renderDirectJobCard(job){
   const applicationsCount = getDirectJobApplicationsFor(job.id).length;
@@ -5753,7 +5764,7 @@ function renderDirectJobCard(job){
             <span>\u{1F5D3}\uFE0F Posted: ${esc(formatDirectJobCreatedDate(job.created_at))}</span>
             <span>\u{1F465} Applicants: ${applicationsCount}</span>
           </div>
-          <div style="margin-top:10px">${renderFormattedLongText(`${String(job.description || '').slice(0, 220)}${String(job.description || '').length > 220 ? '\u2026' : ''}`, { small:true })}</div>
+          <div style="margin-top:10px">${renderFormattedLongText(`${sanitizeDirectJobPublicText(job.description || '').slice(0, 220)}${sanitizeDirectJobPublicText(job.description || '').length > 220 ? '\u2026' : ''}`, { small:true })}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="location.hash='#/jobs/${esc(job.id)}';renderPage()">View Job</button>
@@ -5830,11 +5841,11 @@ function renderDirectJobDetailPage(jobId=''){
         </div>
         <div class="card form-card" style="margin-top:14px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Job Description</div>
-          ${renderFormattedLongText(job.description || '', { small:true })}
+          ${renderFormattedLongText(sanitizeDirectJobPublicText(job.description || '', 'No description provided.'), { small:true })}
         </div>
         <div class="card form-card" style="margin-top:12px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Requirements</div>
-          ${renderFormattedLongText(job.requirements || 'No specific requirements listed.', { small:true })}
+          ${renderFormattedLongText(sanitizeDirectJobPublicText(job.requirements || '', 'No specific requirements listed.'), { small:true })}
         </div>
         <div class="card form-card" style="margin-top:12px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Employer</div>
@@ -5847,10 +5858,10 @@ function renderDirectJobDetailPage(jobId=''){
             : !currentUser
               ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In to Apply</button>`
               : currentUser.role !== 'student'
-                ? `<button class="btn btn-outline" disabled>Apply</button>`
+                ? renderDisabledStudentOnlyApply('')
                 : existingApplication
                   ? `<button class="btn btn-outline" disabled>Already Applied (${esc(String(existingApplication.status).replaceAll('_',' '))})</button>`
-                  : `<button class="btn btn-blue" ${job.status === 'active' ? '' : 'disabled'} onclick="openDirectJobApplyModal('${esc(job.id)}')">Apply with Resume</button>`
+                  : `<button class="btn btn-blue" ${job.status === 'active' ? '' : 'disabled'} onclick="openDirectJobApplyModal('${esc(job.id)}')">Apply</button>`
           }
         </div>
       </div>
