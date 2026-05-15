@@ -5724,7 +5724,7 @@ function renderDirectJobApplyAction(job){
   return `<button class="btn btn-blue btn-sm" onclick="openDirectJobApplyModal('${esc(job.id)}')">Apply</button>`;
 }
 function renderDisabledStudentOnlyApply(buttonClass=''){
-  return `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><div class="small muted">Students only</div><button class="btn btn-outline ${esc(buttonClass)}" disabled>Apply</button></div>`;
+  return `<div style="display:flex;flex-direction:column;gap:4px;align-items:center"><button class="btn btn-outline ${esc(buttonClass)}" disabled>Apply</button><div class="small muted" style="line-height:1.1">Students only</div></div>`;
 }
 function sanitizeDirectJobPublicText(text='', fallback=''){
   const cleaned = String(text || '')
