@@ -5839,7 +5839,6 @@ function renderDirectJobDetailPage(jobId=''){
         <div class="card form-card" style="margin-top:12px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Employer</div>
           <div class="small">${esc(job.company_name || employer?.publicName || employer?.name || 'Employer')}</div>
-          <div class="small muted" style="margin-top:6px">Posting fee paid to CoGo City: $${esc(money(job.posting_fee || 0))} (${esc(job.posting_package || 'basic')})</div>
         </div>
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-outline" onclick="shareDirectJob('${esc(job.id)}')">Share Job</button>
