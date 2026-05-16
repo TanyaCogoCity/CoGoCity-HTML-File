@@ -23,10 +23,18 @@
       wait_for_update: 500
     });
     gtag('set', 'ads_data_redaction', true);
-    (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    (function(w,d,s,l,i){
+      var hostname = w.location && w.location.hostname;
+      var isStaging = hostname === 'staging.cogocity.com';
+      var stagingGtmExplicitlyEnabled = w.COGO_ENABLE_STAGING_GTM === true;
+      if (isStaging && !stagingGtmExplicitlyEnabled) {
+        w[l].push({ event: 'cogo_gtm_blocked_pending_staging_routing', environment: 'staging', hostname: hostname });
+        return;
+      }
+      w[l]=w[l]||[];w[l].push({'gtm.start':
+      new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+      'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
     })(window,document,'script','dataLayer','GTM-TMHS95ZD');
   </script>
   <!-- End Google Tag Manager -->
@@ -431,10 +439,7 @@
   </style>
 </head>
 <body>
-  <!-- Google Tag Manager (noscript) -->
-  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TMHS95ZD"
-  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-  <!-- End Google Tag Manager (noscript) -->
+  <!-- GTM noscript intentionally omitted for now so staging cannot leak to the live GA4 property before hostname routing is published in GTM. -->
   <div id="toast" class="toast"></div>
   <nav>
     <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
