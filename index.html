@@ -9,6 +9,27 @@
   <meta name="description" content="CoGo City connects local students, families, neighbors, and businesses for trusted services, jobs, workshops, messages, and community opportunities." />
   <meta name="theme-color" content="#FFE600" />
   <title>CoGo City</title>
+  <!-- Google Tag Manager + Consent Mode: privacy-first default before any Google tag loads. -->
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('consent', 'default', {
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      analytics_storage: 'denied',
+      functionality_storage: 'granted',
+      security_storage: 'granted',
+      wait_for_update: 500
+    });
+    gtag('set', 'ads_data_redaction', true);
+    (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-TMHS95ZD');
+  </script>
+  <!-- End Google Tag Manager -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23FFE600'/%3E%3Ctext x='32' y='41' text-anchor='middle' font-size='28' font-family='Arial,sans-serif' font-weight='700' fill='%231F2937'%3ECG%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -354,7 +375,7 @@
       .community-hero{text-align:center}
       .community-hero .formatted-long-text{margin-left:auto;margin-right:auto;text-align:center}
       .hero .btn,.hero a.btn{width:100%;margin-bottom:8px}
-      .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.png');background-position:center bottom;background-size:cover}
+      .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:100% auto;background-repeat:no-repeat}
       .home-hero-copy{max-width:100%}
       .home-hero h1{font-size:2rem;line-height:1.08}
       .home-hero p{font-size:.98rem}
@@ -410,6 +431,10 @@
   </style>
 </head>
 <body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TMHS95ZD"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
   <div id="toast" class="toast"></div>
   <nav>
     <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
@@ -526,6 +551,74 @@ const BACKEND_AUTH = {
   baseUrl: '/api',
   timeoutMs: 10000
 };
+const COGO_GTM_CONTAINER_ID = 'GTM-TMHS95ZD';
+let cogoAnalyticsInitialized = false;
+let cogoAnalyticsSearchTimer = null;
+let cogoAnalyticsLastPage = '';
+function getCogoAnalyticsEnvironment(){
+  return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
+}
+function getCogoAnalyticsPagePath(route=''){
+  const rawPath = `${window.location.pathname}${route || window.location.hash || '#/'}`;
+  return rawPath
+    .replace(/\/(post|student|service|job|project|application|message|thread)\/[^/?#]+/gi, '/$1/[redacted]')
+    .replace(/(id=)[^&#]+/gi, '$1[redacted]');
+}
+function sanitizeCogoAnalyticsParams(params={}){
+  const allowedKeys = new Set([
+    'environment', 'hostname', 'page_path', 'page_type', 'user_role', 'source', 'results_count',
+    'service_category', 'category', 'package', 'value', 'currency', 'success', 'status'
+  ]);
+  const sanitized = {};
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (!allowedKeys.has(key)) return;
+    if (value === null || typeof value === 'undefined') return;
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      sanitized[key] = value;
+      return;
+    }
+    sanitized[key] = String(value).slice(0, 80);
+  });
+  return sanitized;
+}
+function initCogoAnalytics(){
+  if (typeof window === 'undefined' || cogoAnalyticsInitialized) return;
+  cogoAnalyticsInitialized = true;
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({
+    event: 'cogo_analytics_ready',
+    gtm_container_id: COGO_GTM_CONTAINER_ID,
+    environment: getCogoAnalyticsEnvironment(),
+    hostname: window.location.hostname
+  });
+}
+function trackCogoEvent(eventName='', params={}){
+  if (typeof window === 'undefined' || !eventName) return;
+  initCogoAnalytics();
+  const payload = sanitizeCogoAnalyticsParams(Object.assign({
+    environment: getCogoAnalyticsEnvironment(),
+    page_path: getCogoAnalyticsPagePath(),
+    user_role: currentUser ? currentUser.role : 'guest'
+  }, params || {}));
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push(Object.assign({ event: eventName }, payload));
+}
+function trackCogoSearchEvent(searchTerm='', resultCount=0){
+  if (!String(searchTerm || '').trim()) return;
+  clearTimeout(cogoAnalyticsSearchTimer);
+  cogoAnalyticsSearchTimer = setTimeout(() => {
+    trackCogoEvent('service_search', { results_count: Number(resultCount || 0) });
+  }, 700);
+}
+function trackCogoPageView(route=''){
+  if (typeof window === 'undefined') return;
+  const pageKey = getCogoAnalyticsPagePath(route);
+  if (pageKey === cogoAnalyticsLastPage) return;
+  cogoAnalyticsLastPage = pageKey;
+  trackCogoEvent('page_view', {
+    page_path: pageKey
+  });
+}
 const BACKEND_SYNC_ENDPOINTS = {
   users: '/sync/users',
   students: '/sync/student-profiles',
@@ -1107,33 +1200,26 @@ function mergeBackendStudentRecords(localStudents=[]){
   );
   const mergeServices = (backendServices=[], localServices=[]) => {
     const localList = ensureArray(localServices);
-    return ensureArray(backendServices).map((service, index) => {
-      const localService = localList.find(item => item && service && item.id && service.id && String(item.id) === String(service.id)) || localList[index] || null;
+    return ensureArray(backendServices).map(service => {
+      const localService = localList.find(item => item && service && item.id && service.id && String(item.id) === String(service.id)) || null;
       if (!localService) return service;
-      return Object.assign({}, service, localService, {
+      return Object.assign({}, service, {
         reviews: ensureArray(localService.reviews).length ? localService.reviews : service.reviews,
         review_count: localService.review_count ?? localService.reviewCount ?? service.review_count ?? service.reviewCount,
         reviewCount: localService.reviewCount ?? localService.review_count ?? service.reviewCount ?? service.review_count,
         average_rating: localService.average_rating ?? localService.averageRating ?? service.average_rating ?? service.averageRating,
         averageRating: localService.averageRating ?? localService.average_rating ?? service.averageRating ?? service.average_rating
       });
-    }).concat(localList.filter(localService => !ensureArray(backendServices).some(service => service && localService && service.id && localService.id && String(service.id) === String(localService.id))));
+    });
   };
   const merged = [];
-  const seenKeys = new Set();
   backendStudents.forEach(student => {
     const localMatch = findLocalMatch(student);
-    const mergedStudent = localMatch ? Object.assign({}, student, localMatch, {
+    const mergedStudent = localMatch ? Object.assign({}, localMatch, student, {
       services: mergeServices(student.services, localMatch.services),
       reviews: ensureArray(localMatch.reviews).length ? localMatch.reviews : student.reviews
     }) : student;
     merged.push(normalizeStudentRecord(mergedStudent));
-    if (student.userId) seenKeys.add(`user:${String(student.userId)}`);
-    if (student.id) seenKeys.add(`id:${String(student.id)}`);
-  });
-  normalizedLocalStudents.forEach(student => {
-    if ((student.userId && seenKeys.has(`user:${String(student.userId)}`)) || (student.id && seenKeys.has(`id:${String(student.id)}`))) return;
-    merged.push(student);
   });
   return merged;
 }
@@ -5235,6 +5321,7 @@ function renderPage(){
     processWorkshopPayouts();
     applySiteSettings();
     const route = getRoute();
+    trackCogoPageView(route);
     if (currentUser && needsMigrationOnboarding() && route !== '#/dashboard') {
       dashSection = 'profile';
       if (typeof toast === 'function') toast('Please complete your profile review before using the rest of the site.');
@@ -5335,6 +5422,7 @@ function updateBrowseStudentFilter(key='', value=''){
   browseStudentFilters[key] = String(value || '');
   const allCards = getHomepageOrderedServiceCards();
   const filteredCards = filterBrowseStudentCards(allCards);
+  if (key === 'query') trackCogoSearchEvent(browseStudentFilters.query, filteredCards.length);
   const grid = document.getElementById('browseStudentResults');
   if (grid) grid.innerHTML = renderBrowseStudentResults(filteredCards);
   const summary = document.getElementById('browseStudentSummary');
@@ -5894,6 +5982,7 @@ function openDirectJobApplyModal(jobId=''){
     dataUrl: savedResume ? savedResume.dataUrl : '',
     useSavedResume: !!savedResume
   };
+  trackCogoEvent('apply_button_click', { source: 'direct_hire' });
   openModal('Apply to Job', `
     <div class="card form-card" style="margin-bottom:12px">
       <div style="font-weight:800">${esc(job.job_title)}</div>
@@ -5955,6 +6044,7 @@ async function submitDirectJobApplication(jobId=''){
     saveDirectJobApplications(applications);
   }
   if (!useSaved) saveStudentResume(currentUser.id, { fileName, dataUrl });
+  trackCogoEvent('application_submitted', { source: 'direct_hire' });
   sendInboxMessage(job.employer_id, getUserById(job.employer_id)?.name || 'Employer', `Direct Hire application for "${job.job_title}": ${message}`, null, currentUser, {
     thread_id: `direct_job:${job.id}`,
     thread_label: `Direct Hire Job: ${job.job_title}`
@@ -8177,6 +8267,7 @@ function openStudentServiceDetail(studentId, serviceId){
   const services = getRenderableStudentServices(student);
   const service = services.find(s => s.id === serviceId) || services[0];
   if (!service) return;
+  if (studentId !== 'signup_preview') trackCogoEvent('student_profile_view', { source: 'service_detail' });
   const serviceIndex = Math.max(0, services.findIndex(s => s.id === service.id));
   const summary = getServiceReviewSummary(student, service, serviceIndex);
   const backButton = studentId === 'signup_preview'
@@ -8234,6 +8325,7 @@ function renderProfileCard(card){
 function openProfile(studentId){
   const s = getStudents().find(x => x.id === studentId);
   if (!s) return;
+  trackCogoEvent('student_profile_view', { source: 'profile_modal' });
   const services = getRenderableStudentServices(s);
   const reviewSummary = getProfileReviewSummary(s);
   openModal(`${s.name}'s Profile`, `
@@ -8522,7 +8614,11 @@ function savePostComposerDraft(){
 }
 function toggleJobFields(){
   document.getElementById('jobFields').classList.toggle('hidden', !document.getElementById('postIsJob').checked);
-  if (document.getElementById('postIsJob').checked) syncCommunityJobDescriptionFromPost(true);
+  if (document.getElementById('postIsJob').checked) {
+    trackCogoEvent('create_job_checkbox_click', { source: 'community_composer' });
+    trackCogoEvent('create_job_started', { source: 'community_composer' });
+    syncCommunityJobDescriptionFromPost(true);
+  }
 }
 function syncCommunityJobDescriptionFromPost(force=false){
   const postInput = document.getElementById('postContent');
@@ -8559,6 +8655,7 @@ function submitPost(){
     application_count: isJob ? 0 : undefined
   };
   if (isJob){
+    trackCogoEvent('job_publish_click', { source: 'community_feed' });
     post.jobTitle = (document.getElementById('jobTitle').value || '').trim();
     post.description = (document.getElementById('jobDescription').value || '').trim();
     post.rate = Number(document.getElementById('jobRate').value || 0);
@@ -8572,6 +8669,7 @@ function submitPost(){
   const posts = getPosts();
   posts.unshift(post);
   savePosts(posts);
+  if (isJob) trackCogoEvent('job_published', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
   ls('cogo_draft_post', null);
   toast('Posted successfully.');
   renderCommunity();
@@ -8773,6 +8871,7 @@ function applyToPost(postId){
     return toast("You\u2019ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
   }
   if (!currentStudentProfile()) return goToAddProfile();
+  trackCogoEvent('apply_button_click', { source: 'community_feed' });
   openModal('Apply to Job', `
     <div class="warning" style="margin-bottom:14px">Your application will appear in your dashboard under Jobs & Bookings.</div>
     <div class="field">
@@ -8816,6 +8915,7 @@ function submitApplication(postId){
     createdAt: new Date().toISOString()
   });
   saveApplications(apps);
+  trackCogoEvent('application_submitted', { source: 'community_feed' });
   sendInboxMessage(
     p.authorId,
     p.authorName,
@@ -8855,6 +8955,7 @@ function openBookDirect(studentId, serviceId=''){
   if (!s) return;
   const services = getRenderableStudentServices(s);
   const selectedService = services.find(service => service.id === serviceId) || services[0] || {};
+  trackCogoEvent('book_button_click', { source: 'student_service' });
   openModal(`Book / Offer Job to ${s.name}`, `
     <div class="warning" style="margin-bottom:14px">This creates a direct employer-to-student offer flow similar to Fiverr/Upwork.</div>
     ${selectedService.title ? `<div class="card" style="padding:12px;margin-bottom:14px;background:#F9FAFB"><div style="font-weight:800">${esc(selectedService.title)}</div><div class="small money" style="margin-top:4px">$${esc(selectedService.rate || s.rate || 0)}/hr \u00B7 ${esc(selectedService.location || s.location || '')}</div></div>` : ''}
@@ -8913,6 +9014,7 @@ function sendDirectOffer(studentId, serviceId=''){
     createdAt: new Date().toISOString()
   });
   saveApplications(apps);
+  trackCogoEvent('booking_submitted', { source: 'student_service', value: rate * hours, currency: 'USD' });
   pushNotif(s.userId, `You received an offer from ${currentUser.name}: "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
   closeModal();
   toast('Offer sent to student.');
@@ -10069,6 +10171,7 @@ function renderStudentProjectCard(p, listIndex=0){
 function openSubmitCompletion(projectId){
   const p = getProjects().find(x => x.id === projectId);
   if (!p) return;
+  trackCogoEvent('project_complete_click', { source: 'student_projects' });
   const snapshot = p.projectSnapshot || {
     title: p.jobTitle,
     description: p.scope || p.description || '',
@@ -10164,6 +10267,7 @@ async function submitFinalInvoice(projectId){
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. Platform Fee (${formatPercent(breakdown.employerCommissionPct)}): $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, Platform Fee $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
   sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after Platform Fee: $${money(studentPayout)}.`, p.id);
+  trackCogoEvent('project_completed', { source: 'student_final_invoice', value: totalDue, currency: 'USD' });
   closeModal();
   toast('Final invoice submitted for employer approval.');
   renderDashboard();
@@ -10230,7 +10334,11 @@ function toggleEmpJobFields(){
   const toggle = document.getElementById('empIsJob');
   if (!fields || !toggle) return;
   fields.classList.toggle('hidden', !toggle.checked);
-  if (toggle.checked) syncJobDescriptionFromPost(true);
+  if (toggle.checked) {
+    trackCogoEvent('create_job_checkbox_click', { source: 'employer_dashboard' });
+    trackCogoEvent('create_job_started', { source: 'employer_dashboard' });
+    syncJobDescriptionFromPost(true);
+  }
 }
 function syncJobDescriptionFromPost(force=false){
   const postInput = document.getElementById('empPostContent');
@@ -10266,6 +10374,7 @@ function submitEmployerDashboardPost(){
     status: isJob ? 'open' : undefined
   };
   if (isJob){
+    trackCogoEvent('job_publish_click', { source: 'employer_dashboard' });
     post.jobTitle = (document.getElementById('empJobTitle').value || '').trim();
     post.description = (document.getElementById('empJobDescription').value || '').trim();
     post.rate = Number(document.getElementById('empJobRate').value || 0);
@@ -10279,6 +10388,7 @@ function submitEmployerDashboardPost(){
   const posts = getPosts();
   posts.unshift(post);
   savePosts(posts);
+  if (isJob) trackCogoEvent('job_published', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
   myPostsTab = 'all';
   toast('Post saved.');
   dashSection = 'myposts';
@@ -10427,6 +10537,7 @@ async function saveEmployerDirectHireJob(){
   const schedule = String((document.getElementById('directJobSchedule') || {}).value || '').trim();
   const postingPkg = getSelectedDirectJobPackageFromForm();
   const selectedMonths = Math.max(1, Number((document.getElementById('directJobListingMonths') || {}).value || 1) || 1);
+  trackCogoEvent('job_publish_click', { source: 'direct_hire', package: String(postingPkg.key || 'basic').toLowerCase() });
   if (toastRequiredFields({ 'Job title':title, Compensation:compensation, Location:location, Description:description, Requirements:requirements }, 'Direct-hire job')) return;
   if (!blockTextCheck(description) || !blockTextCheck(requirements)) return;
   const companyName = getEmployerCompanyName(currentUser);
@@ -10493,6 +10604,8 @@ async function saveEmployerDirectHireJob(){
   }
   jobs.unshift(newJob);
   saveDirectJobs(jobs);
+  trackCogoEvent('job_published', { source: 'direct_hire', package: String(postingPkg.key || 'basic').toLowerCase(), value: fee, currency: 'USD' });
+  trackCogoEvent('payment_success', { source: 'direct_job_listing', value: fee, currency: 'USD' });
   const txId = uid('tx');
   const transactions = getTransactions();
   transactions.unshift({
@@ -11035,6 +11148,7 @@ function startProject(appId){
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
   if (!a || a.status !== 'accepted') return toast('Student must accept first.');
+  trackCogoEvent('project_start_click', { source: 'application' });
   const projects = getProjects();
   if (projects.some(p => p.applicationId === appId)) {
     employerTab = 'projects';
@@ -11127,6 +11241,8 @@ function startProject(appId){
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${formatPercent(estimatedBreakdown.studentCommissionPct)} Platform Fee is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. Platform fee: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
   sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your Platform Fee is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
+  trackCogoEvent('project_started', { source: 'community_or_direct_offer', value: estimatedEmployerTotal, currency: 'USD' });
+  trackCogoEvent('payment_success', { source: 'project_escrow', value: estimatedEmployerTotal, currency: 'USD' });
   employerTab = 'projects';
   toast('Project started successfully');
   renderDashboard();
@@ -11178,6 +11294,7 @@ function activateProject(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
+  trackCogoEvent('project_start_click', { source: 'project' });
   p.status = 'in_progress';
   p.escrowStatus = 'held';
   saveProjects(projects);
@@ -11197,6 +11314,7 @@ function activateProject(projectId){
   }
 
   pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  trackCogoEvent('project_started', { source: 'existing_project', value: Number(p.escrowAmount || p.estimatedEmployerTotal || 0), currency: 'USD' });
   employerTab = 'projects';
   toast('Project started successfully');
   renderDashboard();
@@ -11392,6 +11510,7 @@ async function approveFinalInvoice(projectId){
   sendSystemMessage(p.studentUserId, p.studentName, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.studentPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
   sendSystemMessage(p.employerId, p.employerName, `Payment completed for '${p.jobTitle}'. Work Total: $${money(p.finalSubtotal || 0)}. Platform Fee: $${money(p.employerPlatformFee || 0)}. Total Payment: $${money(p.finalTotal || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
   pushAdminCommissionNotification(p);
+  trackCogoEvent('payment_success', { source: 'project_final_payment', value: Number(p.finalTotal || 0), currency: 'USD' });
   pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   closeModal();
   toast('Payment released and project completed.');
