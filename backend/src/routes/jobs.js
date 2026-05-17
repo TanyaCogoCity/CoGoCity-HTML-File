@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', requireAuth, async (req, res) => {
-  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can create jobs');
+  if (!['employer', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/admin can create direct job listings. Neighbors should post jobs through Community Feed.');
 
   try {
     const payload = normalizeJobPayload(req.body || {});

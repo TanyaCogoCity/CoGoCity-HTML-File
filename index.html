@@ -9184,9 +9184,9 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">\u{1F464} My Profile</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">\u2699\uFE0F Settings</a>
         ` : `
-          ${currentUser.type !== 'neighbor' ? `<a href="#" class="${dashSection==='my_jobs'?'active':''}" onclick="dashSection='my_jobs';renderDashboard();return false;">\u{1F4BC} My Jobs</a>` : ''}
+          ${!isNeighborAccount(currentUser) ? `<a href="#" class="${dashSection==='my_jobs'?'active':''}" onclick="dashSection='my_jobs';renderDashboard();return false;">\u{1F4BC} My Jobs</a>` : ''}
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">\u{1F4E2} My Posts</a>
-          <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">\u{1F4CB} ${currentUser.type === 'neighbor' ? 'Applicants and Projects' : 'Applicants'}</a>
+          <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">\u{1F4CB} ${isNeighborAccount(currentUser) ? 'Applicants and Projects' : 'Applicants'}</a>
           <a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">\u{1F9D1}\u200D\u{1F3EB} Workshops & Classes</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">\u{1F4AC} My Messages</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">\u{1F4B3} My Transactions</a>
@@ -10649,7 +10649,7 @@ async function saveDirectJobEdit(jobId=''){
 }
 async function saveEmployerDirectHireJob(){
   if (!currentUser || currentUser.role !== 'employer') return toast('Only employer accounts can post direct-hire jobs.');
-  if (currentUser.type === 'neighbor') return toast('Neighbor accounts cannot post direct-hire jobs. Use Community Feed for contract hiring.');
+  if (isNeighborAccount(currentUser)) return toast('Neighbor accounts cannot post direct-hire jobs. Use Community Feed for contract hiring.');
   if (!getEmployerCompanyName(currentUser)) return toast('Complete company information before posting a direct-hire job.');
   const title = String((document.getElementById('directJobTitle') || {}).value || '').trim();
   const jobType = String((document.getElementById('directJobType') || {}).value || 'full_time');
@@ -10933,7 +10933,7 @@ function submitDirectHireReview(applicationId=''){
   renderDashboard();
 }
 function renderEmployerMyJobs(el){
-  if (currentUser.type === 'neighbor') {
+  if (isNeighborAccount(currentUser)) {
     el.innerHTML = `
       <div class="section-title">My Jobs</div>
       <div class="card form-card">

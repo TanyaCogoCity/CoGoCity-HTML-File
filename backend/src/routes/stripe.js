@@ -530,7 +530,7 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
 
 router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
-  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can pay for job listings');
+  if (!['employer', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/admin can pay for direct job listings. Neighbors should post jobs through Community Feed.');
 
   const jobId = String(req.body?.job_id || req.body?.jobId || '').trim();
   if (!jobId) return fail(res, 400, 'job_id is required');
