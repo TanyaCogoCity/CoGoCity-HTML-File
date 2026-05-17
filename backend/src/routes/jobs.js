@@ -23,6 +23,7 @@ router.post('/', requireAuth, async (req, res) => {
 
   try {
     const payload = normalizeJobPayload(req.body || {});
+    if (payload.postingFee > 0 && req.user.role !== 'admin') payload.paymentStatus = 'pending';
     if (!payload.title || payload.hourlyRate <= 0) return fail(res, 400, 'title and rate are required');
 
     const job = await prisma.job.create({
@@ -33,7 +34,7 @@ router.post('/', requireAuth, async (req, res) => {
         category: payload.category,
         hourlyRate: payload.hourlyRate || payload.postingFee || 1,
         location: payload.location,
-        status: payload.status,
+        status: payload.paymentStatus === 'pending' ? 'pending' : payload.status,
         companyName: payload.companyName,
         jobType: payload.jobType,
         workMode: payload.workMode,
@@ -65,6 +66,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
 
   try {
     const payload = normalizeJobPayload(Object.assign({}, serializeJob(existing), req.body || {}));
+    if (payload.postingFee > 0 && req.user.role !== 'admin' && existing.paymentStatus !== 'paid') payload.paymentStatus = 'pending';
     const job = await prisma.job.update({
       where: { id: existing.id },
       data: {
@@ -73,7 +75,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
         category: payload.category,
         hourlyRate: payload.hourlyRate || payload.postingFee || existing.hourlyRate,
         location: payload.location,
-        status: payload.status,
+        status: payload.paymentStatus === 'pending' ? 'pending' : payload.status,
         companyName: payload.companyName,
         jobType: payload.jobType,
         workMode: payload.workMode,

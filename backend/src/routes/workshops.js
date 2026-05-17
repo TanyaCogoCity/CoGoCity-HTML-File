@@ -59,6 +59,7 @@ router.post('/', requireAuth, async (req, res) => {
 router.post('/:id/enroll', requireAuth, async (req, res) => {
   const workshop = await prisma.workshop.findUnique({ where: { id: req.params.id } });
   if (!workshop) return fail(res, 404, 'Workshop not found');
+  if (Number(workshop.price || 0) > 0) return fail(res, 402, 'Paid workshop enrollments must use Stripe checkout');
 
   const enrollment = await prisma.workshopEnrollment.upsert({
     where: { workshopId_userId: { workshopId: workshop.id, userId: req.user.id } },
@@ -76,7 +77,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
     },
   });
 
-  await writeAuditLog({ userId: req.user.id, action: 'workshop.enroll', entityType: 'workshop_enrollment', entityId: enrollment.id, payload: req.body });
+  await writeAuditLog({ userId: req.user.id, action: 'workshop.enroll.free', entityType: 'workshop_enrollment', entityId: enrollment.id, payload: req.body });
 
   return created(res, {
     id: enrollment.id,

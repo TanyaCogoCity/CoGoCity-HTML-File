@@ -92,9 +92,18 @@ function normalizeJobStatus(status = 'open') {
   return ['open', 'pending', 'closed'].includes(value) ? value : 'open';
 }
 
+function normalizePaymentStatus(status, fallback = 'paid') {
+  const value = String(status || '').toLowerCase().trim();
+  if (value === 'captured' || value === 'complete' || value === 'completed') return 'paid';
+  return ['pending', 'paid', 'failed', 'refunded'].includes(value) ? value : fallback;
+}
+
 function normalizeJobPayload(payload = {}) {
   const listingMonths = Math.max(1, Number(payload.listing_months ?? payload.listingMonths ?? 1) || 1);
   const listingDurationDays = Math.max(1, Number(payload.listing_duration_days ?? payload.listingDurationDays ?? 30) || 30);
+  const postingFee = Number(payload.posting_fee ?? payload.postingFee ?? 0);
+  const defaultPaymentStatus = postingFee > 0 ? 'pending' : 'paid';
+  const paymentStatus = normalizePaymentStatus(payload.payment_status || payload.paymentStatus, defaultPaymentStatus);
   const expiresRaw = payload.expires_at || payload.expiresAt || null;
   return {
     title: payload.title || payload.job_title || payload.jobTitle,
@@ -111,10 +120,10 @@ function normalizeJobPayload(payload = {}) {
     schedule: payload.schedule || '',
     expiresAt: expiresRaw ? new Date(expiresRaw) : null,
     postingPackage: String(payload.posting_package || payload.postingPackage || 'basic').toLowerCase(),
-    postingFee: Number(payload.posting_fee ?? payload.postingFee ?? 0),
+    postingFee,
     listingMonths,
     listingDurationDays,
-    paymentStatus: payload.payment_status || payload.paymentStatus || 'paid',
+    paymentStatus,
   };
 }
 

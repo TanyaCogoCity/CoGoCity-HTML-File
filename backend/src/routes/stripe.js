@@ -118,6 +118,81 @@ async function markTransactionFromIntent(paymentIntent) {
   return updated;
 }
 
+
+function paymentStatusForCheckoutSession(session) {
+  if (session.payment_status === 'paid') return 'paid';
+  if (session.payment_status === 'unpaid' && session.status === 'complete') return 'pending';
+  if (session.status === 'expired') return 'failed';
+  return 'pending';
+}
+
+function serializeCheckoutSession(session, extra = {}) {
+  return Object.assign(
+    {
+      checkout_session_id: session.id,
+      url: session.url,
+      status: paymentStatusForCheckoutSession(session),
+    },
+    extra
+  );
+}
+
+async function completeWorkshopCheckoutSession(session) {
+  const enrollmentId = session.metadata?.workshop_enrollment_id;
+  const workshopId = session.metadata?.workshop_id;
+  const userId = session.metadata?.user_id;
+  if (!enrollmentId && (!workshopId || !userId)) return null;
+
+  const enrollment = enrollmentId
+    ? await prisma.workshopEnrollment.findUnique({ where: { id: enrollmentId }, include: { workshop: true, user: true } })
+    : await prisma.workshopEnrollment.findUnique({ where: { workshopId_userId: { workshopId, userId } }, include: { workshop: true, user: true } });
+  if (!enrollment) return null;
+
+  const paymentStatus = paymentStatusForCheckoutSession(session);
+  const updated = await prisma.workshopEnrollment.update({
+    where: { id: enrollment.id },
+    data: { paymentStatus },
+    include: { workshop: true, user: true },
+  });
+
+  if (paymentStatus === 'paid') {
+    await createNotification({
+      data: {
+        userId: updated.workshop.createdBy,
+        type: notificationType('workshop'),
+        title: 'New workshop registration',
+        body: `${updated.user?.displayName || 'Someone'} registered for ${updated.workshop.title}`,
+        link: `/dashboard?section=workshops&id=${updated.workshop.id}`,
+      },
+    });
+  }
+
+  return updated;
+}
+
+async function completeJobCheckoutSession(session) {
+  const jobId = session.metadata?.job_id;
+  if (!jobId) return null;
+  const paymentStatus = paymentStatusForCheckoutSession(session);
+  const data = { paymentStatus };
+  if (paymentStatus === 'paid') data.status = 'open';
+  const job = await prisma.job.update({ where: { id: jobId }, data, include: { creator: true } });
+
+  if (paymentStatus === 'paid') {
+    await createNotification({
+      data: {
+        userId: job.createdBy,
+        type: notificationType('payment'),
+        title: 'Job listing payment received',
+        body: `${job.title} is now active on CoGo City.`,
+        link: `/dashboard?section=my_jobs&job=${job.id}`,
+      },
+    });
+  }
+
+  return job;
+}
+
 // Keep the webhook route before JSON parsing. app.js mounts this router before the global JSON parser
 // so Stripe signatures are verified against the exact raw request body.
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -147,7 +222,13 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
-      if (session.payment_intent) {
+      const checkoutType = session.metadata?.type;
+
+      if (checkoutType === 'workshop') {
+        await completeWorkshopCheckoutSession(session);
+      } else if (checkoutType === 'job_listing') {
+        await completeJobCheckoutSession(session);
+      } else if (session.payment_intent) {
         const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
         const txId = session.metadata?.transaction_id || paymentIntent.metadata?.transaction_id;
         if (txId) {
@@ -160,6 +241,18 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
           await markTransactionFromIntent(paymentIntent);
         }
       }
+    }
+
+    if (event.type === 'checkout.session.async_payment_succeeded') {
+      const session = event.data.object;
+      if (session.metadata?.type === 'workshop') await completeWorkshopCheckoutSession(session);
+      if (session.metadata?.type === 'job_listing') await completeJobCheckoutSession(session);
+    }
+
+    if (event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed') {
+      const session = event.data.object;
+      if (session.metadata?.type === 'workshop') await completeWorkshopCheckoutSession(session);
+      if (session.metadata?.type === 'job_listing') await completeJobCheckoutSession(session);
     }
 
     if (event.type === 'transfer.paid') {
@@ -360,6 +453,131 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
     });
   } catch (error) {
     return fail(res, 400, 'Failed to create payment intent', error.message);
+  }
+});
+
+
+router.post('/create-workshop-checkout-session', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+
+  const workshopId = String(req.body?.workshop_id || req.body?.workshopId || '').trim();
+  if (!workshopId) return fail(res, 400, 'workshop_id is required');
+
+  const workshop = await prisma.workshop.findUnique({ where: { id: workshopId } });
+  if (!workshop) return fail(res, 404, 'Workshop not found');
+
+  const quantity = Math.max(1, Number(req.body?.quantity || 1) || 1);
+  const amount = Number(workshop.price || 0);
+  const existingEnrollment = await prisma.workshopEnrollment.findUnique({ where: { workshopId_userId: { workshopId: workshop.id, userId: req.user.id } } });
+  if (existingEnrollment?.paymentStatus === 'paid') {
+    return ok(res, { workshop_id: workshop.id, enrollment_id: existingEnrollment.id, status: 'paid', already_paid: true });
+  }
+  if (workshop.capacity != null) {
+    const paidCount = await prisma.workshopEnrollment.count({ where: { workshopId: workshop.id, paymentStatus: 'paid' } });
+    if (paidCount + quantity > Number(workshop.capacity)) return fail(res, 409, 'Workshop is full');
+  }
+
+  const enrollment = await prisma.workshopEnrollment.upsert({
+    where: { workshopId_userId: { workshopId: workshop.id, userId: req.user.id } },
+    create: { workshopId: workshop.id, userId: req.user.id, paymentStatus: amount > 0 ? 'pending' : 'paid' },
+    update: { paymentStatus: amount > 0 ? 'pending' : 'paid' },
+  });
+
+  if (amount <= 0) {
+    await writeAuditLog({ userId: req.user.id, action: 'workshop.enroll.free', entityType: 'workshop_enrollment', entityId: enrollment.id, payload: req.body });
+    return ok(res, { workshop_id: workshop.id, enrollment_id: enrollment.id, status: 'paid', free: true });
+  }
+
+  const origin = stripeOrigin(req);
+  try {
+    const customerId = await ensureStripeCustomer(req.user);
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        success_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=success`,
+        cancel_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=cancel`,
+        client_reference_id: enrollment.id,
+        customer: customerId,
+        line_items: [
+          {
+            quantity,
+            price_data: {
+              currency: 'usd',
+              unit_amount: toCents(amount),
+              product_data: { name: workshop.title || 'CoGo City workshop' },
+            },
+          },
+        ],
+        payment_intent_data: {
+          metadata: {
+            type: 'workshop',
+            workshop_id: workshop.id,
+            workshop_enrollment_id: enrollment.id,
+            user_id: req.user.id,
+            quantity: String(quantity),
+          },
+        },
+        metadata: { type: 'workshop', workshop_id: workshop.id, workshop_enrollment_id: enrollment.id, user_id: req.user.id, quantity: String(quantity) },
+      },
+    );
+
+    await writeAuditLog({ userId: req.user.id, action: 'workshop.checkout.create', entityType: 'workshop_enrollment', entityId: enrollment.id, payload: { checkoutSessionId: session.id } });
+    return ok(res, serializeCheckoutSession(session, { workshop_id: workshop.id, enrollment_id: enrollment.id }));
+  } catch (error) {
+    return fail(res, 400, 'Failed to create workshop checkout session', error.message);
+  }
+});
+
+router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can pay for job listings');
+
+  const jobId = String(req.body?.job_id || req.body?.jobId || '').trim();
+  if (!jobId) return fail(res, 400, 'job_id is required');
+
+  const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
+  if (!job) return fail(res, 404, 'Job not found');
+  if (req.user.role !== 'admin' && job.createdBy !== req.user.id) return fail(res, 403, 'Only the job owner can pay for this listing');
+
+  const amount = Number(job.postingFee || 0);
+  if (amount <= 0) {
+    const updated = await prisma.job.update({ where: { id: job.id }, data: { paymentStatus: 'paid', status: 'open' } });
+    return ok(res, { job_id: updated.id, status: 'paid', free: true });
+  }
+  if (job.paymentStatus === 'paid') return ok(res, { job_id: job.id, status: 'paid', already_paid: true });
+
+  const origin = stripeOrigin(req);
+  try {
+    const customerId = await ensureStripeCustomer(req.user);
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        success_url: `${origin}/?stripe_job=${job.id}&stripe_status=success`,
+        cancel_url: `${origin}/?stripe_job=${job.id}&stripe_status=cancel`,
+        client_reference_id: job.id,
+        customer: customerId,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'usd',
+              unit_amount: toCents(amount),
+              product_data: { name: `CoGo City job listing: ${job.title}` },
+            },
+          },
+        ],
+        payment_intent_data: {
+          metadata: { type: 'job_listing', job_id: job.id, user_id: req.user.id },
+        },
+        metadata: { type: 'job_listing', job_id: job.id, user_id: req.user.id },
+      },
+    );
+
+    await prisma.job.update({ where: { id: job.id }, data: { paymentStatus: 'pending', status: 'pending' } });
+    await writeAuditLog({ userId: req.user.id, action: 'job.checkout.create', entityType: 'job', entityId: job.id, payload: { checkoutSessionId: session.id } });
+    return ok(res, serializeCheckoutSession(session, { job_id: job.id }));
+  } catch (error) {
+    return fail(res, 400, 'Failed to create job checkout session', error.message);
   }
 });
 

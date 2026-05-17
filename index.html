@@ -872,6 +872,27 @@ async function createBackendStripeCheckoutSession(projectId){
     body: JSON.stringify({ project_id: projectId })
   });
 }
+async function createBackendWorkshopCheckoutSession(workshopId, options={}){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !workshopId) return null;
+  return backendAuthRequest('/stripe/create-workshop-checkout-session', {
+    method:'POST',
+    body: JSON.stringify(Object.assign({ workshop_id: workshopId }, options || {}))
+  });
+}
+async function createBackendJobCheckoutSession(jobId){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !jobId) return null;
+  return backendAuthRequest('/stripe/create-job-checkout-session', {
+    method:'POST',
+    body: JSON.stringify({ job_id: jobId })
+  });
+}
+function redirectToStripeCheckoutSession(session){
+  if (session && session.url) {
+    window.location.href = session.url;
+    return true;
+  }
+  return false;
+}
 async function captureBackendStripePayment(project={}, amountTotal=null){
   const projectId = getProjectBackendId(project);
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId || !project.stripe_payment_intent_id) return null;
@@ -6497,7 +6518,7 @@ function normalizeWorkshopTicketQuantity(workshopId=''){
   qtyInput.value = String(qty);
   updateWorkshopRegistrationTotal(workshopId);
 }
-function completeWorkshopRegistration(workshopId=''){
+async function completeWorkshopRegistration(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop || !currentUser) return;
   const attendeeName = String((document.getElementById('workshopAttendeeName') || {}).value || '').trim();
@@ -6509,6 +6530,24 @@ function completeWorkshopRegistration(workshopId=''){
   const quantity = Math.max(0, Number(qtyRaw.replace(/[^\d]/g, '') || 0));
   if (toastRequiredFields({ 'Number of tickets':quantity })) return;
   if (spotsLeft !== null && quantity > spotsLeft) return toast(`Only ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left.`);
+  if (STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      const session = await createBackendWorkshopCheckoutSession(workshop.id, { quantity, attendee_name: attendeeName, attendee_email: attendeeEmail });
+      if (session && (session.free || session.already_paid)) {
+        toast(session.already_paid ? 'You are already registered for this workshop.' : 'Registration confirmed. No payment was required.');
+        closeModal();
+        renderPage();
+        return;
+      }
+      if (redirectToStripeCheckoutSession(session)) return;
+      toast('Stripe checkout did not return a checkout URL. Please try again.');
+      return;
+    } catch (error) {
+      console.warn('Workshop Stripe checkout failed', error);
+      toast(error.message || 'Stripe checkout failed. Please try again.');
+      return;
+    }
+  }
   const mode = (document.querySelector('input[name=\"workshopPmMode\"]:checked') || {}).value || 'saved';
   const users = getUsers();
   const user = users.find(item => item.id === currentUser.id);
@@ -10552,7 +10591,8 @@ async function saveEmployerDirectHireJob(){
   const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
-  const listingCharge = recordLocalPaymentCharge({
+  const useBackendStripeCheckout = Boolean(STRIPE_ENABLED && backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token') && fee > 0);
+  const listingCharge = useBackendStripeCheckout ? { success:true, event:null } : recordLocalPaymentCharge({
     amount: fee,
     user_id: currentUser.id,
     employer_id: currentUser.id,
@@ -10583,14 +10623,14 @@ async function saveEmployerDirectHireJob(){
     subscription_total: fee,
     listing_months: selectedMonths,
     listing_duration_days: listingDurationDays,
-    posting_payment_status: 'paid',
+    posting_payment_status: useBackendStripeCheckout ? 'pending' : 'paid',
     payment_provider: STRIPE_ENABLED ? 'stripe' : 'manual',
     payment_provider_mode: PAYMENT_PROVIDER_MODE,
     stripe_payment_intent_id: listingCharge.event ? listingCharge.event.stripe_payment_intent_id : '',
     stripe_charge_id: listingCharge.event ? listingCharge.event.stripe_charge_id : '',
-    payment_status: 'captured',
+    payment_status: useBackendStripeCheckout ? 'pending' : 'captured',
     payout_status: 'not_applicable',
-    status: 'active',
+    status: useBackendStripeCheckout ? 'pending' : 'active',
     created_at: createdAt,
     updated_at: new Date().toISOString()
   };
@@ -10603,6 +10643,17 @@ async function saveEmployerDirectHireJob(){
       newJob = mapBackendDirectJob(savedJob);
       directJobId = newJob.id;
       upsertBackendDirectJob(newJob);
+      if (useBackendStripeCheckout) {
+        const checkoutSession = await createBackendJobCheckoutSession(directJobId);
+        if (checkoutSession?.already_paid || checkoutSession?.free) {
+          toast('Job listing is active. No additional payment was required.');
+        } else if (redirectToStripeCheckoutSession(checkoutSession)) {
+          return;
+        } else {
+          toast('Stripe checkout did not return a checkout URL. Please try again.');
+          return;
+        }
+      }
     } catch (error) {
       console.warn('Backend job create failed', error);
       toast(error.message || 'Backend job save failed. Keeping a local draft.');
