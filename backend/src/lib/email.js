@@ -9,11 +9,41 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;');
 }
 
+function appBaseUrl() {
+  return String(config.appUrl || 'https://staging.cogocity.com').replace(/\/api\/?$/, '').replace(/\/$/, '');
+}
+
+function toHashRoute(path = '/dashboard') {
+  const value = String(path || '/dashboard').trim() || '/dashboard';
+  if (value.startsWith('#/')) return value;
+  if (value.startsWith('/#/')) return value.slice(1);
+  if (value.startsWith('#')) return `#/${value.slice(1).replace(/^\/+/, '')}`;
+  const normalized = value.startsWith('/') ? value : `/${value}`;
+  return `#${normalized}`;
+}
+
+function buildAppLink(link = '/dashboard') {
+  const base = appBaseUrl();
+  const fallback = `${base}/#/dashboard`;
+  if (!link) return fallback;
+
+  try {
+    if (/^https?:\/\//i.test(link)) {
+      const parsed = new URL(link);
+      const route = parsed.hash || toHashRoute(`${parsed.pathname || '/dashboard'}${parsed.search || ''}`);
+      return `${base}/${route}`;
+    }
+  } catch (_) {
+    return fallback;
+  }
+
+  return `${base}/${toHashRoute(link)}`;
+}
+
 function notificationHtml({ title, body, link }) {
   const safeTitle = escapeHtml(title || 'CoGoCity notification');
   const safeBody = escapeHtml(body || '').replace(/\n/g, '<br>');
-  const url = link && /^https?:\/\//i.test(link) ? link : `${config.appUrl}${link || '/dashboard'}`;
-  const safeUrl = escapeHtml(url);
+  const safeUrl = escapeHtml(buildAppLink(link));
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#18212f;max-width:600px;margin:0 auto;padding:24px">
       <h2 style="margin:0 0 12px;color:#18212f">${safeTitle}</h2>
@@ -59,12 +89,13 @@ async function sendEmail({ to, subject, htmlContent, textContent }) {
 }
 
 async function sendNotificationEmail({ user, title, body, link }) {
+  const appLink = buildAppLink(link);
   return sendEmail({
     to: { email: user.email, name: user.displayName },
     subject: title || 'CoGoCity notification',
     htmlContent: notificationHtml({ title, body, link }),
-    textContent: `${title || 'CoGoCity notification'}\n\n${body || ''}\n\n${config.appUrl}${link || '/dashboard'}`,
+    textContent: `${title || 'CoGoCity notification'}\n\n${body || ''}\n\n${appLink}`,
   });
 }
 
-module.exports = { sendEmail, sendNotificationEmail };
+module.exports = { sendEmail, sendNotificationEmail, buildAppLink };

@@ -7,8 +7,7 @@ const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
-const { sendEmail } = require('../lib/email');
-const config = require('../config');
+const { sendEmail, buildAppLink } = require('../lib/email');
 
 const router = express.Router();
 
@@ -230,7 +229,7 @@ router.post('/password-reset/request', async (req, res) => {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
 
-    const resetUrl = `${config.appUrl.replace(/\/$/, '')}/#/reset-password?token=${encodeURIComponent(token)}`;
+    const resetUrl = buildAppLink(`/#/reset-password?token=${encodeURIComponent(token)}`);
     const displayName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
     const emailResult = await sendEmail({
       to: { email: user.email, name: displayName },
