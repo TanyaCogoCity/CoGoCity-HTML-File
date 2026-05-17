@@ -27,6 +27,60 @@ function stripeOrigin(req) {
   return req.get('origin') || config.appUrl || 'https://staging.cogocity.com';
 }
 
+function compactObject(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''));
+}
+
+function stripeStudentPayoutDescription(user) {
+  const name = user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Student';
+  return `${name} receives payouts for student services completed through CoGoCity, such as tutoring, childcare, pet care, creative work, errands, and local help.`;
+}
+
+function stripeIndividualPayload(user) {
+  const individual = compactObject({
+    first_name: user.firstName,
+    last_name: user.lastName,
+    email: user.email,
+  });
+  if (user.dateOfBirth) {
+    const dob = new Date(user.dateOfBirth);
+    if (!Number.isNaN(dob.getTime())) {
+      individual.dob = { day: dob.getUTCDate(), month: dob.getUTCMonth() + 1, year: dob.getUTCFullYear() };
+    }
+  }
+  return individual;
+}
+
+function stripeStudentConnectAccountPayload(user, origin, country = 'US') {
+  return {
+    type: 'express',
+    country: String(country || 'US').toUpperCase(),
+    email: user.email,
+    business_type: 'individual',
+    business_profile: {
+      mcc: '8999',
+      url: config.appUrl || origin || 'https://staging.cogocity.com',
+      product_description: stripeStudentPayoutDescription(user),
+    },
+    individual: stripeIndividualPayload(user),
+    capabilities: { transfers: { requested: true } },
+    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts' },
+  };
+}
+
+async function prefillStudentConnectAccount(user, origin) {
+  if (!user?.stripeAccountId) return;
+  await stripe.accounts.update(user.stripeAccountId, {
+    business_profile: {
+      mcc: '8999',
+      url: config.appUrl || origin || 'https://staging.cogocity.com',
+      product_description: stripeStudentPayoutDescription(user),
+    },
+    individual: stripeIndividualPayload(user),
+    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts' },
+  });
+}
+
 function onboardingStatusForUser(user) {
   return {
     user_id: user.id,
@@ -337,17 +391,9 @@ router.post('/onboarding/connect-account', requireAuth, async (req, res) => {
   try {
     let accountId = req.user.stripeAccountId;
     if (!accountId) {
+      const origin = stripeOrigin(req);
       const account = await stripe.accounts.create(
-        {
-          type: 'express',
-          country: String(req.body?.country || 'US').toUpperCase(),
-          email: req.user.email,
-          business_type: 'individual',
-          capabilities: {
-            transfers: { requested: true },
-          },
-          metadata: { user_id: req.user.id, role: req.user.role },
-        },
+        stripeStudentConnectAccountPayload(req.user, origin, req.body?.country),
         { idempotencyKey: `user:${req.user.id}:connect-account:v1` }
       );
       accountId = account.id;
@@ -368,22 +414,17 @@ router.post('/onboarding/connect-account-link', requireAuth, async (req, res) =>
 
   try {
     let user = req.user;
+    const origin = stripeOrigin(req);
     if (!user.stripeAccountId) {
       const account = await stripe.accounts.create(
-        {
-          type: 'express',
-          country: String(req.body?.country || 'US').toUpperCase(),
-          email: user.email,
-          business_type: 'individual',
-          capabilities: { transfers: { requested: true } },
-          metadata: { user_id: user.id, role: user.role },
-        },
+        stripeStudentConnectAccountPayload(user, origin, req.body?.country),
         { idempotencyKey: `user:${user.id}:connect-account:v1` }
       );
       user = await prisma.user.update({ where: { id: user.id }, data: { stripeAccountId: account.id, stripeConnectOnboardingStatus: 'in_progress' } });
+    } else if (user.role === 'student') {
+      await prefillStudentConnectAccount(user, origin);
     }
 
-    const origin = stripeOrigin(req);
     const refreshUrl = req.body?.refresh_url || req.body?.refreshUrl || `${origin}/?stripe_connect=refresh`;
     const returnUrl = req.body?.return_url || req.body?.returnUrl || `${origin}/?stripe_connect=return`;
     const link = await stripe.accountLinks.create({
