@@ -43,6 +43,7 @@ router.get('/student-profiles', async (req, res) => {
 router.patch('/user-profile/me', requireAuth, async (req, res) => {
   const payload = req.body || {};
   const profilePayload = payload.profile || payload;
+  const businessPayload = payload.businessProfile || profilePayload.businessProfile || {};
   const metadata = {
     photo: profilePayload.photo || '',
     profile_images: profilePayload.profileImages || profilePayload.profile_images || [],
@@ -50,6 +51,7 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
     birth_date: profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '',
     birthday: profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '',
     birth_year: profilePayload.birthYear || profilePayload.birth_year || '',
+    business_logo: businessPayload.logo || businessPayload.business_logo || profilePayload.business_logo || '',
   };
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -71,6 +73,12 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
         school: profilePayload.school || null,
         age: profilePayload.age ? Number(profilePayload.age) : null,
         avatar: profilePayload.avatar || null,
+        businessName: businessPayload.name || payload.businessName || null,
+        businessAbout: businessPayload.about || payload.businessAbout || null,
+        businessPhone: businessPayload.phone || payload.businessPhone || null,
+        businessAddress: businessPayload.address || payload.businessAddress || null,
+        businessCity: businessPayload.city || payload.businessCity || null,
+        businessTin: businessPayload.tin || payload.businessTin || payload.tin || null,
         metadata,
       },
       update: {
@@ -80,6 +88,12 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
         school: profilePayload.school ?? undefined,
         age: profilePayload.age === undefined ? undefined : (profilePayload.age ? Number(profilePayload.age) : null),
         avatar: profilePayload.avatar ?? undefined,
+        businessName: businessPayload.name ?? payload.businessName ?? undefined,
+        businessAbout: businessPayload.about ?? payload.businessAbout ?? undefined,
+        businessPhone: businessPayload.phone ?? payload.businessPhone ?? undefined,
+        businessAddress: businessPayload.address ?? payload.businessAddress ?? undefined,
+        businessCity: businessPayload.city ?? payload.businessCity ?? undefined,
+        businessTin: businessPayload.tin ?? payload.businessTin ?? payload.tin ?? undefined,
         metadata,
       },
     });
