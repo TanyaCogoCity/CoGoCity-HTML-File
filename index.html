@@ -3445,9 +3445,21 @@ function goToPostJob(){
     if (input) input.focus();
   }, 80);
 }
+function getNotificationFallbackLink(notification={}){
+  if (notification.link) return notification.link;
+  const action = notification.action || {};
+  if (action.type === 'dashboard') {
+    const section = action.section ? `?section=${encodeURIComponent(action.section)}` : '';
+    return `/dashboard${section}`;
+  }
+  return '/dashboard?section=notifications';
+}
 function pushNotif(userId, title, action=''){
   const items = getNotifications(userId);
-  items.unshift({ id: uid('n'), title, action, read:false, createdAt:new Date().toISOString() });
+  const link = action && action.type === 'dashboard'
+    ? `/dashboard${action.section ? `?section=${encodeURIComponent(action.section)}` : ''}`
+    : '/dashboard?section=notifications';
+  items.unshift({ id: uid('n'), title, action, link, read:false, createdAt:new Date().toISOString() });
   saveNotifications(userId, items.slice(0, 50));
 }
 function currentUserRoleLabel(){
@@ -4010,7 +4022,7 @@ function openNotifications(){
           <div style="font-weight:700">${esc(n.title)}</div>
           <div class="muted small">${timeAgo(n.createdAt)}</div>
         </div>
-        ${n.action ? `<button class="${notificationOpenButtonClass(n)}" onclick="runNotifAction('${esc(n.id)}')">Open</button>` : ''}
+        ${(n.action || getNotificationFallbackLink(n)) ? `<button class="${notificationOpenButtonClass(n)}" onclick="runNotifAction('${esc(n.id)}')">Open CoGoCity</button>` : ''}
       </div>
     </div>
   `).join('') : `<div class="muted">No notifications yet.</div>`;
@@ -4022,11 +4034,11 @@ function openNotifications(){
 function runNotifAction(id){
   const items = getNotifications(currentUser.id);
   const item = items.find(n => n.id === id);
-  if (!item || !item.action) return;
+  if (!item) return;
   item.viewedAt = new Date().toISOString();
   saveNotifications(currentUser.id, items);
   closeModal();
-  const action = item.action;
+  const action = item.action || {};
   if (action.type === 'dashboard') {
     dashSection = action.section || 'profile';
     if (typeof action.employerTab === 'string') employerTab = action.employerTab;
@@ -4041,6 +4053,18 @@ function runNotifAction(id){
     dashSection = action.section || 'my_jobs';
     goDashboard();
     setTimeout(() => extendDirectJobByMonth(action.jobId || ''), 120);
+  } else {
+    const link = getNotificationFallbackLink(item);
+    if (link.startsWith('/dashboard')) {
+      const query = link.split('?')[1] || '';
+      const params = new URLSearchParams(query);
+      dashSection = params.get('section') || 'notifications';
+      goDashboard();
+    } else if (link.startsWith('#')) {
+      location.hash = link;
+    } else {
+      location.href = link;
+    }
   }
 }
 

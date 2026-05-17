@@ -21,14 +21,21 @@ async function emailNotification(data, { required = false } = {}) {
   }
 }
 
+function withDefaultLink(row = {}) {
+  return Object.assign({ link: '/dashboard?section=notifications' }, row, {
+    link: row.link || '/dashboard?section=notifications',
+  });
+}
+
 async function createNotification({ data, emailRequired = false }) {
-  const notification = await prisma.notification.create({ data });
-  const email = await emailNotification(data, { required: emailRequired });
+  const payload = withDefaultLink(data);
+  const notification = await prisma.notification.create({ data: payload });
+  const email = await emailNotification(payload, { required: emailRequired });
   return Object.assign(notification, { email });
 }
 
 async function createNotifications({ data }) {
-  const rows = Array.isArray(data) ? data : [];
+  const rows = (Array.isArray(data) ? data : []).map(withDefaultLink);
   const result = await prisma.notification.createMany({ data: rows });
   await Promise.all(rows.map((row) => emailNotification(row)));
   return result;
