@@ -18,6 +18,7 @@ const reviewRoutes = require('./routes/reviews');
 const workshopRoutes = require('./routes/workshops');
 const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = require('./routes/notifications');
+const communityPostRoutes = require('./routes/communityPosts');
 
 const app = express();
 
@@ -66,6 +67,7 @@ app.use(['/api', '/'], reviewRoutes);
 app.use(['/api/workshops', '/workshops'], workshopRoutes);
 app.use(['/api/transactions', '/transactions'], transactionRoutes);
 app.use(['/api/notifications', '/notifications'], notificationRoutes);
+app.use(['/api', '/'], communityPostRoutes);
 
 app.use((err, _req, res, _next) => {
   const msg = err?.message || 'Server error';

@@ -561,6 +561,8 @@ const COGO_GTM_CONTAINER_ID = 'GTM-TMHS95ZD';
 let cogoAnalyticsInitialized = false;
 let cogoAnalyticsSearchTimer = null;
 let cogoAnalyticsLastPage = '';
+let backendCommunityPostsLoaded = false;
+let backendCommunityPostsLoading = false;
 function getCogoAnalyticsEnvironment(){
   return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
 }
@@ -1822,6 +1824,7 @@ function normalizePostRecord(post){
     content: '',
     isJob: false,
     createdAt: new Date().toISOString(),
+    updatedAt: '',
     likes: [],
     comments: [],
     shares: 0,
@@ -1847,9 +1850,50 @@ function getPosts(){
   if (JSON.stringify(posts) !== JSON.stringify(normalized)) ls('cogo_posts', normalized);
   return normalized;
 }
+function mergeCommunityPosts(localPosts=[], backendPosts=[]){
+  const byId = new Map();
+  ensureArray(localPosts).forEach(post => { if (post && post.id) byId.set(String(post.id), normalizePostRecord(post)); });
+  ensureArray(backendPosts).forEach(post => {
+    if (!post || !post.id) return;
+    const id = String(post.id);
+    const existing = byId.get(id);
+    if (!existing) byId.set(id, normalizePostRecord(post));
+    else {
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime() || 0;
+      const backendTime = new Date(post.updatedAt || post.createdAt || 0).getTime() || 0;
+      if (backendTime > existingTime) byId.set(id, normalizePostRecord(Object.assign({}, existing, post)));
+    }
+  });
+  return Array.from(byId.values()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+async function loadBackendCommunityPosts(options={}){
+  if (!backendAuthEnabled() || backendCommunityPostsLoading) return [];
+  backendCommunityPostsLoading = true;
+  try {
+    const data = await backendAuthRequest('/community-posts', { method:'GET' });
+    const merged = mergeCommunityPosts(getPosts(), data.posts || []);
+    if (JSON.stringify(merged) !== JSON.stringify(getPosts())) ls('cogo_posts', merged);
+    backendCommunityPostsLoaded = true;
+    if (options.rerender && getRoute().startsWith('#/community')) renderCommunity();
+    return merged;
+  } catch (error) {
+    console.warn('Could not load community posts from backend', error);
+    return getPosts();
+  } finally {
+    backendCommunityPostsLoading = false;
+  }
+}
+function syncCommunityPostsToBackend(posts=[]){
+  if (!backendAuthEnabled() || !getBackendAccessToken()) return;
+  backendAuthRequest('/sync/posts', {
+    method:'POST',
+    body: JSON.stringify({ records: ensureArray(posts).map(normalizePostRecord) })
+  }).catch(error => console.warn('Could not sync community posts to backend', error));
+}
 function savePosts(v){
   const payload = ensureArray(v).map(normalizePostRecord);
   ls('cogo_posts', payload);
+  syncCommunityPostsToBackend(payload);
   syncEntityToBackend('posts', payload);
 }
 function normalizeDirectJobRecord(job){
@@ -8467,7 +8511,11 @@ function isCommunityFeedJobOpen(post){
   return post.status === 'open' || post.status === 'pending';
 }
 function renderCommunity(){
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendCommunityPostsLoaded && !backendCommunityPostsLoading) {
+    loadBackendCommunityPosts({ rerender:true });
+  }
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const communityActionLabel = currentUser && isEmployerAccount(currentUser) ? '+ Post or Create a Job' : '+ Post';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('community', {
@@ -8477,7 +8525,7 @@ function renderCommunity(){
     <div class="container feed-wrap">
       <div class="split" style="margin-bottom:18px">
         <div class="section-title" style="margin:0">Latest Posts</div>
-        ${currentUser ? `<button class="btn btn-blue btn-sm" onclick="togglePostComposer()">+ Post or Create a Job</button>` : `<button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In to Post</button>`}
+        ${currentUser ? `<button class="btn btn-blue btn-sm" onclick="togglePostComposer()">${esc(communityActionLabel)}</button>` : `<button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In to Post</button>`}
       </div>
       <div id="post-composer-wrap"></div>
       ${posts.map(renderPost).join('')}
@@ -8690,6 +8738,7 @@ function submitPost(){
     content,
     isJob,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     likes: [],
     comments: [],
     shares: 0,
@@ -10413,6 +10462,7 @@ function submitEmployerDashboardPost(){
     content,
     isJob,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     likes: [],
     comments: [],
     shares: 0,
