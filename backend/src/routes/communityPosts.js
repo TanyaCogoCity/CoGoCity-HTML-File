@@ -52,17 +52,37 @@ router.get('/community-posts', async (_req, res) => {
 router.post('/sync/posts', requireAuth, async (req, res) => {
   try {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
-    const normalized = records.map(normalizePostRecord).filter(Boolean).slice(0, 250);
+    const canCreateJobs = ['employer', 'neighbor', 'admin'].includes(req.user.role);
+    const normalized = records
+      .map(normalizePostRecord)
+      .filter(Boolean)
+      .filter((post) => req.user.role === 'admin' || !post.authorId || post.authorId === req.user.id)
+      .map((post) => {
+        const authorId = post.authorId || req.user.id;
+        const safePost = { ...post, authorId };
+        if (!canCreateJobs) {
+          safePost.isJob = false;
+          delete safePost.jobTitle;
+          delete safePost.description;
+          delete safePost.rate;
+          delete safePost.hoursNeeded;
+          delete safePost.location;
+          delete safePost.status;
+          delete safePost.application_count;
+        }
+        return safePost;
+      })
+      .slice(0, 250);
     await prisma.$transaction(normalized.map((post) => prisma.communityPost.upsert({
       where: { id: post.id },
       create: {
         id: post.id,
-        authorId: post.authorId || req.user.id,
+        authorId: post.authorId,
         payload: post,
         createdAt: new Date(post.createdAt),
       },
       update: {
-        authorId: post.authorId || req.user.id,
+        authorId: post.authorId,
         payload: post,
         deletedAt: null,
       },
