@@ -309,6 +309,60 @@
     .workshop-detail-media{position:relative;aspect-ratio:16/9;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;margin-bottom:16px}
     .workshop-detail-media img,.workshop-detail-media iframe{width:100%;height:100%;object-fit:cover;border:0;display:block}
     .workshop-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+
+    .faq-page{background:linear-gradient(180deg,#FFFFFF 0%,#F9FAFB 100%)}
+    .faq-hero{text-align:left;background:linear-gradient(135deg,#FFFFFF,#FEFCE8);border-bottom:1px solid var(--border)}
+    .faq-hero .container{padding-top:44px;padding-bottom:34px}
+    .faq-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#FEF9C3;color:#92400E;border:1px solid #FDE68A;border-radius:999px;padding:6px 12px;font-weight:800;font-size:.82rem;margin-bottom:14px}
+    .faq-hero h1{margin:0 0 12px;font-size:2.35rem;line-height:1.08}
+    .faq-intro{max-width:820px;color:var(--color-text-secondary);font-size:1.05rem;line-height:1.65;margin:0}
+    .faq-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:22px;align-items:start}
+    .faq-sidebar{position:sticky;top:82px;background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:14px}
+    .faq-sidebar-title{font-weight:800;margin:2px 0 10px;color:var(--color-text-main)}
+    .faq-nav-list{display:flex;flex-direction:column;gap:6px}
+    .faq-nav-list a{display:flex;align-items:center;gap:9px;text-decoration:none;color:var(--color-text-secondary);font-weight:700;border-radius:12px;padding:9px 10px}
+    .faq-nav-list a:hover{background:var(--color-bg-light);color:var(--color-text-main)}
+    .faq-mobile-nav{display:none;position:sticky;top:0;z-index:12;background:rgba(255,255,255,.96);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:10px 14px;overflow-x:auto;gap:8px;-webkit-overflow-scrolling:touch}
+    .faq-mobile-nav a{white-space:nowrap;text-decoration:none;border:1px solid var(--border);background:#fff;color:var(--color-text-main);font-weight:800;border-radius:999px;padding:8px 12px;font-size:.86rem}
+    .faq-tools{background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:16px;margin-bottom:18px}
+    .faq-search-wrap{position:relative;display:block}
+    .faq-search-wrap input{width:100%;border:2px solid var(--color-input-border);border-radius:14px;padding:13px 44px 13px 44px;outline:none;background:#fff}
+    .faq-search-wrap input:focus{border-color:var(--color-primary);box-shadow:0 0 0 4px rgba(255,230,0,.22)}
+    .faq-search-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--color-text-secondary)}
+    .faq-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--color-text-secondary);font-weight:900;cursor:pointer;border-radius:999px;padding:8px}
+    .faq-section{scroll-margin-top:88px;margin-bottom:20px}
+    .faq-section-header{display:flex;align-items:center;gap:10px;margin:20px 0 12px}
+    .faq-section-icon{width:38px;height:38px;border-radius:14px;background:#FEF9C3;display:flex;align-items:center;justify-content:center;border:1px solid #FDE68A}
+    .faq-section h2{margin:0;font-size:1.35rem}
+    .faq-accordion{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+    .faq-question{width:100%;border:0;background:#fff;color:var(--color-text-main);text-align:left;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:17px 18px;font-weight:800;cursor:pointer}
+    .faq-question:hover{background:#FFFEF0}
+    .faq-chevron{flex:0 0 auto;transition:transform .22s ease;color:var(--color-text-secondary)}
+    .faq-accordion.open .faq-chevron{transform:rotate(180deg)}
+    .faq-answer{max-height:0;overflow:hidden;transition:max-height .28s ease,opacity .22s ease;opacity:0}
+    .faq-accordion.open .faq-answer{max-height:900px;opacity:1}
+    .faq-answer-inner{padding:0 18px 18px;color:var(--color-text-main);line-height:1.65}
+    .faq-answer-inner ul{margin:8px 0 12px;padding-left:1.2rem}
+    .faq-answer-inner li{margin:4px 0}
+    .faq-resource-links{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+    .faq-resource-links a{color:var(--color-link);font-weight:700}
+    .faq-notice{border-radius:18px;border:1px solid #FDE68A;background:#FFFBEB;padding:18px;margin-bottom:18px;box-shadow:var(--shadow)}
+    .faq-notice.warning{border-color:#FDBA74;background:#FFF7ED}
+    .faq-notice-title{display:flex;align-items:center;gap:9px;font-weight:900;margin-bottom:8px;color:#92400E}
+    .faq-empty{display:none;background:#fff;border:1px dashed var(--border);border-radius:16px;padding:18px;color:var(--color-text-secondary);text-align:center}
+    @media (max-width: 900px){
+      .faq-layout{grid-template-columns:1fr}
+      .faq-sidebar{display:none}
+      .faq-mobile-nav{display:flex}
+      .faq-section{scroll-margin-top:74px}
+    }
+    @media (max-width: 640px){
+      .faq-hero .container{padding-top:32px;padding-bottom:26px}
+      .faq-hero h1{font-size:1.9rem}
+      .faq-tools,.faq-notice{border-radius:16px;padding:14px}
+      .faq-question{padding:15px 14px}
+      .faq-answer-inner{padding:0 14px 16px}
+    }
     .site-footer{
       background:#1F2937;
       color:#E5E7EB;
@@ -2739,6 +2793,7 @@ function getSiteSettings(){
     ],
     footer_important_links: [
       { label:'About Us', href:'#/about-us' },
+      { label:'FAQ, Safety & Legal', href:'#/faq-safety-legal' },
       { label:'Youth Labor Law in CA', href:'https://cogocity.com/youth-labor-law-in-ca/' },
       { label:'Disclaimer', href:'https://cogocity.com/disclaimer/' },
       { label:'Terms and Conditions', href:'https://cogocity.com/pages/terms-conditions/' },
@@ -2784,6 +2839,12 @@ function getSiteSettings(){
   });
   merged.footer_main_links = ensureArray(saved.footer_main_links).length ? ensureArray(saved.footer_main_links) : defaults.footer_main_links;
   merged.footer_important_links = ensureArray(saved.footer_important_links).length ? ensureArray(saved.footer_important_links) : defaults.footer_important_links;
+  if (!merged.footer_important_links.some(link => String(link.href || '') === '#/faq-safety-legal')) {
+    const aboutIndex = merged.footer_important_links.findIndex(link => String(link.href || '') === '#/about-us' || String(link.label || '').toLowerCase() === 'about us');
+    const faqLink = { label:'FAQ, Safety & Legal', href:'#/faq-safety-legal' };
+    if (aboutIndex >= 0) merged.footer_important_links.splice(aboutIndex + 1, 0, faqLink);
+    else merged.footer_important_links.unshift(faqLink);
+  }
   return merged;
 }
 function saveSiteSettings(settings){
@@ -5384,6 +5445,181 @@ document.addEventListener('click', (event) => {
   closeAvatarMenu();
 });
 
+
+// ---------- FAQ, Safety & Legal ----------
+const FAQ_CATEGORIES = [
+  { id:'general', label:'General', icon:'🏙️' },
+  { id:'students', label:'Students', icon:'🎓' },
+  { id:'parents', label:'Parents', icon:'👪' },
+  { id:'employers', label:'Employers', icon:'💼' },
+  { id:'neighbors', label:'Neighbors', icon:'🏡' },
+  { id:'payments', label:'Payments', icon:'💳' },
+  { id:'safety', label:'Safety', icon:'🛡️' },
+  { id:'legal', label:'Legal', icon:'⚖️' }
+];
+
+const FAQ_ITEMS = [
+  { category:'general', question:'How does CoGo City work?', answer:['CoGo City helps students connect with local job opportunities, freelance gigs, workshops, and entrepreneurial experiences.','Students, parents, employers, and neighbors can use the platform to discover opportunities, communicate, approve project details, and coordinate next steps.','CoGo City facilitates introductions and platform tools, but users remain responsible for evaluating opportunities, communicating clearly, and following applicable laws.'] },
+  { category:'safety', question:'What safety rules should students follow?', answer:['Students under 18 should always inform a parent or guardian about jobs they accept.','Share the job location, employer information, and schedule with parents.','Never accept dangerous or illegal work.','Meet in public places when possible.','Keep communication inside the CoGo City platform whenever possible.','Leave immediately if a situation feels unsafe.'] },
+  { category:'safety', question:'Does CoGo City background check users?', answer:['CoGo City may implement certain verification or safety features, but users and parents remain responsible for evaluating opportunities and supervising minors.'] },
+  { category:'students', question:'Can students under 18 work in California?', answer:['Yes, but California has strict labor laws regarding work permits, work hours, hazardous work, and school attendance requirements.'], links:[{ label:'CoGo City: Youth Labor Law in CA', href:'https://cogocity.com/youth-labor-law-in-ca/' },{ label:'California Child Labor Law Pamphlet', href:'https://www.dir.ca.gov/dlse/childlaborlawpamphlet.pdf' }] },
+  { category:'students', question:'Do students need work permits?', answer:['In many cases, yes. Most minors under 18 in California require a work permit issued through their school.'] },
+  { category:'students', question:'Can students work additional hours?', answer:['Students should NOT work additional hours beyond the approved estimate unless the employer approves those hours through the CoGo City messaging system before the work continues.'] },
+  { category:'students', question:'What should students do after finishing work?', answer:['Students should click “Project Completed” once the work is finished so the employer can review the work and release payment.'] },
+  { category:'parents', question:'Should parents monitor student jobs?', answer:['Yes. Parents and guardians are strongly encouraged to review all job details, know the work location, know the employer information, discuss safety expectations, and supervise minors appropriately.'] },
+  { category:'parents', question:'Is CoGo City responsible for supervising minors?', answer:['No. Parents and guardians remain responsible for supervising minors and evaluating opportunities.'] },
+  { category:'employers', question:'What must employers do before hiring a student?', answer:['Employers should clearly explain the work, provide accurate contact information, maintain a safe environment, comply with California youth labor laws, and obtain required permits when applicable.'] },
+  { category:'employers', question:'Can employers approve additional hours?', answer:['Yes. Any additional hours beyond the original estimate must be approved through the CoGo City platform before the student continues working.'] },
+  { category:'employers', question:'What happens after the project is completed?', answer:['Once the student marks the project as completed, the employer will have the opportunity to review the final submitted hours and approve payment.','If no action is taken within 24 hours after project completion, CoGo City may automatically process payment for up to the originally approved estimated project amount.','If the employer previously approved additional hours through the platform, the employer remains responsible for payment of those approved additional hours.'] },
+  { category:'neighbors', question:'Can neighbors hire students for small local jobs?', answer:['Yes. Examples may include babysitting, tutoring, pet care, yard work, tech help, event assistance, and other age-appropriate tasks.'] },
+  { category:'neighbors', question:'What should neighbors avoid?', answer:['Neighbors should never ask students to perform dangerous work, roofing, heavy lifting, hazardous construction, unsafe transportation, or illegal activities.'] },
+  { category:'payments', question:'How does payment work?', answer:['Before work begins, the hiring party must approve the initial project estimate and authorize payment through the platform.'] },
+  { category:'payments', question:'Does CoGo City guarantee payment?', answer:['CoGo City facilitates payment processing between users. CoGo City may automatically process payment for approved project amounts, but does not guarantee payment for disputed work, unapproved additional hours, chargebacks, failed payments, or disagreements between users.'] },
+  { category:'payments', question:'Who is responsible for disputes?', answer:['Users are responsible for resolving disputes directly with one another. CoGo City may review reported issues but is not responsible for resolving legal disputes between users.'] },
+  { category:'legal', question:'Is CoGo City the employer?', answer:['No. CoGo City is a technology platform only.'] },
+  { category:'legal', question:'Does CoGo City provide insurance?', answer:['No. CoGo City does not provide workers’ compensation, liability insurance, accident coverage, or employment insurance.'] },
+  { category:'legal', question:'Can CoGo City remove users?', answer:['Yes. CoGo City reserves the right to suspend or remove users who violate platform policies or create unsafe situations.'] }
+];
+
+const FAQ_CONTENT_BY_LOCALE = {
+  en: { categories: FAQ_CATEGORIES, items: FAQ_ITEMS }
+};
+
+function getFaqContent(locale='en'){
+  return FAQ_CONTENT_BY_LOCALE[locale] || FAQ_CONTENT_BY_LOCALE.en;
+}
+
+function renderFaqAnswer(item){
+  const answerHtml = ensureArray(item.answer).length > 1
+    ? `<ul>${ensureArray(item.answer).map(line => `<li>${esc(line)}</li>`).join('')}</ul>`
+    : ensureArray(item.answer).map(line => `<p>${esc(line)}</p>`).join('');
+  const linksHtml = ensureArray(item.links).length
+    ? `<div class="faq-resource-links"><strong>External Resources:</strong>${item.links.map(link => `<a href="${esc(link.href)}" target="_blank" rel="noopener noreferrer">${esc(link.label || link.href)}</a>`).join('')}</div>`
+    : '';
+  return `${answerHtml}${linksHtml}`;
+}
+
+function scrollFaqSection(sectionId='', event=null){
+  if (event && typeof event.preventDefault === 'function') event.preventDefault();
+  const id = String(sectionId || '').replace(/[^a-z0-9_-]/gi, '');
+  if (!id) return;
+  if (!location.hash.startsWith('#/faq-safety-legal')) location.hash = `#/faq-safety-legal#${id}`;
+  else if (location.hash !== `#/faq-safety-legal#${id}`) history.replaceState(null, '', `#/faq-safety-legal#${id}`);
+  const target = document.getElementById(id);
+  if (target) target.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function scrollFaqSectionFromHash(){
+  const match = String(location.hash || '').match(/^#\/faq-safety-legal#([a-z0-9_-]+)$/i);
+  if (match) setTimeout(() => scrollFaqSection(match[1]), 80);
+}
+
+function renderFaqNav(className='faq-nav-list', categories=getFaqContent().categories){
+  return `<div class="${className}">${categories.map(cat => `<a href="#/faq-safety-legal#${esc(cat.id)}" onclick="scrollFaqSection('${esc(cat.id)}', event)"><span>${cat.icon}</span>${esc(cat.label)}</a>`).join('')}</div>`;
+}
+
+function updateFaqStructuredData(){
+  const old = document.getElementById('faq-schema-jsonld');
+  if (old) old.remove();
+  const script = document.createElement('script');
+  script.type = 'application/ld+json';
+  script.id = 'faq-schema-jsonld';
+  script.textContent = JSON.stringify({
+    '@context':'https://schema.org',
+    '@type':'FAQPage',
+    mainEntity: getFaqContent().items.map(item => ({
+      '@type':'Question',
+      name:item.question,
+      acceptedAnswer:{ '@type':'Answer', text:ensureArray(item.answer).join(' ') }
+    }))
+  });
+  document.head.appendChild(script);
+}
+
+function toggleFaqItem(button){
+  const item = button.closest('.faq-accordion');
+  if (!item) return;
+  const isOpen = item.classList.contains('open');
+  if (window.matchMedia('(max-width: 640px)').matches) {
+    document.querySelectorAll('.faq-accordion.open').forEach(el => {
+      if (el !== item) {
+        el.classList.remove('open');
+        const btn = el.querySelector('.faq-question');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+  item.classList.toggle('open', !isOpen);
+  button.setAttribute('aria-expanded', String(!isOpen));
+}
+
+function filterFaqItems(value=''){
+  const query = String(value || '').trim().toLowerCase();
+  let totalVisible = 0;
+  document.querySelectorAll('.faq-section').forEach(section => {
+    let sectionVisible = 0;
+    section.querySelectorAll('.faq-accordion').forEach(item => {
+      const text = String(item.getAttribute('data-question') || '').toLowerCase();
+      const visible = !query || text.includes(query);
+      item.style.display = visible ? '' : 'none';
+      if (visible) sectionVisible += 1;
+    });
+    section.style.display = sectionVisible ? '' : 'none';
+    totalVisible += sectionVisible;
+  });
+  const empty = document.getElementById('faq-empty');
+  if (empty) empty.style.display = totalVisible ? 'none' : 'block';
+}
+
+function renderFaqSafetyLegalPage(){
+  updateFaqStructuredData();
+  document.title = 'FAQ, Safety & Legal Guidelines | CoGo City';
+  const metaDescription = document.querySelector('meta[name="description"]');
+  if (metaDescription) metaDescription.setAttribute('content', 'CoGo City FAQ, safety rules, California student labor guidelines, payment policies, employer and neighbor responsibilities, and legal disclaimers.');
+  const legalDisclaimer = {
+    intro:'CoGo City is a technology platform that facilitates introductions and connections between users. CoGo City is NOT an employer, staffing agency, contractor, legal representative, or supervisor of work performed through the platform.',
+    lead:'By using CoGo City, all users understand and agree that:',
+    bullets:['CoGo City does not employ students.','CoGo City does not supervise jobs or services.','CoGo City does not guarantee work quality, conduct, or outcomes.','Users are independently responsible for complying with all applicable laws.','Any agreement or employment relationship exists solely between the student and the hiring party.','CoGo City is not responsible for disputes, injuries, damages, losses, misconduct, or legal claims between users.']
+  };
+  const finalNotice = 'By using CoGo City, users acknowledge that they use the platform at their own risk and are solely responsible for complying with applicable laws, communicating clearly, supervising minors appropriately, and making safe decisions.';
+  const faqContent = getFaqContent('en');
+  const sectionsHtml = faqContent.categories.map(cat => {
+    const items = faqContent.items.filter(item => item.category === cat.id);
+    if (!items.length) return '';
+    return `<section class="faq-section" id="${esc(cat.id)}"><div class="faq-section-header"><div class="faq-section-icon" aria-hidden="true">${cat.icon}</div><h2>${esc(cat.label)}</h2></div>${items.map((item, index) => {
+      const itemId = `faq-${cat.id}-${index}`;
+      return `<article class="faq-accordion" data-question="${esc(item.question)}"><button class="faq-question" type="button" aria-expanded="false" aria-controls="${esc(itemId)}" onclick="toggleFaqItem(this)"><span>${esc(item.question)}</span><span class="faq-chevron" aria-hidden="true">⌄</span></button><div class="faq-answer" id="${esc(itemId)}"><div class="faq-answer-inner">${renderFaqAnswer(item)}</div></div></article>`;
+    }).join('')}</section>`;
+  }).join('');
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="faq-page">
+      <section class="faq-hero">
+        <div class="container">
+          <div class="faq-eyebrow">🛡️ Safety-first community guidelines</div>
+          <h1>FAQ, Safety &amp; Legal Guidelines</h1>
+          <p class="faq-intro">Welcome to CoGo City — a platform designed to help students connect with local job opportunities, freelance gigs, workshops, and entrepreneurial experiences.</p>
+          <p class="faq-intro" style="margin-top:10px">Please read these guidelines carefully before using the platform.</p>
+        </div>
+      </section>
+      <div class="faq-mobile-nav">${faqContent.categories.map(cat => `<a href="#/faq-safety-legal#${esc(cat.id)}" onclick="scrollFaqSection('${esc(cat.id)}', event)">${cat.icon} ${esc(cat.label)}</a>`).join('')}</div>
+      <div class="container">
+        <div class="faq-layout">
+          <aside class="faq-sidebar" aria-label="FAQ section navigation"><div class="faq-sidebar-title">Quick navigation</div>${renderFaqNav('faq-nav-list', faqContent.categories)}</aside>
+          <div>
+            <div class="faq-tools"><label class="field" style="margin:0"><span style="display:block;font-weight:800;margin-bottom:8px">Search FAQ questions</span><span class="faq-search-wrap"><span class="faq-search-icon" aria-hidden="true">🔎</span><input id="faqSearchInput" type="search" placeholder="Search safety, payments, permits, legal..." oninput="filterFaqItems(this.value)" autocomplete="off"><button class="faq-search-clear" type="button" aria-label="Clear search" onclick="document.getElementById('faqSearchInput').value='';filterFaqItems('')">×</button></span></label></div>
+            <div class="faq-notice warning"><div class="faq-notice-title">⚠️ Important legal disclaimer</div><p style="margin:.45rem 0;line-height:1.65">${esc(legalDisclaimer.intro)}</p><p style="margin:.45rem 0;line-height:1.65">${esc(legalDisclaimer.lead)}</p><ul style="margin:.5rem 0 0;padding-left:1.2rem;line-height:1.65">${legalDisclaimer.bullets.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div>
+            <div id="faq-empty" class="faq-empty">No FAQ questions match your search yet.</div>
+            ${sectionsHtml}
+            <div class="faq-notice"><div class="faq-notice-title">ℹ️ Final acknowledgement</div><p style="margin:0;line-height:1.65">${esc(finalNotice)}</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  scrollFaqSectionFromHash();
+}
+
 // ---------- Pages ----------
 let renderRecoveryAttempted = false;
 function clearPrototypeDataStores(){
@@ -5460,6 +5696,7 @@ function renderPage(){
     }
     renderNav();
     if (route.startsWith('#/reset-password')) return openPasswordResetConfirmModal(getPasswordResetTokenFromHash());
+    if (route === '#/faq-safety-legal' || route.startsWith('#/faq-safety-legal#')) return renderFaqSafetyLegalPage();
     if (route === '#/about-us') return renderAboutPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
