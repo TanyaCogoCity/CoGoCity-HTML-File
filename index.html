@@ -1121,6 +1121,9 @@ function mapBackendStudentProfile(row={}){
   const user = row.user || {};
   const userId = row.userId || row.user_id || user.id || '';
   const name = user.displayName || user.display_name || profile.displayName || 'Student';
+  const avatarValue = String(profile.avatar || '').trim();
+  const metadataPhoto = profile.metadata?.photo || profile.photo || profile.profile_photo || '';
+  const profilePhoto = metadataPhoto || (looksLikeImageSource(avatarValue) ? avatarValue : '');
   const services = ensureArray(row.services).map((service, index) => ({
     id: service.id || `backend_service_${row.id || userId}_${index}`,
     profile_id: service.profile_id || service.profileId || row.id || '',
@@ -1151,11 +1154,11 @@ function mapBackendStudentProfile(row={}){
     age: Number(profile.age || 0) || '',
     school: profile.school || '',
     location: primaryService.location || user.city || profile.address || '',
-    photo: profile.metadata?.photo || '',
-    profile_image_id: profile.metadata?.photo || '',
+    photo: profilePhoto,
+    profile_image_id: profilePhoto,
     profileImages: profile.metadata?.profile_images || [],
     video_url: profile.metadata?.video_url || '',
-    emoji: profile.avatar || '\u{1F393}',
+    emoji: looksLikeImageSource(avatarValue) ? '\u{1F393}' : (avatarValue || '\u{1F393}'),
     title: row.title || primaryService.title || 'Student Service',
     tags: [],
     services,
@@ -1756,7 +1759,10 @@ function normalizeStudentRecord(student){
     video_id: '',
     services: []
   }, student || {});
+  const emojiAsImage = looksLikeImageSource(normalized.emoji || '') ? String(normalized.emoji || '').trim() : '';
   if (!normalized.profile_image_id && normalized.photo) normalized.profile_image_id = normalized.photo;
+  if (!normalized.profile_image_id && emojiAsImage) normalized.profile_image_id = emojiAsImage;
+  if (emojiAsImage) normalized.emoji = '\u{1F393}';
   normalized.profile_image_id = upsertImageRecord(normalized.profile_image_id, { source:'profile', entity_type:'student', entity_id: normalized.id || '', owner_id: normalized.userId || '' });
   const rawProfileImages = Array.isArray(normalized.profileImages) && normalized.profileImages.length
     ? normalized.profileImages
