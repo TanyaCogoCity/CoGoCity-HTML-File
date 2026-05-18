@@ -199,6 +199,13 @@
     .field textarea{min-height:88px;resize:vertical}
     .field input::placeholder,.field textarea::placeholder{color:var(--color-placeholder)}
     .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--color-primary);box-shadow:0 0 0 3px rgba(255,230,0,.24)}
+    .password-input-wrap{position:relative}
+    .password-input-wrap input{padding-right:74px}
+    .password-toggle{
+      position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--color-link);
+      font-size:.84rem;font-weight:800;cursor:pointer;padding:6px 8px;border-radius:8px
+    }
+    .password-toggle:hover,.password-toggle:focus{background:var(--color-bg-light);outline:none;color:var(--color-link-hover)}
     .hidden{display:none!important}
     .dashboard{display:flex;min-height:calc(100vh - 64px)}
     .sidebar{
@@ -3124,6 +3131,25 @@ function esc(s){
     .replaceAll('>','&gt;')
     .replaceAll('"','&quot;');
 }
+function renderPasswordField(label, id, options={}){
+  const valueAttr = options.value !== undefined ? ` value="${esc(options.value)}"` : '';
+  const placeholderAttr = options.placeholder ? ` placeholder="${esc(options.placeholder)}"` : '';
+  const autocompleteAttr = options.autocomplete ? ` autocomplete="${esc(options.autocomplete)}"` : '';
+  const oninputAttr = options.oninput ? ` oninput="${options.oninput}"` : '';
+  return `<div class="field"><label for="${esc(id)}">${esc(label)}</label><div class="password-input-wrap"><input id="${esc(id)}" type="password"${valueAttr}${placeholderAttr}${autocompleteAttr}${oninputAttr}><button type="button" class="password-toggle" aria-label="Show password" aria-pressed="false" onclick="togglePasswordVisibility('${esc(id)}', this)">Show</button></div></div>`;
+}
+function togglePasswordVisibility(inputId, button){
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const shouldShow = input.type === 'password';
+  input.type = shouldShow ? 'text' : 'password';
+  if (button) {
+    button.textContent = shouldShow ? 'Hide' : 'Show';
+    button.setAttribute('aria-label', shouldShow ? 'Hide password' : 'Show password');
+    button.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+  }
+  input.focus();
+}
 function renderFormattedLongText(value='', options={}){
   const text = Array.isArray(value) ? value.filter(Boolean).join('\n\n') : String(value || '');
   const trimmed = text.trim();
@@ -4077,7 +4103,7 @@ function openLoginModal(tab='signin'){
     content = `
       <div class="card form-card">
         <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="email"></div>
-        <div class="field"><label>Password</label><input id="loginPassword" type="password" placeholder="password"></div>
+        ${renderPasswordField('Password', 'loginPassword', { placeholder:'password', autocomplete:'current-password' })}
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
           ${COGO_DEMO_MODE ? `<button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>` : ''}
@@ -4244,8 +4270,8 @@ function openPasswordResetConfirmModal(token=''){
   openModal('Choose New Password', `
     <div class="card form-card">
       <div class="small muted" style="margin-bottom:10px">Enter a new password for your CoGo City account.</div>
-      <div class="field"><label>New Password</label><input id="resetNewPassword" type="password" placeholder="At least 8 characters" autocomplete="new-password"></div>
-      <div class="field"><label>Confirm New Password</label><input id="resetConfirmPassword" type="password" placeholder="Repeat password" autocomplete="new-password"></div>
+      ${renderPasswordField('New Password', 'resetNewPassword', { placeholder:'At least 8 characters', autocomplete:'new-password' })}
+      ${renderPasswordField('Confirm New Password', 'resetConfirmPassword', { placeholder:'Repeat password', autocomplete:'new-password' })}
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openLoginModal('signin')">Back to Sign In</button>
         <button class="btn btn-blue" onclick="submitPasswordResetConfirm('${esc(token)}')">Update Password</button>
@@ -4471,8 +4497,8 @@ function renderStudentSignupStepContent(){
   if (studentSignupStep === 7) return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Create your password last. Your email verification is skipped in test mode for now.</div>
-      <div class="field"><label>Create Password</label><input id="studentFlowPassword" type="password" value="${esc(d.password)}" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"></div>
-      <div class="field"><label>Confirm Password</label><input id="studentFlowConfirmPassword" type="password" value="${esc(d.confirmPassword)}" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"></div>
+      ${renderPasswordField('Create Password', 'studentFlowPassword', { value:d.password, placeholder:'••••••••', autocomplete:'new-password' })}
+      ${renderPasswordField('Confirm Password', 'studentFlowConfirmPassword', { value:d.confirmPassword, placeholder:'••••••••', autocomplete:'new-password' })}
     </div>
   `;
   return `
@@ -5125,8 +5151,8 @@ function renderEmployerSignupStepContent(){
   return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">${employerSignupMode === 'employer' ? 'After password setup, verification email is skipped in test mode and you will be redirected to your profile.' : 'After password setup, verification email is skipped in test mode and you will be redirected to your profile.'}</div>
-      <div class="field"><label>Create Password</label><input id="employerSignupPassword" type="password" value="${esc(d.password)}" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" oninput="syncEmployerSignupPasswordDraft()"></div>
-      <div class="field"><label>Confirm Password</label><input id="employerSignupConfirmPassword" type="password" value="${esc(d.confirmPassword)}" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" oninput="syncEmployerSignupPasswordDraft()"></div>
+      ${renderPasswordField('Create Password', 'employerSignupPassword', { value:d.password, placeholder:'••••••••', autocomplete:'new-password', oninput:'syncEmployerSignupPasswordDraft()' })}
+      ${renderPasswordField('Confirm Password', 'employerSignupConfirmPassword', { value:d.confirmPassword, placeholder:'••••••••', autocomplete:'new-password', oninput:'syncEmployerSignupPasswordDraft()' })}
     </div>
   `;
 }
@@ -14029,9 +14055,9 @@ function renderSettings(el){
     <div class="section-title">Settings</div>
     <div class="card form-card" style="margin-top:18px;max-width:720px">
       <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Password</div>
-      <div class="field"><label>Current Password</label><input id="currentPassword" type="password" placeholder="Current password"></div>
-      <div class="field"><label>New Password</label><input id="newPassword" type="password" placeholder="New password"></div>
-      <div class="field"><label>Confirm New Password</label><input id="confirmNewPassword" type="password" placeholder="Confirm new password"></div>
+      ${renderPasswordField('Current Password', 'currentPassword', { placeholder:'Current password', autocomplete:'current-password' })}
+      ${renderPasswordField('New Password', 'newPassword', { placeholder:'New password', autocomplete:'new-password' })}
+      ${renderPasswordField('Confirm New Password', 'confirmNewPassword', { placeholder:'Confirm new password', autocomplete:'new-password' })}
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button class="btn btn-blue" onclick="changePassword()">Change Password</button>
         <button class="btn btn-danger" onclick="deleteCurrentProfile()">Delete Profile</button>
