@@ -8240,7 +8240,6 @@ function openAdminImageLibrary(callbackName=''){
     ${images.length ? `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px">${images.map(image => `
       <div class="card" style="padding:12px;border:1px solid var(--border)">
         <div style="margin-bottom:10px">${renderManagedImage(image.id, image.alt || 'Library image', 'width:100%;height:140px;object-fit:cover;border-radius:12px;border:1px solid var(--border)', 'thumb')}</div>
-        <div class="small muted" style="word-break:break-word;margin-bottom:10px">${esc(image.id)}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-blue btn-sm" type="button" onclick="selectImageFromLibrary('${esc(callbackName)}','${esc(image.id)}')">Select</button>
           <button class="btn btn-outline btn-sm" type="button" onclick="copyImageUrl('${esc(image.id)}')">Copy URL</button>
@@ -8370,7 +8369,6 @@ function viewImageFromLibrary(imageId=''){
   const usage = getImageUsageDetails(imageId);
   openModal('Image Preview', `
     <div>${renderManagedImage(image.id || image.url, image.alt || 'Image preview', 'width:100%;max-height:520px;object-fit:contain;border-radius:16px;border:1px solid var(--border)', 'full', 'loading="eager"')}</div>
-    <div class="small muted" style="margin-top:12px;word-break:break-word">${esc(image.url)}</div>
     ${usage.length ? `<div class="warning" style="margin-top:12px">This image is in use and cannot be deleted.</div>` : ''}
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
       <button class="btn btn-outline" type="button" onclick="copyImageUrl('${esc(imageId)}')">Copy URL</button>
@@ -13540,8 +13538,6 @@ function renderAdminImagesSection(el){
         return `
         <div class="card form-card">
           <div style="margin-bottom:12px">${renderManagedImage(image.id, image.alt || 'Library image', 'width:100%;height:160px;object-fit:cover;border-radius:14px;border:1px solid var(--border)', 'thumb')}</div>
-          <div class="small muted" style="word-break:break-word;margin-bottom:6px">${esc(image.id)}</div>
-          <div class="small muted" style="word-break:break-word;margin-bottom:12px">${esc(image.url)}</div>
           ${usage.length ? `<div class="small muted" style="margin-bottom:12px">In use, cannot delete</div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" type="button" onclick="viewImageFromLibrary('${esc(image.id)}')">View</button>
