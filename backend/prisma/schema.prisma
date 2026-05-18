@@ -517,3 +517,16 @@ model CommunityPost {
   @@index([createdAt])
   @@map("community_posts")
 }
+
+model SyncRecord {
+  entity    String
+  recordId  String    @map("record_id")
+  payload   Json
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@id([entity, recordId])
+  @@index([entity, updatedAt])
+  @@map("sync_records")
+}
