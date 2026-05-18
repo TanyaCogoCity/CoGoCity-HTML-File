@@ -363,6 +363,9 @@
       .faq-question{padding:15px 14px}
       .faq-answer-inner{padding:0 14px 16px}
     }
+
+    .browse-more-row{display:flex;justify-content:center;margin:20px 0 30px}
+    .browse-more-row[hidden]{display:none}
     .site-footer{
       background:#1F2937;
       color:#E5E7EB;
@@ -5785,26 +5788,64 @@ function getBrowseStudentSummaryText(totalCount=0, filteredCount=0){
   if (filteredCount === totalCount) return `${totalCount} student service${totalCount === 1 ? '' : 's'} available`;
   return `${filteredCount} of ${totalCount} student service${totalCount === 1 ? '' : 's'} match your search`;
 }
+let browseStudentVisibleRows = 4;
+function getBrowseStudentGridColumns(){
+  if (window.matchMedia('(max-width: 640px)').matches) return 1;
+  if (window.matchMedia('(max-width: 900px)').matches) return 2;
+  return 3;
+}
+function getBrowseStudentVisibleCount(){
+  return Math.max(1, browseStudentVisibleRows) * getBrowseStudentGridColumns();
+}
 function renderBrowseStudentResults(cards=[]){
-  if (cards.length) return cards.map(renderProfileCard).join('');
-  return `<div class="card form-card" style="grid-column:1/-1;text-align:center"><div style="font-weight:800;margin-bottom:6px">No students found</div><div class="small muted">Try a different service, name, location, or higher max rate.</div></div>`;
+  if (!cards.length) return `<div class="card form-card" style="grid-column:1/-1;text-align:center"><div style="font-weight:800;margin-bottom:6px">No students found</div><div class="small muted">Try a different service, name, location, or higher max rate.</div></div>`;
+  return cards.slice(0, getBrowseStudentVisibleCount()).map(renderProfileCard).join('');
+}
+function renderBrowseStudentMoreButton(cards=[]){
+  const visibleCount = getBrowseStudentVisibleCount();
+  if (!cards.length || cards.length <= visibleCount) return '';
+  const remaining = cards.length - visibleCount;
+  return `<button class="btn btn-outline" type="button" onclick="showMoreBrowseStudentProfiles()">See More Profiles (${remaining} more)</button>`;
+}
+function refreshBrowseStudentResults(resetRows=false){
+  if (resetRows) browseStudentVisibleRows = 4;
+  const allCards = getHomepageOrderedServiceCards();
+  const filteredCards = filterBrowseStudentCards(allCards);
+  const grid = document.getElementById('browseStudentResults');
+  if (grid) grid.innerHTML = renderBrowseStudentResults(filteredCards);
+  const moreRow = document.getElementById('browseStudentMoreRow');
+  if (moreRow) {
+    const moreHtml = renderBrowseStudentMoreButton(filteredCards);
+    moreRow.innerHTML = moreHtml;
+    moreRow.hidden = !moreHtml;
+  }
+  const summary = document.getElementById('browseStudentSummary');
+  if (summary) summary.textContent = getBrowseStudentSummaryText(allCards.length, filteredCards.length);
+  return filteredCards;
+}
+function showMoreBrowseStudentProfiles(){
+  browseStudentVisibleRows += 4;
+  const filteredCards = refreshBrowseStudentResults(false);
+  markHomepageServicesShown(filteredCards.slice(0, getBrowseStudentVisibleCount()));
 }
 function updateBrowseStudentFilter(key='', value=''){
   if (!Object.prototype.hasOwnProperty.call(browseStudentFilters, key)) return;
   browseStudentFilters[key] = String(value || '');
   const allCards = getHomepageOrderedServiceCards();
-  const filteredCards = filterBrowseStudentCards(allCards);
+  let filteredCards = filterBrowseStudentCards(allCards);
   if (key === 'query') trackCogoSearchEvent(browseStudentFilters.query, filteredCards.length);
-  const grid = document.getElementById('browseStudentResults');
-  if (grid) grid.innerHTML = renderBrowseStudentResults(filteredCards);
-  const summary = document.getElementById('browseStudentSummary');
-  if (summary) summary.textContent = getBrowseStudentSummaryText(allCards.length, filteredCards.length);
+  filteredCards = refreshBrowseStudentResults(true);
   const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
   const clearButtons = document.querySelectorAll('.student-search-clear');
   clearButtons.forEach(button => { button.style.display = hasFilters ? '' : 'none'; });
   const panelClearButton = document.getElementById('browseStudentClearButton');
   if (panelClearButton) panelClearButton.disabled = !hasFilters;
 }
+
+window.addEventListener('resize', () => {
+  if (typeof getRoute === 'function' && getRoute() === '#/') refreshBrowseStudentResults(false);
+});
+
 function clearBrowseStudentFilters(){
   browseStudentFilters = { query: '', location: '', maxRate: '' };
   ['browseStudentQuery','browseStudentLocation','browseStudentMaxRate'].forEach(id => {
@@ -5842,7 +5883,9 @@ function renderHome(){
       <div id="browseStudentResults" class="grid profiles-grid">
         ${renderBrowseStudentResults(filteredServiceCards)}
       </div>
-      <div style="height:28px"></div>
+      <div id="browseStudentMoreRow" class="browse-more-row" ${filteredServiceCards.length > getBrowseStudentVisibleCount() ? '' : 'hidden'}>
+        ${renderBrowseStudentMoreButton(filteredServiceCards)}
+      </div>
       <div class="split" style="align-items:flex-end;margin-bottom:18px">
         <div>
           <div class="section-title" style="margin:0 0 6px">From the CoGo City Blog</div>
@@ -5855,7 +5898,7 @@ function renderHome(){
       </div>
     </div>
   `;
-  markHomepageServicesShown(filteredServiceCards);
+  markHomepageServicesShown(filteredServiceCards.slice(0, getBrowseStudentVisibleCount()));
 }
 function formatBlogDate(value){
   if (!value) return '\u2014';
