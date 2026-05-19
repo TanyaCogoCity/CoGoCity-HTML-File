@@ -31,6 +31,7 @@ const PUBLIC_READ_ENTITIES = new Set([
   'workshops',
   'site_settings',
   'direct_job_packages',
+  'payment_settings',
 ]);
 
 const ENTITY_ALIASES = {

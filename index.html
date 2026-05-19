@@ -777,7 +777,7 @@ window.CoGoBackend = {
 };
 function syncEntityToBackend(entityKey, records, options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
-  if (!BACKEND_MIGRATION.enabled || !endpoint) return;
+  if (!BACKEND_MIGRATION.enabled || !endpoint || !getBackendAccessToken()) return;
   backendSyncInFlight += 1;
   backendRequest(endpoint, {
     method: 'POST',
