@@ -886,7 +886,22 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
   state.loading = true;
   try {
     const records = await loadBackendSyncedRecords(entityKey);
-    if (records.length) ls(storageKey, records);
+    if (records.length) {
+      if (entityKey === 'images') {
+        const mergedById = new Map();
+        ensureArray(ls(storageKey)).forEach(image => {
+          const id = String((image || {}).id || '').trim();
+          if (id) mergedById.set(id, image);
+        });
+        records.forEach(image => {
+          const id = String((image || {}).id || (image || {}).record_id || '').trim();
+          if (id) mergedById.set(id, image);
+        });
+        ls(storageKey, Array.from(mergedById.values()));
+      } else {
+        ls(storageKey, records);
+      }
+    }
     state.loaded = true;
     if (options.rerender) renderPage();
     return records;
@@ -1675,7 +1690,21 @@ function getImages(){
 function saveImages(images){
   const payload = ensureArray(images).map(normalizeImageRecord).filter(image => image.url);
   ls('cogo_images', payload);
-  syncEntityToBackend('images', payload, { replace:true });
+  return syncEntityToBackend('images', payload, { replace:true });
+}
+function syncAdImagesBeforeSettings(slots=[]){
+  const referencedIds = new Set();
+  ensureArray(slots).forEach(slot => {
+    ['desktop_image','mobile_image'].forEach(key => {
+      const value = String((slot || {})[key] || '').trim();
+      if (isImageRecordId(value)) referencedIds.add(value);
+    });
+  });
+  if (!referencedIds.size) return Promise.resolve({ ok:true, skipped:true });
+  const images = getImages();
+  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  if (missing.length) return Promise.resolve({ ok:false, error:`Missing uploaded image record: ${missing[0]}` });
+  return saveImages(images);
 }
 function getImageById(imageId=''){
   return getImages().find(image => String(image.id) === String(imageId)) || null;
@@ -14259,8 +14288,11 @@ async function saveAdminAdvertisingSettings(){
     if (slot.active && !slot.desktop_image && !slot.mobile_image) return toast(`${slot.label} needs at least one image before it can be active.`);
     if (slot.landing_url && !advertisingUrlIsAllowed(slot.landing_url)) return toast(`${slot.label} landing URL must start with https://, http://, #, mailto:, or tel:.`);
   }
+  const imageSync = await syncAdImagesBeforeSettings(slots);
+  if (imageSync && imageSync.reason === 'missing_backend_token') return toast('Ad images saved in this browser only. Please sign in with the backend admin account to publish them to staging.');
+  if (imageSync && imageSync.ok === false) return toast(`Ad image publish did not complete${imageSync.error ? `: ${imageSync.error}` : '.'}`);
   const result = await saveSiteSettings(Object.assign({}, current, { advertising: { slots } }));
-  if (result && result.ok) toast('Advertising settings updated and published to staging.');
+  if (result && result.ok) toast('Advertising settings and images published to staging.');
   else if (result && result.reason === 'missing_backend_token') toast('Advertising saved in this browser only. Please sign in with the backend admin account to publish it to staging.');
   else toast(`Advertising settings updated locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
   renderDashboard();
