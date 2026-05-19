@@ -807,9 +807,10 @@ window.CoGoBackend = {
 };
 function syncEntityToBackend(entityKey, records, options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
-  if (!BACKEND_MIGRATION.enabled || !endpoint || !getBackendAccessToken()) return;
+  if (!BACKEND_MIGRATION.enabled || !endpoint) return Promise.resolve({ ok:false, skipped:true, reason:'sync_disabled' });
+  if (!getBackendAccessToken()) return Promise.resolve({ ok:false, skipped:true, reason:'missing_backend_token' });
   backendSyncInFlight += 1;
-  backendRequest(endpoint, {
+  return backendRequest(endpoint, {
     method: 'POST',
     body: JSON.stringify({
       entity: entityKey,
@@ -819,8 +820,10 @@ function syncEntityToBackend(entityKey, records, options={}){
     })
   }).then(result => {
     if (!result || !result.ok) backendLastSyncError = (result && (result.error || result.status)) ? String(result.error || result.status) : 'sync_failed';
+    return result;
   }).catch(error => {
     backendLastSyncError = String((error && error.message) || 'sync_failed');
+    return { ok:false, error:backendLastSyncError };
   }).finally(() => {
     backendSyncInFlight = Math.max(0, backendSyncInFlight - 1);
   });
@@ -854,7 +857,15 @@ async function loadBackendSingletonSetting(entityKey='', storageKey='', options=
   state.loading = true;
   try {
     const records = await loadBackendSyncedRecords(entityKey);
-    if (records.length) ls(storageKey, records[0]);
+    if (records.length) {
+      const backendRecord = records[0];
+      const localRecord = ls(storageKey) || {};
+      const backendUpdated = new Date(backendRecord.sync_updated_at || backendRecord.updatedAt || backendRecord.updated_at || 0).getTime();
+      const localUpdated = new Date(localRecord.cogo_local_updated_at || 0).getTime();
+      if (!Number.isFinite(localUpdated) || !Number.isFinite(backendUpdated) || !localUpdated || localUpdated <= backendUpdated) {
+        ls(storageKey, backendRecord);
+      }
+    }
     state.loaded = true;
     if (options.rerender) renderPage();
     return records[0] || null;
@@ -3143,9 +3154,9 @@ function getSiteSettings(){
   return merged;
 }
 function saveSiteSettings(settings){
-  const normalized = Object.assign({}, settings || {}, { id:'site_settings' });
+  const normalized = Object.assign({}, settings || {}, { id:'site_settings', cogo_local_updated_at:new Date().toISOString() });
   ls('cogo_site_settings', normalized);
-  syncEntityToBackend('site_settings', [normalized], { replace:true });
+  return syncEntityToBackend('site_settings', [normalized], { replace:true });
 }
 function parseLinksTextarea(value=''){
   return String(value || '').split('\n').map(line => line.trim()).filter(Boolean).map(line => {
@@ -14228,7 +14239,7 @@ function clearAdminAdImage(slotId='', kind=''){
   if (field) field.value = '';
   setAdminAdPreview(slotId, kind, '');
 }
-function saveAdminAdvertisingSettings(){
+async function saveAdminAdvertisingSettings(){
   const current = getSiteSettings();
   const slots = defaultAdvertisingSlots().map(defaultSlot => {
     const id = defaultSlot.id;
@@ -14247,8 +14258,10 @@ function saveAdminAdvertisingSettings(){
     if (slot.active && !slot.desktop_image && !slot.mobile_image) return toast(`${slot.label} needs at least one image before it can be active.`);
     if (slot.landing_url && !advertisingUrlIsAllowed(slot.landing_url)) return toast(`${slot.label} landing URL must start with https://, http://, #, mailto:, or tel:.`);
   }
-  saveSiteSettings(Object.assign({}, current, { advertising: { slots } }));
-  toast('Advertising settings updated.');
+  const result = await saveSiteSettings(Object.assign({}, current, { advertising: { slots } }));
+  if (result && result.ok) toast('Advertising settings updated and published to staging.');
+  else if (result && result.reason === 'missing_backend_token') toast('Advertising saved in this browser only. Please sign in with the backend admin account to publish it to staging.');
+  else toast('Advertising settings updated locally, but backend publish did not complete.');
   renderDashboard();
 }
 
