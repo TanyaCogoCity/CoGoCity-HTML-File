@@ -349,6 +349,7 @@
     .cogo-home-main{min-width:0;width:100%;max-width:1120px}
     .cogo-ad-sidebar{width:300px;justify-self:end;padding-top:45px}
     .cogo-ad-strip{margin:0;width:100%;max-width:300px}
+    .cogo-mobile-extra-ads{display:none}
     .cogo-ad-grid{display:grid;grid-template-columns:1fr;gap:14px}
     .cogo-ad-card{display:block;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:18px;background:#fff;box-shadow:0 12px 30px rgba(31,41,55,.16);aspect-ratio:6/5;min-height:250px;text-decoration:none;color:var(--color-text-main)}
     .cogo-ad-card img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .2s ease}
@@ -473,6 +474,9 @@
       .cogo-home-layout,.cogo-home-layout.has-ad{grid-template-columns:1fr}
       .cogo-ad-sidebar{order:-1;justify-self:center;width:100%;padding-top:0;display:flex;justify-content:center}
       .cogo-ad-strip{margin:0 auto 18px;max-width:320px;width:100%}
+      .cogo-ad-sidebar .cogo-ad-card:nth-child(n+2){display:none}
+      .cogo-mobile-extra-ads{display:block;margin:0 auto 20px;max-width:320px}
+      .cogo-mobile-extra-ads .cogo-ad-strip{margin:0 auto}
       .cogo-ad-grid{grid-template-columns:1fr;gap:12px}
       .cogo-ad-card{aspect-ratio:8/3;min-height:118px}
       .cogo-ad-overlay{left:auto;right:12px;bottom:50%;transform:translateY(50%);max-width:45%}
@@ -3070,13 +3074,13 @@ function getActiveAdvertisingSlots(){
     return true;
   });
 }
-function renderAdvertisingStrip(){
-  const slots = getActiveAdvertisingSlots();
-  if (!slots.length) return '';
+function renderAdvertisingStrip(slots=getActiveAdvertisingSlots()){
+  const activeSlots = ensureArray(slots);
+  if (!activeSlots.length) return '';
   return `
     <div class="cogo-ad-strip" aria-label="Sponsored community ads">
       <div class="cogo-ad-grid">
-        ${slots.map(slot => {
+        ${activeSlots.map(slot => {
           const desktop = getImageView(slot.desktop_image, 'full') || getImageView(slot.mobile_image, 'full');
           const mobile = getImageView(slot.mobile_image, 'full') || desktop;
           const href = advertisingUrlIsAllowed(slot.landing_url) ? slot.landing_url : '#';
@@ -6202,7 +6206,9 @@ function renderHome(){
     title:'Find Skilled Local Students for Real Work',
     body:'Hire motivated students for social media, office support, event help, tutoring, and more.'
   }, (getSiteSettings().page_blocks || {}).home || {});
-  const advertisingHtml = renderAdvertisingStrip();
+  const advertisingSlots = getActiveAdvertisingSlots();
+  const advertisingHtml = renderAdvertisingStrip(advertisingSlots);
+  const mobileExtraAdvertisingHtml = renderAdvertisingStrip(advertisingSlots.slice(1));
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <section class="home-hero">
@@ -6228,6 +6234,7 @@ function renderHome(){
           <div id="browseStudentMoreRow" class="browse-more-row" ${filteredServiceCards.length > getBrowseStudentVisibleCount() ? '' : 'hidden'}>
             ${renderBrowseStudentMoreButton(filteredServiceCards)}
           </div>
+          ${mobileExtraAdvertisingHtml ? `<div class="cogo-mobile-extra-ads" aria-label="Additional sponsored community ads">${mobileExtraAdvertisingHtml}</div>` : ''}
           <div class="split" style="align-items:flex-end;margin-bottom:18px">
             <div>
               <div class="section-title" style="margin:0 0 6px">From the CoGo City Blog</div>
