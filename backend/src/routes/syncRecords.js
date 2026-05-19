@@ -79,6 +79,78 @@ function serialize(row) {
   };
 }
 
+function isUuid(value = '') {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+function workshopStatus(value = '') {
+  const status = String(value || '').toLowerCase();
+  if (status === 'active') return 'published';
+  if (['draft', 'published', 'completed', 'canceled'].includes(status)) return status;
+  return 'draft';
+}
+
+function workshopDurationMinutes(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number.parseInt(String(value).match(/\d+/)?.[0] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function workshopStartDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : new Date();
+}
+
+function workshopDataFromPayload(payload = {}, createdBy) {
+  return {
+    title: String(payload.title || 'Untitled Workshop').trim() || 'Untitled Workshop',
+    description: payload.description ? String(payload.description) : null,
+    price: Number(payload.price || 0) || 0,
+    capacity: payload.capacity == null || payload.capacity === '' ? null : Number(payload.capacity),
+    format: payload.format === 'online' ? 'online' : 'in_person',
+    location: payload.location || null,
+    onlineUrl: payload.online_url || payload.onlineUrl || null,
+    durationMinutes: workshopDurationMinutes(payload.duration_minutes ?? payload.durationMinutes ?? payload.duration),
+    status: workshopStatus(payload.status),
+    startDate: workshopStartDate(payload.start_date || payload.startDate || payload.date_time || payload.dateTime),
+    createdBy,
+  };
+}
+
+async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
+  const mirrored = [];
+  for (const record of normalized) {
+    const payload = record.payload || {};
+    let createdBy = isUuid(payload.host_id) ? payload.host_id : req.user.id;
+    const creator = await prisma.user.findUnique({ where: { id: createdBy }, select: { id: true } }).catch(() => null);
+    if (!creator) createdBy = req.user.id;
+
+    let workshop = null;
+    const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId;
+    if (isUuid(backendWorkshopId)) {
+      workshop = await prisma.workshop.findUnique({ where: { id: backendWorkshopId } });
+    }
+    if (!workshop && isUuid(record.id)) {
+      workshop = await prisma.workshop.findUnique({ where: { id: record.id } });
+    }
+
+    const data = workshopDataFromPayload(payload, workshop?.createdBy || createdBy);
+    if (workshop) {
+      workshop = await prisma.workshop.update({ where: { id: workshop.id }, data });
+    } else {
+      workshop = await prisma.workshop.create({ data });
+    }
+
+    const updatedPayload = { ...payload, backend_workshop_id: workshop.id };
+    await prisma.syncRecord.update({
+      where: { entity_recordId: { entity: 'workshops', recordId: record.id } },
+      data: { payload: updatedPayload },
+    });
+    mirrored.push({ recordId: record.id, backendWorkshopId: workshop.id });
+  }
+  return mirrored;
+}
+
 function requireReadAccess(req, res, next) {
   const entity = validateEntity(req.params.entity);
   if (!entity) return fail(res, 404, 'Unknown sync entity');
@@ -132,16 +204,17 @@ router.post('/:entity', requireAuth, async (req, res) => {
       }));
     }
     await prisma.$transaction(operations);
+    const mirrored = entity === 'workshops' ? await mirrorWorkshopRecordsToCoreTable(normalized, req) : [];
 
     await writeAuditLog({
       userId: req.user.id,
       action: `sync.${entity}`,
       entityType: 'sync_record',
       entityId: entity,
-      payload: { count: normalized.length },
+      payload: { count: normalized.length, mirrored_count: mirrored.length },
     });
 
-    return ok(res, { entity, count: normalized.length });
+    return ok(res, { entity, count: normalized.length, mirrored });
   } catch (error) {
     return fail(res, 400, 'Could not sync records', error.message);
   }
