@@ -810,15 +810,16 @@ function syncEntityToBackend(entityKey, records, options={}){
   if (!BACKEND_MIGRATION.enabled || !endpoint) return Promise.resolve({ ok:false, skipped:true, reason:'sync_disabled' });
   if (!getBackendAccessToken()) return Promise.resolve({ ok:false, skipped:true, reason:'missing_backend_token' });
   backendSyncInFlight += 1;
-  return backendRequest(endpoint, {
-    method: 'POST',
-    body: JSON.stringify({
-      entity: entityKey,
-      updated_at: new Date().toISOString(),
-      replace: !!options.replace,
-      records
-    })
-  }).then(result => {
+  const payload = JSON.stringify({
+    entity: entityKey,
+    updated_at: new Date().toISOString(),
+    replace: !!options.replace,
+    records
+  });
+  const requestPromise = backendAuthEnabled()
+    ? backendAuthRequest(endpoint, { method:'POST', body: payload }).then(data => ({ ok:true, data }))
+    : backendRequest(endpoint, { method:'POST', body: payload });
+  return requestPromise.then(result => {
     if (!result || !result.ok) backendLastSyncError = (result && (result.error || result.status)) ? String(result.error || result.status) : 'sync_failed';
     return result;
   }).catch(error => {
@@ -14261,7 +14262,7 @@ async function saveAdminAdvertisingSettings(){
   const result = await saveSiteSettings(Object.assign({}, current, { advertising: { slots } }));
   if (result && result.ok) toast('Advertising settings updated and published to staging.');
   else if (result && result.reason === 'missing_backend_token') toast('Advertising saved in this browser only. Please sign in with the backend admin account to publish it to staging.');
-  else toast('Advertising settings updated locally, but backend publish did not complete.');
+  else toast(`Advertising settings updated locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
   renderDashboard();
 }
 
