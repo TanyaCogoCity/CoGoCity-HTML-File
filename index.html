@@ -11895,7 +11895,7 @@ function renderEmployerAppCard(a){
           <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr \u00B7 ${esc(a.estimatedHours||'')} hours</div>` : ''}
           ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">Platform Fee for employers/neighbors is currently ${formatPercent(getPaymentSettings().employerCommissionPct)} and is added on top of the Work Total.</div>` : ''}
-          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">When you are ready for the student to begin, click \u2018Start Project\u2019. CoGo City will secure the project payment and notify the student that work can start.</div>` : ''}
+          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">When you\u2019re ready for the student to begin, click \u201cStart Project\u201d. CoGo City will secure the project payment and notify the student that work can begin.<br><br>If your plans have changed and you no longer need help, please decline the project and, if possible, provide a short explanation so the student can continue looking for other opportunities.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(a.status)}
