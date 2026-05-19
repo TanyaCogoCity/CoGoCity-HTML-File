@@ -345,15 +345,15 @@
 
     .home-content-container.has-ad{max-width:1320px}
     .cogo-home-layout{display:grid;grid-template-columns:1fr;gap:24px;align-items:start}
-    .cogo-home-layout.has-ad{grid-template-columns:minmax(0,1fr) 180px;gap:20px}
+    .cogo-home-layout.has-ad{grid-template-columns:minmax(0,1fr) 160px;gap:20px}
     .cogo-home-main{min-width:0}
     .cogo-ad-sidebar{width:100%;justify-self:end}
-    .cogo-ad-strip{margin:0;width:100%;max-width:180px}
+    .cogo-ad-strip{margin:0;width:100%;max-width:160px}
     .cogo-ad-grid{display:grid;grid-template-columns:1fr;gap:14px}
-    .cogo-ad-card{display:block;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:18px;background:#fff;box-shadow:0 12px 30px rgba(31,41,55,.16);aspect-ratio:6/5;min-height:0;text-decoration:none;color:var(--color-text-main)}
+    .cogo-ad-card{display:block;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:18px;background:#fff;box-shadow:0 12px 30px rgba(31,41,55,.16);aspect-ratio:8/15;min-height:300px;text-decoration:none;color:var(--color-text-main)}
     .cogo-ad-card img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .2s ease}
     .cogo-ad-card:hover img{transform:scale(1.02)}
-    .cogo-ad-overlay{position:absolute;left:16px;bottom:16px;z-index:2;display:inline-flex;align-items:center;justify-content:center;max-width:calc(100% - 32px)}
+    .cogo-ad-overlay{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:2;display:inline-flex;align-items:center;justify-content:center;max-width:calc(100% - 24px)}
     .cogo-ad-cta{display:inline-flex;align-items:center;justify-content:center;background:var(--color-primary);color:var(--color-text-main);border:1px solid var(--color-primary-hover);border-radius:999px;padding:10px 14px;font-size:.86rem;font-weight:900;white-space:nowrap;box-shadow:0 8px 20px rgba(31,41,55,.22)}
     .cogo-ad-admin-preview{border:1px dashed var(--border);border-radius:14px;background:#F9FAFB;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--color-text-secondary)}
     .cogo-ad-admin-preview img{width:100%;max-height:180px;object-fit:cover;display:block}
@@ -475,7 +475,7 @@
       .cogo-ad-strip{margin:0 0 18px;max-width:320px;width:100%}
       .cogo-ad-grid{grid-template-columns:1fr;gap:12px}
       .cogo-ad-card{aspect-ratio:8/3;min-height:118px}
-      .cogo-ad-overlay{left:12px;bottom:12px;right:auto}
+      .cogo-ad-overlay{left:50%;bottom:12px;right:auto;transform:translateX(-50%)}
       .cogo-ad-cta{display:inline-flex}
       .container{padding:20px 14px}
       .profiles-grid,.blog-grid,.workshop-grid{grid-template-columns:1fr}
@@ -14171,7 +14171,7 @@ function renderAdminAdvertisingSection(el){
     <div class="section-title">Advertising</div>
     <div class="card form-card" style="margin-bottom:16px">
       <div style="font-weight:800;margin-bottom:8px">Homepage Banner Ads</div>
-      <div class="small muted">Manage up to three active ad banners. Empty or inactive banners will not appear, so the current staging UI stays unchanged until you turn a banner on.</div>
+      <div class="small muted">Manage up to three active ad banners. Desktop sidebar artwork should be 160×300. Mobile artwork should be 320×120. Empty or inactive banners will not appear, so the current staging UI stays unchanged until you turn a banner on.</div>
     </div>
     ${ads.map(slot => `
       <div class="card form-card" style="margin-bottom:18px">
@@ -14187,13 +14187,13 @@ function renderAdminAdvertisingSection(el){
         <div class="field"><label>Expiration Date (optional)</label><input id="ad_expires_${esc(slot.id)}" type="date" value="${esc(slot.expires_at ? String(slot.expires_at).slice(0,10) : '')}"></div>
         <div class="row">
           <div>
-            <div class="field"><label>Desktop Banner Image</label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','desktop',this)"></div>
+            <div class="field"><label>Desktop Banner Image <span class="small muted">(160×300)</span></label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','desktop',this)"></div>
             <input id="ad_desktop_${esc(slot.id)}" type="hidden" value="${esc(slot.desktop_image)}">
             <div id="ad_desktop_preview_${esc(slot.id)}" class="cogo-ad-admin-preview">${renderAdAdminImagePreview(slot.desktop_image, `${slot.label} desktop`)}</div>
             <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="clearAdminAdImage('${esc(slot.id)}','desktop')">Remove Desktop Image</button>
           </div>
           <div>
-            <div class="field"><label>Mobile Banner Image</label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','mobile',this)"></div>
+            <div class="field"><label>Mobile Banner Image <span class="small muted">(320×120)</span></label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','mobile',this)"></div>
             <input id="ad_mobile_${esc(slot.id)}" type="hidden" value="${esc(slot.mobile_image)}">
             <div id="ad_mobile_preview_${esc(slot.id)}" class="cogo-ad-admin-preview">${renderAdAdminImagePreview(slot.mobile_image, `${slot.label} mobile`)}</div>
             <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="clearAdminAdImage('${esc(slot.id)}','mobile')">Remove Mobile Image</button>
