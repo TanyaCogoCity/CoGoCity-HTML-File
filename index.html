@@ -701,6 +701,11 @@ const BACKEND_SYNC_ENDPOINTS = {
   notifications: '/sync/notifications',
   transactions: '/sync/transactions',
   blog_posts: '/sync/blog_posts',
+  images: '/sync/images',
+  bookings: '/sync/bookings',
+  finance: '/sync/finance',
+  admin_action_log: '/sync/admin_action_log',
+  email_queue: '/sync/email_queue',
   workshops: '/sync/workshops',
   workshop_registrations: '/sync/workshop-registrations',
   direct_jobs: '/sync/direct-jobs',
@@ -710,6 +715,7 @@ const BACKEND_SYNC_ENDPOINTS = {
   payment_settings: '/sync/payment-settings',
   site_settings: '/sync/site-settings'
 };
+const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','payment_settings','images']);
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
 let backendBrowseStudentsLoading = false;
@@ -805,6 +811,7 @@ window.CoGoBackend.getSyncState = function(){
 async function loadBackendSyncedRecords(entityKey='', options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
   if (!BACKEND_MIGRATION.enabled || !endpoint) return [];
+  if (!BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey) && !getBackendAccessToken()) return [];
   try {
     const result = await backendRequest(endpoint, { method:'GET' });
     if (!result || !result.ok) return [];
@@ -854,6 +861,24 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
 function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}){
   const state = backendGenericSyncState[entityKey] || {};
   if (BACKEND_MIGRATION.enabled && !state.loaded && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
+}
+function ensureBackendPersistentStateLoaded(options={}){
+  if (!BACKEND_MIGRATION.enabled) return;
+  ensureBackendArraySettingLoaded('images', 'cogo_images', options);
+  ensureBackendArraySettingLoaded('blog_posts', 'cogo_blog_posts', options);
+  ensureBackendArraySettingLoaded('workshops', 'cogo_workshops', options);
+  ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings', options);
+  ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings', options);
+  ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages', options);
+  if (!getBackendAccessToken()) return;
+  ensureBackendArraySettingLoaded('applications', 'cogo_applications', options);
+  ensureBackendArraySettingLoaded('bookings', 'cogo_bookings', options);
+  ensureBackendArraySettingLoaded('transactions', 'cogo_transactions', options);
+  ensureBackendArraySettingLoaded('payment_logs', 'cogo_payment_logs', options);
+  ensureBackendSingletonSettingLoaded('finance', 'cogo_finance', options);
+  ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', options);
+  ensureBackendArraySettingLoaded('admin_action_log', 'cogo_admin_action_log', options);
+  ensureBackendArraySettingLoaded('email_queue', 'cogo_email_queue', options);
 }
 
 // ---------- Storage ----------
@@ -1598,6 +1623,7 @@ function normalizeImageRecord(image){
   return normalized;
 }
 function getImages(){
+  ensureBackendArraySettingLoaded('images', 'cogo_images');
   const images = ensureArray(ls('cogo_images'));
   let changed = false;
   const normalized = images.map(image => {
@@ -1611,6 +1637,7 @@ function getImages(){
 function saveImages(images){
   const payload = ensureArray(images).map(normalizeImageRecord).filter(image => image.url);
   ls('cogo_images', payload);
+  syncEntityToBackend('images', payload, { replace:true });
 }
 function getImageById(imageId=''){
   return getImages().find(image => String(image.id) === String(imageId)) || null;
@@ -1957,8 +1984,15 @@ function formatDateTimeLocalInput(value=''){
   if (Number.isNaN(date.getTime())) return '';
   return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
 }
-function getAdminActionLog(){ return ls('cogo_admin_action_log') || []; }
-function saveAdminActionLog(v){ ls('cogo_admin_action_log', v); }
+function getAdminActionLog(){
+  ensureBackendArraySettingLoaded('admin_action_log', 'cogo_admin_action_log');
+  return ls('cogo_admin_action_log') || [];
+}
+function saveAdminActionLog(v){
+  const payload = ensureArray(v);
+  ls('cogo_admin_action_log', payload);
+  syncEntityToBackend('admin_action_log', payload, { replace:true });
+}
 function logAdminAction(action, meta={}){
   const items = getAdminActionLog();
   items.unshift(Object.assign({ id: uid('adminlog'), action, actorId: currentUser ? currentUser.id : null, actorName: currentUser ? currentUser.name : 'Admin', createdAt: new Date().toISOString() }, meta));
@@ -2589,14 +2623,24 @@ function saveStudentResume(userId, resume){
   saveUsers(users);
   if (currentUser && currentUser.id === userId) setCurrentUser(user);
 }
-function getApplications(){ return ls('cogo_applications') || []; }
+function getApplications(){
+  ensureBackendArraySettingLoaded('applications', 'cogo_applications');
+  return ls('cogo_applications') || [];
+}
 function saveApplications(v){
   const payload = ensureArray(v);
   ls('cogo_applications', payload);
   syncEntityToBackend('applications', payload);
 }
-function getBookings(){ return ls('cogo_bookings') || []; }
-function saveBookings(v){ ls('cogo_bookings', v); }
+function getBookings(){
+  ensureBackendArraySettingLoaded('bookings', 'cogo_bookings');
+  return ls('cogo_bookings') || [];
+}
+function saveBookings(v){
+  const payload = ensureArray(v);
+  ls('cogo_bookings', payload);
+  syncEntityToBackend('bookings', payload, { replace:true });
+}
 function getBackendProjects(){ return ensureArray(ls('cogo_backend_projects')).map(p => Object.assign({}, p, { backendSource:true })); }
 function saveBackendProjects(items){ ls('cogo_backend_projects', ensureArray(items).map(p => Object.assign({}, p, { backendSource:true }))); }
 function upsertBackendProject(project){
@@ -2761,14 +2805,24 @@ function saveNotifications(id, data){
   ls('cogo_notifs_' + id, payload);
   syncEntityToBackend('notifications', [{ user_id: id, items: payload }]);
 }
-function getPaymentLogs(){ return ls('cogo_payment_logs') || []; }
+function getPaymentLogs(){
+  ensureBackendArraySettingLoaded('payment_logs', 'cogo_payment_logs');
+  return ls('cogo_payment_logs') || [];
+}
 function savePaymentLogs(v){
   const payload = ensureArray(v);
   ls('cogo_payment_logs', payload);
   syncEntityToBackend('payment_logs', payload);
 }
-function getFinance(){ return ls('cogo_finance') || { cogoCommission: 0, completedProjects: 0 }; }
-function saveFinance(v){ ls('cogo_finance', v); }
+function getFinance(){
+  ensureBackendSingletonSettingLoaded('finance', 'cogo_finance');
+  return ls('cogo_finance') || { id:'finance', cogoCommission: 0, completedProjects: 0 };
+}
+function saveFinance(v){
+  const payload = Object.assign({ id:'finance' }, v || {});
+  ls('cogo_finance', payload);
+  syncEntityToBackend('finance', [payload], { replace:true });
+}
 function getPaymentSettings(){
   ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings');
   const saved = ls('cogo_payment_settings') || {};
@@ -2978,7 +3032,10 @@ function parseLinksTextarea(value=''){
 function renderLinksTextarea(links=[]){
   return ensureArray(links).map(link => `${link.label} | ${link.href}`).join('\n');
 }
-function getTransactions(){ return ls('cogo_transactions') || []; }
+function getTransactions(){
+  ensureBackendArraySettingLoaded('transactions', 'cogo_transactions');
+  return ls('cogo_transactions') || [];
+}
 function saveTransactions(v){
   const payload = ensureArray(v);
   ls('cogo_transactions', payload);
@@ -5801,9 +5858,7 @@ function renderAppErrorState(error, route=''){
 function renderPage(){
   try {
     if (!syncCurrentUserRecord()) return;
-    ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings', { rerender:true });
-    ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings', { rerender:true });
-    ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages', { rerender:true });
+    ensureBackendPersistentStateLoaded({ rerender:true });
     processWorkshopPayouts();
     applySiteSettings();
     const route = getRoute();
@@ -6793,6 +6848,7 @@ function normalizeWorkshopRegistration(registration){
   return normalized;
 }
 function getWorkshopRegistrations(){
+  ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations');
   const stored = ensureArray(ls('cogo_workshop_registrations'));
   const normalized = stored.map(normalizeWorkshopRegistration);
   if (JSON.stringify(normalized) !== JSON.stringify(stored)) ls('cogo_workshop_registrations', normalized);
@@ -7274,6 +7330,7 @@ function queueSystemEmail(email='', name='', subject='', body='', meta={}){
     meta: Object.assign({}, meta || {})
   });
   ls('cogo_email_queue', queue);
+  syncEntityToBackend('email_queue', queue, { replace:true });
 }
 function notifyWorkshopRefundParticipants(workshop, registration, refundAmount){
   const owner = getUserById(workshop.host_id);

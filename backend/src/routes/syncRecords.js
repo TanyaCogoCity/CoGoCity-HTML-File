@@ -24,6 +24,11 @@ const ALLOWED_ENTITIES = new Set([
   'payment_settings',
   'site_settings',
   'blog_posts',
+  'images',
+  'bookings',
+  'finance',
+  'admin_action_log',
+  'email_queue',
 ]);
 
 const PUBLIC_READ_ENTITIES = new Set([
@@ -32,6 +37,7 @@ const PUBLIC_READ_ENTITIES = new Set([
   'site_settings',
   'direct_job_packages',
   'payment_settings',
+  'images',
 ]);
 
 const ENTITY_ALIASES = {
@@ -51,8 +57,8 @@ function validateEntity(entity = '') {
   return ALLOWED_ENTITIES.has(normalized) ? normalized : '';
 }
 
-const SINGLETON_ENTITIES = new Set(['payment_settings', 'site_settings']);
-const ADMIN_WRITE_ENTITIES = new Set(['blog_posts', 'direct_job_packages', 'payment_settings', 'site_settings']);
+const SINGLETON_ENTITIES = new Set(['payment_settings', 'site_settings', 'finance']);
+const ADMIN_WRITE_ENTITIES = new Set(['blog_posts', 'direct_job_packages', 'payment_settings', 'site_settings', 'images', 'finance', 'admin_action_log', 'email_queue']);
 
 function normalizeRecord(record = {}, entity = '') {
   const fallbackId = SINGLETON_ENTITIES.has(entity) ? entity : '';
