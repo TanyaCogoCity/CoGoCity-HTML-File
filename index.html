@@ -880,7 +880,9 @@ function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}
 function ensureBackendPersistentStateLoaded(options={}){
   if (!BACKEND_MIGRATION.enabled) return;
   ensureBackendArraySettingLoaded('images', 'cogo_images', options);
-  ensureBackendArraySettingLoaded('blog_posts', 'cogo_blog_posts', options);
+  // Blog posts need seeded WordPress articles merged with backend edits; use the
+  // dedicated loader instead of overwriting local seeded content with sync rows.
+  ensureBackendBlogPostsLoaded(options);
   ensureBackendArraySettingLoaded('workshops', 'cogo_workshops', options);
   ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings', options);
   ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings', options);
@@ -1862,14 +1864,23 @@ function normalizeBlogPostRecord(post){
   if (post && post.publishRequested == null) normalized.publishRequested = normalized.status !== 'draft';
   return normalized;
 }
+function getSeededBlogPosts(){
+  return BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, {
+    status:'published',
+    publishRequested:true,
+    images:[],
+    video_url:'',
+    updatedAt:post.date
+  })));
+}
 function getBlogPosts(){
   const stored = ls('cogo_blog_posts');
+  const seeded = getSeededBlogPosts();
   if (Array.isArray(stored) && stored.length) {
-    const normalized = stored.map(normalizeBlogPostRecord);
+    const normalized = mergeBlogPosts(seeded, stored);
     if (JSON.stringify(normalized) !== JSON.stringify(stored)) ls('cogo_blog_posts', normalized);
     return normalized;
   }
-  const seeded = BLOG_POSTS.map(post => normalizeBlogPostRecord(Object.assign({}, post, { status:'published', publishRequested:true, images:[], video_url:'', updatedAt:post.date })));
   ls('cogo_blog_posts', seeded);
   return seeded;
 }
