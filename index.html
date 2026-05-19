@@ -1723,6 +1723,17 @@ function findImageByFingerprint(fingerprint=''){
   if (!clean) return null;
   return getImages().find(image => String(image.fingerprint || '') === clean) || null;
 }
+function findImageByEntity(source='', entityId='', variant=''){
+  const cleanSource = String(source || '').trim();
+  const cleanEntityId = String(entityId || '').trim();
+  const cleanVariant = String(variant || '').trim();
+  if (!cleanSource || !cleanEntityId) return null;
+  return getImages().find(image => {
+    if (String(image.source || '') !== cleanSource) return false;
+    if (String(image.entity_id || '') !== cleanEntityId) return false;
+    return !cleanVariant || String(image.variant || '') === cleanVariant;
+  }) || null;
+}
 function buildUploadedImageFingerprint(file){
   if (!file) return '';
   return [
@@ -1877,6 +1888,10 @@ function normalizeBlogPostRecord(post){
   normalized.id = String(normalized.id || uid('blog'));
   normalized.featured_image = normalized.featured_image || normalized.image_id || normalized.featuredImage || '';
   normalized.featured_image = upsertImageRecord(normalized.featured_image, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' }) || '';
+  if (normalized.featured_image && !getImageView(normalized.featured_image, 'thumb')) {
+    const entityFeaturedImage = findImageByEntity('article_featured', normalized.id || '');
+    if (entityFeaturedImage && entityFeaturedImage.id) normalized.featured_image = entityFeaturedImage.id;
+  }
   normalized.image_id = normalized.featured_image;
   normalized.featuredImage = normalized.featured_image;
   if (!normalized.videoUrl) normalized.videoUrl = normalized.video_url || normalized.videoLink || '';
@@ -6355,6 +6370,10 @@ function getBlogThumbnailView(post, variant='thumb'){
   for (const source of sources) {
     const image = getImageView(source, variant);
     if (image && image.url) return image;
+  }
+  const entityFeaturedImage = findImageByEntity('article_featured', post.id || '');
+  if (entityFeaturedImage && entityFeaturedImage.url) {
+    return Object.assign({}, entityFeaturedImage, { url: variant === 'thumb' ? (entityFeaturedImage.thumbnail_url || entityFeaturedImage.url) : entityFeaturedImage.url });
   }
   return null;
 }
