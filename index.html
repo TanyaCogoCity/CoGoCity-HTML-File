@@ -2985,6 +2985,17 @@ function advertisingUrlIsAllowed(value=''){
   if (!url) return false;
   return /^(https?:\/\/|#\/|#|mailto:|tel:)/i.test(url);
 }
+function getAdvertisingExpirationTime(value=''){
+  const raw = String(value || '').trim();
+  if (!raw) return NaN;
+  // Date inputs save as YYYY-MM-DD. Treat that as end-of-day local time so an ad
+  // selected to expire today remains visible for the full day.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split('-').map(Number);
+    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+  }
+  return new Date(raw).getTime();
+}
 function getActiveAdvertisingSlots(){
   const settings = getSiteSettings();
   const now = Date.now();
@@ -2992,7 +3003,7 @@ function getActiveAdvertisingSlots(){
     if (!slot.active) return false;
     if (!slot.desktop_image && !slot.mobile_image) return false;
     if (slot.expires_at) {
-      const expires = new Date(slot.expires_at).getTime();
+      const expires = getAdvertisingExpirationTime(slot.expires_at);
       if (Number.isFinite(expires) && expires < now) return false;
     }
     return true;
