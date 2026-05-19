@@ -342,6 +342,16 @@
     .faq-answer{max-height:0;overflow:hidden;transition:max-height .28s ease,opacity .22s ease;opacity:0}
     .faq-accordion.open .faq-answer{max-height:900px;opacity:1}
     .faq-answer-inner{padding:0 18px 18px;color:var(--color-text-main);line-height:1.65}
+
+    .cogo-ad-strip{margin:18px 0 26px}
+    .cogo-ad-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .cogo-ad-card{display:block;position:relative;overflow:hidden;border:1px solid var(--border);border-radius:18px;background:#fff;box-shadow:0 8px 24px rgba(31,41,55,.08);min-height:138px;text-decoration:none;color:var(--color-text-main)}
+    .cogo-ad-card img{width:100%;height:100%;min-height:138px;object-fit:cover;display:block;transition:transform .2s ease}
+    .cogo-ad-card:hover img{transform:scale(1.02)}
+    .cogo-ad-overlay{position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.92);border:1px solid rgba(255,255,255,.7);border-radius:999px;padding:8px 10px 8px 14px;font-weight:800;box-shadow:0 8px 22px rgba(31,41,55,.14)}
+    .cogo-ad-cta{background:var(--color-primary);color:var(--color-text-main);border-radius:999px;padding:7px 11px;font-size:.82rem;white-space:nowrap}
+    .cogo-ad-admin-preview{border:1px dashed var(--border);border-radius:14px;background:#F9FAFB;min-height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--color-text-secondary)}
+    .cogo-ad-admin-preview img{width:100%;max-height:180px;object-fit:cover;display:block}
     .faq-answer-inner ul{margin:8px 0 12px;padding-left:1.2rem}
     .faq-answer-inner li{margin:4px 0}
     .faq-resource-links{margin-top:12px;display:flex;flex-direction:column;gap:6px}
@@ -453,6 +463,11 @@
       .home-hero p{font-size:.98rem}
       .home-hero-actions{display:block}
       .home-hero .btn{width:100%;margin-bottom:8px}
+
+      .cogo-ad-grid{grid-template-columns:1fr;gap:12px}
+      .cogo-ad-card,.cogo-ad-card img{min-height:118px}
+      .cogo-ad-overlay{left:10px;right:10px;bottom:10px;border-radius:16px;align-items:flex-start;flex-direction:column}
+      .cogo-ad-cta{display:inline-block}
       .container{padding:20px 14px}
       .profiles-grid,.blog-grid,.workshop-grid{grid-template-columns:1fr}
       .student-search-panel{padding:14px}
@@ -2936,6 +2951,80 @@ function saveDirectJobPackages(items){
   ls('cogo_direct_job_packages', payload);
   syncEntityToBackend('direct_job_packages', payload, { replace:true });
 }
+
+function defaultAdvertisingSlots(){
+  return [1,2,3].map(number => ({
+    id: `banner_${number}`,
+    label: `Banner ${number}`,
+    desktop_image: '',
+    mobile_image: '',
+    cta_text: '',
+    landing_url: '',
+    active: false,
+    expires_at: ''
+  }));
+}
+function normalizeAdvertisingSettings(config={}){
+  const savedSlots = ensureArray(config.slots);
+  const slots = defaultAdvertisingSlots().map(defaultSlot => {
+    const saved = savedSlots.find(slot => String(slot.id || '') === defaultSlot.id) || savedSlots[Number(defaultSlot.id.split('_')[1]) - 1] || {};
+    return Object.assign({}, defaultSlot, {
+      label: String(saved.label || defaultSlot.label).trim() || defaultSlot.label,
+      desktop_image: String(saved.desktop_image || saved.desktopImage || saved.image || '').trim(),
+      mobile_image: String(saved.mobile_image || saved.mobileImage || '').trim(),
+      cta_text: String(saved.cta_text || saved.ctaText || '').trim(),
+      landing_url: String(saved.landing_url || saved.landingUrl || saved.url || '').trim(),
+      active: saved.active === true,
+      expires_at: String(saved.expires_at || saved.expiresAt || '').trim()
+    });
+  });
+  return { slots };
+}
+function advertisingUrlIsAllowed(value=''){
+  const url = String(value || '').trim();
+  if (!url) return false;
+  return /^(https?:\/\/|#\/|#|mailto:|tel:)/i.test(url);
+}
+function getActiveAdvertisingSlots(){
+  const settings = getSiteSettings();
+  const now = Date.now();
+  return ensureArray((settings.advertising || {}).slots).filter(slot => {
+    if (!slot.active) return false;
+    if (!slot.desktop_image && !slot.mobile_image) return false;
+    if (slot.expires_at) {
+      const expires = new Date(slot.expires_at).getTime();
+      if (Number.isFinite(expires) && expires < now) return false;
+    }
+    return true;
+  });
+}
+function renderAdvertisingStrip(){
+  const slots = getActiveAdvertisingSlots();
+  if (!slots.length) return '';
+  return `
+    <div class="cogo-ad-strip" aria-label="Sponsored community ads">
+      <div class="cogo-ad-grid">
+        ${slots.map(slot => {
+          const desktop = getImageView(slot.desktop_image, 'full') || getImageView(slot.mobile_image, 'full');
+          const mobile = getImageView(slot.mobile_image, 'full') || desktop;
+          const href = advertisingUrlIsAllowed(slot.landing_url) ? slot.landing_url : '#';
+          const target = /^https?:\/\//i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : '';
+          const label = slot.cta_text || 'Learn more';
+          return `
+            <a class="cogo-ad-card" href="${esc(href)}"${target} onclick="${href === '#' ? 'return false;' : ''}">
+              <picture>
+                ${mobile && mobile.url ? `<source media="(max-width: 640px)" srcset="${esc(mobile.url)}">` : ''}
+                <img src="${esc((desktop && desktop.url) || '')}" alt="${esc(slot.label || 'Advertisement')}" loading="lazy">
+              </picture>
+              <div class="cogo-ad-overlay"><span>${esc(slot.label || 'Advertisement')}</span><span class="cogo-ad-cta">${esc(label)}</span></div>
+            </a>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 function getSiteSettings(){
   ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings');
   const defaults = {
@@ -2997,6 +3086,9 @@ function getSiteSettings(){
         body: 'Learn real-world skills from business owners and mentors. Explore entrepreneurship, build confidence, and gain experience for your future.',
         image_url: ''
       }
+    },
+    advertising: {
+      slots: [1,2,3].map(number => ({ id:`banner_${number}`, label:`Banner ${number}`, desktop_image:'', mobile_image:'', cta_text:'', landing_url:'', active:false, expires_at:'' }))
     }
   };
   const saved = ls('cogo_site_settings') || {};
@@ -3008,6 +3100,7 @@ function getSiteSettings(){
   Object.keys(defaults.page_blocks).forEach(key => {
     merged.page_blocks[key] = Object.assign({}, defaults.page_blocks[key], ((saved.page_blocks || {})[key] || {}));
   });
+  merged.advertising = normalizeAdvertisingSettings(saved.advertising || defaults.advertising);
   merged.footer_main_links = ensureArray(saved.footer_main_links).length ? ensureArray(saved.footer_main_links) : defaults.footer_main_links;
   merged.footer_important_links = ensureArray(saved.footer_important_links).length ? ensureArray(saved.footer_important_links) : defaults.footer_important_links;
   if (!merged.footer_important_links.some(link => String(link.href || '') === '#/faq-safety-legal')) {
@@ -6052,6 +6145,7 @@ function renderHome(){
       </div>
     </section>
     <div class="container">
+      ${renderAdvertisingStrip()}
       <div class="section-title">Browse Student Services</div>
       ${renderBrowseStudentSearchControls(serviceCards.length, filteredServiceCards.length)}
       <div id="browseStudentResults" class="grid profiles-grid">
@@ -9687,7 +9781,7 @@ function renderDashboard(){
     refreshStripeOnboardingStatus({ rerender:true, toast:false });
   }
 
-  if (currentUser.role === 'admin' && !['admin','users','blog_manager','images','messages','transactions','settings','workshops'].includes(dashSection)) {
+  if (currentUser.role === 'admin' && !['admin','users','blog_manager','images','advertising','messages','transactions','settings','workshops'].includes(dashSection)) {
     dashSection = 'admin';
   }
   if (currentUser.role === 'student' && !['profile','jobs_bookings','messages','myposts','transactions','settings','workshops'].includes(dashSection)) {
@@ -9706,6 +9800,7 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">\u{1F465} Users</a>
           <a href="#" class="${dashSection==='blog_manager'?'active':''}" onclick="dashSection='blog_manager';renderDashboard();return false;">\u{1F4F0} Blog Manager</a>
           <a href="#" class="${dashSection==='images'?'active':''}" onclick="dashSection='images';renderDashboard();return false;">\u{1F5BC}\uFE0F Images</a>
+          <a href="#" class="${dashSection==='advertising'?'active':''}" onclick="dashSection='advertising';renderDashboard();return false;">\u{1F4E3} Advertising</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">\u{1F4AC} Messages</a>
           <a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">\u{1F9D1}\u200D\u{1F3EB} Workshops & Classes</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">\u{1F4B3} Transactions</a>
@@ -9749,6 +9844,7 @@ function renderDashboard(){
     if (dashSection === 'users') return renderAdminUsersSection(el);
     if (dashSection === 'blog_manager') return renderAdminBlogManager(el);
     if (dashSection === 'images') return renderAdminImagesSection(el);
+    if (dashSection === 'advertising') return renderAdminAdvertisingSection(el);
     if (dashSection === 'messages') return renderMessages(el);
     if (dashSection === 'workshops') return renderWorkshopsDashboardSection(el);
     if (dashSection === 'transactions') return renderTransactionsSection(el);
@@ -14027,6 +14123,99 @@ function renderAdminBlogManager(el){
   `;
   renderAdminBlogResults();
 }
+
+function renderAdAdminImagePreview(value='', label='Ad image'){
+  const image = getImageView(value, 'full');
+  return image && image.url ? `<img src="${esc(image.url)}" alt="${esc(label)}">` : `<div class="small muted">No image selected yet.</div>`;
+}
+function renderAdminAdvertisingSection(el){
+  const settings = getSiteSettings();
+  const ads = normalizeAdvertisingSettings(settings.advertising || {}).slots;
+  el.innerHTML = `
+    <div class="section-title">Advertising</div>
+    <div class="card form-card" style="margin-bottom:16px">
+      <div style="font-weight:800;margin-bottom:8px">Homepage Banner Ads</div>
+      <div class="small muted">Manage up to three active ad banners. Empty or inactive banners will not appear, so the current staging UI stays unchanged until you turn a banner on.</div>
+    </div>
+    ${ads.map(slot => `
+      <div class="card form-card" style="margin-bottom:18px">
+        <div class="split" style="align-items:center;margin-bottom:12px">
+          <div style="font-weight:800">${esc(slot.label)}</div>
+          <label class="small" style="display:flex;align-items:center;gap:8px"><input id="ad_active_${esc(slot.id)}" type="checkbox" ${slot.active ? 'checked' : ''}> Active</label>
+        </div>
+        <div class="row">
+          <div class="field"><label>Banner Label</label><input id="ad_label_${esc(slot.id)}" value="${esc(slot.label)}" placeholder="Banner ${esc(slot.id.replace('banner_',''))}"></div>
+          <div class="field"><label>CTA Button Text</label><input id="ad_cta_${esc(slot.id)}" value="${esc(slot.cta_text)}" placeholder="Learn more"></div>
+        </div>
+        <div class="field"><label>Landing Page URL</label><input id="ad_url_${esc(slot.id)}" value="${esc(slot.landing_url)}" placeholder="https://... or #/jobs"></div>
+        <div class="field"><label>Expiration Date (optional)</label><input id="ad_expires_${esc(slot.id)}" type="date" value="${esc(slot.expires_at ? String(slot.expires_at).slice(0,10) : '')}"></div>
+        <div class="row">
+          <div>
+            <div class="field"><label>Desktop Banner Image</label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','desktop',this)"></div>
+            <input id="ad_desktop_${esc(slot.id)}" type="hidden" value="${esc(slot.desktop_image)}">
+            <div id="ad_desktop_preview_${esc(slot.id)}" class="cogo-ad-admin-preview">${renderAdAdminImagePreview(slot.desktop_image, `${slot.label} desktop`)}</div>
+            <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="clearAdminAdImage('${esc(slot.id)}','desktop')">Remove Desktop Image</button>
+          </div>
+          <div>
+            <div class="field"><label>Mobile Banner Image</label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','mobile',this)"></div>
+            <input id="ad_mobile_${esc(slot.id)}" type="hidden" value="${esc(slot.mobile_image)}">
+            <div id="ad_mobile_preview_${esc(slot.id)}" class="cogo-ad-admin-preview">${renderAdAdminImagePreview(slot.mobile_image, `${slot.label} mobile`)}</div>
+            <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="clearAdminAdImage('${esc(slot.id)}','mobile')">Remove Mobile Image</button>
+          </div>
+        </div>
+      </div>
+    `).join('')}
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="saveAdminAdvertisingSettings()">Save Advertising Settings</button>
+      <button class="btn btn-outline" onclick="renderDashboard()">Discard Changes</button>
+    </div>
+  `;
+}
+function setAdminAdPreview(slotId='', kind='', value=''){
+  const preview = document.getElementById(`ad_${kind}_preview_${slotId}`);
+  if (preview) preview.innerHTML = renderAdAdminImagePreview(value, `${slotId} ${kind}`);
+}
+function handleAdminAdImageUpload(slotId='', kind='', input){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  prepareUploadedImageRecord(file, { source:'advertising', entity_type:'advertisement', entity_id:slotId, variant:kind })
+    .then(imageId => {
+      const field = document.getElementById(`ad_${kind}_${slotId}`);
+      if (field) field.value = imageId || '';
+      setAdminAdPreview(slotId, kind, imageId || '');
+      toast('Ad image uploaded. Remember to save advertising settings.');
+    })
+    .catch(() => toast('Could not upload ad image. Please try another image.'));
+}
+function clearAdminAdImage(slotId='', kind=''){
+  const field = document.getElementById(`ad_${kind}_${slotId}`);
+  if (field) field.value = '';
+  setAdminAdPreview(slotId, kind, '');
+}
+function saveAdminAdvertisingSettings(){
+  const current = getSiteSettings();
+  const slots = defaultAdvertisingSlots().map(defaultSlot => {
+    const id = defaultSlot.id;
+    return {
+      id,
+      label: String((document.getElementById(`ad_label_${id}`) || {}).value || defaultSlot.label).trim() || defaultSlot.label,
+      desktop_image: String((document.getElementById(`ad_desktop_${id}`) || {}).value || '').trim(),
+      mobile_image: String((document.getElementById(`ad_mobile_${id}`) || {}).value || '').trim(),
+      cta_text: String((document.getElementById(`ad_cta_${id}`) || {}).value || '').trim(),
+      landing_url: String((document.getElementById(`ad_url_${id}`) || {}).value || '').trim(),
+      active: !!((document.getElementById(`ad_active_${id}`) || {}).checked),
+      expires_at: String((document.getElementById(`ad_expires_${id}`) || {}).value || '').trim()
+    };
+  });
+  for (const slot of slots) {
+    if (slot.active && !slot.desktop_image && !slot.mobile_image) return toast(`${slot.label} needs at least one image before it can be active.`);
+    if (slot.landing_url && !advertisingUrlIsAllowed(slot.landing_url)) return toast(`${slot.label} landing URL must start with https://, http://, #, mailto:, or tel:.`);
+  }
+  saveSiteSettings(Object.assign({}, current, { advertising: { slots } }));
+  toast('Advertising settings updated.');
+  renderDashboard();
+}
+
 function renderAdminImagesSection(el){
   const images = getImages().sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
   el.innerHTML = `
