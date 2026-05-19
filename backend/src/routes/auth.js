@@ -88,6 +88,7 @@ function serializeUser(user, extras = {}) {
 router.post('/register', async (req, res) => {
   try {
     const payload = normalizeRegisterPayload(req.body || {});
+    if (payload.role === 'admin') return fail(res, 403, 'Admin accounts cannot be created through public registration');
     const exists = await prisma.user.findUnique({ where: { email: payload.email } });
     if (exists) return fail(res, 409, 'Email already in use');
 
