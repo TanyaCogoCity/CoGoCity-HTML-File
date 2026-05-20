@@ -3,6 +3,7 @@ const Stripe = require('stripe');
 const { prisma } = require('../lib/prisma');
 const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
+const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
 const config = require('../config');
 const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
@@ -642,12 +643,28 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
   if (!job) return fail(res, 404, 'Job not found');
   if (req.user.role !== 'admin' && job.createdBy !== req.user.id) return fail(res, 403, 'Only the job owner can pay for this listing');
 
-  const amount = Number(job.postingFee || 0);
+  if (job.paymentStatus === 'paid') return ok(res, { job_id: job.id, status: 'paid', already_paid: true });
+
+  const pkg = await getDirectJobPackage(prisma, job.postingPackage || 'basic');
+  const pricedPayload = applyDirectJobPackagePricing({
+    postingPackage: job.postingPackage || 'basic',
+    listingMonths: job.listingMonths || 1,
+    listingDurationDays: job.listingDurationDays || 30,
+  }, pkg);
+  const amount = Number(pricedPayload.postingFee || 0);
+  const pricedJob = await prisma.job.update({
+    where: { id: job.id },
+    data: {
+      postingPackage: pricedPayload.postingPackage,
+      postingFee: pricedPayload.postingFee,
+      listingMonths: pricedPayload.listingMonths,
+      listingDurationDays: pricedPayload.listingDurationDays,
+    },
+  });
   if (amount <= 0) {
-    const updated = await prisma.job.update({ where: { id: job.id }, data: { paymentStatus: 'paid', status: 'open' } });
+    const updated = await prisma.job.update({ where: { id: pricedJob.id }, data: { paymentStatus: 'paid', status: 'open' } });
     return ok(res, { job_id: updated.id, status: 'paid', free: true });
   }
-  if (job.paymentStatus === 'paid') return ok(res, { job_id: job.id, status: 'paid', already_paid: true });
 
   const origin = stripeOrigin(req);
   try {
@@ -655,9 +672,9 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
-        success_url: `${origin}/?stripe_job=${job.id}&stripe_status=success`,
-        cancel_url: `${origin}/?stripe_job=${job.id}&stripe_status=cancel`,
-        client_reference_id: job.id,
+        success_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=success`,
+        cancel_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=cancel`,
+        client_reference_id: pricedJob.id,
         customer: customerId,
         line_items: [
           {
@@ -665,20 +682,20 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
             price_data: {
               currency: 'usd',
               unit_amount: toCents(amount),
-              product_data: { name: `CoGo City job listing: ${job.title}` },
+              product_data: { name: `CoGo City job listing: ${pricedJob.title}` },
             },
           },
         ],
         payment_intent_data: {
-          metadata: { type: 'job_listing', job_id: job.id, user_id: req.user.id },
+          metadata: { type: 'job_listing', job_id: pricedJob.id, user_id: req.user.id, posting_package: pricedPayload.postingPackage },
         },
-        metadata: { type: 'job_listing', job_id: job.id, user_id: req.user.id },
+        metadata: { type: 'job_listing', job_id: pricedJob.id, user_id: req.user.id, posting_package: pricedPayload.postingPackage },
       },
     );
 
-    await prisma.job.update({ where: { id: job.id }, data: { paymentStatus: 'pending', status: 'pending' } });
-    await writeAuditLog({ userId: req.user.id, action: 'job.checkout.create', entityType: 'job', entityId: job.id, payload: { checkoutSessionId: session.id } });
-    return ok(res, serializeCheckoutSession(session, { job_id: job.id }));
+    await prisma.job.update({ where: { id: pricedJob.id }, data: { paymentStatus: 'pending', status: 'pending' } });
+    await writeAuditLog({ userId: req.user.id, action: 'job.checkout.create', entityType: 'job', entityId: pricedJob.id, payload: { checkoutSessionId: session.id, amount } });
+    return ok(res, serializeCheckoutSession(session, { job_id: pricedJob.id, amount }));
   } catch (error) {
     return fail(res, 400, 'Failed to create job checkout session', error.message);
   }

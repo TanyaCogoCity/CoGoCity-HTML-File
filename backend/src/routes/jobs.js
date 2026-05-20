@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { normalizeJobPayload, serializeJob, normalizeApplicationStatus, serializeApplication, normalizeApplyPayload, notificationType } = require('../lib/compat');
 const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
+const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
 
 const router = express.Router();
 
@@ -22,7 +23,9 @@ router.post('/', requireAuth, async (req, res) => {
   if (!['employer', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/admin can create direct job listings. Neighbors should post jobs through Community Feed.');
 
   try {
-    const payload = normalizeJobPayload(req.body || {});
+    const requestedPayload = normalizeJobPayload(req.body || {});
+    const pkg = await getDirectJobPackage(prisma, requestedPayload.postingPackage || 'basic');
+    const payload = applyDirectJobPackagePricing(requestedPayload, pkg);
     if (payload.postingFee > 0 && req.user.role !== 'admin') payload.paymentStatus = 'pending';
     if (!payload.title || payload.hourlyRate <= 0) return fail(res, 400, 'title and rate are required');
 
@@ -65,7 +68,17 @@ router.patch('/:id', requireAuth, async (req, res) => {
   if (existing.createdBy !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Only the job owner can update this job');
 
   try {
-    const payload = normalizeJobPayload(Object.assign({}, serializeJob(existing), req.body || {}));
+    const requestedPayload = normalizeJobPayload(Object.assign({}, serializeJob(existing), req.body || {}));
+    const pkg = await getDirectJobPackage(prisma, requestedPayload.postingPackage || existing.postingPackage || 'basic');
+    const payload = existing.paymentStatus === 'paid'
+      ? Object.assign({}, requestedPayload, {
+          postingPackage: existing.postingPackage || requestedPayload.postingPackage || 'basic',
+          postingFee: Number(existing.postingFee || 0),
+          listingMonths: existing.listingMonths || requestedPayload.listingMonths,
+          listingDurationDays: existing.listingDurationDays || requestedPayload.listingDurationDays,
+          paymentStatus: existing.paymentStatus,
+        })
+      : applyDirectJobPackagePricing(requestedPayload, pkg);
     if (payload.postingFee > 0 && req.user.role !== 'admin' && existing.paymentStatus !== 'paid') payload.paymentStatus = 'pending';
     const job = await prisma.job.update({
       where: { id: existing.id },

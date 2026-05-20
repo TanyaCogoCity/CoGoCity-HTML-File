@@ -14667,14 +14667,19 @@ function renderTransactionsResults(){
     </div>
   ` : `<div class="muted">No transactions yet.</div>`;
 }
+function isPaidDirectJobPosting(job={}){
+  const paymentStatus = String(job.posting_payment_status || job.payment_status || '').toLowerCase();
+  return ['paid','captured','succeeded','complete','completed'].includes(paymentStatus);
+}
 function getAdminSubscriptionRows(){
   const jobs = getDirectJobs();
-  return jobs.map(job => ({
+  return jobs.filter(isPaidDirectJobPosting).map(job => ({
     jobName: job.job_title || 'Direct Hire Job',
-    dateStarted: job.created_at || '',
+    dateStarted: job.date_paid || job.date_charged || job.created_at || '',
     expirationDate: getDirectJobEffectiveCloseDate(job),
     total: Number(job.subscription_total || job.posting_fee || 0),
-    status: job.status || 'active'
+    status: job.status || 'active',
+    paymentStatus: job.posting_payment_status || job.payment_status || 'paid'
   })).sort((a,b) => new Date(b.dateStarted || 0) - new Date(a.dateStarted || 0));
 }
 function renderSubscriptionTransactionsResults(){
@@ -14682,22 +14687,23 @@ function renderSubscriptionTransactionsResults(){
   if (!wrap || !currentUser || currentUser.role !== 'admin') return;
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getAdminSubscriptionRows().filter(row => {
-    const haystack = [row.jobName, row.status, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
+    const haystack = [row.jobName, row.status, row.paymentStatus, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
     return !query || haystack.includes(query);
   });
   const totals = rows.reduce((acc, row) => {
     acc.count += 1;
     acc.total += Number(row.total || 0);
-    if (row.status === 'active') acc.active += 1;
+    if (['active','open'].includes(String(row.status || '').toLowerCase())) acc.active += 1;
     return acc;
   }, { count:0, total:0, active:0 });
   transactionTableExportRows.subscription = {
     fileName: 'admin-subscription-transactions',
-    headers: ['Name of Job', 'Date Started', 'Expiration Date', 'Transaction Total'],
+    headers: ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total'],
     rows: rows.map(row => [
       row.jobName,
       formatDirectJobCloseMessageDate(row.dateStarted),
       formatDirectJobCloseMessageDate(row.expirationDate),
+      stripeStatusLabel(row.paymentStatus || 'paid'),
       `$${money(row.total || 0)}`
     ])
   };
@@ -14721,6 +14727,7 @@ function renderSubscriptionTransactionsResults(){
                 <th style="padding:10px 8px">Name of Job</th>
                 <th style="padding:10px 8px">Date Started</th>
                 <th style="padding:10px 8px">Expiration Date</th>
+                <th style="padding:10px 8px">Status</th>
                 <th style="padding:10px 8px">Transaction Total</th>
               </tr>
             </thead>
@@ -14730,6 +14737,7 @@ function renderSubscriptionTransactionsResults(){
                   <td style="padding:12px 8px">${esc(row.jobName)}</td>
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.dateStarted))}</td>
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.expirationDate))}</td>
+                  <td style="padding:12px 8px">${esc(stripeStatusLabel(row.paymentStatus || 'paid'))}</td>
                   <td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td>
                 </tr>
               `).join('')}
