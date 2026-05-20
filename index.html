@@ -1186,7 +1186,7 @@ function openPostSignupStripeOnboardingPrompt(kind){
   openModal(isPayer ? 'Add Payment Method' : 'Set Up Payouts', `
     <div class="card form-card">
       <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Secure hiring payments' : 'Get ready to receive payouts'}</div>
-      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, add a secure payment method. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete secure payout setup.'}</div>
+      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, add a secure payment method. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect setup. Stripe collects and stores tax identity, SSN/TIN, bank, and IRS reporting details; CoGo City stores only onboarding status.'}</div>
       <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled for this staging environment.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Later</button>
@@ -1221,21 +1221,21 @@ function renderStripeOnboardingCard(){
         <div>
           <div style="font-weight:800">Payout setup</div>
           <div class="small muted">Status: ${esc(connect.ready ? 'Ready' : stripeStatusLabel(connect.onboarding_status))}</div>
-          <div class="small muted" style="margin-top:4px">Bank, identity, and payout details are collected on a secure hosted page.</div>
+          <div class="small muted" style="margin-top:4px">Stripe Connect collects and stores bank, identity, SSN/TIN, and IRS tax-reporting details on a secure hosted page. CoGo City stores only Stripe account/status fields.</div>
         </div>
         <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Payouts' : 'Set Up Payouts'}</button>
       </div>
     </div>
   `);
   if (!blocks.length) return '';
-  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">Payment setup is enabled for this staging environment.</div>${blocks.join('')}</div>`;
+  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">Payment setup is enabled for this staging environment. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.</div>${blocks.join('')}</div>`;
 }
 async function openPayerStripeSetupModal(){
   if (!stripeOnboardingEnabled()) return toast('Secure payment setup is available on staging after sign-in.');
   if (!STRIPE_PUBLISHABLE_KEY) return toast('Secure payment setup is not configured.');
   openModal('Add Payment Method', `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Payment details are handled securely.</div>
+      <div class="warning" style="margin-bottom:14px">Payment details are handled securely by Stripe. CoGo City never stores full card numbers.</div>
       <div class="field"><label>Card details</label><div id="stripe-card-element" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff"></div></div>
       <div id="stripe-card-errors" class="small" style="color:#991B1B;margin-bottom:12px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">

@@ -37,19 +37,16 @@ function stripeStudentPayoutDescription(user) {
   return `${name} receives payouts for student services completed through CoGoCity, such as tutoring, childcare, pet care, creative work, errands, and local help.`;
 }
 
-function stripeIndividualPayload(user) {
-  const individual = compactObject({
+function stripeIndividualPrefillPayload(user) {
+  // Keep CoGo City out of sensitive tax/identity custody. Stripe Connect's
+  // hosted onboarding should collect and store DOB, address, SSN/TIN, bank
+  // account, and any IRS tax-reporting details directly with Stripe. We only
+  // prefill low-risk contact fields to reduce typing.
+  return compactObject({
     first_name: user.firstName,
     last_name: user.lastName,
     email: user.email,
   });
-  if (user.dateOfBirth) {
-    const dob = new Date(user.dateOfBirth);
-    if (!Number.isNaN(dob.getTime())) {
-      individual.dob = { day: dob.getUTCDate(), month: dob.getUTCMonth() + 1, year: dob.getUTCFullYear() };
-    }
-  }
-  return individual;
 }
 
 function stripeStudentConnectAccountPayload(user, origin, country = 'US') {
@@ -63,9 +60,9 @@ function stripeStudentConnectAccountPayload(user, origin, country = 'US') {
       url: config.appUrl || origin || 'https://staging.cogocity.com',
       product_description: stripeStudentPayoutDescription(user),
     },
-    individual: stripeIndividualPayload(user),
+    individual: stripeIndividualPrefillPayload(user),
     capabilities: { transfers: { requested: true } },
-    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts' },
+    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts', tax_identity_custodian: 'stripe_connect' },
   };
 }
 
@@ -77,8 +74,8 @@ async function prefillStudentConnectAccount(user, origin) {
       url: config.appUrl || origin || 'https://staging.cogocity.com',
       product_description: stripeStudentPayoutDescription(user),
     },
-    individual: stripeIndividualPayload(user),
-    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts' },
+    individual: stripeIndividualPrefillPayload(user),
+    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts', tax_identity_custodian: 'stripe_connect' },
   });
 }
 
@@ -99,6 +96,9 @@ function onboardingStatusForUser(user) {
       payouts_enabled: Boolean(user.stripePayoutsEnabled),
       details_submitted: Boolean(user.stripeDetailsSubmitted),
       ready: Boolean(user.stripeAccountId && user.stripePayoutsEnabled && user.stripeDetailsSubmitted),
+      sensitive_info_custodian: 'stripe_connect',
+      stores_sensitive_tax_identity_locally: false,
+      tax_forms_provider: 'stripe_connect_tax_reporting',
     },
   };
 }
