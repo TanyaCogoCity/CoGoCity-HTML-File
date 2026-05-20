@@ -4328,13 +4328,29 @@ function renderAboutPage(){
     </div>
   `;
 }
+let contactCaptchaAnswer = '';
+function createContactCaptcha(){
+  const a = Math.floor(Math.random() * 8) + 2;
+  const b = Math.floor(Math.random() * 8) + 2;
+  contactCaptchaAnswer = String(a + b);
+  return `${a} + ${b}`;
+}
 function openContactUsForm(){
+  const captchaQuestion = createContactCaptcha();
   openModal('Contact us', `
     <div class="small muted" style="margin-bottom:12px">Send a message to CoGo City support. This will open your email app addressed to tanya@cogocity.com.</div>
     <div class="field"><label>Your Name</label><input id="contactName" placeholder="Your name"></div>
     <div class="field"><label>Your Email</label><input id="contactEmail" type="email" placeholder="you@example.com"></div>
     <div class="field"><label>Subject</label><input id="contactSubject" placeholder="How can we help?"></div>
     <div class="field"><label>Message</label><textarea id="contactMessage" placeholder="Write your message here..."></textarea></div>
+    <div class="field" style="background:#F8FAFC;border:1px solid var(--border);border-radius:12px;padding:12px">
+      <label for="contactCaptcha" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>Visible CAPTCHA</span>
+        <span class="pill" style="background:#DBEAFE;color:#1D4ED8;border-color:#BFDBFE">Required</span>
+      </label>
+      <div class="small muted" style="margin:4px 0 8px">Please solve this quick check before sending: <strong style="color:#111827">${captchaQuestion} = ?</strong></div>
+      <input id="contactCaptcha" inputmode="numeric" autocomplete="off" placeholder="Enter the answer">
+    </div>
     <div style="display:flex;justify-content:flex-end;gap:10px">
       <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
       <button class="btn btn-blue" onclick="submitContactUsForm()">Send Email</button>
@@ -4346,7 +4362,14 @@ function submitContactUsForm(){
   const email = String((document.getElementById('contactEmail') || {}).value || '').trim();
   const subject = String((document.getElementById('contactSubject') || {}).value || '').trim();
   const message = String((document.getElementById('contactMessage') || {}).value || '').trim();
-  if (toastRequiredFields({ Name:name, Email:email, Subject:subject, Message:message }, 'Contact form')) return;
+  const captcha = String((document.getElementById('contactCaptcha') || {}).value || '').trim();
+  if (toastRequiredFields({ Name:name, Email:email, Subject:subject, Message:message, CAPTCHA:captcha }, 'Contact form')) return;
+  if (captcha !== contactCaptchaAnswer) {
+    toast('Please solve the visible CAPTCHA correctly before sending.');
+    const field = document.getElementById('contactCaptcha');
+    if (field) field.focus();
+    return;
+  }
   const body = `Name: ${name}\\nEmail: ${email}\\n\\n${message}`;
   const mailto = `mailto:tanya@cogocity.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.location.href = mailto;
