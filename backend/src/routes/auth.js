@@ -80,6 +80,9 @@ function serializeUser(user, extras = {}) {
         payouts_enabled: Boolean(user.stripePayoutsEnabled),
         details_submitted: Boolean(user.stripeDetailsSubmitted),
         ready: Boolean(user.stripeAccountId && user.stripePayoutsEnabled && user.stripeDetailsSubmitted),
+        sensitive_info_custodian: 'stripe_connect',
+        stores_sensitive_tax_identity_locally: false,
+        tax_forms_provider: 'stripe_connect_tax_reporting',
       },
     },
   };
