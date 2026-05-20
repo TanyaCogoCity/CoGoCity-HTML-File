@@ -6213,6 +6213,7 @@ function clearBrowseStudentFilters(){
 }
 function renderHome(){
   if (backendAuthEnabled() && !backendBrowseStudentsLoaded && !backendBrowseStudentsLoading) refreshBackendBrowseStudents({ rerender:true });
+  ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true });
   ensureBackendBlogPostsLoaded({ rerender:true });
   const serviceCards = getHomepageOrderedServiceCards();
   const filteredServiceCards = filterBrowseStudentCards(serviceCards);
@@ -6403,6 +6404,7 @@ function renderBlogCard(post){
   `;
 }
 function renderBlog(){
+  ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true });
   ensureBackendBlogPostsLoaded({ rerender:true });
   const route = getRoute();
   const articleMatch = route.match(/^#\/blog\/([^?#]+)/);
