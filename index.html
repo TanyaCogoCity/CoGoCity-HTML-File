@@ -14507,7 +14507,8 @@ function renderTransactionsResults(){
 
   const isAdmin = currentUser.role === 'admin';
   const isEmployer = currentUser.role === 'employer' || isNeighborAccount(currentUser);
-  const employerSubscriptionSpend = isEmployer
+  const canUseDirectHireSubscriptions = currentUser.role === 'employer' && !isNeighborAccount(currentUser);
+  const employerSubscriptionSpend = canUseDirectHireSubscriptions
     ? getDirectJobs()
       .filter(job => String(job.employer_id) === String(currentUser.id))
       .reduce((sum, job) => sum + Number(job.subscription_total || job.posting_fee || 0), 0)
@@ -14529,10 +14530,10 @@ function renderTransactionsResults(){
       ${roleSummary}
     </div>
   ` : `
-    <div class="grid" style="grid-template-columns:repeat(${isEmployer ? 3 : 2},1fr);gap:12px;margin-bottom:14px">
+    <div class="grid" style="grid-template-columns:repeat(${canUseDirectHireSubscriptions ? 3 : 2},1fr);gap:12px;margin-bottom:14px">
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
       ${roleSummary}
-      ${isEmployer ? `<div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Subscription Spend</div><div class="money" style="font-size:1.2rem">$${money(employerSubscriptionSpend)}</div></div>` : ''}
+      ${canUseDirectHireSubscriptions ? `<div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Subscription Spend</div><div class="money" style="font-size:1.2rem">$${money(employerSubscriptionSpend)}</div></div>` : ''}
     </div>
   `;
 
