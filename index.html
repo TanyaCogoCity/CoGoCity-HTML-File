@@ -864,7 +864,7 @@ async function loadBackendSyncedRecords(entityKey='', options={}){
   if (!BACKEND_MIGRATION.enabled || !endpoint) return [];
   if (BACKEND_DEDICATED_ROUTE_ENTITIES.has(entityKey)) return [];
   const isPublicEntity = BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey);
-  if (!isPublicEntity && !getBackendAccessToken()) return [];
+  if (!isPublicEntity && (!currentUser || !getBackendAccessToken())) return [];
   try {
     const result = isPublicEntity
       ? await backendRequest(endpoint, { method:'GET', auth:false })
@@ -948,9 +948,9 @@ function ensureBackendPersistentStateLoaded(options={}){
   ensureBackendBlogPostsLoaded(options);
   ensureBackendArraySettingLoaded('workshops', 'cogo_workshops', options);
   ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings', options);
-  ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings', options);
   ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages', options);
-  if (!getBackendAccessToken()) return;
+  if (!currentUser || !getBackendAccessToken()) return;
+  ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings', options);
   ensureBackendArraySettingLoaded('applications', 'cogo_applications', options);
   ensureBackendArraySettingLoaded('bookings', 'cogo_bookings', options);
   ensureBackendArraySettingLoaded('transactions', 'cogo_transactions', options);
@@ -2010,7 +2010,7 @@ async function loadBackendBlogPosts(options={}){
   if (!BACKEND_MIGRATION.enabled || backendBlogPostsLoading) return getBlogPosts();
   backendBlogPostsLoading = true;
   try {
-    const result = await backendRequest('/sync/blog_posts', { method:'GET' });
+    const result = await backendRequest('/sync/blog_posts', { method:'GET', auth:false });
     if (result && result.ok) {
       const records = ensureArray(result.data?.data?.records || result.data?.records);
       if (records.length) {
