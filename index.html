@@ -1207,6 +1207,20 @@ function openPostSignupStripeOnboardingPrompt(kind){
     </div>
   `, '620px');
 }
+function isEmployerLikeUser(user=currentUser){
+  return !!(user && ['employer','neighbor'].includes(user.role));
+}
+function employerPaymentSetupReady(user=currentUser){
+  if (!isEmployerLikeUser(user)) return true;
+  const payer = userStripeOnboarding(user).payer || {};
+  return Boolean(user.paymentSetupComplete || payer.ready);
+}
+function requireEmployerPaymentSetup(actionLabel='interact with students'){
+  if (!isEmployerLikeUser(currentUser) || employerPaymentSetupReady(currentUser)) return true;
+  toast(`Please add payment info before you ${actionLabel}.`);
+  openPostSignupStripeOnboardingPrompt('payer');
+  return false;
+}
 function renderStripeOnboardingCard(){
   if (!stripeOnboardingEnabled()) return '';
   const status = userStripeOnboarding();
@@ -1611,7 +1625,6 @@ function mapBackendUser(apiUser={}, fallback={}){
     phone: profile.businessPhone || profile.business_phone || fallback.businessProfile?.phone || '',
     address: profile.businessAddress || profile.business_address || fallback.businessProfile?.address || '',
     city: profile.businessCity || profile.business_city || fallback.businessProfile?.city || '',
-    tin: profile.businessTin || profile.business_tin || fallback.businessProfile?.tin || '',
     logo: metadata.business_logo || fallback.businessProfile?.logo || ''
   }) : (fallback.businessProfile || null);
   const merged = Object.assign({}, fallback, {
@@ -3398,8 +3411,7 @@ function migrateLegacyData(){
           about: user.company ? `${user.company} on CoGo City.` : 'Business profile on CoGo City.',
           phone: user.phone || '',
           address: user.address || '',
-          city: user.city || extractCity(user.address || ''),
-          tin: ''
+          city: user.city || extractCity(user.address || '')
         };
         usersChanged = true;
       }
@@ -3439,7 +3451,7 @@ function seedData(){
 
   const users = [
     { id:'u_student_test', email:'student.demo@example.invalid', password:'demo-local-only', name:'Daniel', role:'student', emoji:'\u{1F393}' },
-    { id:'u_employer_test', email:'employer.demo@example.invalid', password:'demo-local-only', firstName:'Ilya', lastName:'Ivanov', name:'Ilya I.', publicName:'Ilya I.', role:'employer', type:'business', emoji:'\u{1F3E2}', about:'I hire student help for home, events, and business needs.', phone:'(925) 555-0101', address:'123 Main St, Walnut Creek, CA', city:'Walnut Creek', company:'Reliable Events Co.', businessProfile:{ name:'Reliable Events Co.', logo:'', about:'Local events and operations business hiring dependable student support.', phone:'(925) 555-0101', address:'456 Business Ave, Walnut Creek, CA', city:'Walnut Creek', tin:'12-3456789' }, paymentMethod:{ status:'valid', brand:'Visa', last4:'0000' }, paymentSetupComplete:true },
+    { id:'u_employer_test', email:'employer.demo@example.invalid', password:'demo-local-only', firstName:'Ilya', lastName:'Ivanov', name:'Ilya I.', publicName:'Ilya I.', role:'employer', type:'business', emoji:'\u{1F3E2}', about:'I hire student help for home, events, and business needs.', phone:'(925) 555-0101', address:'123 Main St, Walnut Creek, CA', city:'Walnut Creek', company:'Reliable Events Co.', businessProfile:{ name:'Reliable Events Co.', logo:'', about:'Local events and operations business hiring dependable student support.', phone:'(925) 555-0101', address:'456 Business Ave, Walnut Creek, CA', city:'Walnut Creek' }, paymentMethod:{ status:'valid', brand:'Visa', last4:'0000' }, paymentSetupComplete:true },
     { id:'u_neighbor_test', email:'neighbor.demo@example.invalid', password:'demo-local-only', firstName:'Tanya', lastName:'Lip', name:'Tanya L.', publicName:'Tanya L.', role:'employer', type:'neighbor', emoji:'\u{1F3E0}', about:'Neighbor account for hiring local student help.', phone:'(925) 555-0110', address:'789 Oak Rd, Danville, CA', city:'Danville', paymentMethod:{ status:'valid', brand:'Visa', last4:'0000' }, paymentSetupComplete:true },
     { id:'u_admin_test', email:'admin.demo@example.invalid', password:'demo-local-only', name:'Admin', role:'admin', emoji:'\u{1F6E1}\uFE0F' }
   ];
@@ -5426,13 +5438,25 @@ async function publishStudentSignupProfile(){
 function isValidPhoneVerificationCode(code=''){
   return /^\d{6}$/.test(String(code || '').trim()) && String(code || '').trim() === '123456';
 }
-function getAddressValidationMessage(address=''){
-  const value = String(address || '').trim();
-  if (!value) return 'Please enter a valid street address.';
-  if (!/^\d+\s+[^,]+/.test(value)) return 'Please enter a valid street address.';
-  if (/\b(apt|apartment|unit|ste|suite|#)\s*$/i.test(value)) return 'Apartment number appears incomplete.';
-  if (!/,\s*[^,]+/.test(value)) return 'Please include the city in your home address.';
+function getAddressValidationMessage(address='', label='address'){
+  const value = String(address || '').trim().replace(/\s+/g, ' ');
+  const field = label || 'address';
+  if (!value) return `Please enter a complete ${field}.`;
+  const parts = value.split(',').map(part => part.trim()).filter(Boolean);
+  if (parts.length < 3) return `Please enter a complete ${field}: street address, city, state, and ZIP code.`;
+  const street = parts[0] || '';
+  const city = parts[1] || '';
+  const stateZip = parts.slice(2).join(' ');
+  if (!/^\d+\s+[A-Za-z0-9][A-Za-z0-9 .'-]{2,}\s+(st|street|ave|avenue|rd|road|dr|drive|blvd|boulevard|ln|lane|ct|court|way|pl|place|circle|cir|terrace|ter|pkwy|parkway|hwy|highway)\b/i.test(street)) return `Please enter a real street address with a house/building number and street name.`;
+  if (/\b(apt|apartment|unit|ste|suite|#)\s*$/i.test(street)) return 'Apartment or suite number appears incomplete.';
+  if (!/^[A-Za-z .'-]{2,}$/.test(city)) return `Please include a valid city in your ${field}.`;
+  if (!/\b[A-Z]{2}\b/i.test(stateZip)) return `Please include a 2-letter state in your ${field}.`;
+  if (!/\b\d{5}(?:-\d{4})?\b/.test(stateZip)) return `Please include a valid ZIP code in your ${field}.`;
   return '';
+}
+function isValidUsPhoneNumber(phone=''){
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
 }
 function extractCity(address=''){
   const clean = String(address || '').trim();
@@ -5459,10 +5483,10 @@ function createDefaultEmployerSignupDraft(mode='neighbor'){
     businessAbout:'',
     businessPhone:'',
     phoneVerificationCode:'',
+    phoneVerificationSent:false,
     phoneVerified:false,
     businessAddress:'',
     businessCity:'',
-    tin:'',
     password:'',
     confirmPassword:'',
     verificationStatus:'skipped_test_mode'
@@ -5483,6 +5507,15 @@ function employerSignupStepTitle(){
 function renderEmployerAvatarPicker(){
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${EMPLOYER_AVATAR_OPTIONS.map(emoji => `<button class="pill ${emoji === (employerSignupDraft.avatar || '') ? 'active' : ''}" onclick="setEmployerSignupAvatar('${emoji}');return false;">${emoji}</button>`).join('')}</div>`;
 }
+function sendEmployerSignupPhoneVerificationCode(){
+  syncEmployerSignupPersonalDraft();
+  if (!isValidUsPhoneNumber(employerSignupDraft.phone)) return toast('Please enter a valid U.S. phone number before sending the code.');
+  employerSignupDraft.phoneVerificationSent = true;
+  employerSignupDraft.phoneVerified = false;
+  employerSignupDraft.phoneVerificationCode = '';
+  renderEmployerSignupModal();
+  toast('Verification code sent. In staging, use 123456.');
+}
 function syncEmployerSignupPersonalDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
   const firstNameEl = document.getElementById('employerSignupFirstName');
@@ -5495,7 +5528,15 @@ function syncEmployerSignupPersonalDraft(){
   if (lastNameEl) employerSignupDraft.lastName = (lastNameEl.value || '').trim();
   if (aboutEl) employerSignupDraft.about = (aboutEl.value || '').trim();
   if (emailEl) employerSignupDraft.email = (emailEl.value || '').trim().toLowerCase();
-  if (phoneEl) employerSignupDraft.phone = (phoneEl.value || '').trim();
+  if (phoneEl) {
+    const nextPhone = (phoneEl.value || '').trim();
+    if (nextPhone !== employerSignupDraft.phone) {
+      employerSignupDraft.phoneVerificationSent = false;
+      employerSignupDraft.phoneVerified = false;
+      employerSignupDraft.phoneVerificationCode = '';
+    }
+    employerSignupDraft.phone = nextPhone;
+  }
   if (addressEl) {
     employerSignupDraft.address = (addressEl.value || '').trim();
     employerSignupDraft.city = extractCity(employerSignupDraft.address);
@@ -5509,7 +5550,6 @@ function syncEmployerSignupBusinessDraft(){
   const aboutEl = document.getElementById('employerBusinessAbout');
   const phoneEl = document.getElementById('employerBusinessPhone');
   const addressEl = document.getElementById('employerBusinessAddress');
-  const tinEl = document.getElementById('employerBusinessTin');
   if (nameEl) employerSignupDraft.businessName = (nameEl.value || '').trim();
   if (aboutEl) employerSignupDraft.businessAbout = (aboutEl.value || '').trim();
   if (phoneEl) employerSignupDraft.businessPhone = (phoneEl.value || '').trim();
@@ -5517,7 +5557,6 @@ function syncEmployerSignupBusinessDraft(){
     employerSignupDraft.businessAddress = (addressEl.value || '').trim();
     employerSignupDraft.businessCity = extractCity(employerSignupDraft.businessAddress);
   }
-  if (tinEl) employerSignupDraft.tin = (tinEl.value || '').trim();
 }
 function syncEmployerSignupPasswordDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
@@ -5564,9 +5603,9 @@ function renderEmployerSignupStepContent(){
       <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderEditableSingleImage(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
-      <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
-      <div class="field"><label>Phone Verification Code</label><input id="employerSignupPhoneCode" value="${esc(d.phoneVerificationCode || '')}" placeholder="Enter 123456 in staging" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">Staging uses code 123456. Production will send a real SMS code.</div></div>
-      <div class="field"><label>Home Address (private)</label><input id="employerSignupAddress" value="${esc(d.address)}" placeholder="123 Main St, Walnut Creek, CA" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">Full address is stored internally and only the city is shown publicly.</div></div>
+      <div class="field"><label>Phone Number (private)</label><div style="display:flex;gap:8px;align-items:center"><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()" style="flex:1"><button class="btn btn-outline btn-sm" onclick="sendEmployerSignupPhoneVerificationCode();return false;">Send Code</button></div><div class="small muted" style="margin-top:6px">This is not visible publicly. Send the code after entering a valid phone number.</div></div>
+      <div class="field"><label>Phone Verification Code</label><input id="employerSignupPhoneCode" value="${esc(d.phoneVerificationCode || '')}" placeholder="Enter 123456 in staging" oninput="syncEmployerSignupPersonalDraft()" ${d.phoneVerificationSent ? '' : 'disabled'}><div class="small muted" style="margin-top:6px">${d.phoneVerificationSent ? 'Code sent. Staging uses 123456. Production will send a real SMS code.' : 'Click Send Code first. Production will use SMS verification.'}</div></div>
+      <div class="field"><label>Home Address (private)</label><input id="employerSignupAddress" value="${esc(d.address)}" placeholder="123 Main St, Walnut Creek, CA 94596" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">Enter street, city, state, and ZIP. Full address is stored internally and only the city is shown publicly.</div></div>
     </div>
   `;
   if (employerSignupMode === 'employer' && employerSignupStep === 2) return `
@@ -5577,8 +5616,8 @@ function renderEmployerSignupStepContent(){
       <div style="margin-bottom:14px">${renderEditableSingleImage(d.businessLogo || '', 'Business logo', 'removeEmployerSignupBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business..." oninput="syncEmployerSignupBusinessDraft()">${esc(d.businessAbout)}</textarea></div>
       <div class="field"><label>Business Phone Number (private)</label><input id="employerBusinessPhone" value="${esc(d.businessPhone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">This is a separate field from the personal phone number.</div></div>
-      <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">Only the city is shown publicly.</div></div>
-      <div class="field"><label>TIN (private)</label><input id="employerBusinessTin" value="${esc(d.tin)}" placeholder="12-3456789" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly and will be used later for business verification.</div></div>
+      <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA 94596" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">Enter street, city, state, and ZIP. Only the city is shown publicly.</div></div>
+      <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by CoGo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
     </div>
   `;
   if (employerSignupMode === 'employer' && employerSignupStep === 3) return `
@@ -5603,7 +5642,6 @@ function renderEmployerSignupStepContent(){
         </div>
         <div style="margin-top:12px"><div class="small muted">Business Phone</div><div style="font-weight:700">${esc(d.businessPhone || 'Not added yet')}</div></div>
         <div style="margin-top:12px"><div class="small muted">Business Address</div><div style="font-weight:700">${esc(d.businessAddress || 'Not added yet')}</div></div>
-        <div style="margin-top:12px"><div class="small muted">TIN</div><div style="font-weight:700">${esc(d.tin || 'Not added yet')}</div></div>
         <div style="margin-top:12px"><div class="small muted">About Business</div><div>${esc(d.businessAbout || 'No business about section added yet.')}</div></div>
       </div>
     </div>
@@ -5632,15 +5670,20 @@ function saveEmployerSignupStep(step){
   if (step === 1) {
     syncEmployerSignupPersonalDraft();
     if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, 'Phone verification code':employerSignupDraft.phoneVerificationCode, Address:employerSignupDraft.address }, 'Personal profile')) return false;
+    if (!isValidUsPhoneNumber(employerSignupDraft.phone)) return toast('Please enter a valid U.S. phone number.'), false;
+    if (!employerSignupDraft.phoneVerificationSent) return toast('Please click Send Code before entering the verification code.'), false;
     if (!isValidPhoneVerificationCode(employerSignupDraft.phoneVerificationCode)) return toast('Please verify your phone number with the 6-digit code. In staging, use 123456.'), false;
-    const addressProblem = getAddressValidationMessage(employerSignupDraft.address);
+    const addressProblem = getAddressValidationMessage(employerSignupDraft.address, 'home address');
     if (addressProblem) return toast(addressProblem), false;
     employerSignupDraft.phoneVerified = true;
     return true;
   }
   if (employerSignupMode === 'employer' && step === 2) {
     syncEmployerSignupBusinessDraft();
-    if (toastRequiredFields({ 'Business name':employerSignupDraft.businessName, 'Business description':employerSignupDraft.businessAbout, 'Business phone':employerSignupDraft.businessPhone, 'Business address':employerSignupDraft.businessAddress, TIN:employerSignupDraft.tin }, 'Business profile')) return false;
+    if (toastRequiredFields({ 'Business name':employerSignupDraft.businessName, 'Business description':employerSignupDraft.businessAbout, 'Business phone':employerSignupDraft.businessPhone, 'Business address':employerSignupDraft.businessAddress }, 'Business profile')) return false;
+    if (!isValidUsPhoneNumber(employerSignupDraft.businessPhone)) return toast('Please enter a valid business phone number.'), false;
+    const businessAddressProblem = getAddressValidationMessage(employerSignupDraft.businessAddress, 'business address');
+    if (businessAddressProblem) return toast(businessAddressProblem), false;
     return true;
   }
   const passwordStep = employerSignupMode === 'employer' ? 4 : 2;
@@ -5757,8 +5800,7 @@ async function publishEmployerSignupProfile(){
             about: d.businessAbout,
             phone: d.businessPhone,
             address: d.businessAddress,
-            city: d.businessCity || extractCity(d.businessAddress),
-            tin: d.tin
+            city: d.businessCity || extractCity(d.businessAddress)
           } : null
         })
       });
@@ -5788,8 +5830,8 @@ async function publishEmployerSignupProfile(){
     address:d.address,
     city:d.city || extractCity(d.address),
     verificationStatus:'phone_verified_staging',
-    paymentMethod:{ status:'valid', brand:'Visa', last4:'4242' },
-    paymentSetupComplete:true,
+    paymentMethod:null,
+    paymentSetupComplete:false,
     phoneVerified:!!d.phoneVerified,
     company:employerSignupMode === 'employer' ? d.businessName : '',
     businessProfile:employerSignupMode === 'employer' ? {
@@ -5799,7 +5841,6 @@ async function publishEmployerSignupProfile(){
       phone:d.businessPhone,
       address:d.businessAddress,
       city:d.businessCity || extractCity(d.businessAddress),
-      tin:d.tin,
       createdAt
     } : null,
     createdAt
@@ -9827,6 +9868,7 @@ function submitApplication(postId){
 // ---------- Direct book / offer from profile ----------
 function openStudentMessage(studentId){
   if (!currentUser) return openLoginModal();
+  if (!requireEmployerPaymentSetup('message a student')) return;
   const student = getStudents().find(x => x.id === studentId);
   if (!student) return;
   if (currentUser.id === student.userId) {
@@ -9839,6 +9881,7 @@ function openStudentMessage(studentId){
 function openBookDirect(studentId, serviceId=''){
   if (!currentUser) return openLoginModal();
   if (!['employer','neighbor'].includes(currentUser.role)) return toast('Only employers and neighbors can book students.');
+  if (!requireEmployerPaymentSetup('book or hire a student')) return;
   const s = getStudents().find(x => x.id === studentId);
   if (!s) return;
   const services = getRenderableStudentServices(s);
@@ -9861,6 +9904,7 @@ function openBookDirect(studentId, serviceId=''){
   `, '720px');
 }
 function openDirectMessage(userId, name){
+  if (!requireEmployerPaymentSetup('message a student')) return;
   closeModal();
   dashSection = 'messages';
   activeThreadUserId = userId;
@@ -9871,6 +9915,7 @@ function openDirectMessage(userId, name){
   }, 100);
 }
 function sendDirectOffer(studentId, serviceId=''){
+  if (!requireEmployerPaymentSetup('send a booking offer')) return;
   const title = (document.getElementById('directJobTitle').value || '').trim();
   const scope = (document.getElementById('directJobScope').value || '').trim();
   const rate = Number(document.getElementById('directJobRate').value || 0);
@@ -10145,7 +10190,7 @@ function renderMigrationOnboarding(el){
       ${renderMigrationRequiredList(isStudent
         ? ['Confirm name, private email, phone, home address, school, about, and experience.', 'Confirm at least one service with title, description, rate, availability, and location.', 'After you finish, you will land on My Profile to verify how everything looks.']
         : isEmployer
-          ? ['Confirm personal name, email, phone, and home address.', 'Add business name, description, business phone, full business address, and TIN.', 'You cannot post jobs, message students, or take hiring actions until this is complete.']
+          ? ['Confirm personal name, email, phone, and home address.', 'Add business name, description, business phone, and full business address.', 'Stripe will collect any required tax ID / TIN during secure payment onboarding. You cannot post jobs, message students, or take hiring actions until setup is complete.']
           : ['Confirm name, email, phone, and home address.', 'After you finish, you can post jobs and use your dashboard.']
       )}
     </div>
@@ -10245,7 +10290,7 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div class="field"><label>Business description *</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
       <div class="field"><label>Business phone *</label><input id="migBusinessPhone" type="tel" placeholder="(555) 555-5555" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
       <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="Street, City, State ZIP — e.g. 456 Business Ave, Walnut Creek, CA 94596" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. We’ll clean up common formatting automatically.</div></div>
-      <div class="field"><label>TIN *</label><input id="migBusinessTin" value="${esc(business.tin || '')}" placeholder="12-3456789"></div>
+      <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by CoGo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
     </div>` : ''}
     <div style="margin-top:16px"><button class="btn btn-blue" onclick="submitEmployerMigrationOnboarding(${isEmployer ? 'true' : 'false'})">Confirm profile & continue</button></div>
   `;
@@ -10273,10 +10318,9 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
       name:String(document.getElementById('migBusinessName')?.value || '').trim(),
       about:String(document.getElementById('migBusinessAbout')?.value || '').trim(),
       phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
-      address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || ''),
-      tin:String(document.getElementById('migBusinessTin')?.value || '').trim()
+      address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || '')
     };
-    if (toastRequiredFields({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address, TIN:business.tin }, 'Business profile')) return;
+    if (toastRequiredFields({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile')) return;
     if (!migrationIsValidUsPhone(business.phone)) return toast('Please enter a valid 10-digit U.S. business phone number.');
     const businessAddressInput = document.getElementById('migBusinessAddress');
     if (businessAddressInput) businessAddressInput.value = business.address;
@@ -10349,7 +10393,7 @@ function renderEmployerProfile(el){
         <div style="margin-top:14px"><div class="small muted">About</div>${renderFormattedLongText(business.about || 'No business about section added yet.', { small:true })}</div>
         <div class="row" style="margin-top:12px">
           <div><div class="small muted">Business phone (private)</div><div style="font-weight:700">${esc(business.phone || 'Not added yet')}</div></div>
-          <div><div class="small muted">TIN (private, not editable)</div><div style="font-weight:700">${esc(business.tin || 'Not added yet')}</div></div>
+
         </div>
         <div style="margin-top:12px"><div class="small muted">Business address (private, not editable)</div><div style="font-weight:700">${esc(business.address || 'Not added yet')}</div></div>
       </div>
@@ -12024,6 +12068,7 @@ function sendOfferFromApplication(appId){
   `, '720px');
 }
 function confirmSendOffer(appId){
+  if (!requireEmployerPaymentSetup('send a hiring offer')) return;
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
   if (!a) return;
@@ -12051,6 +12096,7 @@ function confirmSendOffer(appId){
   renderDashboard();
 }
 function startProject(appId){
+  if (!requireEmployerPaymentSetup('start a project')) return;
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
   if (!a || a.status !== 'accepted') return toast('Student must accept first.');
@@ -12851,6 +12897,7 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
 }
 async function sendMessageToActive(){
   if (!activeThreadUserId) return;
+  if (!requireEmployerPaymentSetup('message a student')) return;
   const input = document.getElementById('msgInput');
   const content = (input.value || '').trim();
   if (!content) return;

@@ -49,7 +49,7 @@ function buildUserProfileData(userId, payload = {}) {
     businessPhone: business.phone || payload.businessPhone || null,
     businessAddress: business.address || payload.businessAddress || null,
     businessCity: business.city || payload.businessCity || null,
-    businessTin: business.tin || payload.tin || null,
+    businessTin: null,
     metadata,
   };
 }
