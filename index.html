@@ -7127,7 +7127,12 @@ function getWorkshops(){
   const stored = ensureArray(ls('cogo_workshops'));
   if (COGO_IS_STAGING && !COGO_DEMO_MODE) {
     const normalized = stored
-      .filter(workshop => !String(workshop.id || '').startsWith('ws_seed_') && !String(workshop.host_id || '').startsWith('u_'))
+      .filter(workshop => {
+        const id = String(workshop.id || '');
+        const hostId = String(workshop.host_id || '');
+        const title = String(workshop.title || '');
+        return !id.startsWith('ws_seed_') && !id.startsWith('qa-') && !hostId.startsWith('u_') && !/^QA\b/i.test(title);
+      })
       .map(normalizeWorkshopRecord);
     if (JSON.stringify(normalized) !== JSON.stringify(stored)) ls('cogo_workshops', normalized);
     return normalized;
