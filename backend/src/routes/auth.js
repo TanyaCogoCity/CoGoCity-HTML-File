@@ -54,6 +54,36 @@ function buildUserProfileData(userId, payload = {}) {
   };
 }
 
+function registerPayloadErrorMessage(error) {
+  if (!error || error.name !== 'ZodError' || !Array.isArray(error.issues)) return '';
+  const labelByPath = {
+    first_name: 'first name',
+    firstName: 'first name',
+    last_name: 'last name',
+    lastName: 'last name',
+    display_name: 'display name',
+    displayName: 'display name',
+    email: 'email address',
+    phone: 'phone number',
+    password: 'password',
+    role: 'account type',
+    date_of_birth: 'birthday',
+    dateOfBirth: 'birthday',
+    city: 'city',
+  };
+  const messages = error.issues.map((issue) => {
+    const path = issue.path && issue.path.length ? String(issue.path[0]) : '';
+    const label = labelByPath[path] || path || 'required information';
+    if (issue.code === 'invalid_type' && issue.received === 'undefined') return `Please enter your ${label}.`;
+    if (issue.code === 'invalid_string' && issue.validation === 'email') return 'Please enter a valid email address.';
+    if (issue.code === 'too_small' && path === 'password') return 'Please create a password with at least 8 characters.';
+    if (issue.code === 'too_small') return `Please enter your ${label}.`;
+    if (issue.code === 'invalid_enum_value' && path === 'role') return 'Please choose a valid account type.';
+    return `Please check your ${label}.`;
+  });
+  return [...new Set(messages)].join(' ');
+}
+
 function serializeUser(user, extras = {}) {
   return {
     id: user.id,
@@ -175,7 +205,8 @@ router.post('/register', async (req, res) => {
       refresh_token: refreshToken,
     });
   } catch (error) {
-    return fail(res, 400, 'Invalid register payload', error.message);
+    const friendlyMessage = registerPayloadErrorMessage(error) || 'Please check the highlighted signup fields and try again.';
+    return fail(res, 400, friendlyMessage, error.message);
   }
 });
 

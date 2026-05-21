@@ -3715,6 +3715,21 @@ function toastRequiredFields(fields={}, context=''){
   if (msg) toast(msg);
   return !!msg;
 }
+function splitFullName(value=''){
+  return String(value || '').trim().split(/\s+/).filter(Boolean);
+}
+function validateFullName(value='', label='Name'){
+  const parts = splitFullName(value);
+  if (parts.length < 2) return `${label}: Please enter first and last name.`;
+  if (parts.some(part => part.length < 2)) return `${label}: Please enter a complete first and last name.`;
+  return '';
+}
+function userFacingBackendError(error, fallback='Something went wrong. Please check the form and try again.'){
+  const message = String((error && error.message) || '').trim();
+  if (!message) return fallback;
+  if (/Invalid register payload/i.test(message)) return 'Please check the signup form. Make sure first name, last name, email, phone, address, and password are complete.';
+  return message;
+}
 function detectContactInfo(text=''){
   const emailRe = /[\w.+-]+@[\w.-]+\.\w+/i;
   const phoneRe = /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
@@ -5002,6 +5017,8 @@ async function saveStudentSignupStep(step){
     const school = (document.getElementById('studentFlowSchool').value || '').trim();
     const age = calculateAgeFromBirthday(birthDate);
     if (toastRequiredFields({ Name:name, Birthday:birthDate, School:school }, 'Student profile')) return false;
+    const nameMessage = validateFullName(name, 'Student profile name');
+    if (nameMessage) return toast(nameMessage), false;
     if (age < 14 || age > 25) return toast('You must be between 14–25 years old to sign up as a student on CoGo City.'), false;
     Object.assign(studentSignupDraft, { name, birthDate, birthday:birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school });
     return true;
@@ -5328,7 +5345,9 @@ async function publishStudentSignupProfile(){
   const users = getUsers();
   if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
   const students = getStudents();
-  const nameParts = String(d.name || '').trim().split(/\s+/).filter(Boolean);
+  const nameMessage = validateFullName(d.name, 'Student profile name');
+  if (nameMessage) return toast(nameMessage);
+  const nameParts = splitFullName(d.name);
   let backendUser = null;
   if (backendAuthEnabled()) {
     try {
@@ -5375,7 +5394,7 @@ async function publishStudentSignupProfile(){
       saveBackendAuthSession(data);
       backendUser = data.user || null;
     } catch (error) {
-      toast(error.message || 'Backend signup failed.');
+      toast(userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.'));
       return;
     }
   }
@@ -5747,6 +5766,8 @@ async function saveEmployerSignupStep(step){
   if (step === 1) {
     syncEmployerSignupPersonalDraft();
     if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, Address:employerSignupDraft.address }, 'Personal profile')) return false;
+    if (String(employerSignupDraft.firstName || '').trim().length < 2) return toast('Please enter your full first name.'), false;
+    if (String(employerSignupDraft.lastName || '').trim().length < 2) return toast('Please enter your full last name.'), false;
     if (!isValidUsPhoneNumber(employerSignupDraft.phone)) return toast('Please enter a valid 10-digit U.S. phone number.'), false;
     employerSignupDraft.phone = formatUsPhoneNumber(employerSignupDraft.phone);
     const addressCheck = await validateAddressExists(employerSignupDraft.address, 'employerSignupAddress', 'home address');
@@ -5890,7 +5911,7 @@ async function publishEmployerSignupProfile(){
       saveBackendAuthSession(data);
       backendUser = data.user || null;
     } catch (error) {
-      toast(error.message || 'Backend signup failed.');
+      toast(userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.'));
       return;
     }
   }
