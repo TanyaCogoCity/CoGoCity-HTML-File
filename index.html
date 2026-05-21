@@ -743,6 +743,17 @@ const BACKEND_SYNC_ENDPOINTS = {
   site_settings: '/sync/site-settings'
 };
 const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','images']);
+const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
+  'users',
+  'students',
+  'direct_jobs',
+  'direct_job_applications',
+  'applications',
+  'projects',
+  'messages',
+  'notifications',
+  'transactions',
+]);
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
 let backendBrowseStudentsLoading = false;
@@ -811,6 +822,7 @@ window.CoGoBackend = {
 function syncEntityToBackend(entityKey, records, options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
   if (!BACKEND_MIGRATION.enabled || !endpoint) return Promise.resolve({ ok:false, skipped:true, reason:'sync_disabled' });
+  if (BACKEND_DEDICATED_ROUTE_ENTITIES.has(entityKey)) return Promise.resolve({ ok:false, skipped:true, reason:'dedicated_backend_route' });
   if (!getBackendAccessToken()) return Promise.resolve({ ok:false, skipped:true, reason:'missing_backend_token' });
   backendSyncInFlight += 1;
   const payload = JSON.stringify({
@@ -842,6 +854,7 @@ window.CoGoBackend.getSyncState = function(){
 async function loadBackendSyncedRecords(entityKey='', options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
   if (!BACKEND_MIGRATION.enabled || !endpoint) return [];
+  if (BACKEND_DEDICATED_ROUTE_ENTITIES.has(entityKey)) return [];
   if (!BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey) && !getBackendAccessToken()) return [];
   try {
     const result = await backendRequest(endpoint, { method:'GET' });

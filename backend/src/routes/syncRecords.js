@@ -58,6 +58,17 @@ function validateEntity(entity = '') {
 
 const SINGLETON_ENTITIES = new Set(['payment_settings', 'site_settings', 'finance']);
 const ADMIN_WRITE_ENTITIES = new Set(['blog_posts', 'direct_job_packages', 'payment_settings', 'site_settings', 'images', 'finance', 'admin_action_log', 'email_queue']);
+const DEDICATED_ROUTE_ENTITIES = new Set([
+  'users',
+  'students',
+  'direct_jobs',
+  'direct_job_applications',
+  'applications',
+  'projects',
+  'messages',
+  'notifications',
+  'transactions',
+]);
 
 function normalizeRecord(record = {}, entity = '') {
   const fallbackId = SINGLETON_ENTITIES.has(entity) ? entity : '';
@@ -153,6 +164,7 @@ async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
 function requireReadAccess(req, res, next) {
   const entity = validateEntity(req.params.entity);
   if (!entity) return fail(res, 404, 'Unknown sync entity');
+  if (DEDICATED_ROUTE_ENTITIES.has(entity)) return fail(res, 410, 'Use the dedicated API route for this entity');
   if (PUBLIC_READ_ENTITIES.has(entity)) return next();
   return requireAuth(req, res, next);
 }
@@ -174,6 +186,7 @@ router.get('/:entity', requireReadAccess, async (req, res) => {
 router.post('/:entity', requireAuth, async (req, res) => {
   const entity = validateEntity(req.params.entity);
   if (!entity) return fail(res, 404, 'Unknown sync entity');
+  if (DEDICATED_ROUTE_ENTITIES.has(entity)) return fail(res, 410, 'Use the dedicated API route for this entity');
   if (ADMIN_WRITE_ENTITIES.has(entity) && req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
 
   try {
@@ -222,6 +235,7 @@ router.post('/:entity', requireAuth, async (req, res) => {
 router.delete('/:entity/:recordId', requireAuth, async (req, res) => {
   const entity = validateEntity(req.params.entity);
   if (!entity) return fail(res, 404, 'Unknown sync entity');
+  if (DEDICATED_ROUTE_ENTITIES.has(entity)) return fail(res, 410, 'Use the dedicated API route for this entity');
   if (ADMIN_WRITE_ENTITIES.has(entity) && req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
 
   try {
