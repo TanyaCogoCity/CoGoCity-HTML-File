@@ -3804,7 +3804,9 @@ function currentStudentPrimaryService(){
 }
 function getUserById(id){
   const key = String(id || '');
-  return getUsers().find(u => String(u.id) === key) || getBackendBrowseUsers().find(u => String(u.id) === key);
+  return getUsers().find(u => String(u.id) === key)
+    || adminBackendUsers.find(u => String(u.id) === key)
+    || getBackendBrowseUsers().find(u => String(u.id) === key);
 }
 function getUserRoleLabel(user){
   if (!user) return 'User';
@@ -13286,7 +13288,8 @@ function getAdminRoleValueForUser(user){
   if (!user) return 'student';
   if (user.role === 'admin') return 'admin';
   if (user.role === 'student') return 'student';
-  return user.type === 'neighbor' ? 'neighbor' : 'employer';
+  if (user.role === 'neighbor' || user.type === 'neighbor') return 'neighbor';
+  return 'employer';
 }
 function applyAdminRoleValue(user, roleValue){
   if (roleValue === 'admin') {
@@ -13295,9 +13298,12 @@ function applyAdminRoleValue(user, roleValue){
   } else if (roleValue === 'student') {
     user.role = 'student';
     delete user.type;
+  } else if (roleValue === 'neighbor') {
+    user.role = 'neighbor';
+    user.type = 'neighbor';
   } else {
     user.role = 'employer';
-    user.type = roleValue === 'neighbor' ? 'neighbor' : 'business';
+    user.type = 'business';
   }
   return user;
 }
@@ -13475,7 +13481,8 @@ function getFilteredAdminUsers(){
     .sort((a,b) => [a.lastName || '', a.firstName || '', a.name || ''].join(' ').localeCompare([b.lastName || '', b.firstName || '', b.name || ''].join(' ')));
 }
 function getSelectedAdminUser(){
-  return getUserById(adminSelectedUserId);
+  if (!adminSelectedUserId) return null;
+  return getAdminUsersSource().find(user => String(user.id) === String(adminSelectedUserId)) || getUserById(adminSelectedUserId);
 }
 function getAdminUserActionOptions(user){
   if (!user) return [];
@@ -13897,9 +13904,35 @@ async function saveAdminUserEdit(userId){
       student.availability = services[0].availability || student.availability || '';
     }
   }
-  saveUsers(users);
-  saveStudents(students);
-  if (currentUser.id === user.id) setCurrentUser(user);
+  if (backendAuthEnabled() && adminBackendUsersLoaded && user.backendAuth) {
+    try {
+      const updatedBackendUser = await backendAuthRequest(`/auth/admin/users/${encodeURIComponent(user.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify({
+          first_name:firstName,
+          last_name:lastName,
+          display_name:user.name,
+          email,
+          phone:user.phone || null,
+          role:nextRole,
+          status:nextStatus,
+          city:user.city || null,
+          address:finalAddress || null
+        })
+      });
+      const mappedBackendUser = mapBackendUser(updatedBackendUser, user);
+      adminBackendUsers = adminBackendUsers.map(item => String(item.id) === String(user.id) ? mappedBackendUser : item);
+      const localIndex = users.findIndex(item => String(item.id) === String(user.id));
+      if (localIndex >= 0) { users[localIndex] = mappedBackendUser; ls('cogo_users', users.map(normalizeUserRecord)); }
+      if (currentUser.id === user.id) setCurrentUser(mappedBackendUser);
+    } catch (error) {
+      return toast(userFacingBackendError(error, 'Could not update this user in the staging database. No local changes were saved.'));
+    }
+  } else {
+    saveUsers(users);
+    saveStudents(students);
+    if (currentUser.id === user.id) setCurrentUser(user);
+  }
   adminUserEditDraft = null;
   adminPendingUserAction = '';
   closeModal();

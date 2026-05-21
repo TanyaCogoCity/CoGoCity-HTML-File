@@ -84,6 +84,34 @@ function registerPayloadErrorMessage(error) {
   return [...new Set(messages)].join(' ');
 }
 
+
+const adminUserUpdateSchema = z.object({
+  first_name: z.string().trim().min(1).optional(),
+  firstName: z.string().trim().min(1).optional(),
+  last_name: z.string().trim().min(1).optional(),
+  lastName: z.string().trim().min(1).optional(),
+  display_name: z.string().trim().optional(),
+  displayName: z.string().trim().optional(),
+  email: z.string().email().optional(),
+  phone: z.string().trim().optional().nullable(),
+  role: z.enum(['student', 'employer', 'neighbor', 'admin']).optional(),
+  status: z.enum(['active', 'suspended']).optional(),
+  city: z.string().trim().optional().nullable(),
+  address: z.string().trim().optional().nullable(),
+});
+
+function serializeAdminUser(user) {
+  const studentProfile = user.studentProfiles?.[0] || null;
+  return {
+    ...serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
+    phone: user.phone,
+    status: user.status,
+    created_at: user.createdAt,
+    updated_at: user.updatedAt,
+    last_login: user.lastLogin,
+  };
+}
+
 function serializeUser(user, extras = {}) {
   return {
     id: user.id,
@@ -375,19 +403,62 @@ router.get('/admin/users', requireAuth, requireRoles(['admin']), async (_req, re
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { displayName: 'asc' }],
     });
 
-    return ok(res, users.map((user) => {
-      const studentProfile = user.studentProfiles?.[0] || null;
-      return {
-        ...serializeUser(user, { userProfile: user.userProfile, studentProfile, services: studentProfile?.services || [] }),
-        phone: user.phone,
-        status: user.status,
-        created_at: user.createdAt,
-        updated_at: user.updatedAt,
-        last_login: user.lastLogin,
-      };
-    }));
+    return ok(res, users.map(serializeAdminUser));
   } catch (error) {
     return fail(res, 500, 'Unable to load users', error.message);
+  }
+});
+
+
+router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+  try {
+    const targetId = String(req.params.id || '').trim();
+    if (!targetId) return fail(res, 400, 'Missing user id');
+    const payload = adminUserUpdateSchema.parse(req.body || {});
+    const target = await prisma.user.findFirst({ where: { id: targetId, deletedAt: null } });
+    if (!target) return fail(res, 404, 'User not found');
+    if (target.id === req.user.id && payload.role && payload.role !== 'admin') return fail(res, 400, 'You cannot remove your own admin role.');
+    if (target.id === req.user.id && payload.status === 'suspended') return fail(res, 400, 'You cannot suspend your own admin account.');
+
+    const firstName = payload.firstName ?? payload.first_name;
+    const lastName = payload.lastName ?? payload.last_name;
+    const displayName = payload.displayName ?? payload.display_name;
+    const data = {};
+    if (firstName !== undefined) data.firstName = firstName;
+    if (lastName !== undefined) data.lastName = lastName;
+    if (displayName !== undefined) data.displayName = displayName || [firstName ?? target.firstName, lastName ?? target.lastName].filter(Boolean).join(' ').trim();
+    else if (firstName !== undefined || lastName !== undefined) data.displayName = [firstName ?? target.firstName, lastName ?? target.lastName].filter(Boolean).join(' ').trim();
+    if (payload.email !== undefined) data.email = payload.email.toLowerCase();
+    if (payload.phone !== undefined) data.phone = payload.phone || null;
+    if (payload.role !== undefined) data.role = payload.role;
+    if (payload.status !== undefined) data.status = payload.status;
+    if (payload.city !== undefined) data.city = payload.city || null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: targetId },
+        data,
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } }, take: 1 } },
+      });
+      if (payload.address !== undefined) {
+        await tx.userProfile.upsert({
+          where: { userId: targetId },
+          create: { userId: targetId, address: payload.address || null },
+          update: { address: payload.address || null },
+        });
+      }
+      return tx.user.findUnique({
+        where: { id: targetId },
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } }, take: 1 } },
+      });
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'admin.user.update', entityType: 'user', entityId: targetId, payload: { before: { role: target.role, status: target.status }, after: { role: updated.role, status: updated.status } } });
+    return ok(res, serializeAdminUser(updated));
+  } catch (error) {
+    if (error?.code === 'P2002') return fail(res, 409, 'That email is already in use.');
+    const message = error?.name === 'ZodError' ? 'Please check the user fields and try again.' : 'Unable to update user';
+    return fail(res, 400, message, error.message);
   }
 });
 
