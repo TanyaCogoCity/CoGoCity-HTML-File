@@ -722,7 +722,6 @@ function trackCogoPageView(route=''){
 const BACKEND_SYNC_ENDPOINTS = {
   users: '/sync/users',
   students: '/sync/student-profiles',
-  posts: '/sync/posts',
   applications: '/sync/applications',
   projects: '/sync/projects',
   messages: '/sync/messages',
@@ -743,7 +742,7 @@ const BACKEND_SYNC_ENDPOINTS = {
   payment_settings: '/sync/payment-settings',
   site_settings: '/sync/site-settings'
 };
-const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','payment_settings','images']);
+const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','images']);
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
 let backendBrowseStudentsLoading = false;
@@ -2204,7 +2203,6 @@ function savePosts(v){
   const payload = ensureArray(v).map(normalizePostRecord);
   ls('cogo_posts', payload);
   syncCommunityPostsToBackend(payload);
-  syncEntityToBackend('posts', payload);
 }
 function normalizeDirectJobRecord(job){
   const normalized = Object.assign({
