@@ -748,6 +748,7 @@ const BACKEND_SYNC_ENDPOINTS = {
   site_settings: '/sync/site-settings'
 };
 const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','images']);
+const BACKEND_ADMIN_WRITE_SYNC_ENTITIES = new Set(['blog_posts','direct_job_packages','payment_settings','site_settings','images','finance','admin_action_log','email_queue']);
 const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
   'users',
   'students',
@@ -831,6 +832,7 @@ function syncEntityToBackend(entityKey, records, options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
   if (!BACKEND_MIGRATION.enabled || !endpoint) return Promise.resolve({ ok:false, skipped:true, reason:'sync_disabled' });
   if (BACKEND_DEDICATED_ROUTE_ENTITIES.has(entityKey)) return Promise.resolve({ ok:false, skipped:true, reason:'dedicated_backend_route' });
+  if (BACKEND_ADMIN_WRITE_SYNC_ENTITIES.has(entityKey) && (!currentUser || currentUser.role !== 'admin')) return Promise.resolve({ ok:false, skipped:true, reason:'admin_write_required' });
   if (!getBackendAccessToken()) return Promise.resolve({ ok:false, skipped:true, reason:'missing_backend_token' });
   backendSyncInFlight += 1;
   const payload = JSON.stringify({
