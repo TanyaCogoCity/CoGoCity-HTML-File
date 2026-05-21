@@ -952,10 +952,11 @@ function ensureBackendPersistentStateLoaded(options={}){
   ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings', options);
   ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages', options);
   if (!currentUser || !getBackendAccessToken()) return;
+  const route = typeof getRoute === 'function' ? getRoute() : '';
+  const shouldLoadAdminSync = currentUser.role === 'admin' && route === '#/dashboard';
+  if (!shouldLoadAdminSync) return;
   ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings', options);
-  ensureBackendArraySettingLoaded('applications', 'cogo_applications', options);
   ensureBackendArraySettingLoaded('bookings', 'cogo_bookings', options);
-  ensureBackendArraySettingLoaded('transactions', 'cogo_transactions', options);
   ensureBackendArraySettingLoaded('payment_logs', 'cogo_payment_logs', options);
   ensureBackendSingletonSettingLoaded('finance', 'cogo_finance', options);
   ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', options);
