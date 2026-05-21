@@ -807,9 +807,12 @@ async function backendRequest(path, options={}){
   const timeout = setTimeout(() => controller.abort(), BACKEND_MIGRATION.timeoutMs);
   try {
     const headers = Object.assign({ 'Content-Type':'application/json' }, options.headers || {});
-    const token = getBackendAccessToken();
+    const includeAuth = options.auth !== false;
+    const token = includeAuth ? getBackendAccessToken() : '';
     if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(`${BACKEND_MIGRATION.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
+    const requestOptions = Object.assign({}, options, { headers, signal: controller.signal });
+    delete requestOptions.auth;
+    const response = await fetch(`${BACKEND_MIGRATION.baseUrl}${path}`, requestOptions);
     const data = await response.json().catch(() => ({}));
     return { ok: response.ok, status: response.status, data };
   } catch (error) {
@@ -860,11 +863,14 @@ async function loadBackendSyncedRecords(entityKey='', options={}){
   const endpoint = BACKEND_SYNC_ENDPOINTS[entityKey];
   if (!BACKEND_MIGRATION.enabled || !endpoint) return [];
   if (BACKEND_DEDICATED_ROUTE_ENTITIES.has(entityKey)) return [];
-  if (!BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey) && !getBackendAccessToken()) return [];
+  const isPublicEntity = BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey);
+  if (!isPublicEntity && !getBackendAccessToken()) return [];
   try {
-    const result = await backendRequest(endpoint, { method:'GET' });
+    const result = isPublicEntity
+      ? await backendRequest(endpoint, { method:'GET', auth:false })
+      : { ok:true, data:{ records: await backendAuthRequest(endpoint, { method:'GET' }) } };
     if (!result || !result.ok) return [];
-    return ensureArray(result.data?.data?.records || result.data?.records);
+    return ensureArray(result.data?.data?.records || result.data?.records || result.data);
   } catch (error) {
     console.warn(`Could not load ${entityKey} from backend`, error);
     return [];
