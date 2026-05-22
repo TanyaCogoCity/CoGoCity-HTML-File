@@ -16,8 +16,8 @@ function onboardingRequirementsForUser(user = {}, profile = null) {
   const metadata = userProfileMetadata(profile || user.userProfile);
   const profileReviewRequired = truthyFlag(metadata.migration_onboarding_required) && !metadata.migration_onboarding_completed_at;
   const paymentMethodRequired = ['employer', 'neighbor'].includes(user.role)
-    && truthyFlag(metadata.payment_method_required)
-    && !stripePayerReady(user);
+    && !stripePayerReady(user)
+    && metadata.payment_method_required !== false;
 
   return {
     profile_review_required: profileReviewRequired,
