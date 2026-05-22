@@ -3,6 +3,7 @@ const express = require('express');
 const { prisma } = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
 const { fail } = require('../lib/http');
+const { requirePlatformReady } = require('../lib/onboardingGate');
 
 const router = express.Router();
 
@@ -52,6 +53,11 @@ router.get('/community-posts', async (_req, res) => {
 router.post('/sync/posts', requireAuth, async (req, res) => {
   try {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
+    const includesJobPost = records.some((record) => record && record.isJob);
+    if (includesJobPost) {
+      const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
+      if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
+    }
     const canCreateJobs = ['employer', 'neighbor', 'admin'].includes(req.user.role);
     const normalized = records
       .map(normalizePostRecord)

@@ -8,6 +8,7 @@ const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/messaging');
 const { getOrCreateSystemUser } = require('../lib/systemUser');
+const { requirePlatformReady } = require('../lib/onboardingGate');
 
 const router = express.Router();
 
@@ -42,6 +43,8 @@ router.get('/', requireAuth, async (req, res) => {
 
 router.post('/start', requireAuth, async (req, res) => {
   if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can start project');
+  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
+  if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
   try {
     const payload = normalizeProjectStartPayload(req.body || {});
@@ -195,6 +198,8 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
   const project = await prisma.project.findFirst({ where: { id: req.params.id, deletedAt: null } });
   if (!project) return fail(res, 404, 'Project not found');
   if (req.user.role !== 'admin' && project.employerId !== req.user.id) return fail(res, 403, 'Only employer can approve');
+  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
+  if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
   const nextStatus = normalizeProjectStatus(req.body?.status || 'completed', false);
   if (!canTransition(project.status, nextStatus)) return fail(res, 409, `Invalid status transition from ${project.status} to ${nextStatus}`);

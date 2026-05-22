@@ -4,6 +4,7 @@ const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { normalizeJobPayload, serializeJob, normalizeApplicationStatus, serializeApplication, normalizeApplyPayload, notificationType } = require('../lib/compat');
 const { writeAuditLog } = require('../lib/audit');
+const { requirePlatformReady } = require('../lib/onboardingGate');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
 
@@ -21,6 +22,8 @@ router.get('/', async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   if (!['employer', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/admin can create direct job listings. Neighbors should post jobs through Community Feed.');
+  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
+  if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
   try {
     const requestedPayload = normalizeJobPayload(req.body || {});
@@ -63,6 +66,9 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 router.patch('/:id', requireAuth, async (req, res) => {
+  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
+  if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
+
   const existing = await prisma.job.findFirst({ where: { id: req.params.id, deletedAt: null } });
   if (!existing) return fail(res, 404, 'Job not found');
   if (existing.createdBy !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Only the job owner can update this job');
@@ -158,6 +164,10 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
   const isStudent = existing.studentId === req.user.id;
   const isAdmin = req.user.role === 'admin';
   if (!isOwner && !isStudent && !isAdmin) return fail(res, 403, 'Not authorized to update this application');
+  if (isOwner || (isAdmin && ['employer', 'neighbor'].includes(req.user.role))) {
+    const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: ['employer', 'neighbor'].includes(req.user.role) });
+    if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
+  }
 
   const body = req.body || {};
   const nextStatus = normalizeApplicationStatus(body.status || existing.status);

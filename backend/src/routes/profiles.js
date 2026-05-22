@@ -4,6 +4,7 @@ const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { normalizeServicePayload, serializeService } = require('../lib/compat');
+const { userProfileMetadata } = require('../lib/onboardingGate');
 
 const router = express.Router();
 
@@ -55,6 +56,11 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
   };
 
   const updated = await prisma.$transaction(async (tx) => {
+    const existingProfile = await tx.userProfile.findUnique({ where: { userId: req.user.id } });
+    const nextMetadata = Object.assign({}, userProfileMetadata(existingProfile), metadata);
+    if (payload.migrationOnboardingCompleted || payload.migration_onboarding_completed) {
+      nextMetadata.migration_onboarding_completed_at = new Date().toISOString();
+    }
     const userUpdates = {};
     if (payload.firstName !== undefined) userUpdates.firstName = String(payload.firstName || '').trim();
     if (payload.lastName !== undefined) userUpdates.lastName = String(payload.lastName || '').trim();
@@ -79,7 +85,7 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
         businessAddress: businessPayload.address || payload.businessAddress || null,
         businessCity: businessPayload.city || payload.businessCity || null,
         businessTin: businessPayload.tin || payload.businessTin || payload.tin || null,
-        metadata,
+        metadata: nextMetadata,
       },
       update: {
         type: profilePayload.type ?? undefined,
@@ -94,7 +100,7 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
         businessAddress: businessPayload.address ?? payload.businessAddress ?? undefined,
         businessCity: businessPayload.city ?? payload.businessCity ?? undefined,
         businessTin: businessPayload.tin ?? payload.businessTin ?? payload.tin ?? undefined,
-        metadata,
+        metadata: nextMetadata,
       },
     });
   });

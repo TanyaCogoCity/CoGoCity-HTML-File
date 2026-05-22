@@ -1230,6 +1230,7 @@ function employerPaymentSetupReady(user=currentUser){
   return Boolean(user.paymentSetupComplete || payer.ready);
 }
 function requireEmployerPaymentSetup(actionLabel='interact with students'){
+  if (needsMigrationOnboarding()) { toast('Please update and confirm your profile before messaging students.'); dashSection = 'profile'; goDashboard(); return false; }
   if (!isEmployerLikeUser(currentUser) || employerPaymentSetupReady(currentUser)) return true;
   toast(`Please add payment info before you ${actionLabel}.`);
   openPostSignupStripeOnboardingPrompt('payer');
@@ -1661,6 +1662,7 @@ function mapBackendUser(apiUser={}, fallback={}){
     company: businessProfile?.name || fallback.company || '',
     businessProfile,
     stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
+    onboarding_requirements: apiUser.onboarding_requirements || apiUser.onboardingRequirements || fallback.onboarding_requirements || null,
     createdAt: apiUser.created_at || apiUser.createdAt || fallback.createdAt || null,
     lastLogin: apiUser.last_login || apiUser.lastLogin || fallback.lastLogin || null,
     backendAuth:true
@@ -3934,6 +3936,7 @@ function openCommunityComposer(options={}){
 }
 function goToPostJob(){
   if (!isEmployerAccount(currentUser)) return;
+  if (!platformReadyForEmployerAction('post jobs')) return;
   if (isNeighborAccount(currentUser)) {
     openCommunityComposer();
     return;
@@ -10140,15 +10143,16 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
-  if (needsMigrationOnboarding() && currentUser.role !== 'admin') {
+  if ((needsMigrationOnboarding() || needsRequiredPaymentMethod()) && currentUser.role !== 'admin') {
     const sidebar = document.querySelector('.dashboard .sidebar');
     if (sidebar) sidebar.innerHTML = `
       <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
-        <div style="font-weight:800;margin-bottom:6px">Profile review required</div>
-        <div class="small muted">Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.</div>
+        <div style="font-weight:800;margin-bottom:6px">${needsMigrationOnboarding() ? 'Profile review required' : 'Payment method required'}</div>
+        <div class="small muted">${needsMigrationOnboarding() ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : 'Please add a credit card before posting jobs, messaging students, or taking hiring actions.'}</div>
       </div>
     `;
-    return renderMigrationOnboarding(el);
+    if (needsMigrationOnboarding()) return renderMigrationOnboarding(el);
+    return renderPaymentMethodRequired(el);
   }
   if (currentUser.role === 'admin'){
     if (dashSection === 'admin') return renderAdminPanel(el);
@@ -10195,10 +10199,35 @@ function isMigrationOnboardingTestUser(user=currentUser){
 }
 function migrationOnboardingComplete(user=currentUser){
   const email = migrationOnboardingEmail(user);
+  const req = user?.onboarding_requirements || {};
+  if (req.profile_review_completed_at) return true;
   return !!(email && migrationOnboardingStore()[email]);
 }
 function needsMigrationOnboarding(user=currentUser){
-  return !!(user && isMigrationOnboardingTestUser(user) && !migrationOnboardingComplete(user));
+  if (!user) return false;
+  const req = user.onboarding_requirements || {};
+  if (req.profile_review_required) return true;
+  return !!(isMigrationOnboardingTestUser(user) && !migrationOnboardingComplete(user));
+}
+function needsRequiredPaymentMethod(user=currentUser){
+  if (!user || user.role === 'admin' || user.role === 'student') return false;
+  const req = user.onboarding_requirements || {};
+  return Boolean(req.payment_method_required) && !employerPaymentSetupReady(user);
+}
+function platformReadyForEmployerAction(actionLabel='use hiring features'){
+  if (needsMigrationOnboarding()) {
+    toast('Please update and confirm your profile before using CoGo City.');
+    dashSection = 'profile';
+    goDashboard();
+    return false;
+  }
+  if (needsRequiredPaymentMethod()) {
+    toast(`Please add a payment method before you ${actionLabel}.`);
+    dashSection = 'profile';
+    goDashboard();
+    return false;
+  }
+  return true;
 }
 function markMigrationOnboardingComplete(user=currentUser){
   const email = migrationOnboardingEmail(user);
@@ -10208,7 +10237,7 @@ function markMigrationOnboardingComplete(user=currentUser){
   saveMigrationOnboardingStore(store);
 }
 function routeToMigrationOnboardingIfNeeded(){
-  if (!needsMigrationOnboarding()) return false;
+  if (!needsMigrationOnboarding() && !needsRequiredPaymentMethod()) return false;
   dashSection = 'profile';
   if (getRoute() !== '#/dashboard') {
     location.hash = '#/dashboard';
@@ -10388,7 +10417,7 @@ async function submitStudentMigrationOnboarding(){
   if (user) { user.name = name; user.publicName = name; user.phone = phone; user.phoneVerified = false; user.address = address; user.city = city; saveUsers(users); setCurrentUser(user); }
   if (backendAuthEnabled() && getBackendAccessToken() && updatedProfile.backendSource && updatedProfile.backendProfileId) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, phoneVerified:false, city, address, profile:{ age, school, address, about, type:'student' } }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, phoneVerified:false, city, address, profile:{ age, school, address, about, type:'student' }, migrationOnboardingCompleted:true }) });
       await backendAuthRequest(`/student-profiles/${encodeURIComponent(updatedProfile.backendProfileId)}`, { method:'PATCH', body: JSON.stringify({ title:serviceTitle, bio:about, experience, is_active:true }) });
     } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
   }
@@ -10466,7 +10495,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   }
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, migrationOnboardingCompleted:true }) });
     } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
@@ -10474,6 +10503,17 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   dashSection = 'profile';
   toast('Profile confirmed. Please review how it looks.');
   renderDashboard();
+}
+
+
+function renderPaymentMethodRequired(el){
+  el.innerHTML = `
+    <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
+      <div class="small muted">Your profile review is complete. Before you can post jobs, message students, hire, or use other platform features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
+      ${renderStripeOnboardingCard()}
+    </div>
+  `;
 }
 
 function renderEmployerProfile(el){

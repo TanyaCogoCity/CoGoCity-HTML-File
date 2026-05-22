@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { normalizeMessagePayload, serializeMessage, notificationType } = require('../lib/compat');
 const { ensureConversationBetweenUsers } = require('../lib/messaging');
 const { writeAuditLog } = require('../lib/audit');
+const { requirePlatformReady } = require('../lib/onboardingGate');
 const { createNotification, createNotifications } = require('../lib/notifications');
 
 const router = express.Router();
@@ -70,6 +71,8 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const payload = normalizeMessagePayload(req.body || {});
     if (!payload.messageText.trim()) return fail(res, 400, 'message is required');
+    const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: ['employer', 'neighbor'].includes(req.user.role) });
+    if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
     let conversationId = payload.conversationId;
 

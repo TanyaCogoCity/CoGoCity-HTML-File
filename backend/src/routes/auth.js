@@ -7,6 +7,7 @@ const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
+const { onboardingRequirementsForUser, userProfileMetadata } = require('../lib/onboardingGate');
 const { sendEmail, buildAppLink } = require('../lib/email');
 
 const router = express.Router();
@@ -98,6 +99,10 @@ const adminUserUpdateSchema = z.object({
   status: z.enum(['active', 'suspended']).optional(),
   city: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
+  migration_onboarding_required: z.boolean().optional(),
+  migrationOnboardingRequired: z.boolean().optional(),
+  payment_method_required: z.boolean().optional(),
+  paymentMethodRequired: z.boolean().optional(),
 });
 
 function serializeAdminUser(user) {
@@ -143,6 +148,7 @@ function serializeUser(user, extras = {}) {
         tax_forms_provider: 'stripe_connect_tax_reporting',
       },
     },
+    onboarding_requirements: onboardingRequirementsForUser(user, extras.userProfile || user.userProfile || null),
   };
 }
 
@@ -410,6 +416,59 @@ router.get('/admin/users', requireAuth, requireRoles(['admin']), async (_req, re
 });
 
 
+
+router.patch('/admin/users/onboarding-requirements', requireAuth, requireRoles(['admin']), async (req, res) => {
+  try {
+    const emails = Array.isArray(req.body?.emails)
+      ? [...new Set(req.body.emails.map((email) => String(email || '').trim().toLowerCase()).filter(Boolean))]
+      : [];
+    if (!emails.length) return fail(res, 400, 'emails array is required');
+    if (emails.length > 250) return fail(res, 400, 'Too many emails in one request');
+
+    const migrationRequired = req.body.migration_onboarding_required ?? req.body.migrationOnboardingRequired;
+    const paymentRequired = req.body.payment_method_required ?? req.body.paymentMethodRequired;
+    const allowedRoles = Array.isArray(req.body.roles)
+      ? req.body.roles.map((role) => String(role || '').trim()).filter(Boolean)
+      : ['employer', 'neighbor'];
+    const profileFlagUpdates = {};
+    if (migrationRequired !== undefined) profileFlagUpdates.migration_onboarding_required = Boolean(migrationRequired);
+    if (paymentRequired !== undefined) profileFlagUpdates.payment_method_required = Boolean(paymentRequired);
+    if (!Object.keys(profileFlagUpdates).length) return fail(res, 400, 'At least one onboarding flag is required');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const users = await tx.user.findMany({
+        where: { email: { in: emails }, deletedAt: null },
+        include: { userProfile: true },
+      });
+      const matched = users.filter((user) => allowedRoles.includes(user.role));
+      for (const user of matched) {
+        const metadata = Object.assign({}, userProfileMetadata(user.userProfile), profileFlagUpdates);
+        await tx.userProfile.upsert({
+          where: { userId: user.id },
+          create: { userId: user.id, metadata },
+          update: { metadata },
+        });
+      }
+      const foundEmails = new Set(users.map((user) => user.email.toLowerCase()));
+      return {
+        requested: emails.length,
+        found: users.length,
+        updated: matched.length,
+        missing: emails.filter((email) => !foundEmails.has(email)),
+        skipped_role_mismatch: users
+          .filter((user) => !allowedRoles.includes(user.role))
+          .map((user) => ({ email: user.email, role: user.role })),
+      };
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'admin.users.onboarding_requirements.update', entityType: 'user', payload: result });
+    return ok(res, result);
+  } catch (error) {
+    if (error?.name === 'ZodError') return fail(res, 400, 'Invalid onboarding requirements payload', error.errors);
+    return fail(res, 500, 'Unable to update onboarding requirements', error.message);
+  }
+});
+
 router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
   try {
     const targetId = String(req.params.id || '').trim();
@@ -434,17 +493,25 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
     if (payload.status !== undefined) data.status = payload.status;
     if (payload.city !== undefined) data.city = payload.city || null;
 
+    const profileFlagUpdates = {};
+    const migrationRequired = payload.migration_onboarding_required ?? payload.migrationOnboardingRequired;
+    const paymentRequired = payload.payment_method_required ?? payload.paymentMethodRequired;
+    if (migrationRequired !== undefined) profileFlagUpdates.migration_onboarding_required = Boolean(migrationRequired);
+    if (paymentRequired !== undefined) profileFlagUpdates.payment_method_required = Boolean(paymentRequired);
+
     const updated = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.update({
-        where: { id: targetId },
-        data,
-        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } }, take: 1 } },
-      });
-      if (payload.address !== undefined) {
+      if (Object.keys(data).length) {
+        await tx.user.update({ where: { id: targetId }, data });
+      }
+      if (payload.address !== undefined || Object.keys(profileFlagUpdates).length) {
+        const existingProfile = await tx.userProfile.findUnique({ where: { userId: targetId } });
+        const metadata = Object.assign({}, userProfileMetadata(existingProfile), profileFlagUpdates);
+        const profileData = { metadata };
+        if (payload.address !== undefined) profileData.address = payload.address || null;
         await tx.userProfile.upsert({
           where: { userId: targetId },
-          create: { userId: targetId, address: payload.address || null },
-          update: { address: payload.address || null },
+          create: Object.assign({ userId: targetId }, profileData),
+          update: profileData,
         });
       }
       return tx.user.findUnique({
