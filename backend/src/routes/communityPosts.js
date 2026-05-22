@@ -2,7 +2,8 @@ const express = require('express');
 
 const { prisma } = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
-const { fail } = require('../lib/http');
+const { ok, fail } = require('../lib/http');
+const { writeAuditLog } = require('../lib/audit');
 const { requirePlatformReady } = require('../lib/onboardingGate');
 
 const router = express.Router();
@@ -96,6 +97,34 @@ router.post('/sync/posts', requireAuth, async (req, res) => {
     res.json({ ok: true, data: { count: normalized.length } });
   } catch (error) {
     return fail(res, 400, 'Could not sync community posts', error.message);
+  }
+});
+
+router.delete('/community-posts/:id', requireAuth, async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return fail(res, 400, 'Post id is required');
+
+    const post = await prisma.communityPost.findFirst({ where: { id, deletedAt: null } });
+    if (!post) return fail(res, 404, 'Community post not found');
+    if (req.user.role !== 'admin' && post.authorId !== req.user.id) return fail(res, 403, 'Forbidden');
+
+    await prisma.communityPost.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+
+    await writeAuditLog({
+      userId: req.user.id,
+      action: 'community_post.delete',
+      entityType: 'community_post',
+      entityId: id,
+      payload: { authorId: post.authorId },
+    });
+
+    return ok(res, { id, deleted: true });
+  } catch (error) {
+    return fail(res, 400, 'Could not delete community post', error.message);
   }
 });
 
