@@ -273,6 +273,9 @@
       margin-left:6px;
     }
     .thread-view{display:flex;flex-direction:column;min-height:480px}
+    .message-recipient-header{padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800;background:#F8FBFF;border-radius:16px 16px 0 0}
+    .message-recipient-name{font-size:1.02rem;color:var(--navy)}
+    .message-compose-context{padding:10px 12px 0;border-top:1px solid var(--border);font-weight:800;color:var(--navy)}
     .messages{padding:16px;display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:420px}
     .bubble{max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.4}
     .bubble.mine{background:var(--color-link);color:#fff;align-self:flex-end}
@@ -589,6 +592,7 @@ let studentJobsTab = 'all';
 let employerTab = 'all';
 let myPostsTab = 'all';
 let activeThreadUserId = null;
+let messagePartnerNameHints = {};
 let avatarMenuOpen = false;
 let studentSignupStep = 1;
 let studentSignupDraft = null;
@@ -10061,11 +10065,12 @@ function openDirectMessage(userId, name){
   if (!currentUser) return openLoginModal();
   if (!requireEmployerPaymentSetup('message a student')) return;
   const partner = getUserById(userId);
-  if (!partner) return toast('User not found.');
+  if (!partner && !name) return toast('User not found.');
   if (String(currentUser.id) === String(userId)) {
     dashSection = 'profile';
     return goDashboard();
   }
+  if (name || partner) messagePartnerNameHints[String(userId)] = name || partner.publicName || partner.name || 'User';
   closeModal();
   dashSection = 'messages';
   activeThreadUserId = `${userId}::${getDirectThreadId(currentUser.id, userId)}`;
@@ -12814,14 +12819,15 @@ function renderMyPosts(el){
 }
 
 // ---------- Messages ----------
-function openThread(userId){
+function openThread(userId, name=''){
   if (!currentUser) return openLoginModal();
   const partner = getUserById(userId);
-  if (!partner) return toast('User not found.');
+  if (!partner && !name) return toast('User not found.');
   if (String(currentUser.id) === String(userId)) {
     dashSection = 'profile';
     return goDashboard();
   }
+  if (name || partner) messagePartnerNameHints[String(userId)] = name || partner.publicName || partner.name || 'User';
   dashSection = 'messages';
   activeThreadUserId = `${userId}::${getDirectThreadId(currentUser.id, userId)}`;
   renderDashboard();
@@ -12901,8 +12907,15 @@ function renderUserNameLink(userId, name, compact=false){
   if (!userId || !getUserById(userId)) return `<span>${esc(name || 'User')}</span>`;
   return `<button class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" onclick="event.stopPropagation();openMessagePartnerProfile('${esc(userId)}')">${esc(name || 'User')}</button>`;
 }
+function getMessagePartnerDisplayName(userId, fallback='User'){
+  const user = getUserById(userId);
+  const student = getStudentByUserId(userId);
+  const hint = messagePartnerNameHints[String(userId || '')];
+  const raw = hint || student?.name || user?.publicName || user?.name || fallback || 'User';
+  return raw === 'User' ? 'User' : raw;
+}
 function renderMessagePartnerName(userId, name, compact=false){
-  return renderUserNameLink(userId, name, compact);
+  return renderUserNameLink(userId, getMessagePartnerDisplayName(userId, name), compact);
 }
 function getDirectThreadId(userA='', userB=''){
   const parts = [String(userA || '').trim(), String(userB || '').trim()].filter(Boolean).sort();
@@ -12984,7 +12997,7 @@ function renderMessages(el){
         partnerId,
         threadId,
         threadLabel: threadId.startsWith('project:') ? 'Job Chat' : '',
-        partnerName: partner.name || partner.publicName || 'User',
+        partnerName: getMessagePartnerDisplayName(partnerId, partner.name || partner.publicName || 'User'),
         preview: 'No messages yet. Say hello.',
         createdAt: new Date().toISOString(),
         unread: 0,
@@ -13055,7 +13068,8 @@ function renderThreadView(userId){
   const isCogoPartner = String(partnerId) === 'system_cogo';
   const isSystemThread = threadId.startsWith('system:');
   const isUnifiedCogoSystemThread = isCogoPartner && threadId === 'system:cogo';
-  const partner = getUserById(partnerId) || { id:partnerId, name:'User' };
+  const partnerRecord = getUserById(partnerId) || { id:partnerId, name:'User' };
+  const partner = Object.assign({}, partnerRecord, { name: getMessagePartnerDisplayName(partnerId, partnerRecord.name || partnerRecord.publicName || 'User') });
   const activeProject = threadId.startsWith('project:')
     ? getProjects().find(project => String(project.id) === String(threadId.replace('project:','')))
     : (threadId.startsWith('system:project:')
@@ -13096,8 +13110,14 @@ function renderThreadView(userId){
 
   const msgs = threadMessages.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
+  const recipientName = getMessagePartnerDisplayName(partner.id, partner.name);
+
   return `
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-weight:800">${renderMessagePartnerName(partner.id, partner.name)}${threadLabel ? `<div class="muted small" style="font-weight:600;margin-top:4px">${esc(threadLabel)}</div>` : ''}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Active project: ${esc(activeProject.jobTitle)}</div>` : ''}</div>
+    <div class="message-recipient-header">
+      <div class="small muted" style="font-weight:700;margin-bottom:3px">Messaging</div>
+      <div class="message-recipient-name">${renderMessagePartnerName(partner.id, recipientName)}</div>
+      ${threadLabel ? `<div class="muted small" style="font-weight:600;margin-top:4px">${esc(threadLabel)}</div>` : ''}${activeProject ? `<div class="muted small" style="font-weight:600;margin-top:4px">Active project: ${esc(activeProject.jobTitle)}</div>` : ''}
+    </div>
     <div class="messages" id="messages-box">
       ${msgs.length ? msgs.map(m => `
         <div class="bubble ${m.fromId === currentUser.id ? 'mine' : 'theirs'} ${unreadBeforeOpen.has(String(m.id)) ? 'new-message' : ''}">
@@ -13108,7 +13128,7 @@ function renderThreadView(userId){
     </div>
     ${isSystemThread
       ? `<div class="msg-compose"><div class="small muted">This is a CoGo Team system thread. Updates from admin/system appear here.</div></div>`
-      : `<div class="msg-compose"><input id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}"><button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button></div>`}
+      : `<div><div class="message-compose-context small">Sending to ${esc(recipientName)}</div><div class="msg-compose"><input id="msgInput" placeholder="Message ${esc(recipientName)}..." onkeydown="if(event.key==='Enter'){sendMessageToActive()}"><button class="btn btn-blue btn-sm" onclick="sendMessageToActive()">Send</button></div></div>`}
   `;
 }
 async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
@@ -13188,7 +13208,8 @@ async function sendMessageToActive(){
   const parts = String(activeThreadUserId || '').split('::');
   const partnerId = parts[0] || activeThreadUserId;
   const threadId = parts[1] || getDirectThreadId(currentUser.id, partnerId);
-  const partner = getUserById(partnerId) || { id:partnerId, name:'User' };
+  const partnerRecord = getUserById(partnerId) || { id:partnerId, name:'User' };
+  const partner = Object.assign({}, partnerRecord, { name: getMessagePartnerDisplayName(partnerId, partnerRecord.name || partnerRecord.publicName || 'User') });
   const existing = getMessages().find(m => {
     const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
     return ((m.fromId === currentUser.id && m.toId === partnerId) || (m.fromId === partnerId && m.toId === currentUser.id)) && msgThreadId === threadId;
