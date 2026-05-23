@@ -69,9 +69,12 @@
       --shadow:0 1px 3px rgba(0,0,0,.05);
       --radius:16px;
     }
-    *{box-sizing:border-box}
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{width:100%;max-width:100%;overflow-x:hidden}
     body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;background:var(--color-bg);color:var(--color-text-main)}
     a{color:inherit}
+    #app,main,section,.container,.home-hero,.home-hero-content,.home-hero-copy{min-width:0;max-width:100%}
+    h1,h2,h3,p,.section-title,.small{overflow-wrap:break-word}
     .blog-article-content a{color:var(--color-link)}
     .blog-article-content a:hover{color:var(--color-link-hover)}
     .money{color:var(--color-success);font-weight:800}
@@ -133,7 +136,7 @@
     .profile-card{overflow:hidden}
     .student-search-panel{padding:18px;margin-bottom:18px;background:linear-gradient(135deg,#FFFFFF,#F9FAFB);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}
     .student-search-primary{position:relative;margin-bottom:12px}
-    .student-search-primary input{width:100%;padding:14px 44px 14px 44px;border:2px solid var(--color-input-border);border-radius:14px;font-size:1.02rem;outline:none;background:#fff}
+    .student-search-primary input{width:100%;min-width:0;padding:14px 44px 14px 44px;border:2px solid var(--color-input-border);border-radius:14px;font-size:1.02rem;outline:none;background:#fff}
     .student-search-primary input:focus{border-color:var(--color-primary);box-shadow:0 0 0 4px rgba(255,230,0,.22)}
     .student-search-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--gray);font-size:1.1rem}
     .student-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--gray);font-weight:800;cursor:pointer;padding:8px;border-radius:999px}
@@ -353,6 +356,7 @@
     .cogo-home-layout{display:grid;grid-template-columns:1fr;gap:24px;align-items:start}
     .cogo-home-layout.has-ad{grid-template-columns:minmax(0,1120px) 300px;gap:8px;justify-content:center}
     .cogo-home-main{min-width:0;width:100%;max-width:1120px}
+    .home-blog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
     .cogo-ad-sidebar{width:300px;justify-self:end;padding-top:45px}
     .cogo-ad-strip{margin:0;width:100%;max-width:300px}
     .cogo-mobile-extra-ads{display:none}
@@ -492,7 +496,7 @@
       .cogo-ad-overlay{left:auto;right:12px;bottom:50%;transform:translateY(50%);max-width:45%}
       .cogo-ad-cta{display:inline-flex;padding:9px 12px;font-size:.8rem}
       .container{padding:20px 14px}
-      .profiles-grid,.blog-grid,.workshop-grid{grid-template-columns:1fr}
+      .profiles-grid,.blog-grid,.workshop-grid,.home-blog-grid{grid-template-columns:1fr!important}
       .student-search-panel{padding:14px}
       .student-filter-row{grid-template-columns:1fr}
       .profile-top{padding:14px;gap:10px}
@@ -532,7 +536,7 @@
       .toast{left:12px;right:12px;bottom:14px;transform:none;text-align:center}
     }
     @media (max-width: 420px){
-      .nav-actions{max-width:54%}
+      .nav-actions{max-width:none}
       .nav-actions .btn,.nav-actions button{font-size:.78rem;padding:7px 8px}
       .hero h1{font-size:1.65rem}
       .container{padding-left:12px;padding-right:12px}
@@ -6503,7 +6507,7 @@ function renderHome(){
             </div>
             <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog';renderPage()">View All Articles</button>
           </div>
-          <div class="grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="grid home-blog-grid">
             ${publicBlogPosts.slice(0,3).map(renderBlogCard).join('')}
           </div>
         </div>
