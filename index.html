@@ -671,7 +671,10 @@ let googleMapsPlacesLoading = false;
 let googleMapsPlacesReady = false;
 let googleMapsPlacesPromise = null;
 const COGO_GTM_CONTAINER_ID = 'GTM-TMHS95ZD';
+const COGO_GA4_STAGING_MEASUREMENT_ID = 'G-DDZV99NNSX';
+const COGO_GA4_MEASUREMENT_ID = (typeof window !== 'undefined' && window.COGO_GA4_MEASUREMENT_ID) || (COGO_IS_STAGING ? COGO_GA4_STAGING_MEASUREMENT_ID : '');
 let cogoAnalyticsInitialized = false;
+let cogoGa4Initialized = false;
 let cogoAnalyticsSearchTimer = null;
 let cogoAnalyticsLastPage = '';
 let backendCommunityPostsLoaded = false;
@@ -702,6 +705,29 @@ function sanitizeCogoAnalyticsParams(params={}){
   });
   return sanitized;
 }
+function initCogoGa4(){
+  if (typeof window === 'undefined' || cogoGa4Initialized || !COGO_GA4_MEASUREMENT_ID) return;
+  cogoGa4Initialized = true;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(COGO_GA4_MEASUREMENT_ID)}`;
+  document.head.appendChild(script);
+  window.gtag('js', new Date());
+  window.gtag('config', COGO_GA4_MEASUREMENT_ID, { send_page_view: false });
+}
+function sendCogoGa4Event(eventName='', payload={}){
+  if (typeof window === 'undefined' || !eventName || !COGO_GA4_MEASUREMENT_ID) return;
+  initCogoGa4();
+  if (typeof window.gtag !== 'function') return;
+  const gaPayload = Object.assign({}, payload || {});
+  if (eventName === 'page_view') {
+    gaPayload.page_title = document.title || 'CoGoCity';
+    gaPayload.page_location = `${window.location.origin}${gaPayload.page_path || getCogoAnalyticsPagePath()}`;
+  }
+  window.gtag('event', eventName, gaPayload);
+}
 function initCogoAnalytics(){
   if (typeof window === 'undefined' || cogoAnalyticsInitialized) return;
   cogoAnalyticsInitialized = true;
@@ -709,9 +735,11 @@ function initCogoAnalytics(){
   window.dataLayer.push({
     event: 'cogo_analytics_ready',
     gtm_container_id: COGO_GTM_CONTAINER_ID,
+    ga4_measurement_id: COGO_GA4_MEASUREMENT_ID || '',
     environment: getCogoAnalyticsEnvironment(),
     hostname: window.location.hostname
   });
+  initCogoGa4();
 }
 function trackCogoEvent(eventName='', params={}){
   if (typeof window === 'undefined' || !eventName) return;
@@ -723,6 +751,7 @@ function trackCogoEvent(eventName='', params={}){
   }, params || {}));
   window.dataLayer = window.dataLayer || [];
   window.dataLayer.push(Object.assign({ event: eventName }, payload));
+  sendCogoGa4Event(eventName, payload);
 }
 function trackCogoSearchEvent(searchTerm='', resultCount=0){
   if (!String(searchTerm || '').trim()) return;
