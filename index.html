@@ -82,6 +82,8 @@
     }
     .logo{display:inline-flex;align-items:center;text-decoration:none;line-height:1}
     .logo img{display:block;height:42px;width:auto;max-width:190px;object-fit:contain}
+    .nav-toggle{display:none;background:#fff;border:1px solid var(--color-border);border-radius:10px;color:var(--color-text-main);font-weight:900;line-height:1;padding:9px 11px;cursor:pointer}
+    .nav-toggle:hover{background:var(--color-bg-light)}
     .nav-links{display:flex;gap:18px;flex:1}
     .nav-links a{text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem;text-underline-offset:6px}
     .nav-links a.active,.nav-links a:hover{color:var(--color-text-main);text-decoration:underline;text-decoration-thickness:3px;text-decoration-color:var(--color-primary)}
@@ -451,10 +453,14 @@
     }
     @media (max-width: 640px){
       body{font-size:15px}
-      nav{height:auto;min-height:58px;flex-wrap:wrap;align-items:flex-start;padding:10px 12px;gap:8px}
-      .logo img{height:38px;max-width:170px}
-      .nav-links{order:3;width:100%;flex:0 0 100%;padding:2px 0 4px;display:flex}
-      .nav-actions{margin-left:auto;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:58%}
+      nav{height:auto;min-height:58px;flex-wrap:wrap;align-items:center;padding:10px 12px;gap:8px}
+      .logo img{height:38px;max-width:145px}
+      .nav-toggle{display:inline-flex;align-items:center;justify-content:center;margin-left:auto}
+      .nav-links{order:4;width:100%;flex:0 0 100%;padding:4px 0 2px;display:none;flex-direction:column;gap:4px;overflow:visible}
+      nav.nav-open .nav-links{display:flex}
+      .nav-links a{display:block;padding:10px 12px;border-radius:10px;background:var(--color-bg-light);font-size:.94rem}
+      .nav-links a.active,.nav-links a:hover{background:#fff;text-decoration:none;box-shadow:inset 4px 0 0 var(--color-primary)}
+      .nav-actions{order:3;width:100%;margin-left:0;gap:6px;flex-wrap:wrap;justify-content:flex-start;max-width:none}
       .nav-actions .btn,.nav-actions button{padding:8px 10px;font-size:.82rem;border-radius:9px}
       main{min-height:calc(100vh - 92px)}
       .hero{padding:38px 16px 34px;text-align:left}
@@ -535,12 +541,13 @@
   <div id="toast" class="toast"></div>
   <nav>
     <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
-    <div class="nav-links">
-      <a href="#/" id="nav-home">Browse Students</a>
-      <a href="#/community" id="nav-community">Community</a>
-      <a href="#/jobs" id="nav-jobs">Jobs</a>
-      <a href="#/workshops" id="nav-workshops">Workshop & Classes</a>
-      <a href="#/blog" id="nav-blog">Blog</a>
+    <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Open navigation menu" aria-controls="nav-links" aria-expanded="false" onclick="toggleMobileNav()">☰</button>
+    <div class="nav-links" id="nav-links">
+      <a href="#/" id="nav-home" onclick="closeMobileNav()">Browse Students</a>
+      <a href="#/community" id="nav-community" onclick="closeMobileNav()">Community</a>
+      <a href="#/jobs" id="nav-jobs" onclick="closeMobileNav()">Jobs</a>
+      <a href="#/workshops" id="nav-workshops" onclick="closeMobileNav()">Workshop & Classes</a>
+      <a href="#/blog" id="nav-blog" onclick="closeMobileNav()">Blog</a>
     </div>
     <div class="nav-actions" id="nav-actions"></div>
   </nav>
@@ -4434,8 +4441,25 @@ function submitContactUsForm(){
 }
 
 // ---------- Nav ----------
+function setMobileNavOpen(isOpen){
+  const navEl = document.querySelector('nav');
+  const toggle = document.getElementById('nav-toggle');
+  if (!navEl || !toggle) return;
+  navEl.classList.toggle('nav-open', !!isOpen);
+  toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  toggle.setAttribute('aria-label', isOpen ? 'Close navigation menu' : 'Open navigation menu');
+  toggle.textContent = isOpen ? '×' : '☰';
+}
+function toggleMobileNav(){
+  const navEl = document.querySelector('nav');
+  setMobileNavOpen(!navEl?.classList.contains('nav-open'));
+}
+function closeMobileNav(){
+  setMobileNavOpen(false);
+}
 function renderNav(){
   applySiteSettings();
+  closeMobileNav();
   const nav = document.getElementById('nav-actions');
   const route = getRoute();
   const navHome = document.getElementById('nav-home');
@@ -9753,7 +9777,7 @@ function renderPost(p){
       <div class="post-header">
         <div class="post-avatar">${esc(p.authorEmoji || '\u{1F464}')}</div>
         <div>
-          <div style="font-weight:800">${esc(p.authorName)} ${p.isJob ? `<span class="post-job-badge">JOB</span>` : ''}</div>
+          <div style="font-weight:800">${renderUserNameLink(p.authorId, p.authorName, true)} ${p.isJob ? `<span class="post-job-badge">JOB</span>` : ''}</div>
           <div class="muted small">${timeAgo(p.createdAt)}</div>
         </div>
       </div>
@@ -9781,7 +9805,7 @@ function renderPost(p){
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
       <div style="margin-top:10px;${commentsOpen ? '' : 'display:none'}">
-        ${comments.length ? comments.map(comment => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(comment.userName || 'User')}</div><div class="muted small">${timeAgo(comment.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(comment.content || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No comments yet.</div>`}
+        ${comments.length ? comments.map(comment => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${renderUserNameLink(comment.userId, comment.userName || 'User')}</div><div class="muted small">${timeAgo(comment.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(comment.content || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No comments yet.</div>`}
         ${currentUser ? `<div style="display:flex;gap:8px;margin-top:10px"><input id="postCommentInput_${esc(p.id)}" placeholder="Write a comment..." style="flex:1"><button class="btn btn-blue btn-sm" onclick="addPostComment('${esc(p.id)}')">Post</button></div>` : `<div class="small muted" style="margin-top:8px">Sign in to comment.</div>`}
       </div>
     </div>
@@ -11187,7 +11211,7 @@ function renderStudentAppCard(a){
       <div class="split">
         <div>
           <div style="font-weight:800">${esc(a.jobTitle)}</div>
-          <div class="muted small">Employer: ${esc(a.employerName)} \u00B7 ${timeAgo(a.createdAt)}</div>
+          <div class="muted small">Employer: ${renderUserNameLink(a.employerId || a.employer_id, a.employerName)} \u00B7 ${timeAgo(a.createdAt)}</div>
           ${a.rate ? `<div class="muted small">Rate: $${esc(a.rate)}/hr \u00B7 Estimated hours: ${esc(a.estimatedHours || '')}</div>` : ''}
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(a.studentServiceTitle)}</div>` : ''}
           <div class="small" style="margin-top:8px">${esc(displayDescription)}</div>
@@ -11240,7 +11264,7 @@ function renderStudentProjectCard(p, listIndex=0){
       <div class="split">
       <div>
         <div style="font-weight:800">${esc(p.jobTitle)}</div>
-        <div class="muted small">Employer: ${esc(p.employerName)}</div>
+        <div class="muted small">Employer: ${renderUserNameLink(p.employerId || p.employer_id, p.employerName)}</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(p.studentServiceTitle)}</div>` : ''}
         <div style="margin-top:10px">
           <button class="project-toggle" onclick="toggleProjectCollapse('${esc(p.id)}')">${collapsed ? 'Expand Project' : 'Collapse Project'}</button>
@@ -12802,15 +12826,69 @@ function openProjectJobChat(projectId='', userId=''){
   activeThreadUserId = `${userId}::project:${projectId}`;
   renderDashboard();
 }
+function getPublicUserCity(user={}, profileKind='personal'){
+  const business = user.businessProfile || {};
+  const raw = profileKind === 'business'
+    ? (business.city || extractCity(business.address || '') || user.city || extractCity(user.address || ''))
+    : (user.city || extractCity(user.address || ''));
+  return String(raw || '').split(',')[0].trim();
+}
+function renderPublicUserAvatar(user={}, size=72, profileKind='personal'){
+  const business = user.businessProfile || {};
+  const isBusiness = profileKind === 'business';
+  const imageId = isBusiness ? (business.logo || business.image_id || '') : (user.photo || user.profile_image_id || '');
+  const label = isBusiness ? (business.name || user.company || 'Business logo') : (user.publicName || user.name || 'Profile photo');
+  const radius = isBusiness ? '16px' : '50%';
+  if (imageId) return renderManagedImage(imageId, label, `width:${size}px;height:${size}px;border-radius:${radius};object-fit:cover;border:2px solid #E0F2FE`, 'thumb', 'loading="eager"');
+  return `<div class="avatar" style="width:${size}px;height:${size}px;border-radius:${radius};font-size:${Math.max(1.25, size/38)}rem">${esc(isBusiness ? '\u{1F3E2}' : (user.emoji || '\u{1F464}'))}</div>`;
+}
+function openUserProfile(userId, profileTab='all'){
+  const user = getUserById(userId);
+  if (!user) return toast('Profile not found.');
+  const student = getStudentByUserId(user.id);
+  if (student && (!profileTab || profileTab === 'student')) return openProfile(student.id);
+  const business = user.businessProfile || null;
+  const isSelf = currentUser && String(currentUser.id) === String(user.id);
+  const showPersonal = ['all','profile','personal'].includes(profileTab || 'all');
+  const showBusiness = business && ['all','business','company'].includes(profileTab || 'all');
+  const tabs = business ? `
+    <div class="subtabs" style="margin:0 0 14px">
+      <button class="pill ${(profileTab || 'all') === 'all' ? 'active' : ''}" onclick="openUserProfile('${esc(user.id)}','all')">All</button>
+      <button class="pill ${['profile','personal'].includes(profileTab) ? 'active' : ''}" onclick="openUserProfile('${esc(user.id)}','profile')">Personal</button>
+      <button class="pill ${['business','company'].includes(profileTab) ? 'active' : ''}" onclick="openUserProfile('${esc(user.id)}','business')">Company</button>
+    </div>` : '';
+  openModal(`${esc(user.publicName || user.name || 'User')} Profile`, `
+    ${tabs}
+    ${showPersonal ? `<div class="card form-card">
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">
+        ${renderPublicUserAvatar(user, 76, 'personal')}
+        <div><div style="font-size:1.2rem;font-weight:800">${esc(user.publicName || user.name || 'User')}</div><div class="small muted">📍 ${esc(getPublicUserCity(user, 'personal') || 'City not added')}</div></div>
+      </div>
+      <div style="font-weight:800;margin-bottom:8px">About me</div>
+      ${renderFormattedLongText(user.about || '', { small:true, emptyHtml:'<div class="small muted">No about section added yet.</div>' })}
+    </div>` : ''}
+    ${showBusiness ? `<div class="card form-card" style="margin-top:${showPersonal ? '14px' : '0'}">
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px">
+        ${renderPublicUserAvatar(user, 82, 'business')}
+        <div><div style="font-size:1.2rem;font-weight:800">${esc(business.name || user.company || 'Company')}</div><div class="small muted">📍 ${esc(getPublicUserCity(user, 'business') || 'City not added')}</div></div>
+      </div>
+      <div style="font-weight:800;margin-bottom:8px">About company</div>
+      ${renderFormattedLongText(business.about || '', { small:true, emptyHtml:'<div class="small muted">No company about section added yet.</div>' })}
+    </div>` : ''}
+    ${currentUser && !isSelf ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-blue" onclick="closeModal();openThread('${esc(user.id)}')">Message</button></div>` : ''}
+  `, '680px');
+}
 function openMessagePartnerProfile(userId){
   const student = getStudentByUserId(userId);
-  if (!student) return;
-  openProfile(student.id);
+  if (student) return openProfile(student.id);
+  openUserProfile(userId);
+}
+function renderUserNameLink(userId, name, compact=false){
+  if (!userId || !getUserById(userId)) return `<span>${esc(name || 'User')}</span>`;
+  return `<button class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" onclick="event.stopPropagation();openMessagePartnerProfile('${esc(userId)}')">${esc(name || 'User')}</button>`;
 }
 function renderMessagePartnerName(userId, name, compact=false){
-  const student = getStudentByUserId(userId);
-  if (!student) return `<span>${esc(name)}</span>`;
-  return `<button class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" onclick="event.stopPropagation();openMessagePartnerProfile('${esc(userId)}')">${esc(name)}</button>`;
+  return renderUserNameLink(userId, name, compact);
 }
 function getDirectThreadId(userA='', userB=''){
   const parts = [String(userA || '').trim(), String(userB || '').trim()].filter(Boolean).sort();
