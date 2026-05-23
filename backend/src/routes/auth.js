@@ -124,6 +124,8 @@ function serializeUser(user, extras = {}) {
     last_name: user.lastName,
     display_name: user.displayName,
     email: user.email,
+    phone: user.phone,
+    status: user.status,
     role: user.role,
     city: user.city,
     profile: extras.userProfile || null,

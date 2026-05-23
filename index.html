@@ -246,7 +246,8 @@
     .close-btn{border:none;background:none;font-size:1.25rem;cursor:pointer}
     .toast{
       position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-      background:var(--color-text-main);color:#fff;padding:12px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100
+      background:var(--color-text-main);color:#fff;padding:14px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100;
+      max-width:min(92vw,720px);line-height:1.45;text-align:left;box-shadow:0 18px 44px rgba(15,23,42,.28)
     }
     .toast.show{opacity:1}
     .msg-shell{display:grid;grid-template-columns:280px 1fr;gap:14px}
@@ -3431,6 +3432,10 @@ function migrateLegacyData(){
       if (!user.lastName) { user.lastName = lastName; usersChanged = true; }
       if (!user.publicName) { user.publicName = `${firstName} ${lastInitial}.`; usersChanged = true; }
       if (!user.city && user.address) { user.city = extractCity(user.address); usersChanged = true; }
+      if (user.type === 'neighbor' && !String(user.about || '').trim()) {
+        user.about = 'Neighbor account for hiring trusted local student help around the home and community.';
+        usersChanged = true;
+      }
       if (user.type === 'business' && !user.businessProfile) {
         user.businessProfile = {
           name: user.company || `${firstName}'s Business`,
@@ -3607,6 +3612,9 @@ function esc(s){
     .replaceAll('>','&gt;')
     .replaceAll('"','&quot;');
 }
+function jsArg(value){
+  return esc(JSON.stringify(String(value ?? '')));
+}
 function renderPasswordField(label, id, options={}){
   const valueAttr = options.value !== undefined ? ` value="${esc(options.value)}"` : '';
   const placeholderAttr = options.placeholder ? ` placeholder="${esc(options.placeholder)}"` : '';
@@ -3712,11 +3720,25 @@ function startLongFieldFormattingObserver(){
   });
   observer.observe(document.body, { childList:true, subtree:true });
 }
-function toast(msg){
+let toastHideTimer = null;
+function toast(msg, options={}){
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+  clearTimeout(toastHideTimer);
+  const duration = Number(options.duration || 9000);
+  toastHideTimer = setTimeout(() => t.classList.remove('show'), duration);
+}
+function showMigrationFormError(msg){
+  const message = String(msg || 'Please check the highlighted fields and try again.');
+  const box = document.getElementById('migrationFormError');
+  if (box) {
+    box.textContent = message;
+    box.style.display = 'block';
+    box.scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+  toast(message, { duration: 12000 });
 }
 function isBlankRequiredValue(value){
   if (Array.isArray(value)) return value.length === 0;
@@ -6279,6 +6301,8 @@ function renderPage(){
     if (route.startsWith('#/reset-password')) return openPasswordResetConfirmModal(getPasswordResetTokenFromHash());
     if (route === '#/faq-safety-legal' || route.startsWith('#/faq-safety-legal#')) return renderFaqSafetyLegalPage();
     if (route === '#/about-us') return renderAboutPage();
+    if (route.startsWith('#/profile/')) return renderPublicProfilePage();
+    if (route.startsWith('#/business/')) return renderBusinessPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
     if (route === '#/community' || route.startsWith('#/community/') || route.startsWith('#post-')) return renderCommunity();
@@ -6844,7 +6868,7 @@ function renderDirectJobCard(job){
             ${featured ? `<span class="pill active" style="background:#FEF3C7;color:#92400E;border:1px solid #FEF3C7">Featured</span>` : ''}
             ${badge(job.status)}
           </div>
-          <div class="small muted" style="margin-top:6px">${esc(job.company_name || 'Company')} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
+          <div class="small muted" style="margin-top:6px">${renderBusinessNameLink(job.employer_id, job.company_name || 'Company', true)} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
           <div class="meta-row" style="margin-top:8px">
             <span>\u{1F4B0} ${esc(formatDirectJobCompensation(job))}</span>
             <span>\u{1F4CD} ${esc(job.location || 'Location TBD')}</span>
@@ -6926,7 +6950,7 @@ function renderDirectJobDetailPage(jobId=''){
           <h1 style="margin:0">${esc(job.job_title)}</h1>
           ${badge(job.status)}
         </div>
-        <div class="small muted" style="margin-top:8px">${esc(job.company_name || 'Company')} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
+        <div class="small muted" style="margin-top:8px">${renderBusinessNameLink(job.employer_id, job.company_name || 'Company', true)} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
         <div class="meta-row" style="margin-top:10px">
           <span>\u{1F4B0} ${esc(formatDirectJobCompensation(job))}</span>
           <span>\u{1F4CD} ${esc(job.location || 'Location TBD')}</span>
@@ -6944,7 +6968,7 @@ function renderDirectJobDetailPage(jobId=''){
         </div>
         <div class="card form-card" style="margin-top:12px;background:#fff">
           <div style="font-weight:800;margin-bottom:8px">Employer</div>
-          <div class="small">${esc(job.company_name || employer?.publicName || employer?.name || 'Employer')}</div>
+          <div class="small">${renderBusinessNameLink(job.employer_id, job.company_name || employer?.businessProfile?.name || employer?.publicName || employer?.name || 'Employer')}</div>
         </div>
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-outline" onclick="shareDirectJob('${esc(job.id)}')">Share Job</button>
@@ -9378,7 +9402,7 @@ function renderProfileCard(card){
       <div class="profile-top">
         ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
         <div>
-          <button class="link-btn" style="color:#fff;font-weight:800;text-align:left" onclick="openProfile('${esc(s.id)}')">${esc(s.name)}, ${esc(s.age)}</button>
+          <a class="link-btn" style="color:#fff;font-weight:800;text-align:left" href="${getProfileUrl(s.userId)}">${esc(s.name)}, ${esc(s.age)}</a>
           <div style="font-size:.8rem;opacity:.88">\u{1F4CD} ${esc(s.location || '')}</div>
         </div>
       </div>
@@ -10385,6 +10409,7 @@ function renderMigrationOnboarding(el){
           ? ['Confirm personal name, email, phone, and home address.', 'Add business name, description, business phone, and full business address.', 'Stripe will collect any required tax ID / TIN during secure payment onboarding. You cannot post jobs, message students, or take hiring actions until setup is complete.']
           : ['Confirm name, email, phone, and home address.', 'After you finish, you can post jobs and use your dashboard.']
       )}
+      <div id="migrationFormError" class="warning" style="display:none;margin-top:14px;font-weight:700"></div>
     </div>
     ${isStudent ? renderStudentMigrationOnboardingForm(profile) : renderEmployerMigrationOnboardingForm(user, business, isEmployer)}
   `;
@@ -10495,11 +10520,12 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   const addressInput = document.getElementById('migAddress');
   if (addressInput) addressInput.value = address;
   const about = String(document.getElementById('migAbout')?.value || '').trim();
-  if (toastRequiredFields({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile')) return;
-  if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
-  if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
+  const missingPersonal = requiredFieldsMessage({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile');
+  if (missingPersonal) return showMigrationFormError(missingPersonal);
+  if (!migrationIsValidEmailAddress(email)) return showMigrationFormError('Please enter a valid email address.');
+  if (!migrationIsValidUsPhone(phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. phone number.');
   const addressCheck = await validateAddressExists(address, 'migAddress', 'home address');
-  if (!addressCheck.ok) return toast(addressCheck.message);
+  if (!addressCheck.ok) return showMigrationFormError(addressCheck.message);
   if (addressCheck.warning) toast(addressCheck.warning);
   address = addressCheck.formattedAddress || address;
   phone = migrationFormatUsPhone(phone);
@@ -10511,12 +10537,13 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
       phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
       address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || '')
     };
-    if (toastRequiredFields({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile')) return;
-    if (!migrationIsValidUsPhone(business.phone)) return toast('Please enter a valid 10-digit U.S. business phone number.');
+    const missingBusiness = requiredFieldsMessage({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile');
+    if (missingBusiness) return showMigrationFormError(missingBusiness);
+    if (!migrationIsValidUsPhone(business.phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. business phone number.');
     const businessAddressInput = document.getElementById('migBusinessAddress');
     if (businessAddressInput) businessAddressInput.value = business.address;
     const businessAddressCheck = await validateAddressExists(business.address, 'migBusinessAddress', 'business address');
-    if (!businessAddressCheck.ok) return toast(businessAddressCheck.message);
+    if (!businessAddressCheck.ok) return showMigrationFormError(businessAddressCheck.message);
     if (businessAddressCheck.warning) toast(businessAddressCheck.warning);
     business.address = businessAddressCheck.formattedAddress || business.address;
     business.phone = migrationFormatUsPhone(business.phone);
@@ -10532,7 +10559,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
       await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, migrationOnboardingCompleted:true }) });
-    } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
+    } catch (error) { return showMigrationFormError(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
   employerProfileTab = 'all';
@@ -11150,7 +11177,7 @@ function renderStudentDirectJobApplicationCard(app){
           <div style="font-weight:800">
             ${job ? `<button class="link-btn" onclick="location.hash='#/jobs/${esc(job.id)}';renderPage()">${esc(title)}</button>` : esc(title)}
           </div>
-          <div class="muted small">Applied: ${esc(formatDirectJobCreatedDate(app.created_at))} \u00B7 Employer: ${esc(company)}</div>
+          <div class="muted small">Applied: ${esc(formatDirectJobCreatedDate(app.created_at))} \u00B7 Employer: ${renderBusinessNameLink(app.employer_id, company, true)}</div>
           <div class="small muted" style="margin-top:6px">Status: ${esc(status)}</div>
           ${app.message ? `<div class="small" style="margin-top:8px;line-height:1.6">${esc(app.message)}</div>` : ''}
         </div>
@@ -12055,7 +12082,7 @@ function renderEmployerMyJobs(el){
             <div class="split">
               <div style="max-width:760px">
                 <div style="font-weight:800">${esc(job.job_title)}</div>
-                <div class="small muted" style="margin-top:6px">${esc(job.company_name)} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
+                <div class="small muted" style="margin-top:6px">${renderBusinessNameLink(job.employer_id, job.company_name, true)} \u00B7 ${esc(getDirectJobTypeLabel(job.job_type))} \u00B7 ${esc(getDirectJobModeLabel(job.work_mode))}</div>
                 <div class="meta-row" style="margin-top:8px">
                   <span>\u{1F4B0} ${esc(formatDirectJobCompensation(job))}</span>
                   <span>\u{1F4CD} ${esc(job.location || 'TBD')}</span>
@@ -12089,7 +12116,7 @@ function renderEmployerMyJobs(el){
                 <div style="font-weight:800">${esc(job ? job.job_title : 'Job')}</div>
                 <div class="small muted" style="margin-top:6px">
                   Candidate:
-                  ${student ? `<button class="link-btn" onclick="openProfile('${esc(student.id)}')">${esc(app.student_name || 'Student')}</button>` : esc(app.student_name || 'Student')}
+                  ${student ? `<a class="link-btn" href="${getProfileUrl(student.userId)}">${esc(app.student_name || 'Student')}</a>` : esc(app.student_name || 'Student')}
                   \u00B7 Applied ${timeAgo(app.created_at)}
                 </div>
                 <div class="small" style="margin-top:8px;line-height:1.6">${esc(app.message || '')}</div>
@@ -12187,7 +12214,7 @@ function renderEmployerAppCard(a){
       <div class="split">
         <div>
           <div style="font-weight:800;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            ${student ? `<button class="link-btn" onclick="openProfile('${esc(student.id)}')">${esc(a.studentName)}</button>` : `<span>${esc(a.studentName)}</span>`}
+            ${student ? `<a class="link-btn" href="${getProfileUrl(student.userId)}">${esc(a.studentName)}</a>` : `<span>${esc(a.studentName)}</span>`}
             <span class="muted">\u2192</span>
             ${a.postId ? `<button class="link-btn" onclick="openPostFromDashboard('${esc(a.postId)}')">${esc(a.jobTitle)}</button>` : `<span>${esc(a.jobTitle)}</span>`}
           </div>
@@ -12830,7 +12857,7 @@ function openThread(userId, name=''){
   if (name || partner) messagePartnerNameHints[String(userId)] = name || partner.publicName || partner.name || 'User';
   dashSection = 'messages';
   activeThreadUserId = `${userId}::${getDirectThreadId(currentUser.id, userId)}`;
-  renderDashboard();
+  goDashboard();
 }
 function openApplicationThread(applicationId=''){
   const application = getApplications().find(item => item.id === applicationId);
@@ -12862,6 +12889,147 @@ function renderPublicUserAvatar(user={}, size=72, profileKind='personal'){
   if (imageId) return renderManagedImage(imageId, label, `width:${size}px;height:${size}px;border-radius:${radius};object-fit:cover;border:2px solid #E0F2FE`, 'thumb', 'loading="eager"');
   return `<div class="avatar" style="width:${size}px;height:${size}px;border-radius:${radius};font-size:${Math.max(1.25, size/38)}rem">${esc(isBusiness ? '\u{1F3E2}' : (user.emoji || '\u{1F464}'))}</div>`;
 }
+function getProfileUrl(userId=''){
+  return `#/profile/${encodeURIComponent(userId || '')}`;
+}
+function getBusinessUrl(userId=''){
+  return `#/business/${encodeURIComponent(userId || '')}`;
+}
+function getRouteEntityId(prefix=''){
+  const route = getRoute();
+  const match = route.match(new RegExp(`^#/${prefix}/([^?#]+)`));
+  return match ? decodeURIComponent(match[1]) : '';
+}
+function startDirectMessageFromProfile(userId='', name=''){
+  if (!currentUser) return openLoginModal();
+  const partner = getUserById(userId);
+  if (!partner && !name) return toast('User not found.');
+  if (String(currentUser.id) === String(userId)) {
+    dashSection = 'profile';
+    return goDashboard();
+  }
+  if (name || partner) messagePartnerNameHints[String(userId)] = name || partner.publicName || partner.name || 'User';
+  dashSection = 'messages';
+  activeThreadUserId = `${userId}::${getDirectThreadId(currentUser.id, userId)}`;
+  goDashboard();
+  setTimeout(() => {
+    const input = document.getElementById('msgInput');
+    if (input) input.focus();
+  }, 100);
+}
+function renderPublicMessageButton(user={}, label='Message'){
+  if (!user || !user.id) return '';
+  const isSelf = currentUser && String(currentUser.id) === String(user.id);
+  if (isSelf) return `<button class="btn btn-outline" onclick="dashSection='profile';goDashboard()">Manage Your Profile</button>`;
+  return `<button class="btn btn-blue" onclick="startDirectMessageFromProfile(${jsArg(user.id)},${jsArg(user.publicName || user.name || 'User')})">${esc(label)}</button>`;
+}
+function renderPublicProfileNotFound(title='Profile not found'){
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="container" style="padding-top:28px;padding-bottom:42px">
+      <div class="card form-card">
+        <div class="section-title">${esc(title)}</div>
+        <div class="small muted" style="margin-bottom:14px">This public page is unavailable or the account no longer exists.</div>
+        <a class="btn btn-blue" href="#/community">Back to Community</a>
+      </div>
+    </div>
+  `;
+}
+function renderPublicStudentProfilePage(student){
+  const user = getUserById(student.userId) || {};
+  const services = getRenderableStudentServices(student);
+  const reviewSummary = getProfileReviewSummary(student);
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="container" style="padding-top:28px;padding-bottom:42px">
+      <div class="card form-card">
+        <div class="split" style="align-items:center">
+          <div style="display:flex;gap:14px;align-items:center">
+            ${renderStudentAvatar(student, 78, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
+            <div>
+              <div class="section-title" style="margin:0">${esc(student.name)}${student.age ? `, ${esc(student.age)}` : ''}</div>
+              <div class="muted small">📍 ${esc(student.location || '')} · 🎓 ${esc(student.school || '')}</div>
+              <div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews across services)</div>
+            </div>
+          </div>
+          <div class="rate">$${esc(student.rate)}/hr</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+          ${renderPublicMessageButton(user, 'Message')}
+          ${currentUser && currentUser.id !== student.userId ? `<button class="btn btn-outline" onclick="openBookDirect('${esc(student.id)}')">Book / Offer Job</button>` : ''}
+        </div>
+      </div>
+      <div class="card form-card" style="margin-top:16px">
+        <div style="font-weight:800;margin-bottom:8px">About</div>
+        ${renderFormattedLongText(student.about || [], { small:true, emptyHtml:'<div class="small muted">No about details yet.</div>' })}
+        <div style="font-weight:800;margin:14px 0 8px">Services</div>
+        ${services.map((service, index) => `<button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentServiceDetail('${esc(student.id)}','${esc(service.id || ('service_' + index))}')"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></button>`).join('')}
+        <div style="font-weight:800;margin:14px 0 8px">Recent Reviews</div>
+        ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
+      </div>
+    </div>
+  `;
+}
+function renderPublicProfilePage(){
+  const userId = getRouteEntityId('profile');
+  const user = getUserById(userId);
+  if (!user) return renderPublicProfileNotFound();
+  const student = getStudentByUserId(user.id);
+  if (student) return renderPublicStudentProfilePage(student);
+  const business = user.businessProfile || null;
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="container" style="padding-top:28px;padding-bottom:42px">
+      <div class="card form-card">
+        <div class="split" style="align-items:center">
+          <div style="display:flex;gap:14px;align-items:center">
+            ${renderPublicUserAvatar(user, 84, 'personal')}
+            <div>
+              <div class="section-title" style="margin:0">${esc(user.publicName || user.name || 'User')}</div>
+              <div class="muted small">${esc(getUserRoleLabel(user))} · 📍 ${esc(getPublicUserCity(user, 'personal') || 'City not added')}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">${renderPublicMessageButton(user, 'Message')}</div>
+        </div>
+      </div>
+      <div class="card form-card" style="margin-top:16px">
+        <div style="font-weight:800;margin-bottom:8px">About</div>
+        ${renderFormattedLongText(user.about || '', { small:true, emptyHtml:'<div class="small muted">No about section added yet.</div>' })}
+      </div>
+      ${business ? `<div class="card form-card" style="margin-top:16px"><div class="split" style="align-items:center"><div style="display:flex;gap:14px;align-items:center">${renderPublicUserAvatar(user, 70, 'business')}<div><div style="font-weight:900;font-size:1.1rem">${renderBusinessNameLink(user.id, business.name || user.company || 'Business')}</div><div class="small muted">📍 ${esc(getPublicUserCity(user, 'business') || 'City not added')}</div></div></div><a class="btn btn-outline" href="${getBusinessUrl(user.id)}">View Business Page</a></div></div>` : ''}
+    </div>
+  `;
+}
+function renderBusinessPage(){
+  const userId = getRouteEntityId('business');
+  const user = getUserById(userId);
+  const business = user && user.businessProfile;
+  if (!user || !business) return renderPublicProfileNotFound('Business page not found');
+  const businessName = business.name || user.company || 'Business';
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="container" style="padding-top:28px;padding-bottom:42px">
+      <div class="card form-card">
+        <div class="split" style="align-items:center">
+          <div style="display:flex;gap:14px;align-items:center">
+            ${renderPublicUserAvatar(user, 92, 'business')}
+            <div>
+              <div class="section-title" style="margin:0">${esc(businessName)}</div>
+              <div class="muted small">Business · 📍 ${esc(getPublicUserCity(user, 'business') || 'City not added')}</div>
+              <div class="small muted">Contact: ${renderUserNameLink(user.id, user.publicName || user.name || 'Owner')}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">${renderPublicMessageButton(user, 'Message Business')}</div>
+        </div>
+      </div>
+      <div class="card form-card" style="margin-top:16px">
+        <div style="font-weight:800;margin-bottom:8px">About ${esc(businessName)}</div>
+        ${renderFormattedLongText(business.about || '', { small:true, emptyHtml:'<div class="small muted">No company about section added yet.</div>' })}
+      </div>
+      <div style="margin-top:16px"><a class="btn btn-outline" href="${getProfileUrl(user.id)}">View ${esc(user.publicName || user.name || 'Owner')}’s Profile</a></div>
+    </div>
+  `;
+}
 function openUserProfile(userId, profileTab='all'){
   const user = getUserById(userId);
   if (!user) return toast('Profile not found.');
@@ -12873,9 +13041,9 @@ function openUserProfile(userId, profileTab='all'){
   const showBusiness = business && ['all','business','company'].includes(profileTab || 'all');
   const tabs = business ? `
     <div class="subtabs" style="margin:0 0 14px">
-      <button class="pill ${(profileTab || 'all') === 'all' ? 'active' : ''}" onclick="openUserProfile('${esc(user.id)}','all')">All</button>
-      <button class="pill ${['profile','personal'].includes(profileTab) ? 'active' : ''}" onclick="openUserProfile('${esc(user.id)}','profile')">Personal</button>
-      <button class="pill ${['business','company'].includes(profileTab) ? 'active' : ''}" onclick="openUserProfile('${esc(user.id)}','business')">Company</button>
+      <button class="pill ${(profileTab || 'all') === 'all' ? 'active' : ''}" onclick="openUserProfile(${jsArg(user.id)},'all')">All</button>
+      <button class="pill ${['profile','personal'].includes(profileTab) ? 'active' : ''}" onclick="openUserProfile(${jsArg(user.id)},'profile')">Personal</button>
+      <button class="pill ${['business','company'].includes(profileTab) ? 'active' : ''}" onclick="openUserProfile(${jsArg(user.id)},'business')">Company</button>
     </div>` : '';
   openModal(`${esc(user.publicName || user.name || 'User')} Profile`, `
     ${tabs}
@@ -12895,7 +13063,7 @@ function openUserProfile(userId, profileTab='all'){
       <div style="font-weight:800;margin-bottom:8px">About company</div>
       ${renderFormattedLongText(business.about || '', { small:true, emptyHtml:'<div class="small muted">No company about section added yet.</div>' })}
     </div>` : ''}
-    ${currentUser && !isSelf ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-blue" onclick="closeModal();openThread('${esc(user.id)}')">Message</button></div>` : ''}
+    ${currentUser && !isSelf ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-blue" onclick="closeModal();openThread(${jsArg(user.id)})">Message</button></div>` : ''}
   `, '680px');
 }
 function openMessagePartnerProfile(userId){
@@ -12905,7 +13073,12 @@ function openMessagePartnerProfile(userId){
 }
 function renderUserNameLink(userId, name, compact=false){
   if (!userId || !getUserById(userId)) return `<span>${esc(name || 'User')}</span>`;
-  return `<button class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" onclick="event.stopPropagation();openMessagePartnerProfile('${esc(userId)}')">${esc(name || 'User')}</button>`;
+  return `<a class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" href="${getProfileUrl(userId)}" onclick="event.stopPropagation()">${esc(name || 'User')}</a>`;
+}
+function renderBusinessNameLink(userId, name, compact=false){
+  const user = getUserById(userId);
+  if (!user || !user.businessProfile) return `<span>${esc(name || 'Business')}</span>`;
+  return `<a class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" href="${getBusinessUrl(userId)}" onclick="event.stopPropagation()">${esc(name || user.businessProfile.name || user.company || 'Business')}</a>`;
 }
 function getMessagePartnerDisplayName(userId, fallback='User'){
   const user = getUserById(userId);
