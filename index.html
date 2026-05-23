@@ -10058,10 +10058,17 @@ function openBookDirect(studentId, serviceId=''){
   `, '720px');
 }
 function openDirectMessage(userId, name){
+  if (!currentUser) return openLoginModal();
   if (!requireEmployerPaymentSetup('message a student')) return;
+  const partner = getUserById(userId);
+  if (!partner) return toast('User not found.');
+  if (String(currentUser.id) === String(userId)) {
+    dashSection = 'profile';
+    return goDashboard();
+  }
   closeModal();
   dashSection = 'messages';
-  activeThreadUserId = userId;
+  activeThreadUserId = `${userId}::${getDirectThreadId(currentUser.id, userId)}`;
   goDashboard();
   setTimeout(() => {
     const input = document.getElementById('msgInput');
@@ -12808,8 +12815,15 @@ function renderMyPosts(el){
 
 // ---------- Messages ----------
 function openThread(userId){
+  if (!currentUser) return openLoginModal();
+  const partner = getUserById(userId);
+  if (!partner) return toast('User not found.');
+  if (String(currentUser.id) === String(userId)) {
+    dashSection = 'profile';
+    return goDashboard();
+  }
   dashSection = 'messages';
-  activeThreadUserId = userId;
+  activeThreadUserId = `${userId}::${getDirectThreadId(currentUser.id, userId)}`;
   renderDashboard();
 }
 function openApplicationThread(applicationId=''){
@@ -12957,7 +12971,30 @@ function renderMessages(el){
     if (m.toId === me && !m.read) threads[threadKey].unread++;
   });
 
-  const threadList = Object.values(threads).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  if (activeThreadUserId && !threads[activeThreadUserId]) {
+    const activeParts = String(activeThreadUserId || '').split('::');
+    const partnerId = activeParts[0] || activeThreadUserId;
+    const threadId = activeParts[1] || getDirectThreadId(me, partnerId);
+    const partner = getUserById(partnerId);
+    const canStartDirectThread = partner && String(partnerId) !== String(me) && !String(activeThreadUserId).startsWith('admin::');
+    if (canStartDirectThread) {
+      const threadKey = `${partnerId}::${threadId}`;
+      threads[threadKey] = {
+        threadKey,
+        partnerId,
+        threadId,
+        threadLabel: threadId.startsWith('project:') ? 'Job Chat' : '',
+        partnerName: partner.name || partner.publicName || 'User',
+        preview: 'No messages yet. Say hello.',
+        createdAt: new Date().toISOString(),
+        unread: 0,
+        pending: true
+      };
+      activeThreadUserId = threadKey;
+    }
+  }
+
+  const threadList = Object.values(threads).sort((a,b) => Number(!!b.pending)-Number(!!a.pending) || new Date(b.createdAt)-new Date(a.createdAt));
   if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].threadKey;
   if (activeThreadUserId && !threadList.some(t => t.threadKey === activeThreadUserId)) activeThreadUserId = threadList[0] ? threadList[0].threadKey : null;
 
