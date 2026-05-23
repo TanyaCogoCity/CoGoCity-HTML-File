@@ -1,5 +1,25 @@
 const { prisma } = require('./prisma');
 const { sendNotificationEmail } = require('./email');
+const config = require('../config');
+
+const protectedStagingEmails = new Set([
+  'tanya.lipovich@gmail.com',
+  'ilya.lipovich@getcider.com',
+  'dan.lipovich@gmail.com',
+  'dan.lipovich+staging@gmail.com',
+]);
+
+function isStagingRuntime() {
+  return /staging\.cogocity\.com/i.test(String(config.appUrl || config.apiBaseUrl || ''));
+}
+
+function shouldSkipMisaddressedStagingEmail(user = {}) {
+  if (!isStagingRuntime()) return false;
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!protectedStagingEmails.has(email)) return false;
+  const displayName = String(user.displayName || '').trim();
+  return /\bqa\b|automated/i.test(displayName);
+}
 
 async function sendEmailForNotification(data) {
   const user = await prisma.user.findUnique({
@@ -7,6 +27,10 @@ async function sendEmailForNotification(data) {
     select: { email: true, displayName: true },
   });
   if (!user?.email) return { skipped: true, reason: 'missing_recipient' };
+  if (shouldSkipMisaddressedStagingEmail(user)) {
+    console.warn('notification_email_skipped_misaddressed_staging_user', { userId: data.userId, email: user.email, displayName: user.displayName });
+    return { skipped: true, reason: 'misaddressed_staging_qa_user' };
+  }
   return sendNotificationEmail({ user, title: data.title, body: data.body, link: data.link });
 }
 

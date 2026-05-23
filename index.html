@@ -2030,7 +2030,7 @@ async function loadBackendBlogPosts(options={}){
     if (result && result.ok) {
       const records = ensureArray(result.data?.data?.records || result.data?.records);
       if (records.length) {
-        const merged = mergeBlogPosts(getBlogPosts(), records);
+        const merged = mergeBlogPosts(getSeededBlogPosts(), records);
         ls('cogo_blog_posts', merged);
       }
       backendBlogPostsLoaded = true;
@@ -12988,26 +12988,39 @@ function renderMessages(el){
     const activeParts = String(activeThreadUserId || '').split('::');
     const partnerId = activeParts[0] || activeThreadUserId;
     const threadId = activeParts[1] || getDirectThreadId(me, partnerId);
-    const partner = getUserById(partnerId);
-    const canStartDirectThread = partner && String(partnerId) !== String(me) && !String(activeThreadUserId).startsWith('admin::');
-    if (canStartDirectThread) {
-      const threadKey = `${partnerId}::${threadId}`;
-      threads[threadKey] = {
-        threadKey,
-        partnerId,
-        threadId,
-        threadLabel: threadId.startsWith('project:') ? 'Job Chat' : '',
-        partnerName: getMessagePartnerDisplayName(partnerId, partner.name || partner.publicName || 'User'),
-        preview: 'No messages yet. Say hello.',
-        createdAt: new Date().toISOString(),
-        unread: 0,
-        pending: true
-      };
-      activeThreadUserId = threadKey;
+    const isDirectDraftThread = String(threadId || '').startsWith('dm:');
+    const existingThreadForPartner = isDirectDraftThread
+      ? Object.values(threads).find(t => String(t.partnerId) === String(partnerId) && !String(t.threadId || '').startsWith('dm:'))
+      : null;
+    if (existingThreadForPartner) {
+      activeThreadUserId = existingThreadForPartner.threadKey;
+    } else {
+      const partner = getUserById(partnerId);
+      const canStartDirectThread = partner && String(partnerId) !== String(me) && !String(activeThreadUserId).startsWith('admin::');
+      if (canStartDirectThread) {
+        const threadKey = `${partnerId}::${threadId}`;
+        threads[threadKey] = {
+          threadKey,
+          partnerId,
+          threadId,
+          threadLabel: threadId.startsWith('project:') ? 'Job Chat' : '',
+          partnerName: getMessagePartnerDisplayName(partnerId, partner.name || partner.publicName || 'User'),
+          preview: 'No messages yet. Say hello.',
+          createdAt: new Date().toISOString(),
+          unread: 0,
+          pending: true
+        };
+        activeThreadUserId = threadKey;
+      }
     }
   }
 
-  const threadList = Object.values(threads).sort((a,b) => Number(!!b.pending)-Number(!!a.pending) || new Date(b.createdAt)-new Date(a.createdAt));
+  const nonDraftThreadPartners = new Set(Object.values(threads)
+    .filter(t => !t.pending && !String(t.threadId || '').startsWith('dm:'))
+    .map(t => String(t.partnerId)));
+  const threadList = Object.values(threads)
+    .filter(t => !(t.pending && String(t.threadId || '').startsWith('dm:') && nonDraftThreadPartners.has(String(t.partnerId))))
+    .sort((a,b) => Number(!!b.pending)-Number(!!a.pending) || new Date(b.createdAt)-new Date(a.createdAt));
   if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].threadKey;
   if (activeThreadUserId && !threadList.some(t => t.threadKey === activeThreadUserId)) activeThreadUserId = threadList[0] ? threadList[0].threadKey : null;
 
