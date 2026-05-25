@@ -2282,16 +2282,23 @@ async function loadBackendCommunityPosts(options={}){
   }
 }
 function syncCommunityPostsToBackend(posts=[]){
-  if (!backendAuthEnabled() || !getBackendAccessToken()) return;
-  backendAuthRequest('/sync/posts', {
+  if (!backendAuthEnabled() || !getBackendAccessToken()) return Promise.resolve(null);
+  return backendAuthRequest('/sync/posts', {
     method:'POST',
     body: JSON.stringify({ records: ensureArray(posts).map(normalizePostRecord) })
-  }).catch(error => console.warn('Could not sync community posts to backend', error));
+  }).catch(error => {
+    console.warn('Could not sync community posts to backend', error);
+    throw error;
+  });
+}
+function deleteCommunityPostFromBackend(postId){
+  if (!backendAuthEnabled() || !getBackendAccessToken() || !postId) return Promise.resolve(null);
+  return backendAuthRequest(`/community-posts/${encodeURIComponent(postId)}`, { method:'DELETE' });
 }
 function savePosts(v){
   const payload = ensureArray(v).map(normalizePostRecord);
   ls('cogo_posts', payload);
-  syncCommunityPostsToBackend(payload);
+  return syncCommunityPostsToBackend(payload);
 }
 function normalizeDirectJobRecord(job){
   const normalized = Object.assign({
@@ -9772,7 +9779,7 @@ function syncCommunityJobDescriptionFromPost(force=false){
   if (!postInput || !jobDescription || !jobToggle || !jobToggle.checked) return;
   if (force || !jobDescription.value.trim()) jobDescription.value = postInput.value || '';
 }
-function submitPost(){
+async function submitPost(){
   if (!currentUser) return openLoginModal();
   const content = (document.getElementById('postContent').value || '').trim();
   const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 1);
@@ -9814,7 +9821,13 @@ function submitPost(){
   }
   const posts = getPosts();
   posts.unshift(post);
-  savePosts(posts);
+  const nextPosts = posts.map(normalizePostRecord);
+  try {
+    await syncCommunityPostsToBackend(nextPosts);
+  } catch (error) {
+    return toast('Could not save this post to the backend. Please try again.');
+  }
+  ls('cogo_posts', nextPosts);
   if (isJob) trackCogoEvent('job_published', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
   ls('cogo_draft_post', null);
   toast('Posted successfully.');
@@ -9969,7 +9982,7 @@ function handleEditPostVideoUpload(input){
     previewEditPostVideo(dataUrl);
   });
 }
-function savePostEdit(postId){
+async function savePostEdit(postId){
   const posts = getPosts();
   const p = posts.find(x => x.id === postId);
   if (!p) return;
@@ -9993,15 +10006,31 @@ function savePostEdit(postId){
     if (!blockTextCheck(description)) return;
     Object.assign(p, { jobTitle, description, rate, hoursNeeded, location });
   }
-  savePosts(posts);
+  p.updatedAt = new Date().toISOString();
+  const nextPosts = posts.map(normalizePostRecord);
+  try {
+    await syncCommunityPostsToBackend(nextPosts);
+  } catch (error) {
+    return toast('Could not save this edit to the backend. Please try again.');
+  }
+  ls('cogo_posts', nextPosts);
   closeModal();
   toast('Post updated.');
   if (dashSection === 'myposts') renderDashboard();
   else renderCommunity();
 }
-function deletePost(postId){
+async function deletePost(postId){
   if (!confirm('Delete this post?')) return;
-  savePosts(getPosts().filter(p => p.id !== postId));
+  const posts = getPosts();
+  const post = posts.find(p => p.id === postId);
+  if (!post) return toast('Post not found.');
+  try {
+    await deleteCommunityPostFromBackend(postId);
+  } catch (error) {
+    return toast('Could not delete this post from the backend. Please try again.');
+  }
+  const remaining = posts.filter(p => p.id !== postId);
+  ls('cogo_posts', remaining);
   toast('Post deleted.');
   if (dashSection === 'myposts') renderDashboard();
   else renderCommunity();
