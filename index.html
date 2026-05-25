@@ -15269,7 +15269,7 @@ function renderTransactionsPanel(){
           ${currentUser.role === 'student' ? `<div class="small muted">Stripe connection and live balance are placeholders for now.</div>` : ''}
         </div>
         <div style="min-width:260px">
-          <input id="transactionsSearch" placeholder="Search by date, amount, job title, or name" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsResults()">
+          <input id="transactionsSearch" placeholder="Search by date, amount, job title, name, or Stripe ID" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsResults()">
         </div>
       </div>
       <div id="transactions-summary"></div>
@@ -15281,6 +15281,15 @@ function renderTransactionsPanel(){
   renderTransactionsResults();
   renderSubscriptionTransactionsResults();
   renderWorkshopTransactionsResults();
+}
+function renderAdminTransactionReconciliationIds(tx={}){
+  if (!tx) return '';
+  const platformTxId = String(tx.id || tx.transaction_id || '').trim();
+  const stripePaymentIntentId = String(tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id || '').trim();
+  const idLine = (label, value) => value
+    ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">${label}:</span> ${esc(value)}</div>`
+    : `<div class="muted" style="font-size:.78rem">${label}: —</div>`;
+  return `${idLine('CoGo Tx', platformTxId)}${idLine('Stripe PI', stripePaymentIntentId)}`;
 }
 function renderTransactionsResults(){
   const summaryWrap = document.getElementById('transactions-summary');
@@ -15300,6 +15309,11 @@ function renderTransactionsResults(){
       tx.platform_fee_total,
       tx.hourly_rate,
       tx.hours_worked,
+      tx.id,
+      tx.transaction_id,
+      tx.stripe_payment_intent_id,
+      tx.payment_intent_id,
+      tx.payment_id,
       formatTransactionDate(tx.date_charged),
       formatTransactionDate(tx.date_completed),
       formatTransactionDate(tx.date_paid)
@@ -15348,6 +15362,7 @@ function renderTransactionsResults(){
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
         <th style="padding:10px 8px">Final Commission</th>
+        <th style="padding:10px 8px">Reconciliation IDs</th>
       </tr>
     ` : isEmployer ? `
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
@@ -15394,12 +15409,13 @@ function renderTransactionsResults(){
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
         <td class="money" style="padding:12px 8px">${platformFeeLabel}</td>
+        ${isAdmin ? `<td style="padding:12px 8px">${renderAdminTransactionReconciliationIds(tx)}</td>` : ''}
         ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
       </tr>
     `;
   }).join('');
   const headers = isAdmin
-    ? [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Final Commission']
+    ? [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Final Commission', 'CoGo Transaction ID', 'Stripe PaymentIntent ID']
     : [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Platform Fee', isEmployer ? 'Final Payment' : 'Final Payout'];
   transactionTableExportRows.main = {
     fileName: `${currentUser.role || 'user'}-transactions`,
@@ -15423,7 +15439,11 @@ function renderTransactionsResults(){
         `$${Number(tx.work_total || 0).toFixed(2)}`,
         platformFeeLabel
       ];
-      if (isAdmin) return base;
+      if (isAdmin) {
+        base.push(tx.id || tx.transaction_id || '');
+        base.push(tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id || '');
+        return base;
+      }
       base.push(isEmployer ? `$${Number(tx.total_amount || 0).toFixed(2)}` : `$${Number(tx.payout_amount || 0).toFixed(2)}`);
       return base;
     })
@@ -15453,6 +15473,7 @@ function renderTransactionsResults(){
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
         <td class="money" style="padding:12px 8px">${platformFeeLabel}</td>
+        ${isAdmin ? `<td style="padding:12px 8px">${renderAdminTransactionReconciliationIds(tx)}</td>` : ''}
         ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
       </tr>
     `;
