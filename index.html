@@ -14179,7 +14179,9 @@ function openAdminUserEditModal(userId){
 }
 async function saveAdminUserEdit(userId){
   const users = getUsers();
-  const user = users.find(item => item.id === userId);
+  const user = users.find(item => String(item.id) === String(userId))
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || getBackendBrowseUsers().find(item => String(item.id) === String(userId));
   if (!user) return toast('User not found.');
   if (!adminUserEditDraft || String(adminUserEditDraft.userId) !== String(userId)) adminUserEditDraft = createAdminUserEditDraft(userId);
   syncAdminUserEditDraftFromForm();
@@ -14194,7 +14196,8 @@ async function saveAdminUserEdit(userId){
   const nextRole = draft.roleValue || 'student';
   const nextStatus = draft.statusValue || 'active';
   if (toastRequiredFields({ 'First name':firstName, 'Last name':lastName, Email:email })) return;
-  const duplicate = users.find(item => item.id !== user.id && String(item.email || '').toLowerCase() === email);
+  const duplicateSource = adminBackendUsersLoaded ? adminBackendUsers : users;
+  const duplicate = duplicateSource.find(item => String(item.id) !== String(user.id) && String(item.email || '').toLowerCase() === email);
   if (duplicate) return toast('That email is already in use.');
   if (phone && !isValidUsPhoneNumber(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
   let finalAddress = address;
@@ -14312,7 +14315,13 @@ async function saveAdminUserEdit(userId){
           role:nextRole,
           status:nextStatus,
           city:user.city || null,
-          address:finalAddress || null
+          address:finalAddress || null,
+          photo:user.photo || null,
+          ...(nextRole === 'employer' ? {
+            business_name:user.company || null,
+            business_about:user.businessProfile?.about || null,
+            business_logo:user.businessProfile?.logo || null
+          } : {})
         })
       });
       const mappedBackendUser = mapBackendUser(updatedBackendUser, user);

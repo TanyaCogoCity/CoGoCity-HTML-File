@@ -99,6 +99,15 @@ const adminUserUpdateSchema = z.object({
   status: z.enum(['active', 'suspended']).optional(),
   city: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
+  photo: z.string().trim().optional().nullable(),
+  profile_image_id: z.string().trim().optional().nullable(),
+  profileImageId: z.string().trim().optional().nullable(),
+  business_name: z.string().trim().optional().nullable(),
+  businessName: z.string().trim().optional().nullable(),
+  business_about: z.string().trim().optional().nullable(),
+  businessAbout: z.string().trim().optional().nullable(),
+  business_logo: z.string().trim().optional().nullable(),
+  businessLogo: z.string().trim().optional().nullable(),
   migration_onboarding_required: z.boolean().optional(),
   migrationOnboardingRequired: z.boolean().optional(),
   payment_method_required: z.boolean().optional(),
@@ -495,6 +504,11 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
     if (payload.status !== undefined) data.status = payload.status;
     if (payload.city !== undefined) data.city = payload.city || null;
 
+    const photo = payload.photo ?? payload.profileImageId ?? payload.profile_image_id;
+    const businessName = payload.businessName ?? payload.business_name;
+    const businessAbout = payload.businessAbout ?? payload.business_about;
+    const businessLogo = payload.businessLogo ?? payload.business_logo;
+
     const profileFlagUpdates = {};
     const migrationRequired = payload.migration_onboarding_required ?? payload.migrationOnboardingRequired;
     const paymentRequired = payload.payment_method_required ?? payload.paymentMethodRequired;
@@ -505,11 +519,18 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
       if (Object.keys(data).length) {
         await tx.user.update({ where: { id: targetId }, data });
       }
-      if (payload.address !== undefined || Object.keys(profileFlagUpdates).length) {
+      if (payload.address !== undefined || photo !== undefined || businessName !== undefined || businessAbout !== undefined || businessLogo !== undefined || Object.keys(profileFlagUpdates).length) {
         const existingProfile = await tx.userProfile.findUnique({ where: { userId: targetId } });
         const metadata = Object.assign({}, userProfileMetadata(existingProfile), profileFlagUpdates);
+        if (photo !== undefined) metadata.photo = photo || '';
+        if (businessLogo !== undefined) metadata.business_logo = businessLogo || '';
         const profileData = { metadata };
         if (payload.address !== undefined) profileData.address = payload.address || null;
+        if (businessName !== undefined) profileData.businessName = businessName || null;
+        if (businessAbout !== undefined) profileData.businessAbout = businessAbout || null;
+        if (payload.phone !== undefined) profileData.businessPhone = payload.phone || null;
+        if (payload.address !== undefined) profileData.businessAddress = payload.address || null;
+        if (payload.city !== undefined) profileData.businessCity = payload.city || null;
         await tx.userProfile.upsert({
           where: { userId: targetId },
           create: Object.assign({ userId: targetId }, profileData),
