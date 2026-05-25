@@ -28,9 +28,9 @@ router.patch('/:id/accept', requireAuth, async (req, res) => {
     data: {
       userId: updated.studentId,
       type: notificationType('application'),
-      title: 'Application accepted',
-      body: `You were accepted for ${app.job.title}`,
-      link: '/dashboard?section=jobs_bookings',
+      title: 'Offer accepted',
+      body: `You were accepted for ${app.job.title}. Open your dashboard to view the offer and next steps.`,
+      link: `/dashboard?section=jobs_bookings&job=${app.jobId}`,
     },
   });
 
@@ -51,8 +51,8 @@ router.patch('/:id/reject', requireAuth, async (req, res) => {
       userId: updated.studentId,
       type: notificationType('application'),
       title: 'Application update',
-      body: note || `Your application for ${app.job.title} was not selected`,
-      link: '/dashboard?section=jobs_bookings',
+      body: note || `Your application for ${app.job.title} was not selected. Open your dashboard to view your application status.`,
+      link: `/dashboard?section=jobs_bookings&job=${app.jobId}`,
     },
   });
 

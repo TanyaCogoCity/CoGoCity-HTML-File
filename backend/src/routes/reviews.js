@@ -4,6 +4,8 @@ const { prisma } = require('../lib/prisma');
 const { created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
+const { notificationType } = require('../lib/compat');
+const { createNotification } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -17,7 +19,10 @@ router.post('/projects/:id/review', requireAuth, async (req, res) => {
     });
     const payload = schema.parse(req.body || {});
 
-    const project = await prisma.project.findFirst({ where: { id: req.params.id, deletedAt: null } });
+    const project = await prisma.project.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+      include: { job: true },
+    });
     if (!project) return fail(res, 404, 'Project not found');
     if (project.status !== 'completed') return fail(res, 409, 'Review is only allowed after project completion');
     if (![project.employerId, project.studentId].includes(req.user.id)) return fail(res, 403, 'Not allowed');
@@ -32,6 +37,19 @@ router.post('/projects/:id/review', requireAuth, async (req, res) => {
         comment: payload.comment || '',
       },
     });
+
+    const recipientId = req.user.id === project.studentId ? project.employerId : project.studentId;
+    if (recipientId) {
+      await createNotification({
+        data: {
+          userId: recipientId,
+          type: notificationType('project'),
+          title: 'New review received',
+          body: `${req.user.displayName || 'A CoGoCity user'} left a review for ${project.job?.title || 'your project'}. Open your dashboard to view it.`,
+          link: `/dashboard?section=${recipientId === project.studentId ? 'jobs_bookings' : 'applicants_projects'}&project=${project.id}`,
+        },
+      });
+    }
 
     await writeAuditLog({ userId: req.user.id, action: 'review.create', entityType: 'review', entityId: review.id, payload: req.body });
 

@@ -188,13 +188,24 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
   });
 
   const notifyUserId = isOwner ? app.studentId : app.job.createdBy;
+  const statusLabels = {
+    applied: 'Application submitted',
+    reviewing: 'Application is under review',
+    shortlisted: 'Offer sent',
+    hired: 'Offer accepted',
+    rejected: 'Application update',
+    withdrawn: 'Application withdrawn',
+  };
+  const dashboardLink = isOwner
+    ? `/dashboard?section=jobs_bookings&job=${app.jobId}`
+    : `/dashboard?section=my_jobs&job=${app.jobId}`;
   await createNotification({
     data: {
       userId: notifyUserId,
       type: notificationType('application'),
-      title: 'Application updated',
-      body: `${app.job.title} application is now ${nextStatus}`,
-      link: '/dashboard',
+      title: statusLabels[nextStatus] || 'Application updated',
+      body: `${app.job.title} application is now ${nextStatus}. Open your dashboard for details.`,
+      link: dashboardLink,
     },
   });
   await writeAuditLog({ userId: req.user.id, action: 'application.update', entityType: 'application', entityId: app.id, payload: req.body });
@@ -239,7 +250,7 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
         userId: job.createdBy,
         type: notificationType('application'),
         title: 'New application received',
-        body: `${req.user.displayName} applied to ${job.title}`,
+        body: `${req.user.displayName} applied to ${job.title}. Open your dashboard to review the application.`,
         link: `/dashboard?section=my_jobs&job=${job.id}`,
       },
     });

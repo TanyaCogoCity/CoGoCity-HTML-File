@@ -112,12 +112,13 @@ router.post('/', requireAuth, async (req, res) => {
     });
 
     if (recipients.length) {
+      const senderName = isSystem ? 'CoGoCity' : (req.user.displayName || 'a CoGoCity user');
       await createNotifications({
         data: recipients.map((r) => ({
           userId: r.userId,
           type: notificationType('message'),
-          title: isSystem ? 'CoGo Team update' : 'New message',
-          body: payload.messageText.slice(0, 180),
+          title: isSystem ? 'CoGoCity team update' : `You've got a message from ${senderName}`,
+          body: isSystem ? payload.messageText.slice(0, 180) : `${senderName} sent you a message. Open your dashboard to reply.`,
           link: `/dashboard?section=messages&thread=${conversationId}`,
         })),
       });
