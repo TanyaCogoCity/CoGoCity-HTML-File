@@ -5654,13 +5654,34 @@ async function publishStudentSignupProfile(){
   renderPage();
   setTimeout(() => openPostSignupStripeOnboardingPrompt('connect'), 250);
 }
+function knownCityForZip(zip=''){
+  return ({ '94526':'Danville', '94507':'Alamo', '94583':'San Ramon', '94568':'Dublin', '94566':'Pleasanton', '94596':'Walnut Creek', '94549':'Lafayette', '94556':'Moraga', '94563':'Orinda' })[String(zip || '').trim()] || '';
+}
 function normalizeAddressForValidation(address=''){
-  return String(address || '')
+  let value = String(address || '')
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/\bSuit\s+(?=\w)/gi, 'Suite ')
     .replace(/\bSte\.?(?=\s*\w)/gi, 'Suite')
-    .replace(/\s*,\s*/g, ', ');
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\bCalifornia\b/gi, 'CA')
+    .replace(/\bca\b/g, 'CA');
+  const stateZip = value.match(/\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+  if (!stateZip) return value;
+  const state = stateZip[1].toUpperCase();
+  const zip = stateZip[2];
+  const beforeState = value.slice(0, stateZip.index).replace(/[\s,]+$/, '').trim();
+  const parts = beforeState.split(',').map(part => part.trim()).filter(Boolean);
+  if (parts.length >= 2) return `${parts.slice(0, -1).join(', ')}, ${parts[parts.length - 1]}, ${state} ${zip}`;
+  const cityNames = ['San Ramon','Walnut Creek','Pleasanton','Lafayette','Danville','Dublin','Moraga','Orinda','Alamo'];
+  const cityAtEnd = cityNames.find(city => new RegExp(`\\s${city.replace(/ /g, '\\s+')}\\s*$`, 'i').test(beforeState));
+  if (cityAtEnd) {
+    const street = beforeState.replace(new RegExp(`\\s${cityAtEnd.replace(/ /g, '\\s+')}\\s*$`, 'i'), '').trim();
+    if (street) return `${street}, ${cityAtEnd}, ${state} ${zip}`;
+  }
+  const inferredCity = knownCityForZip(zip);
+  if (inferredCity && beforeState) return `${beforeState}, ${inferredCity}, ${state} ${zip}`;
+  return `${beforeState}, ${state} ${zip}`;
 }
 function getAddressValidationMessage(address='', label='address'){
   const value = normalizeAddressForValidation(address);
