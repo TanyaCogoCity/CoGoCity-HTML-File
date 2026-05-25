@@ -86,15 +86,18 @@ router.post('/start', requireAuth, async (req, res) => {
 
     const existingTx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
     if (!existingTx) {
-      const total = Number(project.totalAmount || 0);
-      const platformFee = Number((total * 0.1).toFixed(2));
-      const studentPayout = Number((total - platformFee).toFixed(2));
+      const workTotal = Number(project.totalAmount || 0);
+      const employerFee = Number((workTotal * 0.1).toFixed(2));
+      const studentFee = Number((workTotal * 0.1).toFixed(2));
+      const amountTotal = Number((workTotal + employerFee).toFixed(2));
+      const platformFee = Number((employerFee + studentFee).toFixed(2));
+      const studentPayout = Number((workTotal - studentFee).toFixed(2));
       await prisma.transaction.create({
         data: {
           projectId: project.id,
           payerId: project.employerId,
           payeeId: project.studentId,
-          amountTotal: total,
+          amountTotal,
           platformFee,
           studentPayout,
           status: 'pending',
@@ -174,9 +177,12 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
   if (tx) {
-    const platformFee = Number((totalAmount * 0.1).toFixed(2));
-    const studentPayout = Number((totalAmount - platformFee).toFixed(2));
-    await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: totalAmount, platformFee, studentPayout } });
+    const employerFee = Number((totalAmount * 0.1).toFixed(2));
+    const studentFee = Number((totalAmount * 0.1).toFixed(2));
+    const amountTotal = Number((totalAmount + employerFee).toFixed(2));
+    const platformFee = Number((employerFee + studentFee).toFixed(2));
+    const studentPayout = Number((totalAmount - studentFee).toFixed(2));
+    await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal, platformFee, studentPayout } });
   }
 
   await createNotification({

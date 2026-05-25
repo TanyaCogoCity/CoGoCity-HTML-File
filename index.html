@@ -1188,6 +1188,41 @@ async function captureBackendStripePayment(project={}, amountTotal=null){
     body: JSON.stringify(payload)
   });
 }
+async function createManualProjectStripePayment(project={}, breakdown={}){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken()) return null;
+  return backendAuthRequest('/stripe/manual-project-payment-intent', {
+    method:'POST',
+    body: JSON.stringify({
+      project_id: project.id || project.project_id || '',
+      job_title: project.jobTitle || project.title || 'CoGo City project',
+      student_user_id: project.studentUserId || project.student_id || '',
+      work_total: breakdown.workTotal,
+      amount_total: breakdown.employerTotal,
+      student_payout: breakdown.studentPayout,
+      platform_fee_total: breakdown.platformFeeTotal
+    })
+  });
+}
+async function captureManualProjectStripePayment(project={}, amountTotal=null){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !project.stripe_payment_intent_id) return null;
+  const payload = { payment_intent_id: project.stripe_payment_intent_id };
+  if (amountTotal) payload.amount_total = amountTotal;
+  return backendAuthRequest('/stripe/capture-manual-project-payment-intent', {
+    method:'POST',
+    body: JSON.stringify(payload)
+  });
+}
+async function transferManualProjectStripePayout(project={}){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !project.stripe_payment_intent_id || !project.studentUserId || !project.studentPayout) return null;
+  return backendAuthRequest('/stripe/manual-project-transfer', {
+    method:'POST',
+    body: JSON.stringify({
+      payment_intent_id: project.stripe_payment_intent_id,
+      student_user_id: project.studentUserId,
+      amount: project.studentPayout
+    })
+  });
+}
 
 let stripeJsPromise = null;
 let stripeClient = null;
@@ -12417,7 +12452,7 @@ function confirmSendOffer(appId){
   toast('Offer sent.');
   renderDashboard();
 }
-function startProject(appId){
+async function startProject(appId){
   if (!requireEmployerPaymentSetup('start a project')) return;
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
@@ -12434,10 +12469,35 @@ function startProject(appId){
   const estimatedSubtotal = estimatedBreakdown.workTotal;
   const estimatedPlatformFee = estimatedBreakdown.employerCommissionAmount;
   const estimatedEmployerTotal = estimatedBreakdown.employerTotal;
-  const paymentAttempt = attemptEscrowAuthorization(a, estimatedEmployerTotal);
-  if (!paymentAttempt.success) {
-    openPaymentFailureModal(appId, paymentAttempt.reason);
-    return;
+  const projectId = uid('proj');
+  let paymentAttempt = null;
+  if (STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      const stripePayment = await createManualProjectStripePayment({
+        id: projectId,
+        jobTitle: a.jobTitle,
+        studentUserId: a.studentUserId
+      }, estimatedBreakdown);
+      paymentAttempt = {
+        success:true,
+        escrowStatus: stripePayment && stripePayment.status === 'funded' ? 'held' : 'pending',
+        provider:'stripe',
+        mode:'stripe_manual_capture',
+        paymentIntentId: stripePayment && stripePayment.payment_intent_id,
+        chargeId:''
+      };
+      toast('Stripe test payment authorized and held in escrow.');
+    } catch (stripeError) {
+      console.warn('Stripe project authorization failed', stripeError);
+      toast(stripeError.message || 'Stripe test payment authorization failed. Please check payment setup and try again.');
+      return;
+    }
+  } else {
+    paymentAttempt = attemptEscrowAuthorization(a, estimatedEmployerTotal);
+    if (!paymentAttempt.success) {
+      openPaymentFailureModal(appId, paymentAttempt.reason);
+      return;
+    }
   }
   const projectSnapshot = {
     title: a.jobTitle,
@@ -12457,7 +12517,6 @@ function startProject(appId){
     <div>Final hours may be adjusted and confirmed before payment release.</div>
   `;
 
-  const projectId = uid('proj');
   projects.push({
     id: projectId,
     project_id: projectId,
@@ -12638,7 +12697,11 @@ async function approveFinalInvoice(projectId){
   const isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
   if (STRIPE_ENABLED && p.stripe_payment_intent_id && !isLocalPaymentReference && backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      const captured = await captureBackendStripePayment(p);
+      const authorizedAmount = Number(p.escrowAmount || p.estimatedEmployerTotal || finalBreakdown.employerTotal || 0);
+      const captureAmount = authorizedAmount > 0 ? Math.min(Number(finalBreakdown.employerTotal || 0), authorizedAmount) : null;
+      const captured = p.backendSource
+        ? await captureBackendStripePayment(p)
+        : await captureManualProjectStripePayment(p, captureAmount);
       if (captured) {
         p.payment_status = captured.status || 'paid';
         p.stripe_payment_intent_id = captured.payment_intent_id || p.stripe_payment_intent_id;
@@ -12689,17 +12752,32 @@ async function approveFinalInvoice(projectId){
   } else {
     p.reconciliation_status = 'no_adjustment_needed';
   }
-  const payoutTransfer = recordLocalPayoutTransfer({
-    amount: p.studentPayout,
-    user_id: p.studentUserId,
-    project_id: p.id,
-    kind_detail: 'project_student_payout',
-    job_title: p.jobTitle,
-    stripe_payment_intent_id: p.stripe_payment_intent_id || ''
-  });
-  p.stripe_transfer_id = payoutTransfer.event ? payoutTransfer.event.stripe_transfer_id : '';
+  let payoutReleased = true;
+  let payoutTransfer = null;
+  const hasRealStripePayment = STRIPE_ENABLED && p.stripe_payment_intent_id && !isLocalPaymentReference && backendAuthEnabled() && getBackendAccessToken();
+  if (hasRealStripePayment && !p.backendSource) {
+    try {
+      const stripeTransfer = await transferManualProjectStripePayout(p);
+      p.stripe_transfer_id = stripeTransfer && stripeTransfer.transfer_id ? stripeTransfer.transfer_id : '';
+    } catch (error) {
+      payoutReleased = false;
+      p.payout_error = error.message || 'Stripe payout transfer could not be created.';
+      console.warn('Stripe payout transfer failed', error);
+      toast(`${p.payout_error} Captured payment is visible in Stripe; payout remains pending.`);
+    }
+  } else {
+    payoutTransfer = recordLocalPayoutTransfer({
+      amount: p.studentPayout,
+      user_id: p.studentUserId,
+      project_id: p.id,
+      kind_detail: 'project_student_payout',
+      job_title: p.jobTitle,
+      stripe_payment_intent_id: p.stripe_payment_intent_id || ''
+    });
+    p.stripe_transfer_id = payoutTransfer.event ? payoutTransfer.event.stripe_transfer_id : '';
+  }
   p.payment_status = 'completed';
-  p.payout_status = 'released';
+  p.payout_status = payoutReleased ? 'released' : 'pending_stripe_connect';
   p.reconciliation = diff === 0
     ? `Final invoice approved at $${p.finalTotal}.`
     : diff < 0
@@ -12708,7 +12786,7 @@ async function approveFinalInvoice(projectId){
 
   const students = getStudents();
   const student = students.find(s => s.userId === p.studentUserId);
-  if (student) {
+  if (student && payoutReleased) {
     student.balance = Number((Number(student.balance || 0) + Number(p.studentPayout || 0)).toFixed(2));
     saveStudents(students);
   }
@@ -12740,8 +12818,8 @@ async function approveFinalInvoice(projectId){
     platform_fee_total: Number(p.platformFeeTotal || 0),
     platform_fee: Number(p.studentPlatformFee || 0),
     payout_amount: Number(p.studentPayout || 0),
-    status: 'paid',
-    status_history: ['funds_secured','final_invoice_approved','paid'],
+    status: payoutReleased ? 'paid' : 'payment_captured_payout_pending',
+    status_history: payoutReleased ? ['funds_secured','final_invoice_approved','paid'] : ['funds_secured','final_invoice_approved','payment_captured','payout_pending'],
     stripe_payment_intent_id: p.stripe_payment_intent_id || '',
     stripe_charge_id: p.stripe_charge_id || '',
     stripe_transfer_id: p.stripe_transfer_id || '',

@@ -788,6 +788,123 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
   }
 });
 
+
+router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can fund project payments');
+
+  const amountTotal = Number(req.body?.amount_total ?? req.body?.amountTotal ?? 0);
+  const workTotal = Number(req.body?.work_total ?? req.body?.workTotal ?? 0);
+  const studentPayout = Number(req.body?.student_payout ?? req.body?.studentPayout ?? 0);
+  const platformFeeTotal = Number(req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? 0);
+  const projectId = String(req.body?.project_id || req.body?.projectId || '').trim();
+  const studentUserId = String(req.body?.student_user_id || req.body?.studentUserId || req.body?.payee_id || req.body?.payeeId || '').trim();
+  const jobTitle = String(req.body?.job_title || req.body?.jobTitle || 'CoGo City project').trim();
+  if (!Number.isFinite(amountTotal) || amountTotal <= 0) return fail(res, 400, 'amount_total must be greater than 0');
+  if (!req.user.stripeCustomerId || !req.user.stripeDefaultPaymentMethodId) return fail(res, 409, 'Payer has not saved a Stripe test payment method');
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: toCents(amountTotal),
+        currency: 'usd',
+        customer: req.user.stripeCustomerId,
+        payment_method: req.user.stripeDefaultPaymentMethodId,
+        capture_method: 'manual',
+        confirm: true,
+        off_session: true,
+        description: `CoGo City project escrow: ${jobTitle}`,
+        metadata: {
+          type: 'project_escrow_test',
+          project_id: projectId,
+          payer_id: req.user.id,
+          payee_id: studentUserId,
+          job_title: jobTitle.slice(0, 450),
+          work_total: String(workTotal || ''),
+          amount_total: String(amountTotal),
+          student_payout: String(studentPayout || ''),
+          platform_fee_total: String(platformFeeTotal || ''),
+        },
+      },
+      { idempotencyKey: `manual-project:${req.user.id}:${projectId || jobTitle}:${amountTotal}:intent:v1` }
+    );
+
+    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.create', entityType: 'stripe_payment_intent', entityId: paymentIntent.id, payload: { amountTotal, projectId, studentUserId } });
+    return ok(res, {
+      payment_intent_id: paymentIntent.id,
+      client_secret: paymentIntent.client_secret,
+      status: paymentStatusForIntent(paymentIntent),
+      stripe_status: paymentIntent.status,
+    });
+  } catch (error) {
+    return fail(res, 400, 'Failed to create Stripe project payment intent', error.message);
+  }
+});
+
+router.post('/capture-manual-project-payment-intent', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can release project payments');
+
+  const paymentIntentId = String(req.body?.payment_intent_id || req.body?.paymentIntentId || '').trim();
+  if (!paymentIntentId) return fail(res, 400, 'payment_intent_id is required');
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.metadata?.payer_id && paymentIntent.metadata.payer_id !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
+    if (paymentIntent.status === 'succeeded') return ok(res, { payment_intent_id: paymentIntent.id, status: 'paid', stripe_status: paymentIntent.status });
+    if (paymentIntent.status !== 'requires_capture') return fail(res, 409, `Payment is not ready to capture (${paymentIntent.status})`);
+    const captureAmount = req.body?.amount_total || req.body?.amountTotal ? toCents(req.body.amount_total ?? req.body.amountTotal) : undefined;
+    const captured = await stripe.paymentIntents.capture(paymentIntent.id, captureAmount ? { amount_to_capture: captureAmount } : undefined);
+    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received } });
+    return ok(res, { payment_intent_id: captured.id, status: 'paid', stripe_status: captured.status });
+  } catch (error) {
+    return fail(res, 400, 'Failed to capture Stripe project payment', error.message);
+  }
+});
+
+router.post('/manual-project-transfer', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can release project payouts');
+
+  const paymentIntentId = String(req.body?.payment_intent_id || req.body?.paymentIntentId || '').trim();
+  const studentUserId = String(req.body?.student_user_id || req.body?.studentUserId || req.body?.payee_id || req.body?.payeeId || '').trim();
+  const amount = Number(req.body?.amount ?? req.body?.student_payout ?? req.body?.studentPayout ?? 0);
+  if (!paymentIntentId) return fail(res, 400, 'payment_intent_id is required');
+  if (!studentUserId) return fail(res, 400, 'student_user_id is required');
+  if (!Number.isFinite(amount) || amount <= 0) return fail(res, 400, 'amount must be greater than 0');
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.metadata?.payer_id && paymentIntent.metadata.payer_id !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
+    if (paymentIntent.status !== 'succeeded') return fail(res, 409, `Payment must be captured before payout transfer (${paymentIntent.status})`);
+
+    const student = await prisma.user.findUnique({ where: { id: studentUserId } });
+    if (!student?.stripeAccountId) return fail(res, 409, 'Student has not connected a Stripe payout account');
+    if (!student.stripePayoutsEnabled || !student.stripeDetailsSubmitted) return fail(res, 409, 'Student Stripe payout account is not ready');
+    const latestCharge = typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
+    const transfer = await stripe.transfers.create(
+      {
+        amount: toCents(amount),
+        currency: 'usd',
+        destination: student.stripeAccountId,
+        source_transaction: latestCharge || undefined,
+        metadata: {
+          type: 'project_student_payout_test',
+          payment_intent_id: paymentIntent.id,
+          payer_id: req.user.id,
+          payee_id: student.id,
+          project_id: paymentIntent.metadata?.project_id || '',
+        },
+      },
+      { idempotencyKey: `manual-project:${paymentIntent.id}:student:${student.id}:transfer:v1` }
+    );
+    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.transfer.create', entityType: 'stripe_transfer', entityId: transfer.id, payload: { paymentIntentId, studentUserId, amount } });
+    return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid' });
+  } catch (error) {
+    return fail(res, 400, 'Failed to transfer Stripe project payout', error.message);
+  }
+});
+
 router.post('/transfer-payout', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
   if (req.user.role !== 'admin') return fail(res, 403, 'Only admins can transfer payouts');
