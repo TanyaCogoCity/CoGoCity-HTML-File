@@ -5654,8 +5654,16 @@ async function publishStudentSignupProfile(){
   renderPage();
   setTimeout(() => openPostSignupStripeOnboardingPrompt('connect'), 250);
 }
+function normalizeAddressForValidation(address=''){
+  return String(address || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\bSuit\s+(?=\w)/gi, 'Suite ')
+    .replace(/\bSte\.?(?=\s*\w)/gi, 'Suite')
+    .replace(/\s*,\s*/g, ', ');
+}
 function getAddressValidationMessage(address='', label='address'){
-  const value = String(address || '').trim().replace(/\s+/g, ' ');
+  const value = normalizeAddressForValidation(address);
   const field = label || 'address';
   const fieldLabel = field.charAt(0).toUpperCase() + field.slice(1);
   if (!value) return `Please enter a complete ${field}.`;
@@ -5741,23 +5749,24 @@ function initGoogleAddressFields(){
   ['studentFlowAddress','employerSignupAddress','employerBusinessAddress','migStudentAddress','migAddress','migBusinessAddress','adminEditUserAddress'].forEach(id => attachGoogleAddressAutocomplete(id));
 }
 async function validateAddressExists(address='', inputId='', label='address'){
-  const basicProblem = getAddressValidationMessage(address, label);
+  const normalizedAddress = normalizeAddressForValidation(address);
+  const basicProblem = getAddressValidationMessage(normalizedAddress, label);
   if (basicProblem) return { ok:false, message:basicProblem };
   const input = inputId ? document.getElementById(inputId) : null;
   if (input && input.dataset.googleAddressValidated === 'true' && input.dataset.googleFormattedAddress) {
     return { ok:true, formattedAddress: input.dataset.googleFormattedAddress };
   }
   const ready = await ensureGooglePlacesLoaded();
-  if (!ready) return { ok:true, formattedAddress: migrationFormatUsAddress(address), warning:'Google address validation is not configured yet, so CoGo City used strict local address formatting.' };
+  if (!ready) return { ok:true, formattedAddress: migrationFormatUsAddress(normalizedAddress), warning:'Google address validation is not configured yet, so CoGo City used strict local address formatting.' };
   return new Promise(resolve => {
     const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ address, componentRestrictions:{ country:'US' } }, (results, status) => {
+    geocoder.geocode({ address: normalizedAddress, componentRestrictions:{ country:'US' } }, (results, status) => {
       const result = (results || [])[0];
-      if (status !== 'OK' || !result) return resolve({ ok:true, formattedAddress: migrationFormatUsAddress(address), warning:`Google could not verify this ${label}, so CoGoCity accepted the address format you entered.` });
-      if (!addressHasRequiredGoogleParts(result.address_components || [])) return resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(address), warning:`Google returned a partial match for this ${label}, so CoGoCity accepted the address format you entered.` });
+      if (status !== 'OK' || !result) return resolve({ ok:true, formattedAddress: migrationFormatUsAddress(normalizedAddress), warning:`Google could not verify this ${label}, so CoGoCity accepted the address format you entered.` });
+      if (!addressHasRequiredGoogleParts(result.address_components || [])) return resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(normalizedAddress), warning:`Google returned a partial match for this ${label}, so CoGoCity accepted the address format you entered.` });
       const locationType = result.geometry && result.geometry.location_type;
-      if (!['ROOFTOP','RANGE_INTERPOLATED'].includes(locationType)) return resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(address), warning:`Google returned an approximate match for this ${label}, so CoGoCity accepted the address format you entered.` });
-      resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(address) });
+      if (!['ROOFTOP','RANGE_INTERPOLATED'].includes(locationType)) return resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(normalizedAddress), warning:`Google returned an approximate match for this ${label}, so CoGoCity accepted the address format you entered.` });
+      resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(normalizedAddress) });
     });
   });
 }
