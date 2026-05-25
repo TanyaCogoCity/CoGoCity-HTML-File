@@ -10663,8 +10663,9 @@ async function submitStudentMigrationOnboarding(){
   markMigrationOnboardingComplete();
   studentProfileTab = 'all';
   dashSection = 'profile';
-  toast('Profile confirmed. Please review how it looks.');
-  renderDashboard();
+  toast('Profile confirmed. Opening your public profile preview.');
+  location.hash = getProfileUrl((currentUser || {}).id);
+  renderPage();
 }
 function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=false){
   return `
@@ -10742,8 +10743,9 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   markMigrationOnboardingComplete();
   employerProfileTab = 'all';
   dashSection = 'profile';
-  toast('Profile confirmed. Please review how it looks.');
-  renderDashboard();
+  toast('Profile confirmed. Opening your public profile preview.');
+  location.hash = getProfileUrl((currentUser || {}).id);
+  renderPage();
 }
 
 
