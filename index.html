@@ -1679,14 +1679,16 @@ function mapBackendUser(apiUser={}, fallback={}){
   const display = apiUser.display_name || apiUser.displayName || fallback.name || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User';
   const profile = apiUser.profile || apiUser.userProfile || {};
   const metadata = profile.metadata || {};
-  const businessProfile = profile.businessName || profile.business_name || fallback.businessProfile ? Object.assign({}, fallback.businessProfile || {}, {
+  const role = apiUser.role || fallback.role || 'student';
+  const isBusinessRole = role === 'employer' || profile.type === 'business';
+  const businessProfile = isBusinessRole && (profile.businessName || profile.business_name || fallback.businessProfile) ? Object.assign({}, fallback.businessProfile || {}, {
     name: profile.businessName || profile.business_name || fallback.businessProfile?.name || fallback.company || '',
     about: profile.businessAbout || profile.business_about || fallback.businessProfile?.about || '',
     phone: profile.businessPhone || profile.business_phone || fallback.businessProfile?.phone || '',
     address: profile.businessAddress || profile.business_address || fallback.businessProfile?.address || '',
     city: profile.businessCity || profile.business_city || fallback.businessProfile?.city || '',
     logo: metadata.business_logo || fallback.businessProfile?.logo || ''
-  }) : (fallback.businessProfile || null);
+  }) : null;
   const merged = Object.assign({}, fallback, {
     id: apiUser.id || fallback.id || uid('u'),
     backendUserId: apiUser.id || fallback.backendUserId || '',
@@ -1695,8 +1697,8 @@ function mapBackendUser(apiUser={}, fallback={}){
     lastName: last,
     name: display,
     publicName: fallback.publicName || display,
-    role: apiUser.role || fallback.role || 'student',
-    type: profile.type || fallback.type || (apiUser.role === 'neighbor' ? 'neighbor' : (apiUser.role === 'employer' ? 'business' : fallback.type)),
+    role,
+    type: role === 'neighbor' ? 'neighbor' : (role === 'employer' ? 'business' : (profile.type || fallback.type)),
     status: apiUser.status || fallback.status || 'active',
     city: apiUser.city || fallback.city || profile.businessCity || profile.business_city || '',
     phone: apiUser.phone || fallback.phone || '',
@@ -14099,7 +14101,7 @@ function openAdminUserEditModal(userId){
     </div>
     <div class="row">
       <div class="field"><label>Role</label>
-        <select id="adminEditUserRoleValue">
+        <select id="adminEditUserRoleValue" onchange="syncAdminUserEditDraftFromForm();openAdminUserEditModal('${esc(sourceUser.id)}')">
           <option value="student" ${draft.roleValue === 'student' ? 'selected' : ''}>Student</option>
           <option value="employer" ${draft.roleValue === 'employer' ? 'selected' : ''}>Employer</option>
           <option value="neighbor" ${draft.roleValue === 'neighbor' ? 'selected' : ''}>Neighbor</option>
@@ -14163,11 +14165,18 @@ function openAdminUserEditModal(userId){
       <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
         <div style="font-weight:800;margin-bottom:10px">Business Details</div>
         <div class="field"><label>Company / Business Name</label><input id="adminEditBusinessName" value="${esc(draft.company || '')}"></div>
-        <div class="field"><label>About</label><textarea id="adminEditBusinessAbout" rows="3">${esc(draft.businessAbout || '')}</textarea></div>
+        <div class="field"><label>About the Business</label><textarea id="adminEditBusinessAbout" rows="3">${esc(draft.businessAbout || '')}</textarea></div>
         <input type="hidden" id="adminEditBusinessLogo" value="${esc(draft.businessLogo || '')}">
         <div id="admin-edit-business-logo-preview" style="margin-bottom:12px">${renderEditableSingleImage(draft.businessLogo || '', 'Business logo', "clearAdminModalSingleImage('adminEditBusinessLogo','admin-edit-business-logo-preview','Business logo','No business logo selected yet.')", 96, 'No business logo selected yet.')}</div>
         <div class="field"><label>Upload Business Logo</label><input type="file" accept="image/*" onchange="handleAdminModalSingleImageUpload(this,'adminEditBusinessLogo','admin-edit-business-logo-preview','business_logo','Business logo','No business logo selected yet.')"></div>
         <div style="margin:-6px 0 0"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminUserEditImageLibrary('single','businessLogo',1)">Select from Library</button></div>
+      </div>
+    ` : ''}
+    ${draft.roleValue === 'neighbor' ? `
+      <div class="card" style="padding:14px;margin:16px 0;background:#F9FAFB;border:1px solid var(--border)">
+        <div style="font-weight:800;margin-bottom:10px">Neighbor Details</div>
+        <div class="small muted" style="margin-bottom:12px">Business fields are hidden for neighbors. Use Public Name and About for the public neighbor profile.</div>
+        <div class="field"><label>About the Neighbor</label><textarea id="adminEditBusinessAbout" rows="3">${esc(draft.businessAbout || '')}</textarea></div>
       </div>
     ` : ''}
     <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
@@ -14232,6 +14241,9 @@ async function saveAdminUserEdit(userId){
       address:finalAddress,
       city:user.city
     });
+  } else if (user.role === 'neighbor') {
+    user.about = draft.businessAbout || user.about || '';
+    user.company = '';
   }
   const students = getStudents();
   let student = students.find(profile => profile.userId === user.id);
@@ -14321,6 +14333,9 @@ async function saveAdminUserEdit(userId){
             business_name:user.company || null,
             business_about:user.businessProfile?.about || null,
             business_logo:user.businessProfile?.logo || null
+          } : {}),
+          ...(nextRole === 'neighbor' ? {
+            about:user.about || null
           } : {})
         })
       });

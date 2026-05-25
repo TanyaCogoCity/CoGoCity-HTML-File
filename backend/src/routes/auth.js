@@ -99,6 +99,7 @@ const adminUserUpdateSchema = z.object({
   status: z.enum(['active', 'suspended']).optional(),
   city: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
+  about: z.string().trim().optional().nullable(),
   photo: z.string().trim().optional().nullable(),
   profile_image_id: z.string().trim().optional().nullable(),
   profileImageId: z.string().trim().optional().nullable(),
@@ -519,13 +520,15 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
       if (Object.keys(data).length) {
         await tx.user.update({ where: { id: targetId }, data });
       }
-      if (payload.address !== undefined || photo !== undefined || businessName !== undefined || businessAbout !== undefined || businessLogo !== undefined || Object.keys(profileFlagUpdates).length) {
+      if (payload.address !== undefined || payload.about !== undefined || payload.role !== undefined || photo !== undefined || businessName !== undefined || businessAbout !== undefined || businessLogo !== undefined || Object.keys(profileFlagUpdates).length) {
         const existingProfile = await tx.userProfile.findUnique({ where: { userId: targetId } });
         const metadata = Object.assign({}, userProfileMetadata(existingProfile), profileFlagUpdates);
         if (photo !== undefined) metadata.photo = photo || '';
         if (businessLogo !== undefined) metadata.business_logo = businessLogo || '';
         const profileData = { metadata };
         if (payload.address !== undefined) profileData.address = payload.address || null;
+        if (payload.about !== undefined) profileData.about = payload.about || null;
+        if (payload.role !== undefined) profileData.type = payload.role === 'employer' ? 'business' : (payload.role === 'neighbor' ? 'neighbor' : null);
         if (businessName !== undefined) profileData.businessName = businessName || null;
         if (businessAbout !== undefined) profileData.businessAbout = businessAbout || null;
         if (payload.phone !== undefined) profileData.businessPhone = payload.phone || null;
