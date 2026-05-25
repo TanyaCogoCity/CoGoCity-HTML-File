@@ -3832,8 +3832,35 @@ function moderateContent(text=''){
   ];
   return !patterns.some(re => re.test(String(text || '')));
 }
-function blockTextCheck(text){
-  if (detectContactInfo(text)) { toast('Contact info is blocked until a job is confirmed.'); return false; }
+function canExchangeProjectContactInfo(partnerId='', threadId='', project=null){
+  if (!currentUser || !partnerId) return false;
+  const currentId = String(currentUser.id || '');
+  const otherId = String(partnerId || '');
+  const allowedStatuses = ['accepted','funded','in_progress','awaiting_employer_approval','completed'];
+  const projectId = String(threadId || '').startsWith('project:') ? String(threadId).replace('project:','') : '';
+  const projects = getProjects();
+  const matchedProject = project || projects.find(item => String(item.id || '') === projectId) || projects.find(item => {
+    const employerId = String(item.employerId || item.ownerId || '');
+    const studentId = String(item.studentUserId || item.student_id || '');
+    const betweenUsers = (employerId === currentId && studentId === otherId) || (employerId === otherId && studentId === currentId);
+    return betweenUsers && allowedStatuses.includes(String(item.status || ''));
+  });
+  if (matchedProject) {
+    const employerId = String(matchedProject.employerId || matchedProject.ownerId || '');
+    const studentId = String(matchedProject.studentUserId || matchedProject.student_id || '');
+    const betweenUsers = (employerId === currentId && studentId === otherId) || (employerId === otherId && studentId === currentId);
+    if (betweenUsers && allowedStatuses.includes(String(matchedProject.status || ''))) return true;
+  }
+  const apps = getApplications();
+  return apps.some(app => {
+    const employerId = String(app.employerId || app.employer_id || '');
+    const studentId = String(app.studentUserId || app.student_id || '');
+    const betweenUsers = (employerId === currentId && studentId === otherId) || (employerId === otherId && studentId === currentId);
+    return betweenUsers && ['accepted','project_started','in_progress'].includes(String(app.status || ''));
+  });
+}
+function blockTextCheck(text, options={}){
+  if (detectContactInfo(text) && !options.allowContactInfo) { toast('Contact info is blocked until a job is confirmed.'); return false; }
   if (!moderateContent(text)) { toast('Please keep content appropriate for minors.'); return false; }
   return true;
 }
@@ -12499,7 +12526,7 @@ function renderEmployerProjectCard(p, listIndex=0){
   if (p.status === 'accepted' || p.status === 'funded') actions.push(`<button class="btn btn-blue btn-sm" onclick="activateProject('${esc(p.id)}')">Start Project</button>`);
   if (p.status === 'awaiting_employer_approval') actions.push(`<button class="btn btn-blue btn-sm" onclick="openEmployerApproval('${esc(p.id)}')">Review Final Invoice</button>`);
   if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
-  actions.push(`<button class="btn btn-outline btn-sm" onclick="openThread('${esc(p.studentUserId)}')">Message Student</button>`);
+  actions.push(`<button class="btn btn-outline btn-sm" onclick="openProjectJobChat('${esc(p.id)}','${esc(p.studentUserId)}')">Open Job Chat</button>`);
   const collapsed = isProjectCollapsed(p.id, listIndex);
 
   return `
@@ -13454,7 +13481,6 @@ async function sendMessageToActive(){
   const input = document.getElementById('msgInput');
   const content = (input.value || '').trim();
   if (!content) return;
-  if (!blockTextCheck(content)) return;
   const parts = String(activeThreadUserId || '').split('::');
   const partnerId = parts[0] || activeThreadUserId;
   const threadId = parts[1] || getDirectThreadId(currentUser.id, partnerId);
@@ -13467,6 +13493,7 @@ async function sendMessageToActive(){
   const activeProject = threadId.startsWith('project:')
     ? getProjects().find(project => String(project.id) === String(threadId.replace('project:','')))
     : getProjectForUsers(currentUser.id, partner.id);
+  if (!blockTextCheck(content, { allowContactInfo: canExchangeProjectContactInfo(partner.id, threadId, activeProject) })) return;
   const nextThreadLabel = existing && existing.thread_label
     ? existing.thread_label
     : (threadId.startsWith('project:') ? 'Job Chat' : '');
