@@ -12702,13 +12702,13 @@ function openEmployerApproval(projectId){
       <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(breakdown, 'Actual')}</div>
       <div class="small muted" style="margin-top:12px">Approving confirms the completed work and releases payment through CoGo City.</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
-        <button class="btn btn-green" onclick="approveFinalInvoice('${esc(projectId)}')">Approve & Release Payment</button>
+        <button class="btn btn-green" onclick="this.disabled=true;this.textContent='Approving...';approveFinalInvoice('${esc(projectId)}', this)">Approve & Release Payment</button>
         <button class="btn btn-outline" onclick="openRequestChangesModal('${esc(projectId)}')">Request Changes</button>
       </div>
     </div>
   `, '620px');
 }
-async function approveFinalInvoice(projectId){
+async function approveFinalInvoice(projectId, buttonEl=null){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
@@ -12737,6 +12737,10 @@ async function approveFinalInvoice(projectId){
     } catch (error) {
       delete p.approvalInProgress;
       saveProjects(projects);
+      if (buttonEl) {
+        buttonEl.disabled = false;
+        buttonEl.textContent = 'Approve & Release Payment';
+      }
       console.warn('Stripe capture failed', error);
       toast(error.message || 'Stripe payment capture failed. Please try again before completing this project.');
       return;
