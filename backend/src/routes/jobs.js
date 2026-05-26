@@ -250,8 +250,8 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
         userId: job.createdBy,
         type: notificationType('application'),
         title: 'New application received',
-        body: `${req.user.displayName} applied to ${job.title}. Open your dashboard to review the application.`,
-        link: `/dashboard?section=my_jobs&job=${job.id}`,
+        body: `${req.user.displayName} applied to ${job.title}. Open your dashboard to review the resume.`,
+        link: `/dashboard?section=my_jobs&employerMyJobsTab=applications&job=${job.id}`,
       },
     });
 

@@ -4091,19 +4091,27 @@ function goToPostJob(){
     if (input) input.focus();
   }, 80);
 }
+function dashboardLinkForAction(action={}){
+  if (!action || action.type !== 'dashboard') return '/dashboard?section=notifications';
+  const params = new URLSearchParams();
+  if (action.section) params.set('section', action.section);
+  if (action.employerMyJobsTab) params.set('employerMyJobsTab', action.employerMyJobsTab);
+  if (action.employerTab) params.set('employerTab', action.employerTab);
+  if (action.studentJobsTab) params.set('studentJobsTab', action.studentJobsTab);
+  if (action.jobId) params.set('job', action.jobId);
+  const query = params.toString();
+  return `/dashboard${query ? `?${query}` : ''}`;
+}
 function getNotificationFallbackLink(notification={}){
   if (notification.link) return notification.link;
   const action = notification.action || {};
-  if (action.type === 'dashboard') {
-    const section = action.section ? `?section=${encodeURIComponent(action.section)}` : '';
-    return `/dashboard${section}`;
-  }
+  if (action.type === 'dashboard') return dashboardLinkForAction(action);
   return '/dashboard?section=notifications';
 }
 function pushNotif(userId, title, action=''){
   const items = getNotifications(userId);
   const link = action && action.type === 'dashboard'
-    ? `/dashboard${action.section ? `?section=${encodeURIComponent(action.section)}` : ''}`
+    ? dashboardLinkForAction(action)
     : '/dashboard?section=notifications';
   const dedupeKey = action && typeof action === 'object' ? String(action.dedupeKey || '').trim() : '';
   if (dedupeKey && items.some(item => item && item.dedupeKey === dedupeKey)) return;
@@ -4699,6 +4707,12 @@ function isNotificationActionCompleted(notification){
 function notificationOpenButtonClass(notification){
   return (notification.viewedAt || isNotificationActionCompleted(notification)) ? 'btn btn-outline btn-sm' : 'btn btn-blue btn-sm';
 }
+function notificationActionLabel(notification={}){
+  const action = notification.action || {};
+  const text = `${notification.title || ''} ${notification.body || ''} ${notification.link || ''}`.toLowerCase();
+  if ((action.section === 'my_jobs' && action.employerMyJobsTab === 'applications') || (text.includes('applied') && (text.includes('resume') || text.includes('application')))) return 'See Resumes';
+  return 'Open CoGoCity';
+}
 function dedupeVisibleNotifications(items=[]){
   const seen = new Map();
   return (Array.isArray(items) ? items : []).filter(item => {
@@ -4728,7 +4742,7 @@ function openNotifications(){
           <div style="font-weight:700">${esc(n.title)}</div>
           <div class="muted small">${timeAgo(n.createdAt)}</div>
         </div>
-        ${(n.action || getNotificationFallbackLink(n)) ? `<button class="${notificationOpenButtonClass(n)}" onclick="runNotifAction('${esc(n.id)}')">Open CoGoCity</button>` : ''}
+        ${(n.action || getNotificationFallbackLink(n)) ? `<button class="${notificationOpenButtonClass(n)}" onclick="runNotifAction('${esc(n.id)}')">${esc(notificationActionLabel(n))}</button>` : ''}
       </div>
     </div>
   `).join('') : `<div class="muted">No notifications yet.</div>`;
@@ -4765,6 +4779,9 @@ function runNotifAction(id){
       const query = link.split('?')[1] || '';
       const params = new URLSearchParams(query);
       dashSection = params.get('section') || 'notifications';
+      if (params.get('employerMyJobsTab')) employerMyJobsTab = params.get('employerMyJobsTab');
+      if (params.get('employerTab')) employerTab = params.get('employerTab');
+      if (params.get('studentJobsTab')) studentJobsTab = params.get('studentJobsTab');
       goDashboard();
     } else if (link.startsWith('#')) {
       location.hash = link;
@@ -7239,7 +7256,7 @@ async function submitDirectJobApplication(jobId=''){
     thread_id: `direct_job:${job.id}`,
     thread_label: `Direct Hire Job: ${job.job_title}`
   });
-  pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, { type:'dashboard', section:'my_jobs' });
+  pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications', jobId:job.id });
   directJobApplyDraft = null;
   closeModal();
   toast('Application submitted.');
@@ -12261,14 +12278,14 @@ function renderEmployerMyJobs(el){
     return [app.student_name, app.message, job && job.job_title].join(' ').toLowerCase().includes(query);
   });
   const companyName = getEmployerCompanyName(currentUser);
-  const searchPlaceholder = employerMyJobsTab === 'applications' ? 'Search applicants' : employerMyJobsTab === 'manage' ? 'Search jobs' : 'Search jobs or applicants';
+  const searchPlaceholder = employerMyJobsTab === 'applications' ? 'Search resumes' : employerMyJobsTab === 'manage' ? 'Search jobs' : 'Search jobs or applicants';
   el.innerHTML = `
     <div class="section-title">My Jobs</div>
     <div class="subtabs">
       <button class="pill ${employerMyJobsTab==='all'?'active':''}" onclick="employerMyJobsTab='all';renderDashboard()">All</button>
       <button class="pill ${employerMyJobsTab==='create'?'active':''}" onclick="employerMyJobsTab='create';renderDashboard()">Create Job</button>
       <button class="pill ${employerMyJobsTab==='manage'?'active':''}" onclick="employerMyJobsTab='manage';renderDashboard()">Manage Jobs</button>
-      <button class="pill ${employerMyJobsTab==='applications'?'active':''}" onclick="employerMyJobsTab='applications';renderDashboard()">Applications</button>
+      <button class="pill ${employerMyJobsTab==='applications'?'active':''}" onclick="employerMyJobsTab='applications';renderDashboard()">Resumes</button>
     </div>
     ${employerMyJobsTab !== 'create' ? `
       <div class="card form-card" style="margin-bottom:14px">
