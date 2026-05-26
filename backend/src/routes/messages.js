@@ -71,7 +71,7 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const payload = normalizeMessagePayload(req.body || {});
     if (!payload.messageText.trim()) return fail(res, 400, 'message is required');
-    const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: ['employer', 'neighbor'].includes(req.user.role) });
+    const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: ['employer', 'neighbor'].includes(req.user.role), requirePayout: req.user.role === 'student' });
     if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
     let conversationId = payload.conversationId;

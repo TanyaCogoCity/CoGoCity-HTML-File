@@ -1,5 +1,6 @@
 const DEFAULT_STUDENT_PLATFORM_FEE_PERCENT = 12;
 const DEFAULT_EMPLOYER_PLATFORM_FEE_PERCENT = 12;
+const DEFAULT_JOB_PLACEMENT_EMPLOYER_PLATFORM_FEE_PERCENT = 12;
 const PLATFORM_SUPPORT_FEE_VERSION = 'platform-support-admin-managed';
 
 function money(value) {
@@ -15,6 +16,10 @@ function normalizePlatformFeeSettings(settings = {}) {
   return {
     studentCommissionPct: percent(settings.studentCommissionPct, DEFAULT_STUDENT_PLATFORM_FEE_PERCENT),
     employerCommissionPct: percent(settings.employerCommissionPct, DEFAULT_EMPLOYER_PLATFORM_FEE_PERCENT),
+    jobPlacementEmployerCommissionPct: percent(
+      settings.jobPlacementEmployerCommissionPct ?? settings.employerCommissionPct,
+      DEFAULT_JOB_PLACEMENT_EMPLOYER_PLATFORM_FEE_PERCENT
+    ),
   };
 }
 
@@ -49,12 +54,32 @@ async function calculateHourlyProjectFeesFromSettings(prisma, workTotal = 0) {
   return calculateHourlyProjectFees(workTotal, settings);
 }
 
+function calculateJobPlacementFees(listingFee = 0, settings = {}) {
+  const feeSettings = normalizePlatformFeeSettings(settings);
+  const base = money(listingFee);
+  const employerPlatformFee = money(base * (feeSettings.jobPlacementEmployerCommissionPct / 100));
+  return {
+    listingFee: base,
+    employerPlatformFee,
+    employerTotal: money(base + employerPlatformFee),
+    employerCommissionPct: feeSettings.jobPlacementEmployerCommissionPct,
+  };
+}
+
+async function calculateJobPlacementFeesFromSettings(prisma, listingFee = 0) {
+  const settings = await getPlatformFeeSettings(prisma);
+  return calculateJobPlacementFees(listingFee, settings);
+}
+
 module.exports = {
   DEFAULT_STUDENT_PLATFORM_FEE_PERCENT,
   DEFAULT_EMPLOYER_PLATFORM_FEE_PERCENT,
+  DEFAULT_JOB_PLACEMENT_EMPLOYER_PLATFORM_FEE_PERCENT,
   PLATFORM_SUPPORT_FEE_VERSION,
   normalizePlatformFeeSettings,
   getPlatformFeeSettings,
   calculateHourlyProjectFees,
   calculateHourlyProjectFeesFromSettings,
+  calculateJobPlacementFees,
+  calculateJobPlacementFeesFromSettings,
 };

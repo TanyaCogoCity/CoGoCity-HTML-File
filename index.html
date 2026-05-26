@@ -642,6 +642,7 @@ let browseStudentFilters = { query: '', location: '', maxRate: '' };
 let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
 let directJobApplyDraft = null;
+
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -1332,8 +1333,8 @@ function openPostSignupStripeOnboardingPrompt(kind){
   const isPayer = kind === 'payer';
   openModal(isPayer ? 'Add Payment Method' : 'Set Up Payouts', `
     <div class="card form-card">
-      <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Secure hiring payments' : 'Get ready to receive payouts'}</div>
-      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Before hiring, add a secure payment method. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect setup. Stripe collects and stores tax identity, SSN/TIN, bank, and IRS reporting details; CoGo City stores only onboarding status.'}</div>
+      <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Add payment method' : 'Get ready to receive payouts'}</div>
+      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Add a secure payment method before messaging, booking, or registering for classes. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect setup. Stripe collects and stores tax identity, SSN/TIN, bank, and IRS reporting details; CoGo City stores only onboarding status.'}</div>
       <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled for this staging environment.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Later</button>
@@ -1345,22 +1346,67 @@ function openPostSignupStripeOnboardingPrompt(kind){
 function isEmployerLikeUser(user=currentUser){
   return !!(user && ['employer','neighbor'].includes(user.role));
 }
+function hasSavedStripePaymentMethod(user=currentUser){
+  if (!user) return false;
+  const payer = userStripeOnboarding(user).payer || {};
+  return Boolean(payer.ready);
+}
+function hasSavedLocalPaymentMethod(user=currentUser){
+  if (!user) return false;
+  const paymentMethod = user.paymentMethod || getEmployerPaymentMethod(user.id);
+  return Boolean(paymentMethod && paymentMethod.status === 'valid');
+}
+function payerPaymentSetupReady(user=currentUser){
+  if (!user || user.role === 'admin') return true;
+  if (stripeOnboardingEnabled() || user.backendAuth) return hasSavedStripePaymentMethod(user);
+  return Boolean(user.paymentSetupComplete && hasSavedLocalPaymentMethod(user));
+}
+function userPaymentSetupReady(user=currentUser){
+  return payerPaymentSetupReady(user);
+}
+function studentPayoutSetupReady(user=currentUser){
+  if (!user || user.role !== 'student') return true;
+  const connect = userStripeOnboarding(user).connect || {};
+  return Boolean(user.stripeConnectReady || connect.ready);
+}
 function employerPaymentSetupReady(user=currentUser){
   if (!isEmployerLikeUser(user)) return true;
-  const payer = userStripeOnboarding(user).payer || {};
-  return Boolean(user.paymentSetupComplete || payer.ready);
+  return payerPaymentSetupReady(user);
+}
+function requirePayerPaymentSetup(actionLabel='continue'){
+  if (!currentUser) { openLoginModal(); return false; }
+  if (payerPaymentSetupReady(currentUser)) return true;
+  toast(`Please add payment info before you ${actionLabel}.`);
+  if (stripeOnboardingEnabled()) openPostSignupStripeOnboardingPrompt('payer');
+  else { dashSection = 'profile'; goDashboard(); }
+  return false;
+}
+function requireStudentPayoutSetup(actionLabel='use the platform'){
+  if (!currentUser) { openLoginModal(); return false; }
+  if (studentPayoutSetupReady(currentUser)) return true;
+  toast(`Please complete payout setup before you ${actionLabel}.`);
+  if (stripeOnboardingEnabled()) openPostSignupStripeOnboardingPrompt('connect');
+  else { dashSection = 'profile'; goDashboard(); }
+  return false;
+}
+function requirePlatformUseReady(actionLabel='use CoGo City'){
+  if (!currentUser) { openLoginModal(); return false; }
+  if (needsMigrationOnboarding()) { toast('Please update and confirm your profile before using CoGo City.'); dashSection = 'profile'; goDashboard(); return false; }
+  if (currentUser.role === 'student') return requireStudentPayoutSetup(actionLabel);
+  if (isEmployerLikeUser(currentUser)) return requirePayerPaymentSetup(actionLabel);
+  return true;
+}
+function requirePaymentSetupForAction(actionLabel='continue'){
+  return requirePayerPaymentSetup(actionLabel);
 }
 function requireEmployerPaymentSetup(actionLabel='interact with students'){
-  if (needsMigrationOnboarding()) { toast('Please update and confirm your profile before messaging students.'); dashSection = 'profile'; goDashboard(); return false; }
-  if (!isEmployerLikeUser(currentUser) || employerPaymentSetupReady(currentUser)) return true;
-  toast(`Please add payment info before you ${actionLabel}.`);
-  openPostSignupStripeOnboardingPrompt('payer');
-  return false;
+  if (!isEmployerLikeUser(currentUser)) return true;
+  return requirePayerPaymentSetup(actionLabel);
 }
 function renderStripeOnboardingCard(){
   if (!stripeOnboardingEnabled()) return '';
   const status = userStripeOnboarding();
-  const isPayer = ['employer','neighbor','admin'].includes(currentUser.role);
+  const isPayer = isEmployerLikeUser(currentUser);
   const isPayout = ['student','admin'].includes(currentUser.role);
   const payer = status.payer || {};
   const connect = status.connect || {};
@@ -1369,7 +1415,7 @@ function renderStripeOnboardingCard(){
     <div class="card" style="padding:14px;background:#fff;margin-top:10px">
       <div class="split" style="gap:12px;align-items:center">
         <div>
-          <div style="font-weight:800">Payment method for hiring</div>
+          <div style="font-weight:800">Payment method on file</div>
           <div class="small muted">Status: ${esc(payer.ready ? 'Ready' : stripeStatusLabel(payer.payment_setup_status))}</div>
           <div class="small muted" style="margin-top:4px">Cards are saved securely; CoGo City never stores card numbers.</div>
         </div>
@@ -1385,7 +1431,10 @@ function renderStripeOnboardingCard(){
           <div class="small muted">Status: ${esc(connect.ready ? 'Ready' : stripeStatusLabel(connect.onboarding_status))}</div>
           <div class="small muted" style="margin-top:4px">Stripe Connect collects and stores bank, identity, SSN/TIN, and IRS tax-reporting details on a secure hosted page. CoGo City stores only Stripe account/status fields.</div>
         </div>
-        <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Payouts' : 'Set Up Payouts'}</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Payouts' : 'Set Up Payouts'}</button>
+          <button class="btn btn-outline btn-sm" onclick="openStripeConnectRecoveryModal()">Recovery Steps</button>
+        </div>
       </div>
     </div>
   `);
@@ -1453,19 +1502,46 @@ async function startStripeConnectOnboarding(){
     if (!link.url) throw new Error('Secure payout setup did not return an onboarding link.');
     window.location.href = link.url;
   } catch (error) {
-    toast(error.message || 'Could not start secure payout setup.');
+    openStripeConnectRecoveryModal(error.message || 'Could not start secure payout setup.');
   }
+}
+function openStripeConnectRecoveryModal(errorMessage=''){
+  openModal('Payout Setup Recovery', `
+    <div class="card form-card">
+      ${errorMessage ? `<div class="warning" style="margin-bottom:12px"><strong>Stripe Connect issue:</strong> ${esc(errorMessage)}</div>` : ''}
+      <div class="small muted" style="margin-bottom:12px">Use these steps if Stripe payout setup does not open, expires, or returns without marking payouts ready.</div>
+      <ol class="small" style="line-height:1.65;margin:0 0 14px 18px">
+        <li>Click <strong>Restart secure Stripe setup</strong> below. Stripe links are single-use and expire quickly.</li>
+        <li>Complete every required Stripe field, then return to CoGo City.</li>
+        <li>If it still fails, sign out and back in, then open Profile → Secure payment setup → Set Up Payouts.</li>
+        <li>Try a private/incognito browser window and disable popup/ad blockers for CoGo City and Stripe.</li>
+        <li>If Stripe says the account needs review, open the Stripe page again and complete the missing requirements.</li>
+      </ol>
+      <div class="small muted" style="margin-bottom:14px">CoGo City does not store bank, SSN/TIN, identity, or tax details. Those stay with Stripe Connect.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="refreshStripeOnboardingStatus({rerender:true,toast:true})">Refresh Status</button>
+        <button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Restart secure Stripe setup</button>
+      </div>
+    </div>
+  `, '640px');
 }
 function handleStripeReturnParams(){
   const query = new URLSearchParams(window.location.search || '');
   let changed = false;
   if (query.has('stripe_connect')) {
+    const connectReturnState = query.get('stripe_connect');
     if (backendAuthEnabled() && getBackendAccessToken()) {
       refreshStripeOnboardingStatus({ rerender:true, toast:false });
-      toast(query.get('stripe_connect') === 'refresh' ? 'Payout setup link refreshed. Please continue setup.' : 'Returned from secure payout setup. Status refreshed.');
+      if (connectReturnState === 'refresh') {
+        toast('That payout setup link expired. Opening a fresh Stripe link now.');
+        setTimeout(() => startStripeConnectOnboarding(), 350);
+      } else {
+        toast('Returned from secure payout setup. Status refreshed.');
+      }
     }
     query.delete('stripe_connect');
     changed = true;
+
   }
   if (query.get('stripe_status') === 'success' && query.has('stripe_job')) {
     const jobId = query.get('stripe_job') || '';
@@ -1493,6 +1569,7 @@ function handleStripeReturnParams(){
   if (!changed) return;
   const clean = `${window.location.pathname}${query.toString() ? `?${query.toString()}` : ''}${window.location.hash || '#/dashboard'}`;
   window.history.replaceState({}, '', clean);
+  if (connectReturnState === 'refresh' && backendAuthEnabled() && getBackendAccessToken()) setTimeout(() => startStripeConnectOnboarding(), 400);
 }
 function getBackendBrowseUsers(){ return ensureArray(ls('cogo_backend_browse_users')); }
 function saveBackendBrowseUsers(users){ ls('cogo_backend_browse_users', ensureArray(users).map(normalizeUserRecord)); }
@@ -3198,6 +3275,7 @@ function getPaymentSettings(){
     workshopCommissionPct: Number(saved.workshopCommissionPct ?? DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT),
     providerMode: saved.providerMode || PAYMENT_PROVIDER_MODE,
     platformSupportFeeVersion: 'platform-support-admin-managed'
+
   };
 }
 function savePaymentSettings(v){
@@ -4317,6 +4395,7 @@ function renderStudentCommissionBreakdownHtml(breakdown, label='Estimated'){
   return `
     <div class="small"><strong>${esc(label)} Work Total:</strong> ${esc(breakdown.hours)} hours \u00D7 $${esc(money(breakdown.rate))}/hr = $${esc(money(breakdown.workTotal))}</div>
     <div class="small">${esc(platformSupportFeeLabel(breakdown.studentCommissionPct))}: -$${esc(money(breakdown.studentCommissionAmount))}</div>
+
     <div class="small"><strong>You Receive:</strong> $${esc(money(breakdown.studentPayout))}</div>
   `;
 }
@@ -4324,6 +4403,7 @@ function renderEmployerCommissionBreakdownHtml(breakdown, label='Estimated'){
   return `
     <div class="small"><strong>${esc(label)} Work Total:</strong> ${esc(breakdown.hours)} hours \u00D7 $${esc(money(breakdown.rate))}/hr = $${esc(money(breakdown.workTotal))}</div>
     <div class="small">${esc(platformSupportFeeLabel(breakdown.employerCommissionPct))}: +$${esc(money(breakdown.employerCommissionAmount))}</div>
+
     <div class="small"><strong>Total Payment:</strong> $${esc(money(breakdown.employerTotal))}</div>
   `;
 }
@@ -4526,7 +4606,7 @@ function pushAdminCommissionNotification(project){
   const items = getNotifications('cogo_admin');
   items.unshift({
     id: uid('n'),
-    title: `You received $${money(commission)} total Platform Fee revenue from project ${project.jobTitle}`,
+    title: `You received $${money(commission)} total platform support fee revenue from project ${project.jobTitle}`,
     action: { type:'dashboard', section:'transactions', projectId: project.id },
     read:false,
     createdAt:new Date().toISOString()
@@ -7830,6 +7910,7 @@ function openWorkshopRegistrationFlow(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return toast('Workshop not found.');
   if (!currentUser) return openLoginModal();
+  if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
   if (currentUser.role === 'admin') return toast('Admin accounts cannot register for workshops.');
   if (currentUser.id === workshop.host_id) return toast('You cannot register for your own workshop.');
   if (!workshopCanRegister(workshop)) return toast('This workshop is full or unavailable.');
@@ -7908,6 +7989,7 @@ function normalizeWorkshopTicketQuantity(workshopId=''){
 async function completeWorkshopRegistration(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop || !currentUser) return;
+  if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
   const attendeeName = String((document.getElementById('workshopAttendeeName') || {}).value || '').trim();
   const attendeeEmail = String((document.getElementById('workshopAttendeeEmail') || {}).value || '').trim().toLowerCase();
   if (toastRequiredFields({ Name:attendeeName })) return;
@@ -10397,7 +10479,7 @@ function submitApplication(postId){
 // ---------- Direct book / offer from profile ----------
 function openStudentMessage(studentId){
   if (!currentUser) return openLoginModal();
-  if (!requireEmployerPaymentSetup('message a student')) return;
+  if (!requirePlatformUseReady('message a student')) return;
   const student = getStudents().find(x => x.id === studentId);
   if (!student) return;
   if (currentUser.id === student.userId) {
@@ -10434,7 +10516,7 @@ function openBookDirect(studentId, serviceId=''){
 }
 function openDirectMessage(userId, name){
   if (!currentUser) return openLoginModal();
-  if (!requireEmployerPaymentSetup('message a student')) return;
+  if (!requirePlatformUseReady('message a student')) return;
   const partner = getUserById(userId);
   if (!partner && !name) return toast('User not found.');
   if (String(currentUser.id) === String(userId)) {
@@ -10550,15 +10632,17 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
-  if ((needsMigrationOnboarding() || needsRequiredPaymentMethod()) && currentUser.role !== 'admin') {
+  if ((needsMigrationOnboarding() || needsRequiredPaymentMethod() || needsRequiredPayoutSetup()) && currentUser.role !== 'admin') {
     const sidebar = document.querySelector('.dashboard .sidebar');
+    const payoutRequired = needsRequiredPayoutSetup();
     if (sidebar) sidebar.innerHTML = `
       <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
-        <div style="font-weight:800;margin-bottom:6px">${needsMigrationOnboarding() ? 'Profile review required' : 'Payment method required'}</div>
-        <div class="small muted">${needsMigrationOnboarding() ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : 'Please add a credit card before posting jobs, messaging students, or taking hiring actions.'}</div>
+        <div style="font-weight:800;margin-bottom:6px">${needsMigrationOnboarding() ? 'Profile review required' : (payoutRequired ? 'Payout setup required' : 'Payment method required')}</div>
+        <div class="small muted">${needsMigrationOnboarding() ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : (payoutRequired ? 'Please complete Stripe Connect before applying, messaging, or offering student services.' : 'Please add a credit card before posting jobs, messaging students, or taking hiring actions.')}</div>
       </div>
     `;
     if (needsMigrationOnboarding()) return renderMigrationOnboarding(el);
+    if (payoutRequired) return renderPayoutSetupRequired(el);
     return renderPaymentMethodRequired(el);
   }
   if (currentUser.role === 'admin'){
@@ -10618,8 +10702,14 @@ function needsMigrationOnboarding(user=currentUser){
 }
 function needsRequiredPaymentMethod(user=currentUser){
   if (!user || user.role === 'admin' || user.role === 'student') return false;
+  if (isEmployerLikeUser(user)) return !payerPaymentSetupReady(user);
   const req = user.onboarding_requirements || {};
-  return Boolean(req.payment_method_required) && !employerPaymentSetupReady(user);
+  return Boolean(req.payment_method_required) && !payerPaymentSetupReady(user);
+}
+function needsRequiredPayoutSetup(user=currentUser){
+  if (!user || user.role !== 'student') return false;
+  const req = user.onboarding_requirements || {};
+  return Boolean(req.payout_setup_required || stripeOnboardingEnabled() || user.backendAuth) && !studentPayoutSetupReady(user);
 }
 function platformReadyForEmployerAction(actionLabel='use hiring features'){
   if (needsMigrationOnboarding()) {
@@ -10644,7 +10734,7 @@ function markMigrationOnboardingComplete(user=currentUser){
   saveMigrationOnboardingStore(store);
 }
 function routeToMigrationOnboardingIfNeeded(){
-  if (!needsMigrationOnboarding() && !needsRequiredPaymentMethod()) return false;
+  if (!needsMigrationOnboarding() && !needsRequiredPaymentMethod() && !needsRequiredPayoutSetup()) return false;
   dashSection = 'profile';
   if (getRoute() !== '#/dashboard') {
     location.hash = '#/dashboard';
@@ -10922,7 +11012,16 @@ function renderPaymentMethodRequired(el){
   el.innerHTML = `
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
-      <div class="small muted">Your profile review is complete. Before you can post jobs, message students, hire, or use other platform features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
+      <div class="small muted">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
+      ${renderStripeOnboardingCard()}
+    </div>
+  `;
+}
+function renderPayoutSetupRequired(el){
+  el.innerHTML = `
+    <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:8px">Set up payouts</div>
+      <div class="small muted">Before applying, messaging, or offering student services, please complete Stripe Connect so CoGo City can pay you. This is separate from adding a credit card for class registration.</div>
       ${renderStripeOnboardingCard()}
     </div>
   `;
@@ -11842,6 +11941,7 @@ async function submitFinalInvoice(projectId){
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. ${platformSupportFeeLabel(breakdown.employerCommissionPct)}: $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, ${platformSupportFeeLabel(breakdown.employerCommissionPct)} $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
   sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after ${platformSupportFeeLabel(breakdown.studentCommissionPct)}: $${money(studentPayout)}.`, p.id);
+
   trackCogoEvent('project_completed', { source: 'student_final_invoice', value: totalDue, currency: 'USD' });
   closeModal();
   toast('Final invoice submitted for employer approval.');
@@ -11976,6 +12076,15 @@ function getDirectJobPostingFee(packageType='basic'){
   const pkg = packages.find(item => item.key === String(packageType || '').toLowerCase() && item.active);
   return pkg ? Number(pkg.fee || 0) : 99;
 }
+function calculateDirectJobPlacementFee(listingFee=0){
+  const base = Number(listingFee || 0) || 0;
+  const platformSupportFee = Number((base * 0.12).toFixed(2));
+  return {
+    listingFee: Number(base.toFixed(2)),
+    platformSupportFee,
+    total: Number((base + platformSupportFee).toFixed(2))
+  };
+}
 function getDirectJobPackageByKey(packageType='basic'){
   const packages = getDirectJobPackages().filter(item => item.active);
   if (!packages.length) return { key:'basic', label:'Basic', fee:99, duration_days:30, active:true };
@@ -12020,9 +12129,10 @@ function updateEmployerDirectJobPackage(){
   const selectedMonths = Math.max(1, Number((monthsSelect || {}).value || 1) || 1);
   const feePerMonth = Number(pkg.fee || 0) || 0;
   const fee = feePerMonth * selectedMonths;
+  const placementFee = calculateDirectJobPlacementFee(fee);
   const durationDays = Math.max(1, Number(pkg.duration_days || 30) || 30) * selectedMonths;
   const feeEl = document.getElementById('directJobPostingFeePreview');
-  if (feeEl) feeEl.value = `$${money(fee)}`;
+  if (feeEl) feeEl.value = `$${money(placementFee.total)} total ($${money(placementFee.listingFee)} listing + $${money(placementFee.platformSupportFee)} support)`;
   const durationEl = document.getElementById('directJobListingLengthPreview');
   if (durationEl) durationEl.value = `${durationDays} days`;
 }
@@ -12119,6 +12229,7 @@ async function saveEmployerDirectHireJob(){
   const companyName = getEmployerCompanyName(currentUser);
   const feePerMonth = Number(postingPkg.fee || 0) || 0;
   const fee = feePerMonth * selectedMonths;
+  const placementFee = calculateDirectJobPlacementFee(fee);
   const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -12127,8 +12238,9 @@ async function saveEmployerDirectHireJob(){
     toast('Secure Stripe checkout is required to post paid employer jobs on staging. Please sign in again and complete payment setup.');
     return;
   }
+
   const listingCharge = useBackendStripeCheckout ? { success:true, event:null } : recordLocalPaymentCharge({
-    amount: fee,
+    amount: placementFee.total,
     user_id: currentUser.id,
     employer_id: currentUser.id,
     kind_detail: 'direct_job_listing_subscription',
@@ -12155,7 +12267,8 @@ async function saveEmployerDirectHireJob(){
     expires_at: expiresAt,
     posting_package: String(postingPkg.key || 'basic').toLowerCase(),
     posting_fee: fee,
-    subscription_total: fee,
+    employer_platform_fee: placementFee.platformSupportFee,
+    subscription_total: placementFee.total,
     listing_months: selectedMonths,
     listing_duration_days: listingDurationDays,
     posting_payment_status: useBackendStripeCheckout ? 'pending' : 'paid',
@@ -12196,8 +12309,8 @@ async function saveEmployerDirectHireJob(){
   }
   jobs.unshift(newJob);
   saveDirectJobs(jobs);
-  trackCogoEvent('job_published', { source: 'direct_hire', package: String(postingPkg.key || 'basic').toLowerCase(), value: fee, currency: 'USD' });
-  trackCogoEvent('payment_success', { source: 'direct_job_listing', value: fee, currency: 'USD' });
+  trackCogoEvent('job_published', { source: 'direct_hire', package: String(postingPkg.key || 'basic').toLowerCase(), value: placementFee.total, currency: 'USD' });
+  trackCogoEvent('payment_success', { source: 'direct_job_listing', value: placementFee.total, currency: 'USD' });
   const txId = uid('tx');
   const transactions = getTransactions();
   transactions.unshift({
@@ -12207,10 +12320,12 @@ async function saveEmployerDirectHireJob(){
     employer_id: currentUser.id,
     employerName: currentUser.publicName || currentUser.name,
     job_title: `Job Posting: ${title}`,
-    total_amount: fee,
+    total_amount: placementFee.total,
     payout_amount: 0,
-    platform_fee: fee,
-    platform_fee_total: fee,
+    listing_fee: placementFee.listingFee,
+    employer_platform_fee: placementFee.platformSupportFee,
+    platform_fee: placementFee.platformSupportFee,
+    platform_fee_total: placementFee.platformSupportFee,
     payment_type: 'direct_job_listing',
     posting_package: String(postingPkg.key || 'basic').toLowerCase(),
     listing_months: selectedMonths,
@@ -12225,7 +12340,7 @@ async function saveEmployerDirectHireJob(){
     created_at: createdAt
   });
   saveTransactions(transactions);
-  toast(`Job posted. Listing payment of $${money(fee)} verified and captured.`);
+  toast(`Job posted. Listing payment of $${money(placementFee.total)} verified and captured, including a $${money(placementFee.platformSupportFee)} 12% platform support fee.`);
   employerMyJobsTab = 'manage';
   renderDashboard();
 }
@@ -12475,15 +12590,15 @@ function renderEmployerMyJobs(el){
               ${activePackages.length ? activePackages.map(item => `<option value="${esc(item.key)}" data-key="${esc(item.key)}" data-fee="${esc(item.fee)}" data-days="${esc(item.duration_days)}">${esc(item.label)}</option>`).join('') : `<option value="basic" data-key="basic" data-fee="99" data-days="30">Basic (30 days)</option>`}
             </select>
           </div>
-          <div class="field"><label>Listing Fee (simulated)</label><input id="directJobPostingFeePreview" value="$99.00" readonly></div>
+          <div class="field"><label>Listing fee + 12% platform support</label><input id="directJobPostingFeePreview" value="$99.00" readonly></div>
         </div>
         <div class="row">
           <div class="field"><label>Listing Length</label><input id="directJobListingLengthPreview" value="30 days" readonly></div>
           <div class="field"><label>Featured Benefits</label><input value="Pinned on top + highlighted card + fair rotation among featured jobs" readonly></div>
         </div>
         <div class="field"><label>Select Months</label><select id="directJobListingMonths" onchange="updateEmployerDirectJobPackage()"></select></div>
-        <div class="warning" style="margin-bottom:12px">CoGoCity charges employers for direct-hire job postings. Student pay is handled directly by employer outside CoGo project escrow.</div>
-        <button class="btn btn-blue" onclick="saveEmployerDirectHireJob()">Pay & Post Job</button>
+        <div class="warning" style="margin-bottom:12px">CoGoCity charges employers for direct-hire job postings plus a 12% platform support fee. Student pay is handled directly by employer outside CoGo project escrow.</div>
+        <button class="btn btn-blue" onclick="saveEmployerDirectHireJob()">Pay Listing + 12% Platform Support & Post Job</button>
       </div>
     ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'manage') ? `
@@ -12639,6 +12754,7 @@ function renderEmployerAppCard(a){
           <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr \u00B7 ${esc(a.estimatedHours||'')} hours</div>` : ''}
           ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To help us keep CoGo City safe and running smoothly, a ${formatPercent(getPaymentSettings().employerCommissionPct)} platform support fee is added to the final work total for employers and neighbors.</div>` : ''}
+
           ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">When you\u2019re ready for the student to begin, click \u201cStart Project\u201d. CoGo City will secure the project payment and notify the student that work can begin.<br><br>If your plans have changed and you no longer need help, please decline the project and, if possible, provide a short explanation so the student can continue looking for other opportunities.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -12871,6 +12987,7 @@ async function startProject(appId){
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${platformSupportFeeLabel(estimatedBreakdown.employerCommissionPct)}: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
   sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
+
   trackCogoEvent('project_started', { source: 'community_or_direct_offer', value: estimatedEmployerTotal, currency: 'USD' });
   trackCogoEvent('payment_success', { source: 'project_escrow', value: estimatedEmployerTotal, currency: 'USD' });
   employerTab = 'projects';
@@ -13034,14 +13151,15 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   }
   if (STRIPE_ENABLED && p.stripe_payment_intent_id && !isLocalPaymentReference && backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      const authorizedAmount = Number(p.escrowAmount || p.estimatedEmployerTotal || finalBreakdown.employerTotal || 0);
-      const captureAmount = authorizedAmount > 0 ? Math.min(Number(finalBreakdown.employerTotal || 0), authorizedAmount) : null;
       const captured = p.backendSource
-        ? await captureBackendStripePayment(p)
-        : await captureManualProjectStripePayment(p, captureAmount);
+        ? await captureBackendStripePayment(p, finalBreakdown.employerTotal)
+        : await captureManualProjectStripePayment(p, finalBreakdown.employerTotal);
+
       if (captured) {
+        backendCaptureResult = captured;
         p.payment_status = captured.status || 'paid';
         p.stripe_payment_intent_id = captured.payment_intent_id || p.stripe_payment_intent_id;
+        p.stripe_adjustment_payment_intent_id = captured.adjustment_payment_intent_id || p.stripe_adjustment_payment_intent_id || '';
       }
     } catch (error) {
       delete p.approvalInProgress;
@@ -13074,7 +13192,11 @@ async function approveFinalInvoice(projectId, buttonEl=null){
 
   const baseline = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0).employerTotal;
   const diff = Number((p.finalTotal - baseline).toFixed(2));
-  if (diff > 0) {
+  const realStripeCapture = !!(backendCaptureResult && !isLocalPaymentReference);
+  if (realStripeCapture) {
+    p.reconciliation_payment_intent_id = backendCaptureResult.adjustment_payment_intent_id || '';
+    p.reconciliation_status = backendCaptureResult.adjustment_payment_intent_id ? 'additional_charge_captured' : diff < 0 ? 'partial_capture_processed' : 'no_adjustment_needed';
+  } else if (diff > 0) {
     const extraCharge = recordLocalPaymentCharge({
       amount: diff,
       user_id: p.employerId,
@@ -13220,6 +13342,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   pushNotif(p.studentUserId, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after a $${money(p.studentPlatformFee || 0)} ${finalStudentFeeLabel}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions', dedupeKey:`${completionDedupeKey}:student-paid` });
   sendSystemMessage(p.studentUserId, p.studentName, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. ${finalStudentFeeLabel}: $${money(p.studentPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
   sendSystemMessage(p.employerId, p.employerName, `Payment completed for '${p.jobTitle}'. Work Total: $${money(p.finalSubtotal || 0)}. ${finalEmployerFeeLabel}: $${money(p.employerPlatformFee || 0)}. Total Payment: $${money(p.finalTotal || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
+
   pushAdminCommissionNotification(p);
   trackCogoEvent('payment_success', { source: 'project_final_payment', value: Number(p.finalTotal || 0), currency: 'USD' });
   pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects', employerTab:'projects', dedupeKey:`${completionDedupeKey}:review` });
@@ -13901,6 +14024,9 @@ function renderThreadView(userId){
 async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
   const sender = fromUser || currentUser || {};
   const messageType = meta.message_type || 'user';
+  if (messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '') && !requirePlatformUseReady('message another user')) {
+    return false;
+  }
   if (messageType === 'user' && containsRestrictedPaymentChatContent(content)) {
     toast('Payment details are sent automatically by CoGo Team. Keep chat focused on job scope and timing.');
     return false;
@@ -13940,6 +14066,7 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
       return true;
     } catch (error) {
       console.warn('Backend message send failed; saving locally', error);
+      if (!requirePlatformUseReady('message a student')) return false;
     }
   }
 
@@ -13967,7 +14094,7 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
 }
 async function sendMessageToActive(){
   if (!activeThreadUserId) return;
-  if (!requireEmployerPaymentSetup('message a student')) return;
+  if (!requirePlatformUseReady('message a student')) return;
   const input = document.getElementById('msgInput');
   const content = (input.value || '').trim();
   if (!content) return;
@@ -14032,8 +14159,8 @@ function renderAdminPanel(el){
     <div class="card form-card" style="margin-bottom:18px">
       <div style="font-weight:800;margin-bottom:12px">Payments</div>
       <div class="row">
-        <div class="field"><label>Platform Fee Percentage for Student</label><input id="adminStudentCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.studentCommissionPct)}"></div>
-        <div class="field"><label>Platform Fee Percentage for Employers/Neighbors</label><input id="adminEmployerCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.employerCommissionPct)}"></div>
+        <div class="field"><label>Platform Support Fee Percentage for Student</label><input id="adminStudentCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.studentCommissionPct)}"></div>
+        <div class="field"><label>Platform Support Fee Percentage for Employers/Neighbors</label><input id="adminEmployerCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.employerCommissionPct)}"></div>
       </div>
       <div class="field"><label>Workshop/Class Platform Fee Percentage</label><input id="adminWorkshopCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.workshopCommissionPct)}"></div>
       <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, workshop hold/release, messaging, and payout calculations. Payments use configured provider records; no full card numbers are stored in CoGo City.</div>
@@ -14077,7 +14204,7 @@ function saveAdminPaymentSettings(){
   const studentCommissionPct = Number(document.getElementById('adminStudentCommissionPct').value || 0);
   const employerCommissionPct = Number(document.getElementById('adminEmployerCommissionPct').value || 0);
   const workshopCommissionPct = Number(document.getElementById('adminWorkshopCommissionPct').value || 0);
-  if (studentCommissionPct < 0 || employerCommissionPct < 0 || workshopCommissionPct < 0) return toast('Platform Fee percentages must be 0 or higher.');
+  if (studentCommissionPct < 0 || employerCommissionPct < 0 || workshopCommissionPct < 0) return toast('Platform support fee percentages must be 0 or higher.');
   savePaymentSettings({ studentCommissionPct, employerCommissionPct, workshopCommissionPct });
   toast('Payment settings updated.');
   renderDashboard();
@@ -14884,6 +15011,7 @@ async function saveAdminUserEdit(userId){
           } : {}),
           ...(nextRole === 'neighbor' ? {
             about:user.about || null
+
           } : {})
         })
       });
@@ -15677,6 +15805,42 @@ function downloadTransactionTableCsv(key=''){
   URL.revokeObjectURL(url);
   toast('CSV downloaded.');
 }
+function openTransactionProjectDetails(projectId=''){
+  const project = getProjects().find(item => String(item.id) === String(projectId) || String(getProjectBackendId(item)) === String(projectId));
+  if (!project) return toast('Project not found.');
+  openModal(esc(project.jobTitle || 'Project Details'), `
+    <div class="card form-card">
+      <div class="small muted">Student</div>
+      <div style="font-weight:800;margin-bottom:10px">${renderUserNameLink(project.studentUserId || project.student_id, project.studentName || 'Student')}</div>
+      <div class="small muted">Employer / Neighbor</div>
+      <div style="font-weight:800;margin-bottom:10px">${renderTransactionEmployerNameLink({ employer_id: project.employerId || project.employer_id, employerName: project.employerName })}</div>
+      <div class="small muted">Status</div>
+      <div style="margin-bottom:10px">${badge(project.status || 'project')}</div>
+      <div class="small muted">Location</div>
+      <div style="margin-bottom:10px">${esc(project.location || 'TBD')}</div>
+      ${project.contractHtml ? `<div class="contract-box small">${project.contractHtml}</div>` : ''}
+      ${renderProjectPaymentSection(project)}
+    </div>
+  `, '700px');
+}
+function renderTransactionJobTitleLink(tx={}){
+  const title = tx.job_title || tx.jobTitle || 'Job';
+  const directJob = getDirectJobById(tx.job_id || tx.direct_job_id || '');
+  if (directJob) return `<a class="link-btn" style="font-weight:800;text-align:left" href="#/jobs/${encodeURIComponent(directJob.id)}" onclick="event.stopPropagation()">${esc(title)}</a>`;
+  const project = getProjects().find(item => String(item.id) === String(tx.job_id) || String(getProjectBackendId(item)) === String(tx.job_id));
+  if (project) return `<button class="link-btn" style="font-weight:800;text-align:left" type="button" onclick="openTransactionProjectDetails(${jsArg(project.id)})">${esc(title)}</button>`;
+  return `<span>${esc(title)}</span>`;
+}
+function renderTransactionStudentNameLink(tx={}){
+  return renderUserNameLink(tx.student_id || tx.studentUserId || tx.student_user_id, tx.studentName || 'Student', true);
+}
+function renderTransactionEmployerNameLink(tx={}){
+  const userId = tx.employer_id || tx.employerId || tx.host_id || '';
+  const user = getUserById(userId);
+  const name = tx.employerName || tx.hostName || user?.businessProfile?.name || user?.company || user?.publicName || user?.name || 'Employer / Neighbor';
+  if (user && user.businessProfile) return renderBusinessNameLink(userId, name, true);
+  return renderUserNameLink(userId, name, true);
+}
 function renderTransactionsPanel(){
   const wrap = document.getElementById('transactions-panel');
   if (!wrap) return;
@@ -15684,10 +15848,11 @@ function renderTransactionsPanel(){
   const isEmployer = currentUser.role === 'employer' || isNeighborAccount(currentUser);
   const title = isAdmin ? 'Transactions' : 'My Transactions';
   const helper = isAdmin
-    ? 'Admin view shows total Platform Fee collected from both sides.'
+    ? 'Admin view shows total platform support fees collected from both sides.'
     : isEmployer
       ? `Review completed job payments, including your ${platformSupportFeeLabel(getPaymentSettings().employerCommissionPct)} and final payment.`
       : `Review completed job payouts, including your ${platformSupportFeeLabel(getPaymentSettings().studentCommissionPct)} and final payout.`;
+
   wrap.innerHTML = `
     <div class="card form-card" style="margin-top:18px">
       <div class="split" style="align-items:flex-start;margin-bottom:14px">
@@ -15802,7 +15967,7 @@ function renderTransactionsResults(){
   const visibleTransactionCount = rows.length + (isEmployer ? employerSubscriptionRows.length : 0);
   const visibleTotalPaid = totalPaid + (isEmployer ? employerSubscriptionSpend : 0);
   const roleSummary = isAdmin
-    ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Platform Fees</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div></div>`
+    ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Platform Support Fees</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div></div>`
     : isEmployer
       ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div class="money" style="font-size:1.2rem">$${money(visibleTotalPaid)}</div></div>`
       : `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div></div>`;
@@ -15838,20 +16003,24 @@ function renderTransactionsResults(){
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
         <th style="padding:10px 8px">${dateHeader}</th>
         <th style="padding:10px 8px">Job Title</th>
+        <th style="padding:10px 8px">Student</th>
+        <th style="padding:10px 8px">Employer / Neighbor</th>
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
-        <th style="padding:10px 8px">Platform Fee</th>
+        <th style="padding:10px 8px">Platform Support Fee</th>
         <th style="padding:10px 8px">Final Payment</th>
       </tr>
     ` : `
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
         <th style="padding:10px 8px">${dateHeader}</th>
         <th style="padding:10px 8px">Job Title</th>
+        <th style="padding:10px 8px">Student</th>
+        <th style="padding:10px 8px">Employer / Neighbor</th>
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
-        <th style="padding:10px 8px">Platform Fee</th>
+        <th style="padding:10px 8px">Platform Support Fee</th>
         <th style="padding:10px 8px">Final Payout</th>
       </tr>
     `;
@@ -15874,7 +16043,9 @@ function renderTransactionsResults(){
     return `
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:12px 8px">${esc(formatTransactionDate(txDate))}</td>
-        <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
+        <td style="padding:12px 8px">${renderTransactionJobTitleLink(tx)}</td>
+        <td style="padding:12px 8px">${renderTransactionStudentNameLink(tx)}</td>
+        <td style="padding:12px 8px">${renderTransactionEmployerNameLink(tx)}</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
@@ -15887,6 +16058,7 @@ function renderTransactionsResults(){
   const headers = isAdmin
     ? [dateHeader, 'Job Title', 'Student', 'Employer / Neighbor', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Gross Employer Payment', 'Student Payout', 'CoGo Commission', 'Stripe Processing Fee', 'Platform Net Revenue', 'Transfer Status', 'Payout Status', 'CoGo Transaction ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID', 'Stripe Transfer ID', 'Stripe Application Fee ID']
     : [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Platform Fee', isEmployer ? 'Final Payment' : 'Final Payout'];
+
   transactionTableExportRows.main = {
     fileName: `${currentUser.role || 'user'}-transactions`,
     headers,
@@ -15904,7 +16076,9 @@ function renderTransactionsResults(){
       const base = [
         formatTransactionDate(txDate),
         tx.job_title || '',
-        ...(isAdmin ? [getTransactionStudentName(tx), getTransactionEmployerName(tx)] : []),
+        tx.studentName || '',
+        tx.employerName || '',
+
         `$${Number(tx.hourly_rate || 0).toFixed(2)}/hr`,
         `${tx.hours_worked || 0} hrs`,
         `$${Number(tx.work_total || 0).toFixed(2)}`,
@@ -15952,9 +16126,10 @@ function renderTransactionsResults(){
     return `
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:12px 8px">${esc(formatTransactionDate(txDate))}</td>
-        <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
-        ${isAdmin ? `<td style="padding:12px 8px">${renderTransactionUserLink(studentId, getTransactionStudentName(tx), 'Student')}</td>` : ''}
-        ${isAdmin ? `<td style="padding:12px 8px">${renderTransactionUserLink(employerId, getTransactionEmployerName(tx), 'Employer / Neighbor')}</td>` : ''}
+        <td style="padding:12px 8px">${renderTransactionJobTitleLink(tx)}</td>
+        <td style="padding:12px 8px">${renderTransactionStudentNameLink(tx)}</td>
+        <td style="padding:12px 8px">${renderTransactionEmployerNameLink(tx)}</td>
+
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
@@ -16010,6 +16185,7 @@ function getCurrentUserSubscriptionRows(){
   if (currentUser.role === 'admin') return rows;
   if (currentUser.role === 'employer') return rows.filter(row => String(row.employerId) === String(currentUser.id));
   return [];
+
 }
 function renderSubscriptionTransactionsResults(){
   const wrap = document.getElementById('subscription-transactions-results');
@@ -16023,6 +16199,7 @@ function renderSubscriptionTransactionsResults(){
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getCurrentUserSubscriptionRows().filter(row => {
     const haystack = [row.jobName, row.employerName, row.status, row.paymentStatus, row.cogoId, row.stripeCheckoutSessionId, row.stripePaymentIntentId, row.stripeChargeId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
+
     return !query || haystack.includes(query);
   });
   const totals = rows.reduce((acc, row) => {
@@ -16039,6 +16216,7 @@ function renderSubscriptionTransactionsResults(){
     rows: rows.map(row => [
       row.jobName,
       ...(isAdmin ? [row.employerName || 'Employer / Neighbor'] : []),
+
       formatDirectJobCloseMessageDate(row.dateStarted),
       formatDirectJobCloseMessageDate(row.expirationDate),
       stripeStatusLabel(row.paymentStatus || 'paid'),
@@ -16068,6 +16246,7 @@ function renderSubscriptionTransactionsResults(){
               <tr style="text-align:left;border-bottom:1px solid var(--border)">
                 <th style="padding:10px 8px">Name of Job</th>
                 ${isAdmin ? `<th style="padding:10px 8px">Employer / Neighbor</th>` : ''}
+
                 <th style="padding:10px 8px">Date Started</th>
                 <th style="padding:10px 8px">Expiration Date</th>
                 <th style="padding:10px 8px">Status</th>
@@ -16080,6 +16259,7 @@ function renderSubscriptionTransactionsResults(){
                 <tr style="border-bottom:1px solid var(--border)">
                   <td style="padding:12px 8px">${esc(row.jobName)}</td>
                   ${isAdmin ? `<td style="padding:12px 8px">${renderTransactionUserLink(row.employerId, row.employerName, 'Employer / Neighbor')}</td>` : ''}
+
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.dateStarted))}</td>
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.expirationDate))}</td>
                   <td style="padding:12px 8px">${esc(stripeStatusLabel(row.paymentStatus || 'paid'))}</td>

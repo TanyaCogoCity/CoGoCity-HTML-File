@@ -4,11 +4,13 @@ const { prisma } = require('../lib/prisma');
 const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
+const { calculateHourlyProjectFees, calculateJobPlacementFees } = require('../lib/platformFees');
 const config = require('../config');
 const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { notificationType, serializeJob } = require('../lib/compat');
 const { payoutSafetyRequirementsForUser, validateProjectPayoutSafety } = require('../lib/payoutSafety');
+const { requirePlatformReady } = require('../lib/onboardingGate');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
@@ -17,15 +19,15 @@ function toCents(amount) {
   return Math.max(1, Math.round(Number(amount || 0) * 100));
 }
 
+function fromCents(amount) {
+  return Number(((Number(amount || 0) || 0) / 100).toFixed(2));
+}
+
 function paymentStatusForIntent(paymentIntent) {
   if (paymentIntent.status === 'requires_capture') return 'funded';
   if (paymentIntent.status === 'succeeded') return 'paid';
   if (paymentIntent.status === 'canceled') return 'failed';
   return 'pending';
-}
-
-function fromCents(amount) {
-  return Number(((Number(amount || 0) || 0) / 100).toFixed(2));
 }
 
 function marketplaceAmounts(tx, overrides = {}) {
@@ -166,6 +168,35 @@ function stripeStudentConnectAccountPayload(user, origin, country = 'US') {
   };
 }
 
+async function createStudentConnectAccount(user, origin, country = 'US', idempotencySuffix = 'v1') {
+  return stripe.accounts.create(
+    stripeStudentConnectAccountPayload(user, origin, country),
+    { idempotencyKey: `user:${user.id}:connect-account:${idempotencySuffix}` }
+  );
+}
+
+async function resetDisconnectedConnectAccount(userId) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      stripeAccountId: null,
+      stripeChargesEnabled: false,
+      stripePayoutsEnabled: false,
+      stripeDetailsSubmitted: false,
+      stripeConnectOnboardingStatus: 'not_started',
+    },
+  });
+}
+
+function isDisconnectedConnectError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('no such account')
+    || message.includes('does not have access')
+    || message.includes('not connected')
+    || message.includes('has been disconnected')
+    || message.includes('application does not have required permissions');
+}
+
 async function prefillStudentConnectAccount(user, origin) {
   if (!user?.stripeAccountId) return;
   await stripe.accounts.update(user.stripeAccountId, {
@@ -174,7 +205,6 @@ async function prefillStudentConnectAccount(user, origin) {
       url: config.appUrl || origin || 'https://staging.cogocity.com',
       product_description: stripeStudentPayoutDescription(user),
     },
-    individual: stripeIndividualPrefillPayload(user),
     metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts', tax_identity_custodian: 'stripe_connect' },
   });
 }
@@ -314,7 +344,7 @@ async function syncConnectAccount(user) {
     const account = await stripe.accounts.retrieve(user.stripeAccountId);
     return updateUserFromConnectAccount(account);
   } catch (error) {
-    if (isInaccessibleConnectAccountError(error, user.stripeAccountId)) {
+    if (isInaccessibleConnectAccountError(error, user.stripeAccountId) || isDisconnectedConnectError(error)) {
       return clearStaleConnectAccount(user, error);
     }
     throw error;
@@ -634,7 +664,6 @@ router.get('/onboarding/status', requireAuth, async (req, res) => {
 
 router.post('/onboarding/setup-intent', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
-  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payer accounts can save payment methods');
 
   try {
     const customerId = await ensureStripeCustomer(req.user);
@@ -656,7 +685,6 @@ router.post('/onboarding/setup-intent', requireAuth, async (req, res) => {
 
 router.post('/onboarding/payment-method', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
-  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payer accounts can save payment methods');
 
   const setupIntentId = String(req.body?.setup_intent_id || req.body?.setupIntentId || '').trim();
   if (!setupIntentId) return fail(res, 400, 'setup_intent_id is required');
@@ -708,7 +736,7 @@ router.post('/onboarding/connect-account-link', requireAuth, async (req, res) =>
       try {
         await prefillStudentConnectAccount(user, origin);
       } catch (error) {
-        if (!isInaccessibleConnectAccountError(error, user.stripeAccountId)) throw error;
+        if (!isInaccessibleConnectAccountError(error, user.stripeAccountId) && !isDisconnectedConnectError(error)) throw error;
         user = await clearStaleConnectAccount(user, error, 'stripe.connect_account.auto_heal_prefill');
         const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
         user = await prisma.user.findUnique({ where: { id: user.id } });
@@ -727,7 +755,7 @@ router.post('/onboarding/connect-account-link', requireAuth, async (req, res) =>
         type: 'account_onboarding',
       });
     } catch (error) {
-      if (!isInaccessibleConnectAccountError(error, user.stripeAccountId)) throw error;
+      if (!isInaccessibleConnectAccountError(error, user.stripeAccountId) && !isDisconnectedConnectError(error)) throw error;
       user = await clearStaleConnectAccount(user, error, 'stripe.connect_account.auto_heal_link');
       const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
       user = await prisma.user.findUnique({ where: { id: user.id } });
@@ -811,6 +839,8 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
 
 router.post('/create-workshop-checkout-session', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true, requirePaymentForAllRoles: true });
+  if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
   const workshopId = String(req.body?.workshop_id || req.body?.workshopId || '').trim();
   if (!workshopId) return fail(res, 400, 'workshop_id is required');
@@ -900,7 +930,8 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
     listingMonths: job.listingMonths || 1,
     listingDurationDays: job.listingDurationDays || 30,
   }, pkg);
-  const amount = Number(pricedPayload.postingFee || 0);
+  const placementFees = calculateJobPlacementFees(Number(pricedPayload.postingFee || 0));
+  const amount = placementFees.employerTotal;
   const pricedJob = await prisma.job.update({
     where: { id: job.id },
     data: {
@@ -931,15 +962,23 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
             quantity: 1,
             price_data: {
               currency: 'usd',
-              unit_amount: toCents(amount),
-              product_data: { name: `CoGo City job listing: ${pricedJob.title}` },
+              unit_amount: toCents(placementFees.listingFee),
+              product_data: { name: `CoGo City job listing: ${pricedJob.title}`, description: `Job placement listing package (${pricedPayload.postingPackage})` },
+            },
+          },
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'usd',
+              unit_amount: toCents(placementFees.employerPlatformFee),
+              product_data: { name: 'CoGo City 12% platform support fee', description: 'Platform support fee added to employer job placement payments.' },
             },
           },
         ],
         payment_intent_data: {
-          metadata: { type: 'job_listing', job_id: pricedJob.id, user_id: req.user.id, posting_package: pricedPayload.postingPackage },
+          metadata: { type: 'job_listing', job_id: pricedJob.id, user_id: req.user.id, posting_package: pricedPayload.postingPackage, listing_fee: placementFees.listingFee, employer_platform_fee: placementFees.employerPlatformFee, total_amount: placementFees.employerTotal },
         },
-        metadata: { type: 'job_listing', job_id: pricedJob.id, user_id: req.user.id, posting_package: pricedPayload.postingPackage },
+        metadata: { type: 'job_listing', job_id: pricedJob.id, user_id: req.user.id, posting_package: pricedPayload.postingPackage, listing_fee: placementFees.listingFee, employer_platform_fee: placementFees.employerPlatformFee, total_amount: placementFees.employerTotal },
       },
     );
 
@@ -955,7 +994,7 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
       },
     });
     await writeAuditLog({ userId: req.user.id, action: 'job.checkout.create', entityType: 'job', entityId: pricedJob.id, payload: { checkoutSessionId: session.id, amount } });
-    return ok(res, serializeCheckoutSession(session, { job_id: pricedJob.id, amount }));
+    return ok(res, serializeCheckoutSession(session, { job_id: pricedJob.id, amount, listing_fee: placementFees.listingFee, employer_platform_fee: placementFees.employerPlatformFee }));
   } catch (error) {
     return fail(res, 400, 'Failed to create job checkout session', error.message);
   }
@@ -1066,23 +1105,67 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
     if (paymentIntent.status !== 'requires_capture') return fail(res, 409, `Payment is not ready to capture (${paymentIntent.status})`);
 
     const amountOverride = req.body?.amount_total ?? req.body?.amountTotal;
+    const requestedFinalTotal = amountOverride != null && amountOverride !== '' ? Number(amountOverride) : Number(tx.amountTotal || 0);
+    const finalWorkTotal = project.actualHours != null && project.hourlyRate != null
+      ? Number((Number(project.actualHours || 0) * Number(project.hourlyRate || 0)).toFixed(2))
+      : null;
+    const recalculatedFees = finalWorkTotal != null ? calculateHourlyProjectFees(finalWorkTotal) : null;
     const finalAmounts = marketplaceAmounts(tx, {
-      amountTotal: amountOverride,
-      studentPayout: req.body?.student_payout ?? req.body?.studentPayout,
-      platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal,
+      amountTotal: requestedFinalTotal,
+      studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? recalculatedFees?.studentPayout,
+      platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? recalculatedFees?.platformFeeTotal,
     });
-    const feeOverride = req.body?.platform_fee_total ?? req.body?.platformFeeTotal;
-    const captureParams = amountOverride || feeOverride != null ? { application_fee_amount: finalAmounts.platformFeeCents } : undefined;
-    if (captureParams && amountOverride) captureParams.amount_to_capture = finalAmounts.amountTotalCents;
+    const capturableCents = Number(paymentIntent.amount_capturable || paymentIntent.amount || 0);
+    const amountToCapture = Math.min(finalAmounts.amountTotalCents, capturableCents);
+    let adjustmentIntent = null;
+
+    if (finalAmounts.amountTotalCents > capturableCents) {
+      const originalAmounts = marketplaceAmounts(tx);
+      const additionalCents = finalAmounts.amountTotalCents - capturableCents;
+      const additionalPlatformFeeCents = Math.max(0, finalAmounts.platformFeeCents - originalAmounts.platformFeeCents);
+      const paymentMethodId = project.employer?.stripeDefaultPaymentMethodId || paymentIntent.payment_method;
+      const customerId = project.employer?.stripeCustomerId || (typeof paymentIntent.customer === 'string' ? paymentIntent.customer : paymentIntent.customer?.id);
+      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than the amount held in escrow and no saved payment method is available for the difference');
+
+      adjustmentIntent = await stripe.paymentIntents.create(
+        {
+          amount: additionalCents,
+          currency: paymentIntent.currency || 'usd',
+          customer: customerId || undefined,
+          payment_method: typeof paymentMethodId === 'string' ? paymentMethodId : paymentMethodId?.id,
+          confirm: true,
+          off_session: true,
+          application_fee_amount: additionalPlatformFeeCents,
+          transfer_data: { destination: project.student.stripeAccountId },
+          description: `CoGo City final invoice adjustment${project.job?.title ? `: ${project.job.title}` : ''}`,
+          metadata: {
+            type: 'project_final_adjustment',
+            project_id: project.id,
+            transaction_id: tx.id,
+            original_payment_intent_id: paymentIntent.id,
+            payer_id: project.employerId,
+            payee_id: project.studentId,
+            amount_total: String(fromCents(additionalCents)),
+            platform_fee_total: String(fromCents(additionalPlatformFeeCents)),
+            adjustment_type: 'final_invoice_increase',
+            stripe_connect_flow: 'destination_charge_application_fee',
+          },
+        },
+        { idempotencyKey: `project:${project.id}:tx:${tx.id}:final-adjustment:${finalAmounts.amountTotalCents}:v2:connect` }
+      );
+      if (adjustmentIntent.status !== 'succeeded') return fail(res, 402, `Additional final invoice charge did not complete (${adjustmentIntent.status})`);
+    }
+
+    const captureParams = { amount_to_capture: amountToCapture, application_fee_amount: Math.min(finalAmounts.platformFeeCents, Number(paymentIntent.application_fee_amount || finalAmounts.platformFeeCents)) };
     const captured = await stripe.paymentIntents.capture(paymentIntent.id, captureParams);
-    const synced = await syncTransactionStripeReporting(tx.id, captured.id);
+    const synced = await syncTransactionStripeReporting(tx.id, captured.id, adjustmentIntent ? { payoutStatus: 'adjusted' } : {});
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, status: synced?.status || 'paid' } });
-    await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date(), totalAmount: finalAmounts.amountTotal } });
+    await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date(), totalAmount: finalWorkTotal ?? project.totalAmount } });
     await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
-    await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id } });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id, amountCaptured: fromCents(amountToCapture), finalAmount: fromCents(finalAmountCents), adjustmentPaymentIntentId: adjustmentIntent?.id || null } });
 
-    return ok(res, { payment_intent_id: captured.id, status: 'paid', stripe_status: captured.status, project_id: project.id });
+    return ok(res, { payment_intent_id: captured.id, adjustment_payment_intent_id: adjustmentIntent?.id || null, adjustment_status: adjustmentIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, project_id: project.id, amount_captured: fromCents(amountToCapture), final_amount_total: fromCents(finalAmountCents) });
   } catch (error) {
     return fail(res, 400, 'Failed to capture payment intent', error.message);
   }
@@ -1246,13 +1329,16 @@ router.post('/transfer-payout', requireAuth, async (req, res) => {
       return ok(res, { transfer_id: typeof destinationTransfer === 'string' ? destinationTransfer : destinationTransfer.id, status: 'created', project_id: project.id, automatic_destination_charge: true });
     }
     const latestCharge = typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
+    const transferAmount = toCents(tx.studentPayout);
+    const originalChargeReceived = Number(paymentIntent.amount_received || paymentIntent.amount || 0);
+    const sourceTransaction = transferAmount <= originalChargeReceived ? latestCharge : undefined;
 
     const transfer = await stripe.transfers.create(
       {
-        amount: toCents(tx.studentPayout),
+        amount: transferAmount,
         currency: 'usd',
         destination: project.student.stripeAccountId,
-        source_transaction: latestCharge || undefined,
+        source_transaction: sourceTransaction,
         metadata: {
           project_id: project.id,
           transaction_id: tx.id,
@@ -1265,7 +1351,7 @@ router.post('/transfer-payout', requireAuth, async (req, res) => {
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { stripeTransferId: transfer.id } });
     await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payout sent', body: 'Your project payout has been sent to Stripe.', link: `/dashboard?section=transactions&project=${project.id}` } });
-    await writeAuditLog({ userId: req.user.id, action: 'payment.transfer.create', entityType: 'transaction', entityId: tx.id, payload: { transferId: transfer.id } });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.transfer.create', entityType: 'transaction', entityId: tx.id, payload: { transferId: transfer.id, amount: fromCents(transferAmount), sourceTransaction: sourceTransaction || null } });
 
     return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid', project_id: project.id });
   } catch (error) {
