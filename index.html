@@ -10017,7 +10017,7 @@ function togglePostComposer(){
           <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..." oninput="savePostComposerDraft()">${esc(draft.description || '')}</textarea></div>
           <div class="row">
             <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20" value="${esc(draft.rate || '')}" oninput="savePostComposerDraft()"></div>
-            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5" value="${esc(draft.hoursNeeded || '')}" oninput="savePostComposerDraft()"></div>
+            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5" value="${esc(draft.hoursNeeded || '')}" oninput="savePostComposerDraft()"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
           </div>
           <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA" value="${esc(draft.location || '')}" oninput="savePostComposerDraft()"></div>
         </div>
@@ -10237,7 +10237,7 @@ function editPost(postId){
       <div class="field"><label>Description</label><textarea id="editJobDescription">${esc(p.description || '')}</textarea></div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="editJobRate" type="number" value="${esc(p.rate || '')}"></div>
-        <div class="field"><label>Hours needed</label><input id="editJobHours" type="number" value="${esc(p.hoursNeeded || '')}"></div>
+        <div class="field"><label>Hours needed</label><input id="editJobHours" type="number" value="${esc(p.hoursNeeded || '')}"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
       </div>
       <div class="field"><label>Location</label><input id="editJobLocation" value="${esc(p.location || '')}"></div>
     ` : ''}
@@ -11869,7 +11869,7 @@ function renderEmployerCommunityJobs(el){
         <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
         <div class="row">
           <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
-          <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"></div>
+          <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
         </div>
         <div class="field"><label>Location</label><input id="empJobLocation"></div>
       </div>
@@ -13382,7 +13382,7 @@ function renderMyPosts(el){
           <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
           <div class="row">
             <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
-            <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"></div>
+            <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
           </div>
           <div class="field"><label>Location</label><input id="empJobLocation"></div>
         </div>
