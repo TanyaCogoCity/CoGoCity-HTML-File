@@ -104,7 +104,16 @@ function onboardingStatusForUser(user) {
 }
 
 async function ensureStripeCustomer(user) {
-  if (user.stripeCustomerId) return user.stripeCustomerId;
+  if (user.stripeCustomerId) {
+    try {
+      const existingCustomer = await stripe.customers.retrieve(user.stripeCustomerId);
+      if (existingCustomer && !existingCustomer.deleted) return user.stripeCustomerId;
+    } catch (error) {
+      const isMissingCustomer = error?.code === 'resource_missing' || error?.type === 'StripeInvalidRequestError';
+      if (!isMissingCustomer) throw error;
+    }
+  }
+
   const customer = await stripe.customers.create(
     {
       email: user.email,
@@ -112,9 +121,9 @@ async function ensureStripeCustomer(user) {
       phone: user.phone || undefined,
       metadata: { user_id: user.id, role: user.role },
     },
-    { idempotencyKey: `user:${user.id}:customer:v1` }
+    { idempotencyKey: `user:${user.id}:customer:v2` }
   );
-  await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: customer.id, stripePaymentSetupStatus: 'in_progress' } });
+  await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: customer.id, stripeDefaultPaymentMethodId: null, stripePaymentSetupStatus: 'in_progress' } });
   return customer.id;
 }
 

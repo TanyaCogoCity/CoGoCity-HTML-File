@@ -1148,7 +1148,8 @@ async function backendAuthRequest(path, options={}){
     }
   }
   if (!response.ok || !payload || payload.ok === false) {
-    throw new Error(payload?.error?.message || `Backend auth request failed (${response.status})`);
+    const message = payload?.error?.details || payload?.error?.message || `Backend auth request failed (${response.status})`;
+    throw new Error(message);
   }
   return payload.data || {};
 }
