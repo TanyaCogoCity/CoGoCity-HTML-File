@@ -13655,6 +13655,10 @@ function getUnifiedUserThreadId(userA='', userB=''){
 function isUnifiedUserThreadId(value=''){
   return String(value || '').startsWith('user:');
 }
+function scrollActiveThreadToBottom(){
+  const box = document.getElementById('messages-box');
+  if (box) box.scrollTop = box.scrollHeight;
+}
 function renderMessages(el){
   if (currentUser.role === 'admin' && !isAdminImpersonating()) {
     el.innerHTML = `
@@ -13776,6 +13780,7 @@ function renderMessages(el){
       </div>
     </div>
   `;
+  setTimeout(scrollActiveThreadToBottom, 0);
 }
 function renderThreadView(userId){
   if (currentUser.role === 'admin' && String(userId || '').startsWith('admin::')) {
@@ -13788,8 +13793,8 @@ function renderThreadView(userId){
       const msgPairKey = [String(m.fromId || ''), String(m.toId || '')].sort().join(':');
       return msgThreadId === threadId && msgPairKey === pairKey;
     });
-    const msgs = threadMessages.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
-    const latest = msgs[0] || null;
+    const msgs = threadMessages.sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
+    const latest = msgs[msgs.length - 1] || null;
     const fromUser = latest ? getUserById(latest.fromId) : null;
     const toUser = latest ? getUserById(latest.toId) : null;
     const headerName = fromUser?.name || toUser?.name || latest?.fromName || latest?.toName || 'Conversation';
@@ -13870,7 +13875,7 @@ function renderThreadView(userId){
     renderNav();
   }
 
-  const msgs = threadMessages.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+  const msgs = threadMessages.sort((a,b) => new Date(a.createdAt)-new Date(b.createdAt));
 
   const recipientName = getMessagePartnerDisplayName(partner.id, partner.name);
 
