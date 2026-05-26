@@ -635,6 +635,7 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
         cancel_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=cancel`,
         client_reference_id: enrollment.id,
         customer: customerId,
+        payment_method_collection: 'if_required',
         line_items: [
           {
             quantity,
@@ -709,6 +710,7 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
         cancel_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=cancel`,
         client_reference_id: pricedJob.id,
         customer: customerId,
+        payment_method_collection: 'if_required',
         line_items: [
           {
             quantity: 1,
@@ -791,6 +793,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
         cancel_url: `${origin}/?stripe_project=${project.id}&stripe_status=cancel`,
         client_reference_id: project.id,
         customer: project.employer?.stripeCustomerId || undefined,
+        payment_method_collection: project.employer?.stripeCustomerId ? 'if_required' : undefined,
         line_items: [
           {
             quantity: 1,
