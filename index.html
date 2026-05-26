@@ -15639,6 +15639,31 @@ function renderAdminTransactionReconciliationIds(tx={}){
     : `<div class="muted" style="font-size:.78rem">${label}: —</div>`;
   return `${idLine('CoGo Tx', platformTxId)}${idLine('Stripe PI', stripePaymentIntentId)}`;
 }
+function getTransactionStudentId(tx={}){
+  return tx.student_id || tx.studentId || tx.studentUserId || '';
+}
+function getTransactionEmployerId(tx={}){
+  return tx.employer_id || tx.employerId || tx.neighbor_id || tx.neighborId || tx.host_id || '';
+}
+function getTransactionStudentName(tx={}){
+  const userId = getTransactionStudentId(tx);
+  const user = getUserById(userId);
+  const student = getStudentByUserId(userId);
+  return tx.studentName || tx.student_name || student?.name || user?.publicName || user?.name || 'Student';
+}
+function getTransactionEmployerName(tx={}){
+  const userId = getTransactionEmployerId(tx);
+  const user = getUserById(userId);
+  return tx.employerName || tx.employer_name || tx.neighborName || tx.neighbor_name || user?.publicName || user?.name || 'Employer / Neighbor';
+}
+function renderTransactionUserLink(userId='', name='', fallback='User'){
+  return renderUserNameLink(userId, name || fallback, true);
+}
+function renderTransactionUserLinksList(items=[]){
+  const cleanItems = ensureArray(items).filter(item => item && (item.userId || item.name));
+  if (!cleanItems.length) return '<span class="muted">—</span>';
+  return cleanItems.map(item => renderTransactionUserLink(item.userId || '', item.name || 'User', 'User')).join('<div style="height:4px"></div>');
+}
 function renderTransactionsResults(){
   const summaryWrap = document.getElementById('transactions-summary');
   const resultsWrap = document.getElementById('transactions-results');
@@ -15705,6 +15730,8 @@ function renderTransactionsResults(){
       <tr style="text-align:left;border-bottom:1px solid var(--border)">
         <th style="padding:10px 8px">${dateHeader}</th>
         <th style="padding:10px 8px">Job Title</th>
+        <th style="padding:10px 8px">Student</th>
+        <th style="padding:10px 8px">Employer / Neighbor</th>
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
@@ -15762,7 +15789,7 @@ function renderTransactionsResults(){
     `;
   }).join('');
   const headers = isAdmin
-    ? [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Final Commission', 'CoGo Transaction ID', 'Stripe PaymentIntent ID']
+    ? [dateHeader, 'Job Title', 'Student', 'Employer / Neighbor', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Final Commission', 'CoGo Transaction ID', 'Stripe PaymentIntent ID']
     : [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Platform Fee', isEmployer ? 'Final Payment' : 'Final Payout'];
   transactionTableExportRows.main = {
     fileName: `${currentUser.role || 'user'}-transactions`,
@@ -15781,6 +15808,7 @@ function renderTransactionsResults(){
       const base = [
         formatTransactionDate(txDate),
         tx.job_title || '',
+        ...(isAdmin ? [getTransactionStudentName(tx), getTransactionEmployerName(tx)] : []),
         `$${Number(tx.hourly_rate || 0).toFixed(2)}/hr`,
         `${tx.hours_worked || 0} hrs`,
         `$${Number(tx.work_total || 0).toFixed(2)}`,
@@ -15812,10 +15840,14 @@ function renderTransactionsResults(){
       : (isAdmin
           ? (tx.date_paid || tx.date_charged || tx.date_completed || tx.created_at || '')
           : (tx.date_paid || tx.date_completed || tx.date_charged || tx.created_at || ''));
+    const studentId = getTransactionStudentId(tx);
+    const employerId = getTransactionEmployerId(tx);
     return `
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:12px 8px">${esc(formatTransactionDate(txDate))}</td>
         <td style="padding:12px 8px">${esc(tx.job_title || '')}</td>
+        ${isAdmin ? `<td style="padding:12px 8px">${renderTransactionUserLink(studentId, getTransactionStudentName(tx), 'Student')}</td>` : ''}
+        ${isAdmin ? `<td style="padding:12px 8px">${renderTransactionUserLink(employerId, getTransactionEmployerName(tx), 'Employer / Neighbor')}</td>` : ''}
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
@@ -15843,19 +15875,24 @@ function isPaidDirectJobPosting(job={}){
 }
 function getSubscriptionTransactionRows(){
   const jobs = getDirectJobs();
-  return jobs.filter(isPaidDirectJobPosting).map(job => ({
-    employerId: job.employer_id || job.employerId || '',
-    jobName: job.job_title || 'Direct Hire Job',
-    dateStarted: job.date_paid || job.date_charged || job.created_at || '',
-    expirationDate: getDirectJobEffectiveCloseDate(job),
-    total: Number(job.subscription_total || job.posting_fee || 0),
-    status: job.status || 'active',
-    paymentStatus: job.posting_payment_status || job.payment_status || 'paid',
-    cogoId: job.id || job.backendJobId || '',
-    stripeCheckoutSessionId: job.stripe_checkout_session_id || job.checkout_session_id || '',
-    stripePaymentIntentId: job.stripe_payment_intent_id || job.payment_intent_id || '',
-    stripeChargeId: job.stripe_charge_id || job.charge_id || ''
-  })).sort((a,b) => new Date(b.dateStarted || 0) - new Date(a.dateStarted || 0));
+  return jobs.filter(isPaidDirectJobPosting).map(job => {
+    const employerId = job.employer_id || job.employerId || '';
+    const employer = getUserById(employerId);
+    return {
+      employerId,
+      employerName: job.employerName || job.employer_name || employer?.publicName || employer?.name || 'Employer / Neighbor',
+      jobName: job.job_title || 'Direct Hire Job',
+      dateStarted: job.date_paid || job.date_charged || job.created_at || '',
+      expirationDate: getDirectJobEffectiveCloseDate(job),
+      total: Number(job.subscription_total || job.posting_fee || 0),
+      status: job.status || 'active',
+      paymentStatus: job.posting_payment_status || job.payment_status || 'paid',
+      cogoId: job.id || job.backendJobId || '',
+      stripeCheckoutSessionId: job.stripe_checkout_session_id || job.checkout_session_id || '',
+      stripePaymentIntentId: job.stripe_payment_intent_id || job.payment_intent_id || '',
+      stripeChargeId: job.stripe_charge_id || job.charge_id || ''
+    };
+  }).sort((a,b) => new Date(b.dateStarted || 0) - new Date(a.dateStarted || 0));
 }
 function getAdminSubscriptionRows(){
   return getSubscriptionTransactionRows();
@@ -15878,7 +15915,7 @@ function renderSubscriptionTransactionsResults(){
   const isAdmin = currentUser.role === 'admin';
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getCurrentUserSubscriptionRows().filter(row => {
-    const haystack = [row.jobName, row.status, row.paymentStatus, row.cogoId, row.stripeCheckoutSessionId, row.stripePaymentIntentId, row.stripeChargeId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
+    const haystack = [row.jobName, row.employerName, row.status, row.paymentStatus, row.cogoId, row.stripeCheckoutSessionId, row.stripePaymentIntentId, row.stripeChargeId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
     return !query || haystack.includes(query);
   });
   const totals = rows.reduce((acc, row) => {
@@ -15889,9 +15926,12 @@ function renderSubscriptionTransactionsResults(){
   }, { count:0, total:0, active:0 });
   transactionTableExportRows.subscription = {
     fileName: isAdmin ? 'admin-subscription-transactions' : `${currentUser.role || 'user'}-subscription-transactions`,
-    headers: ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID', 'Stripe Checkout Session ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID'],
+    headers: isAdmin
+      ? ['Name of Job', 'Employer / Neighbor', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID', 'Stripe Checkout Session ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID']
+      : ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID', 'Stripe Checkout Session ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID'],
     rows: rows.map(row => [
       row.jobName,
+      ...(isAdmin ? [row.employerName || 'Employer / Neighbor'] : []),
       formatDirectJobCloseMessageDate(row.dateStarted),
       formatDirectJobCloseMessageDate(row.expirationDate),
       stripeStatusLabel(row.paymentStatus || 'paid'),
@@ -15920,6 +15960,7 @@ function renderSubscriptionTransactionsResults(){
             <thead>
               <tr style="text-align:left;border-bottom:1px solid var(--border)">
                 <th style="padding:10px 8px">Name of Job</th>
+                ${isAdmin ? `<th style="padding:10px 8px">Employer / Neighbor</th>` : ''}
                 <th style="padding:10px 8px">Date Started</th>
                 <th style="padding:10px 8px">Expiration Date</th>
                 <th style="padding:10px 8px">Status</th>
@@ -15931,6 +15972,7 @@ function renderSubscriptionTransactionsResults(){
               ${displayRows.map(row => `
                 <tr style="border-bottom:1px solid var(--border)">
                   <td style="padding:12px 8px">${esc(row.jobName)}</td>
+                  ${isAdmin ? `<td style="padding:12px 8px">${renderTransactionUserLink(row.employerId, row.employerName, 'Employer / Neighbor')}</td>` : ''}
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.dateStarted))}</td>
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.expirationDate))}</td>
                   <td style="padding:12px 8px">${esc(stripeStatusLabel(row.paymentStatus || 'paid'))}</td>
@@ -15985,7 +16027,20 @@ function renderWorkshopTransactionsResults(){
       const participants = activeRegs.reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1) || 1), 0);
       const total = Number(workshop.price || 0) * participants;
       const commission = total * 0.3;
-      return { workshop, participants, total, commission };
+      const host = getUserById(workshop.host_id || workshop.hostId || '');
+      const participantLinks = activeRegs.map(item => {
+        const user = getUserById(item.user_id || item.userId || '');
+        return { userId: item.user_id || item.userId || '', name: item.user_name || item.userName || user?.publicName || user?.name || 'Student' };
+      });
+      return {
+        workshop,
+        participants,
+        participantLinks,
+        hostId: workshop.host_id || workshop.hostId || '',
+        hostName: workshop.host_name || workshop.hostName || host?.publicName || host?.name || getWorkshopHostName(workshop),
+        total,
+        commission
+      };
     }).filter(item => item.participants > 0 || Number(item.workshop.price || 0) > 0);
   } else if (isHost) {
     rows = workshops.filter(workshop => workshop.host_id === currentUser.id).map(workshop => {
@@ -16007,7 +16062,7 @@ function renderWorkshopTransactionsResults(){
   }
   rows.sort((a,b) => new Date((b.workshop && (b.workshop.completed_at || b.workshop.date_time)) || 0) - new Date((a.workshop && (a.workshop.completed_at || a.workshop.date_time)) || 0));
   const exportHeaders = isAdmin
-    ? ['Class End Date', 'Class Title', 'Number of Participants', 'Total', 'Commissions']
+    ? ['Class End Date', 'Class Title', 'Host / Employer', 'Participants', 'Number of Participants', 'Total', 'Commissions']
     : isHost
       ? ['Class End Date', 'Class Title', 'Number of Participants', 'Total Earned']
       : ['Class End Date', 'Class Title', 'Number of Participants', 'Total Paid'];
@@ -16015,21 +16070,21 @@ function renderWorkshopTransactionsResults(){
     fileName: `${currentUser.role || 'user'}-workshop-transactions`,
     headers: exportHeaders,
     rows: rows.map(row => isAdmin
-      ? [formatWorkshopEndDate(row.workshop), row.workshop.title || '', Number(row.participants || 0), `$${money(row.total || 0)}`, `$${money(row.commission || 0)}`]
+      ? [formatWorkshopEndDate(row.workshop), row.workshop.title || '', row.hostName || 'Host', ensureArray(row.participantLinks).map(item => item.name || 'Student').join('; '), Number(row.participants || 0), `$${money(row.total || 0)}`, `$${money(row.commission || 0)}`]
       : isHost
         ? [formatWorkshopEndDate(row.workshop), row.workshop.title || '', Number(row.participants || 0), `$${money(row.totalEarned || 0)}`]
         : [formatWorkshopEndDate(row.workshop), row.workshop.title || '', Number(row.participants || 0), `$${money(row.totalPaid || 0)}`])
   };
   const displayRows = getTransactionTablePagedRows('workshop', rows);
   const headerHtml = isAdmin
-    ? `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total</th><th style="padding:10px 8px">Commissions</th></tr>`
+    ? `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Host / Employer</th><th style="padding:10px 8px">Participants</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total</th><th style="padding:10px 8px">Commissions</th></tr>`
     : isHost
       ? `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total Earned</th></tr>`
       : `<tr style="text-align:left;border-bottom:1px solid var(--border)"><th style="padding:10px 8px">Class End Date</th><th style="padding:10px 8px">Class Title</th><th style="padding:10px 8px">Number of Participants</th><th style="padding:10px 8px">Total Paid</th></tr>`;
   const bodyHtml = displayRows.map(row => {
     const workshop = row.workshop;
     return isAdmin
-      ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td><td class="money" style="padding:12px 8px">$${esc(money(row.commission || 0))}</td></tr>`
+      ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${renderTransactionUserLink(row.hostId, row.hostName, 'Host')}</td><td style="padding:12px 8px">${renderTransactionUserLinksList(row.participantLinks)}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td><td class="money" style="padding:12px 8px">$${esc(money(row.commission || 0))}</td></tr>`
       : isHost
         ? `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.totalEarned || 0))}</td></tr>`
         : `<tr style="border-bottom:1px solid var(--border)"><td style="padding:12px 8px">${esc(formatWorkshopEndDate(workshop))}</td><td style="padding:12px 8px">${esc(workshop.title || '')}</td><td style="padding:12px 8px">${esc(row.participants || 0)}</td><td class="money" style="padding:12px 8px">$${esc(money(row.totalPaid || 0))}</td></tr>`;
