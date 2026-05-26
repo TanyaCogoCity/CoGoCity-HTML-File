@@ -642,7 +642,6 @@ let browseStudentFilters = { query: '', location: '', maxRate: '' };
 let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
 let directJobApplyDraft = null;
-const PLATFORM_FEE_RATE = 0.12;
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -3108,13 +3107,13 @@ function saveFinance(v){
 function getPaymentSettings(){
   ensureBackendSingletonSettingLoaded('payment_settings', 'cogo_payment_settings');
   const saved = ls('cogo_payment_settings') || {};
-  const migratedToPlatformSupport12 = saved.platformSupportFeeVersion === 'platform-support-12';
+  const usesAdminManagedFees = saved.platformSupportFeeVersion === 'platform-support-admin-managed' || saved.platformSupportFeeVersion === 'platform-support-12';
   return {
-    studentCommissionPct: migratedToPlatformSupport12 ? Number(saved.studentCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT) : DEFAULT_PLATFORM_COMMISSION_PERCENT,
-    employerCommissionPct: migratedToPlatformSupport12 ? Number(saved.employerCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT) : DEFAULT_PLATFORM_COMMISSION_PERCENT,
+    studentCommissionPct: usesAdminManagedFees ? Number(saved.studentCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT) : DEFAULT_PLATFORM_COMMISSION_PERCENT,
+    employerCommissionPct: usesAdminManagedFees ? Number(saved.employerCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT) : DEFAULT_PLATFORM_COMMISSION_PERCENT,
     workshopCommissionPct: Number(saved.workshopCommissionPct ?? DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT),
     providerMode: saved.providerMode || PAYMENT_PROVIDER_MODE,
-    platformSupportFeeVersion: 'platform-support-12'
+    platformSupportFeeVersion: 'platform-support-admin-managed'
   };
 }
 function savePaymentSettings(v){
@@ -4196,6 +4195,15 @@ function formatPercent(value){
   const text = Number.isInteger(num) ? String(num) : num.toFixed(2).replace(/\.0+$/,'').replace(/(\.\d*[1-9])0+$/,'$1');
   return `${text}%`;
 }
+function platformSupportFeeLabel(percentValue){
+  return `${formatPercent(percentValue)} platform support fee`;
+}
+function transactionStudentCommissionPct(tx={}){
+  return Number(tx.student_commission_pct ?? tx.studentCommissionPct ?? getPaymentSettings().studentCommissionPct);
+}
+function transactionEmployerCommissionPct(tx={}){
+  return Number(tx.employer_commission_pct ?? tx.employerCommissionPct ?? getPaymentSettings().employerCommissionPct);
+}
 function calculateCommissionBreakdown(hours, rate){
   const settings = getPaymentSettings();
   const safeHours = Number(hours || 0);
@@ -4224,14 +4232,14 @@ function calculateCommissionBreakdown(hours, rate){
 function renderStudentCommissionBreakdownHtml(breakdown, label='Estimated'){
   return `
     <div class="small"><strong>${esc(label)} Work Total:</strong> ${esc(breakdown.hours)} hours \u00D7 $${esc(money(breakdown.rate))}/hr = $${esc(money(breakdown.workTotal))}</div>
-    <div class="small">12% platform support fee (${esc(formatPercent(breakdown.studentCommissionPct))}): -$${esc(money(breakdown.studentCommissionAmount))}</div>
+    <div class="small">${esc(platformSupportFeeLabel(breakdown.studentCommissionPct))}: -$${esc(money(breakdown.studentCommissionAmount))}</div>
     <div class="small"><strong>You Receive:</strong> $${esc(money(breakdown.studentPayout))}</div>
   `;
 }
 function renderEmployerCommissionBreakdownHtml(breakdown, label='Estimated'){
   return `
     <div class="small"><strong>${esc(label)} Work Total:</strong> ${esc(breakdown.hours)} hours \u00D7 $${esc(money(breakdown.rate))}/hr = $${esc(money(breakdown.workTotal))}</div>
-    <div class="small">12% platform support fee (${esc(formatPercent(breakdown.employerCommissionPct))}): +$${esc(money(breakdown.employerCommissionAmount))}</div>
+    <div class="small">${esc(platformSupportFeeLabel(breakdown.employerCommissionPct))}: +$${esc(money(breakdown.employerCommissionAmount))}</div>
     <div class="small"><strong>Total Payment:</strong> $${esc(money(breakdown.employerTotal))}</div>
   `;
 }
@@ -11720,6 +11728,8 @@ async function submitFinalInvoice(projectId){
   p.studentPayout = studentPayout;
   p.studentPlatformFee = breakdown.studentCommissionAmount;
   p.employerPlatformFee = breakdown.employerCommissionAmount;
+  p.studentCommissionPct = breakdown.studentCommissionPct;
+  p.employerCommissionPct = breakdown.employerCommissionPct;
   p.platformFee = breakdown.employerCommissionAmount;
   p.platformFeeTotal = breakdown.platformFeeTotal;
   p.cogoFee = breakdown.platformFeeTotal;
@@ -11735,6 +11745,8 @@ async function submitFinalInvoice(projectId){
     studentPayout,
     studentPlatformFee: breakdown.studentCommissionAmount,
     employerPlatformFee: breakdown.employerCommissionAmount,
+    studentCommissionPct: breakdown.studentCommissionPct,
+    employerCommissionPct: breakdown.employerCommissionPct,
     platformFeeTotal: breakdown.platformFeeTotal,
     totalDue
   };
@@ -11753,9 +11765,9 @@ async function submitFinalInvoice(projectId){
     }
   }
   saveProjects(pList);
-  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. 12% platform support fee (${formatPercent(breakdown.employerCommissionPct)}): $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
-  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, 12% platform support fee $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
-  sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after 12% platform support fee: $${money(studentPayout)}.`, p.id);
+  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. ${platformSupportFeeLabel(breakdown.employerCommissionPct)}: $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
+  sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, ${platformSupportFeeLabel(breakdown.employerCommissionPct)} $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
+  sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after ${platformSupportFeeLabel(breakdown.studentCommissionPct)}: $${money(studentPayout)}.`, p.id);
   trackCogoEvent('project_completed', { source: 'student_final_invoice', value: totalDue, currency: 'USD' });
   closeModal();
   toast('Final invoice submitted for employer approval.');
@@ -12749,6 +12761,8 @@ async function startProject(appId){
     estimatedEmployerPlatformFee: estimatedBreakdown.employerCommissionAmount,
     estimatedStudentPlatformFee: estimatedBreakdown.studentCommissionAmount,
     estimatedStudentPayout: estimatedBreakdown.studentPayout,
+    studentCommissionPct: estimatedBreakdown.studentCommissionPct,
+    employerCommissionPct: estimatedBreakdown.employerCommissionPct,
     estimatedPlatformFeeTotal: estimatedBreakdown.platformFeeTotal,
     estimatedEmployerTotal,
     location: a.location,
@@ -12777,9 +12791,9 @@ async function startProject(appId){
   }
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
-  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${formatPercent(estimatedBreakdown.studentCommissionPct)} platform support fee is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
-  sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${formatPercent(estimatedBreakdown.employerCommissionPct)} platform support fee: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
-  sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your ${formatPercent(estimatedBreakdown.studentCommissionPct)} platform support fee is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
+  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${platformSupportFeeLabel(estimatedBreakdown.employerCommissionPct)}: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
+  sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
   trackCogoEvent('project_started', { source: 'community_or_direct_offer', value: estimatedEmployerTotal, currency: 'USD' });
   trackCogoEvent('payment_success', { source: 'project_escrow', value: estimatedEmployerTotal, currency: 'USD' });
   employerTab = 'projects';
@@ -12975,6 +12989,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   p.studentPayout = finalBreakdown.studentPayout;
   p.studentPlatformFee = finalBreakdown.studentCommissionAmount;
   p.employerPlatformFee = finalBreakdown.employerCommissionAmount;
+  p.studentCommissionPct = finalBreakdown.studentCommissionPct;
+  p.employerCommissionPct = finalBreakdown.employerCommissionPct;
   p.platformFee = finalBreakdown.employerCommissionAmount;
   p.platformFeeTotal = finalBreakdown.platformFeeTotal;
   p.finalTotal = finalBreakdown.employerTotal;
@@ -13072,6 +13088,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
     total_amount: Number(p.finalTotal || 0),
     employer_platform_fee: Number(p.employerPlatformFee || 0),
     student_platform_fee: Number(p.studentPlatformFee || 0),
+    student_commission_pct: Number(p.studentCommissionPct ?? getPaymentSettings().studentCommissionPct),
+    employer_commission_pct: Number(p.employerCommissionPct ?? getPaymentSettings().employerCommissionPct),
     platform_fee_total: Number(p.platformFeeTotal || 0),
     platform_fee: Number(p.studentPlatformFee || 0),
     payout_amount: Number(p.studentPayout || 0),
@@ -13119,10 +13137,12 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   delete p.approvalInProgress;
   saveProjects(projects);
   const completionDedupeKey = `project-payment-complete:${p.id}`;
-  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work Total: $${money(p.finalSubtotal || 0)}. 12% platform support fee: $${money(p.employerPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions', dedupeKey:`${completionDedupeKey}:employer-paid` });
-  pushNotif(p.studentUserId, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after a $${money(p.studentPlatformFee || 0)} 12% platform support fee. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions', dedupeKey:`${completionDedupeKey}:student-paid` });
-  sendSystemMessage(p.studentUserId, p.studentName, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. 12% platform support fee: $${money(p.studentPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
-  sendSystemMessage(p.employerId, p.employerName, `Payment completed for '${p.jobTitle}'. Work Total: $${money(p.finalSubtotal || 0)}. 12% platform support fee: $${money(p.employerPlatformFee || 0)}. Total Payment: $${money(p.finalTotal || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
+  const finalStudentFeeLabel = platformSupportFeeLabel(p.studentCommissionPct ?? getPaymentSettings().studentCommissionPct);
+  const finalEmployerFeeLabel = platformSupportFeeLabel(p.employerCommissionPct ?? getPaymentSettings().employerCommissionPct);
+  pushNotif(p.employerId, `You paid $${money(p.finalTotal || 0)} total for ${p.studentName}'s project. Work Total: $${money(p.finalSubtotal || 0)}. ${finalEmployerFeeLabel}: $${money(p.employerPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions', dedupeKey:`${completionDedupeKey}:employer-paid` });
+  pushNotif(p.studentUserId, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}' after a $${money(p.studentPlatformFee || 0)} ${finalStudentFeeLabel}. You can view this transaction in the My Transactions section of your Dashboard.`, { type:'dashboard', section:'transactions', dedupeKey:`${completionDedupeKey}:student-paid` });
+  sendSystemMessage(p.studentUserId, p.studentName, `You\u2019ve been paid $${money(p.studentPayout || 0)} for '${p.jobTitle}'. Work total: $${money(p.finalSubtotal || 0)}. ${finalStudentFeeLabel}: $${money(p.studentPlatformFee || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
+  sendSystemMessage(p.employerId, p.employerName, `Payment completed for '${p.jobTitle}'. Work Total: $${money(p.finalSubtotal || 0)}. ${finalEmployerFeeLabel}: $${money(p.employerPlatformFee || 0)}. Total Payment: $${money(p.finalTotal || 0)}. You can view this transaction in the My Transactions section of your Dashboard.`, p.id);
   pushAdminCommissionNotification(p);
   trackCogoEvent('payment_success', { source: 'project_final_payment', value: Number(p.finalTotal || 0), currency: 'USD' });
   pushNotif(p.employerId, `Leave a review for ${p.studentName}`, { type:'dashboard', section:'applicants_projects', employerTab:'projects', dedupeKey:`${completionDedupeKey}:review` });
@@ -15560,8 +15580,8 @@ function renderTransactionsPanel(){
   const helper = isAdmin
     ? 'Admin view shows total Platform Fee collected from both sides.'
     : isEmployer
-      ? 'Review completed job payments, including your 12% platform support fee and final payment.'
-      : 'Review completed job payouts, including your 12% platform support fee and final payout.';
+      ? `Review completed job payments, including your ${platformSupportFeeLabel(getPaymentSettings().employerCommissionPct)} and final payment.`
+      : `Review completed job payouts, including your ${platformSupportFeeLabel(getPaymentSettings().studentCommissionPct)} and final payout.`;
   wrap.innerHTML = `
     <div class="card form-card" style="margin-top:18px">
       <div class="split" style="align-items:flex-start;margin-bottom:14px">
@@ -15690,8 +15710,8 @@ function renderTransactionsResults(){
     const platformFeeLabel = isAdmin
       ? `$${esc(Number(tx.platform_fee_total || 0).toFixed(2))}`
       : isEmployer
-        ? `${esc(formatPercent(getPaymentSettings().employerCommissionPct))} \u00B7 +$${esc(Number(tx.employer_platform_fee || 0).toFixed(2))}`
-        : `${esc(formatPercent(getPaymentSettings().studentCommissionPct))} \u00B7 -$${esc(Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2))}`;
+        ? `${esc(formatPercent(transactionEmployerCommissionPct(tx)))} \u00B7 +$${esc(Number(tx.employer_platform_fee || 0).toFixed(2))}`
+        : `${esc(formatPercent(transactionStudentCommissionPct(tx)))} \u00B7 -$${esc(Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2))}`;
     const finalValue = isAdmin
       ? `$${esc(Number(tx.platform_fee_total || 0).toFixed(2))}`
       : isEmployer
@@ -15730,8 +15750,8 @@ function renderTransactionsResults(){
       const platformFeeLabel = isAdmin
         ? `$${Number(tx.platform_fee_total || 0).toFixed(2)}`
         : isEmployer
-          ? `${formatPercent(getPaymentSettings().employerCommissionPct)} \u00B7 +$${Number(tx.employer_platform_fee || 0).toFixed(2)}`
-          : `${formatPercent(getPaymentSettings().studentCommissionPct)} \u00B7 -$${Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2)}`;
+          ? `${formatPercent(transactionEmployerCommissionPct(tx))} \u00B7 +$${Number(tx.employer_platform_fee || 0).toFixed(2)}`
+          : `${formatPercent(transactionStudentCommissionPct(tx))} \u00B7 -$${Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2)}`;
       const base = [
         formatTransactionDate(txDate),
         tx.job_title || '',
@@ -15754,8 +15774,8 @@ function renderTransactionsResults(){
     const platformFeeLabel = isAdmin
       ? `$${esc(Number(tx.platform_fee_total || 0).toFixed(2))}`
       : isEmployer
-        ? `${esc(formatPercent(getPaymentSettings().employerCommissionPct))} \u00B7 +$${esc(Number(tx.employer_platform_fee || 0).toFixed(2))}`
-        : `${esc(formatPercent(getPaymentSettings().studentCommissionPct))} \u00B7 -$${esc(Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2))}`;
+        ? `${esc(formatPercent(transactionEmployerCommissionPct(tx)))} \u00B7 +$${esc(Number(tx.employer_platform_fee || 0).toFixed(2))}`
+        : `${esc(formatPercent(transactionStudentCommissionPct(tx)))} \u00B7 -$${esc(Number(tx.student_platform_fee || tx.platform_fee || 0).toFixed(2))}`;
     const finalValue = isAdmin
       ? `$${esc(Number(tx.platform_fee_total || 0).toFixed(2))}`
       : isEmployer

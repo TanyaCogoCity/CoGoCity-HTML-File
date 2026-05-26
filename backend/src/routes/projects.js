@@ -9,7 +9,7 @@ const { createNotification, createNotifications } = require('../lib/notification
 const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/messaging');
 const { getOrCreateSystemUser } = require('../lib/systemUser');
 const { requirePlatformReady } = require('../lib/onboardingGate');
-const { calculateHourlyProjectFees } = require('../lib/platformFees');
+const { calculateHourlyProjectFeesFromSettings } = require('../lib/platformFees');
 
 const router = express.Router();
 
@@ -87,7 +87,7 @@ router.post('/start', requireAuth, async (req, res) => {
 
     const existingTx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
     if (!existingTx) {
-      const fees = calculateHourlyProjectFees(Number(project.totalAmount || 0));
+      const fees = await calculateHourlyProjectFeesFromSettings(prisma, Number(project.totalAmount || 0));
       await prisma.transaction.create({
         data: {
           projectId: project.id,
@@ -173,7 +173,7 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
   if (tx) {
-    const fees = calculateHourlyProjectFees(totalAmount);
+    const fees = await calculateHourlyProjectFeesFromSettings(prisma, totalAmount);
     await prisma.transaction.update({
       where: { id: tx.id },
       data: {
