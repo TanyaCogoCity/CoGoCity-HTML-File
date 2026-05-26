@@ -1,21 +1,21 @@
 const { prisma } = require('./prisma');
 
 async function ensureConversationBetweenUsers({ userAId, userBId, projectId = null, label = null }) {
+  const existingBetweenUsers = await prisma.conversation.findFirst({
+    where: {
+      AND: [
+        { participants: { some: { userId: userAId } } },
+        { participants: { some: { userId: userBId } } },
+      ],
+    },
+    include: { participants: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (existingBetweenUsers && existingBetweenUsers.participants.length === 2) return existingBetweenUsers;
+
   if (projectId) {
     const existing = await prisma.conversation.findFirst({ where: { projectId } });
     if (existing) return existing;
-  } else {
-    const existing = await prisma.conversation.findFirst({
-      where: {
-        projectId: null,
-        AND: [
-          { participants: { some: { userId: userAId } } },
-          { participants: { some: { userId: userBId } } },
-        ],
-      },
-      include: { participants: true },
-    });
-    if (existing && existing.participants.length === 2) return existing;
   }
 
   const conversation = await prisma.conversation.create({

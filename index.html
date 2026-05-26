@@ -13522,6 +13522,13 @@ function getDirectThreadId(userA='', userB=''){
   const parts = [String(userA || '').trim(), String(userB || '').trim()].filter(Boolean).sort();
   return `dm:${parts.join(':')}`;
 }
+function getUnifiedUserThreadId(userA='', userB=''){
+  const parts = [String(userA || '').trim(), String(userB || '').trim()].filter(Boolean).sort();
+  return `user:${parts.join(':')}`;
+}
+function isUnifiedUserThreadId(value=''){
+  return String(value || '').startsWith('user:');
+}
 function renderMessages(el){
   if (currentUser.role === 'admin' && !isAdminImpersonating()) {
     el.innerHTML = `
@@ -13568,14 +13575,14 @@ function renderMessages(el){
     const isSystemWithCogo = String(partnerId) === 'system_cogo' && String(m.message_type || '') === 'system';
     const threadId = isSystemWithCogo
       ? 'system:cogo'
-      : String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
+      : getUnifiedUserThreadId(me, partnerId);
     const threadKey = `${partnerId}::${threadId}`;
     if (!threads[threadKey] || new Date(m.createdAt) > new Date(threads[threadKey].createdAt)) {
       threads[threadKey] = {
         threadKey,
         partnerId,
         threadId,
-        threadLabel: isSystemWithCogo ? 'CoGo Team Updates' : (m.thread_label || ''),
+        threadLabel: isSystemWithCogo ? 'CoGo Team Updates' : '',
         partnerName: m.fromId === me ? m.toName : m.fromName,
         preview: m.content,
         createdAt: m.createdAt,
@@ -13627,7 +13634,7 @@ function renderMessages(el){
 
   el.innerHTML = `
     <div class="section-title">Messages</div>
-    <div class="small muted" style="margin-bottom:10px">User-to-user communication and CoGo Team system/admin updates appear here in separate threads.</div>
+    <div class="small muted" style="margin-bottom:10px">User-to-user messages are grouped by person. CoGo Team system/admin updates appear in their own thread.</div>
     <div class="msg-shell">
       <div class="thread-list">
         ${threadList.length ? threadList.map(t => `
@@ -13682,6 +13689,16 @@ function renderThreadView(userId){
   const isCogoPartner = String(partnerId) === 'system_cogo';
   const isSystemThread = threadId.startsWith('system:');
   const isUnifiedCogoSystemThread = isCogoPartner && threadId === 'system:cogo';
+  const isUnifiedUserThread = isUnifiedUserThreadId(threadId);
+  if (backendAuthEnabled() && isUnifiedUserThread) {
+    getMessages().forEach(message => {
+      const backendThreadId = String(message.thread_id || message.conversation_id || '');
+      const isPairMessage = (String(message.fromId) === String(currentUser.id) && String(message.toId) === String(partnerId)) || (String(message.fromId) === String(partnerId) && String(message.toId) === String(currentUser.id));
+      if (isPairMessage && isBackendConversationId(backendThreadId) && !backendMessageThreadsLoaded[backendThreadId] && !backendMessageThreadsLoading[backendThreadId]) {
+        refreshBackendThreadMessages(backendThreadId, { rerender:true });
+      }
+    });
+  }
   const partnerRecord = getUserById(partnerId) || { id:partnerId, name:'User' };
   const partner = Object.assign({}, partnerRecord, { name: getMessagePartnerDisplayName(partnerId, partnerRecord.name || partnerRecord.publicName || 'User') });
   const activeProject = threadId.startsWith('project:')
@@ -13694,6 +13711,9 @@ function renderThreadView(userId){
     if (!((m.fromId === currentUser.id && m.toId === partnerId) || (m.fromId === partnerId && m.toId === currentUser.id))) return false;
     if (isUnifiedCogoSystemThread) {
       return String(m.message_type || '') === 'system' || String(m.thread_id || '').startsWith('system:');
+    }
+    if (isUnifiedUserThread) {
+      return String(m.message_type || '') !== 'system' && !String(m.thread_id || '').startsWith('system:');
     }
     const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
     return msgThreadId === threadId;
@@ -13711,7 +13731,9 @@ function renderThreadView(userId){
     const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
     const shouldMarkRead = isUnifiedCogoSystemThread
       ? (m.toId === currentUser.id && m.fromId === partnerId && (String(m.message_type || '') === 'system' || msgThreadId.startsWith('system:')))
-      : (m.toId === currentUser.id && m.fromId === partnerId && msgThreadId === threadId);
+      : (isUnifiedUserThread
+        ? (m.toId === currentUser.id && m.fromId === partnerId && String(m.message_type || '') !== 'system' && !msgThreadId.startsWith('system:'))
+        : (m.toId === currentUser.id && m.fromId === partnerId && msgThreadId === threadId));
     if (shouldMarkRead && !m.read){
       m.read = true;
       changed = true;
@@ -13823,19 +13845,21 @@ async function sendMessageToActive(){
   const threadId = parts[1] || getDirectThreadId(currentUser.id, partnerId);
   const partnerRecord = getUserById(partnerId) || { id:partnerId, name:'User' };
   const partner = Object.assign({}, partnerRecord, { name: getMessagePartnerDisplayName(partnerId, partnerRecord.name || partnerRecord.publicName || 'User') });
+  const isUnifiedUserThread = isUnifiedUserThreadId(threadId);
   const existing = getMessages().find(m => {
     const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
-    return ((m.fromId === currentUser.id && m.toId === partnerId) || (m.fromId === partnerId && m.toId === currentUser.id)) && msgThreadId === threadId;
+    const isPairMessage = (m.fromId === currentUser.id && m.toId === partnerId) || (m.fromId === partnerId && m.toId === currentUser.id);
+    return isPairMessage && (isUnifiedUserThread ? (String(m.message_type || '') !== 'system' && !msgThreadId.startsWith('system:')) : msgThreadId === threadId);
   });
   const activeProject = threadId.startsWith('project:')
     ? getProjects().find(project => String(project.id) === String(threadId.replace('project:','')))
     : getProjectForUsers(currentUser.id, partner.id);
   if (!blockTextCheck(content, { allowContactInfo: canExchangeProjectContactInfo(partner.id, threadId, activeProject) })) return;
-  const nextThreadLabel = existing && existing.thread_label
+  const nextThreadLabel = existing && existing.thread_label && !isUnifiedUserThread
     ? existing.thread_label
     : (threadId.startsWith('project:') ? 'Job Chat' : '');
-  await sendInboxMessage(partner.id, partner.name, content, activeProject ? activeProject.id : null, currentUser, {
-    thread_id: threadId,
+  await sendInboxMessage(partner.id, partner.name, content, activeProject && !isUnifiedUserThread ? activeProject.id : null, currentUser, {
+    thread_id: isUnifiedUserThread ? getDirectThreadId(currentUser.id, partner.id) : threadId,
     thread_label: nextThreadLabel
   });
   input.value = '';
