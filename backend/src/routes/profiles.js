@@ -3,7 +3,7 @@ const { prisma } = require('../lib/prisma');
 const { ok, created, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
-const { normalizeServicePayload, serializeService } = require('../lib/compat');
+const { normalizeServicePayload, serializeReview, serializeService } = require('../lib/compat');
 const { userProfileMetadata } = require('../lib/onboardingGate');
 
 const router = express.Router();
@@ -19,6 +19,7 @@ function serializeStudentProfile(profile) {
     is_active: profile.isActive,
     created_at: profile.createdAt,
     services: (profile.services || []).map(serializeService),
+    reviews: (profile.user?.reviewsReceived || []).map(serializeReview),
     user: profile.user,
     profile: profile.user?.userProfile || null,
   };
@@ -32,8 +33,12 @@ router.get('/student-profiles', async (req, res) => {
   const rows = await prisma.studentProfile.findMany({
     where,
     include: {
-      services: { where: { deletedAt: null, isActive: true }, orderBy: { createdAt: 'desc' } },
-      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true } },
+      services: {
+        where: { deletedAt: null, isActive: true },
+        orderBy: { createdAt: 'desc' },
+        include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
+      },
+      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -157,8 +162,12 @@ router.patch('/student-profiles/:id', requireAuth, async (req, res) => {
   const fresh = await prisma.studentProfile.findUnique({
     where: { id: updated.id },
     include: {
-      services: { where: { deletedAt: null, isActive: true }, orderBy: { createdAt: 'desc' } },
-      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true } },
+      services: {
+        where: { deletedAt: null, isActive: true },
+        orderBy: { createdAt: 'desc' },
+        include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
+      },
+      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
   });
 

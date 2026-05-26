@@ -11,6 +11,7 @@ router.get('/', async (req, res) => {
   const services = await prisma.service.findMany({
     where: { deletedAt: null, isActive: true },
     orderBy: { createdAt: 'desc' },
+    include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
     take: 200,
   });
   return ok(res, services.map(serializeService));

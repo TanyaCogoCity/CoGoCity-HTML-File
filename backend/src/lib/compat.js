@@ -62,6 +62,9 @@ function normalizeServicePayload(payload = {}) {
 }
 
 function serializeService(service) {
+  const reviews = (service.reviews || []).map(serializeReview);
+  const reviewCount = reviews.length;
+  const averageRating = reviewCount ? Number((reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount).toFixed(2)) : 0;
   return {
     id: service.id,
     profile_id: service.profileId,
@@ -80,8 +83,34 @@ function serializeService(service) {
     video_id: service.metadata?.video_id || '',
     is_active: service.isActive,
     isActive: service.isActive,
+    reviews,
+    review_count: reviewCount,
+    reviewCount,
+    average_rating: averageRating,
+    averageRating,
     created_at: service.createdAt,
     createdAt: service.createdAt,
+  };
+}
+
+function serializeReview(review) {
+  const reviewer = review.reviewer || {};
+  return {
+    id: review.id,
+    project_id: review.projectId,
+    projectId: review.projectId,
+    reviewer_id: review.reviewerId,
+    reviewerId: review.reviewerId,
+    reviewer_name: reviewer.displayName || review.reviewerName || '',
+    reviewerName: reviewer.displayName || review.reviewerName || '',
+    student_id: review.studentId,
+    studentId: review.studentId,
+    service_id: review.serviceId,
+    serviceId: review.serviceId,
+    rating: review.rating,
+    comment: review.comment || '',
+    created_at: review.createdAt,
+    createdAt: review.createdAt,
   };
 }
 
@@ -285,6 +314,7 @@ function serializeMessage(message) {
 
 function serializeProject(project) {
   const transaction = project.transaction || null;
+  const reviews = (project.reviews || []).map(serializeReview);
   return {
     id: project.id,
     job_id: project.jobId,
@@ -321,6 +351,9 @@ function serializeProject(project) {
     studentPayout: transaction ? Number(transaction.studentPayout) : undefined,
     job: project.job ? serializeJob(project.job) : null,
     application: project.application ? serializeApplication(project.application) : null,
+    reviews,
+    reviewSubmitted: reviews.some(review => review.reviewerId === project.employerId),
+    review_submitted: reviews.some(review => review.reviewerId === project.employerId),
     created_at: project.createdAt,
     createdAt: project.createdAt,
     updated_at: project.updatedAt,
@@ -338,6 +371,7 @@ function notificationType(type = 'system') {
 module.exports = {
   normalizeRegisterPayload,
   normalizeServicePayload,
+  serializeReview,
   serializeService,
   normalizeJobPayload,
   serializeJob,

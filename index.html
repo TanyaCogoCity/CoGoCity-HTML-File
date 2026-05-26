@@ -1534,7 +1534,7 @@ function mapBackendStudentProfile(row={}){
     whyHire: ['Friendly','Reliable','Motivated'],
     highlights: [row.experience || ''].filter(Boolean),
     rate: Number(primaryService.rate || 0) || 20,
-    reviews: [],
+    reviews: row.reviews || [],
     availability: primaryService.availability || '',
     status: row.is_active === false ? 'archived' : 'live',
     createdAt: row.created_at || new Date().toISOString(),
@@ -2611,7 +2611,7 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     student_id: app.student_id || '',
     studentUserId: app.student_id || '',
     studentProfileId: app.studentProfileId || null,
-    studentServiceId: null,
+    studentServiceId: (backendProject && (backendProject.service_id || backendProject.serviceId)) || null,
     studentServiceTitle: '',
     studentName,
     rate,
@@ -2633,6 +2633,8 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     payout_status: backendProject && backendProject.payment_status === 'paid' ? 'released' : 'outside_platform',
     status: frontendStatus || 'in_progress',
     thread_id: backendProject && (backendProject.thread_id || backendProject.threadId),
+    reviews: backendProject && Array.isArray(backendProject.reviews) ? backendProject.reviews : [],
+    reviewSubmitted: !!(backendProject && (backendProject.reviewSubmitted || backendProject.review_submitted || (Array.isArray(backendProject.reviews) && currentUser && backendProject.reviews.some(review => String(review.reviewerId || review.reviewer_id || '') === String(currentUser.id))))),
     contractHtml,
     backendSource: !!backendProject,
     createdAt,
@@ -13193,7 +13195,7 @@ function openReviewModal(projectId){
     <button class="btn btn-blue" onclick="submitReview('${esc(projectId)}')">Submit Review</button>
   `, '620px');
 }
-function submitReview(projectId){
+async function submitReview(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return toast('Project not found.');
@@ -13212,7 +13214,31 @@ function submitReview(projectId){
   if (!student) return toast('Student profile not found.');
   const rating = Number(ratingEl.value || 5);
   const comment = (commentEl.value || '').trim();
-  const review = { id: uid('review'), reviewerId: currentUser.id, reviewerName: currentUser.publicName || currentUser.name, rating, comment, projectId, createdAt: new Date().toISOString(), studentServiceId: p.studentServiceId || null };
+  let backendReview = null;
+  if (backendAuthEnabled() && getBackendAccessToken() && getProjectBackendId(p)) {
+    try {
+      const serviceId = String(p.studentServiceId || '').trim();
+      const reviewPayload = { rating, comment };
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(serviceId)) reviewPayload.service_id = serviceId;
+      backendReview = await backendAuthRequest(`/projects/${encodeURIComponent(getProjectBackendId(p))}/review`, {
+        method: 'POST',
+        body: JSON.stringify(reviewPayload)
+      });
+    } catch (error) {
+      console.warn('Backend review save failed', error);
+      toast(error.message || 'Backend review save failed. Saving local copy only.');
+    }
+  }
+  const review = {
+    id: backendReview?.id || uid('review'),
+    reviewerId: backendReview?.reviewerId || backendReview?.reviewer_id || currentUser.id,
+    reviewerName: backendReview?.reviewerName || backendReview?.reviewer_name || currentUser.publicName || currentUser.name,
+    rating: Number(backendReview?.rating || rating),
+    comment: backendReview?.comment ?? comment,
+    projectId: backendReview?.projectId || backendReview?.project_id || projectId,
+    createdAt: backendReview?.createdAt || backendReview?.created_at || new Date().toISOString(),
+    studentServiceId: backendReview?.serviceId || backendReview?.service_id || p.studentServiceId || null
+  };
   student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
   const services = student.services || [];
   const targetService = services.find(service => service.id === p.studentServiceId) || services[0] || null;
