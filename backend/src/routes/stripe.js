@@ -8,6 +8,7 @@ const config = require('../config');
 const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { notificationType, serializeJob } = require('../lib/compat');
+const { payoutSafetyRequirementsForUser, validateProjectPayoutSafety } = require('../lib/payoutSafety');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
@@ -77,6 +78,59 @@ async function prefillStudentConnectAccount(user, origin) {
     individual: stripeIndividualPrefillPayload(user),
     metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts', tax_identity_custodian: 'stripe_connect' },
   });
+}
+
+function isInaccessibleConnectAccountError(error, accountId) {
+  const message = String(error?.message || '');
+  const code = error?.code;
+  const param = error?.param;
+  const missingOrInvalid = code === 'resource_missing' || error?.type === 'StripeInvalidRequestError';
+  const mentionsAccount = accountId && message.includes(accountId);
+  return Boolean(
+    missingOrInvalid &&
+      (
+        param === 'account' ||
+        param === 'stripe_account' ||
+        mentionsAccount ||
+        /does not have access to account|account does not exist|application access may have been revoked/i.test(message)
+      )
+  );
+}
+
+async function clearStaleConnectAccount(user, error, source = 'stripe.connect_account.auto_heal') {
+  if (!user?.id || !user?.stripeAccountId) return user;
+  const staleAccountId = user.stripeAccountId;
+  const data = {
+    stripeAccountId: null,
+    stripeConnectOnboardingStatus: 'not_started',
+    stripeChargesEnabled: false,
+    stripePayoutsEnabled: false,
+    stripeDetailsSubmitted: false,
+  };
+  const updated = await prisma.user.update({ where: { id: user.id }, data });
+  await writeAuditLog({
+    userId: user.id,
+    action: source,
+    entityType: 'user',
+    entityId: user.id,
+    payload: {
+      staleAccountId,
+      reason: error?.message || 'Stripe Connect account is inaccessible to the configured platform key',
+      stripeCode: error?.code || null,
+      stripeParam: error?.param || null,
+    },
+  });
+  return updated;
+}
+
+async function createStudentConnectAccountForUser(user, origin, country) {
+  const account = await stripe.accounts.create(
+    stripeStudentConnectAccountPayload(user, origin, country),
+    { idempotencyKey: `user:${user.id}:connect-account:v2` }
+  );
+  await prisma.user.update({ where: { id: user.id }, data: { stripeAccountId: account.id, stripeConnectOnboardingStatus: 'in_progress' } });
+  await writeAuditLog({ userId: user.id, action: 'stripe.connect_account.create', entityType: 'user', entityId: user.id, payload: { accountId: account.id } });
+  return account;
 }
 
 function onboardingStatusForUser(user) {
@@ -157,8 +211,31 @@ async function updateUserFromConnectAccount(account) {
 
 async function syncConnectAccount(user) {
   if (!user.stripeAccountId) return user;
-  const account = await stripe.accounts.retrieve(user.stripeAccountId);
-  return updateUserFromConnectAccount(account);
+  try {
+    const account = await stripe.accounts.retrieve(user.stripeAccountId);
+    return updateUserFromConnectAccount(account);
+  } catch (error) {
+    if (isInaccessibleConnectAccountError(error, user.stripeAccountId)) {
+      return clearStaleConnectAccount(user, error);
+    }
+    throw error;
+  }
+}
+
+async function syncedPayeeForPayoutSafety(user) {
+  if (!user?.stripeAccountId) return user;
+  return syncConnectAccount(user);
+}
+
+async function validateProjectPayoutSafetyWithAutoHeal({ project, transaction }) {
+  const syncedStudent = await syncedPayeeForPayoutSafety(project.student);
+  const syncedProject = syncedStudent ? { ...project, student: syncedStudent } : project;
+  return validateProjectPayoutSafety({ prisma, project: syncedProject, transaction });
+}
+
+async function payoutSafetyRequirementsWithAutoHeal(user) {
+  const syncedUser = await syncedPayeeForPayoutSafety(user);
+  return payoutSafetyRequirementsForUser(syncedUser || { id: user?.id });
 }
 
 async function loadProjectForPayment(projectId, user) {
@@ -170,6 +247,10 @@ async function loadProjectForPayment(projectId, user) {
   if (user.role !== 'admin' && project.employerId !== user.id) return { error: [403, 'Forbidden'] };
   if (!project.transaction) return { error: [404, 'Transaction not found for this project'] };
   return { project, tx: project.transaction };
+}
+
+function failPayoutSafety(res, validation) {
+  return fail(res, validation.status || 409, validation.message || 'Student payout setup is not ready', validation.requirements || validation);
 }
 
 async function markTransactionFromIntent(paymentIntent) {
@@ -485,19 +566,13 @@ router.post('/onboarding/connect-account', requireAuth, async (req, res) => {
   if (!['student', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can create Stripe Connect accounts');
 
   try {
-    let accountId = req.user.stripeAccountId;
-    if (!accountId) {
-      const origin = stripeOrigin(req);
-      const account = await stripe.accounts.create(
-        stripeStudentConnectAccountPayload(req.user, origin, req.body?.country),
-        { idempotencyKey: `user:${req.user.id}:connect-account:v1` }
-      );
-      accountId = account.id;
-      await prisma.user.update({ where: { id: req.user.id }, data: { stripeAccountId: accountId, stripeConnectOnboardingStatus: 'in_progress' } });
-      await writeAuditLog({ userId: req.user.id, action: 'stripe.connect_account.create', entityType: 'user', entityId: req.user.id, payload: { accountId } });
+    const origin = stripeOrigin(req);
+    let user = req.user.stripeAccountId ? await syncConnectAccount(req.user) : req.user;
+    if (!user.stripeAccountId) {
+      const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
+      user = await syncConnectAccount({ ...user, stripeAccountId: account.id });
     }
 
-    const user = await syncConnectAccount({ ...req.user, stripeAccountId: accountId });
     return ok(res, onboardingStatusForUser(user));
   } catch (error) {
     return fail(res, 400, 'Failed to create Stripe Connect account', error.message);
@@ -509,26 +584,47 @@ router.post('/onboarding/connect-account-link', requireAuth, async (req, res) =>
   if (!['student', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can onboard with Stripe Connect');
 
   try {
-    let user = req.user;
+    let user = req.user.stripeAccountId ? await syncConnectAccount(req.user) : req.user;
     const origin = stripeOrigin(req);
     if (!user.stripeAccountId) {
-      const account = await stripe.accounts.create(
-        stripeStudentConnectAccountPayload(user, origin, req.body?.country),
-        { idempotencyKey: `user:${user.id}:connect-account:v1` }
-      );
-      user = await prisma.user.update({ where: { id: user.id }, data: { stripeAccountId: account.id, stripeConnectOnboardingStatus: 'in_progress' } });
+      const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
+      user = await prisma.user.findUnique({ where: { id: user.id } });
+      user.stripeAccountId = account.id;
     } else if (user.role === 'student') {
-      await prefillStudentConnectAccount(user, origin);
+      try {
+        await prefillStudentConnectAccount(user, origin);
+      } catch (error) {
+        if (!isInaccessibleConnectAccountError(error, user.stripeAccountId)) throw error;
+        user = await clearStaleConnectAccount(user, error, 'stripe.connect_account.auto_heal_prefill');
+        const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
+        user = await prisma.user.findUnique({ where: { id: user.id } });
+        user.stripeAccountId = account.id;
+      }
     }
 
     const refreshUrl = req.body?.refresh_url || req.body?.refreshUrl || `${origin}/?stripe_connect=refresh`;
     const returnUrl = req.body?.return_url || req.body?.returnUrl || `${origin}/?stripe_connect=return`;
-    const link = await stripe.accountLinks.create({
-      account: user.stripeAccountId,
-      refresh_url: refreshUrl,
-      return_url: returnUrl,
-      type: 'account_onboarding',
-    });
+    let link;
+    try {
+      link = await stripe.accountLinks.create({
+        account: user.stripeAccountId,
+        refresh_url: refreshUrl,
+        return_url: returnUrl,
+        type: 'account_onboarding',
+      });
+    } catch (error) {
+      if (!isInaccessibleConnectAccountError(error, user.stripeAccountId)) throw error;
+      user = await clearStaleConnectAccount(user, error, 'stripe.connect_account.auto_heal_link');
+      const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
+      user = await prisma.user.findUnique({ where: { id: user.id } });
+      user.stripeAccountId = account.id;
+      link = await stripe.accountLinks.create({
+        account: user.stripeAccountId,
+        refresh_url: refreshUrl,
+        return_url: returnUrl,
+        type: 'account_onboarding',
+      });
+    }
     await writeAuditLog({ userId: req.user.id, action: 'stripe.connect_account_link.create', entityType: 'user', entityId: req.user.id });
     return ok(res, { url: link.url, expires_at: link.expires_at, stripe_account_id: user.stripeAccountId });
   } catch (error) {
@@ -783,6 +879,8 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
   const loaded = await loadProjectForPayment(projectId, req.user);
   if (loaded.error) return fail(res, loaded.error[0], loaded.error[1]);
   const { project, tx } = loaded;
+  const payoutValidation = await validateProjectPayoutSafetyWithAutoHeal({ project, transaction: tx });
+  if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
   const origin = stripeOrigin(req);
 
   try {
@@ -841,6 +939,8 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
   if (loaded.error) return fail(res, loaded.error[0], loaded.error[1]);
   const { project, tx } = loaded;
   if (!tx.stripePaymentIntentId) return fail(res, 409, 'Project payment has not been funded with Stripe');
+  const payoutValidation = await validateProjectPayoutSafetyWithAutoHeal({ project, transaction: tx });
+  if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId);
@@ -875,8 +975,13 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
   const jobTitle = String(req.body?.job_title || req.body?.jobTitle || 'CoGo City project').trim();
   if (!Number.isFinite(amountTotal) || amountTotal <= 0) return fail(res, 400, 'amount_total must be greater than 0');
   if (!req.user.stripeCustomerId || !req.user.stripeDefaultPaymentMethodId) return fail(res, 409, 'Payer has not saved a Stripe test payment method');
+  if (!studentUserId) return fail(res, 400, 'student_user_id is required');
 
   try {
+    const student = await prisma.user.findUnique({ where: { id: studentUserId } });
+    const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
+    if (!requirements.payout_ready) return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
+
     const paymentIntent = await stripe.paymentIntents.create(
       {
         amount: toCents(amountTotal),
@@ -924,6 +1029,12 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (paymentIntent.metadata?.payer_id && paymentIntent.metadata.payer_id !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
+    const studentUserId = paymentIntent.metadata?.payee_id || paymentIntent.metadata?.student_user_id || '';
+    if (studentUserId) {
+      const student = await prisma.user.findUnique({ where: { id: studentUserId } });
+      const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
+      if (!requirements.payout_ready) return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
+    }
     if (paymentIntent.status === 'succeeded') return ok(res, { payment_intent_id: paymentIntent.id, status: 'paid', stripe_status: paymentIntent.status });
     if (paymentIntent.status !== 'requires_capture') return fail(res, 409, `Payment is not ready to capture (${paymentIntent.status})`);
     const captureAmount = req.body?.amount_total || req.body?.amountTotal ? toCents(req.body.amount_total ?? req.body.amountTotal) : undefined;
@@ -952,8 +1063,8 @@ router.post('/manual-project-transfer', requireAuth, async (req, res) => {
     if (paymentIntent.status !== 'succeeded') return fail(res, 409, `Payment must be captured before payout transfer (${paymentIntent.status})`);
 
     const student = await prisma.user.findUnique({ where: { id: studentUserId } });
-    if (!student?.stripeAccountId) return fail(res, 409, 'Student has not connected a Stripe payout account');
-    if (!student.stripePayoutsEnabled || !student.stripeDetailsSubmitted) return fail(res, 409, 'Student Stripe payout account is not ready');
+    const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
+    if (!requirements.payout_ready) return fail(res, 409, 'Student Stripe payout account is not ready', requirements);
     const latestCharge = typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
     const transfer = await stripe.transfers.create(
       {
@@ -990,8 +1101,8 @@ router.post('/transfer-payout', requireAuth, async (req, res) => {
   const { project, tx } = loaded;
   if (tx.stripeTransferId) return ok(res, { transfer_id: tx.stripeTransferId, status: 'paid', project_id: project.id, already_transferred: true });
   if (!tx.stripePaymentIntentId || tx.status !== 'paid') return fail(res, 409, 'Project payment must be captured before payout transfer');
-  if (!project.student?.stripeAccountId) return fail(res, 409, 'Student has not connected a Stripe payout account');
-  if (!project.student?.stripePayoutsEnabled || !project.student?.stripeDetailsSubmitted) return fail(res, 409, 'Student Stripe payout account is not ready');
+  const payoutValidation = await validateProjectPayoutSafetyWithAutoHeal({ project, transaction: tx });
+  if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId);
