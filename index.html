@@ -1147,10 +1147,36 @@ async function backendAuthRequest(path, options={}){
     }
   }
   if (!response.ok || !payload || payload.ok === false) {
-    const message = payload?.error?.details || payload?.error?.message || `Backend auth request failed (${response.status})`;
-    throw new Error(message);
+    const details = payload?.error?.details;
+    const message = typeof details === 'string'
+      ? details
+      : payload?.error?.message || `Backend auth request failed (${response.status})`;
+    const error = new Error(message);
+    error.details = details;
+    error.status = response.status;
+    throw error;
   }
   return payload.data || {};
+}
+function isStripePayoutSafetyError(error){
+  return Boolean(error && error.details && typeof error.details === 'object' && error.details.sensitive_info_custodian === 'stripe_connect');
+}
+function showStripePayoutSafetyBlock(error, studentLabel='this student'){
+  const details = error && error.details ? error.details : {};
+  const statusParts = [];
+  if (details.connect_onboarding_status) statusParts.push(`Onboarding: ${stripeStatusLabel(details.connect_onboarding_status)}`);
+  statusParts.push(`Details submitted: ${details.details_submitted ? 'Yes' : 'No'}`);
+  statusParts.push(`Payouts enabled: ${details.payouts_enabled ? 'Yes' : 'No'}`);
+  openModal('Payout setup required', `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">Payment is blocked until ${esc(studentLabel)} completes Stripe Connect payout setup.</div>
+      <div class="small muted" style="margin-bottom:12px">CoGo City does not collect or store bank, SSN/TIN, tax identity, or IRS reporting details. Stripe Connect collects those details on its hosted onboarding flow.</div>
+      <ul class="small" style="margin:0 0 14px 18px">${statusParts.map(part => `<li>${esc(part)}</li>`).join('')}</ul>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-blue" onclick="closeModal()">Got it</button>
+      </div>
+    </div>
+  `, '620px');
 }
 async function createBackendStripeCheckoutSession(projectId){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId) return null;
@@ -2669,6 +2695,61 @@ async function refreshBackendProjects(options={}){
   }
 }
 function getProjectBackendId(project={}){ return project.backendProjectId || project.project_id || project.id; }
+function normalizeBookingTitleText(value=''){
+  return String(value || '').toLowerCase().replace(/[\u2022|]/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function isGenericStudentBookingTitle(title=''){
+  const normalized = normalizeBookingTitleText(title);
+  if (!normalized) return false;
+  return normalized === 'student service' ||
+    normalized === 'direct hire job' ||
+    normalized === 'reliable student helper' ||
+    normalized === 'reliable student helper tutoring tech help events';
+}
+function getProjectServiceTitle(project={}){
+  const directTitle = String(project.studentServiceTitle || project.student_service_title || '').trim();
+  if (directTitle) return directTitle;
+  const serviceId = project.studentServiceId || project.student_service_id || project.serviceId || project.service_id || '';
+  const studentId = project.studentProfileId || project.student_profile_id || project.student_id || project.studentUserId || '';
+  const student = getStudents().find(item =>
+    (studentId && (String(item.id) === String(studentId) || String(item.userId || '') === String(studentId))) ||
+    (project.studentUserId && String(item.userId || '') === String(project.studentUserId))
+  );
+  if (!student) return '';
+  const services = getRenderableStudentServices(student);
+  const matched = serviceId ? services.find(service => String(service.id || '') === String(serviceId)) : null;
+  return String((matched || services[0] || {}).title || '').trim();
+}
+function getProjectDisplayTitle(project={}){
+  const title = String(project.jobTitle || project.job_title || project.title || '').trim();
+  const serviceTitle = getProjectServiceTitle(project);
+  return (serviceTitle && isGenericStudentBookingTitle(title)) ? serviceTitle : (title || serviceTitle || 'Project');
+}
+function getProjectSnapshotForDisplay(project={}){
+  const snapshot = Object.assign({}, project.finalInvoice || project.projectSnapshot || {
+    title: project.jobTitle,
+    description: project.scope || project.description || '',
+    rate: project.rate,
+    location: project.location || ''
+  });
+  const displayTitle = getProjectDisplayTitle(project);
+  if (displayTitle && isGenericStudentBookingTitle(snapshot.title || project.jobTitle || '')) snapshot.title = displayTitle;
+  return snapshot;
+}
+function renderProjectContractHtml(project={}){
+  const snapshot = getProjectSnapshotForDisplay(project);
+  const hours = snapshot.estimatedHours || project.estimatedHours || project.duration || '';
+  return `
+    <div><strong>Work Agreement</strong></div>
+    <div>Title: ${esc(snapshot.title || getProjectDisplayTitle(project))}</div>
+    <div>Description: ${esc(snapshot.description || project.scope || '')}</div>
+    <div>Rate: $${esc(snapshot.rate || project.rate || 0)}/hr</div>
+    <div>Location: ${esc(snapshot.location || project.location || 'TBD')}</div>
+    ${hours ? `<div>Estimated hours: ${esc(hours)}</div>` : ''}
+    <div>Status: In Progress</div>
+    <div>Final hours may be adjusted and confirmed before payment release.</div>
+  `;
+}
 function mergeBackendProjectUpdate(localProject={}, backendProject={}){
   if (!backendProject) return localProject;
   const mapped = mapBackendProject(backendProject, {
@@ -2718,7 +2799,8 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
           }
         } catch (stripeError) {
           console.warn('Stripe checkout create failed', stripeError);
-          toast(stripeError.message || 'Stripe checkout is not ready yet. Project was saved without funding.');
+          if (isStripePayoutSafetyError(stripeError)) showStripePayoutSafetyBlock(stripeError, project.studentName || 'this student');
+          else toast(stripeError.message || 'Stripe checkout is not ready yet. Project was saved without funding.');
         }
       }
       return project;
@@ -11629,11 +11711,13 @@ function renderStudentProjectCard(p, listIndex=0){
  if (p.status === 'in_progress') actions.push(`<button class="btn btn-blue btn-sm" onclick="openSubmitCompletion('${esc(p.id)}')">Project Completed</button>`);
  actions.push(`<button class="btn btn-outline btn-sm" onclick="openProjectJobChat('${esc(p.id)}','${esc(p.employerId)}')">Open Job Chat</button>`);
  const collapsed = isProjectCollapsed(p.id, listIndex);
+ const displayTitle = getProjectDisplayTitle(p);
+ const contractHtml = renderProjectContractHtml(p);
   return `
   <div class="card item-card">
       <div class="split">
       <div>
-        <div style="font-weight:800">${esc(p.jobTitle)}</div>
+        <div style="font-weight:800">${esc(displayTitle)}</div>
         <div class="muted small">Employer: ${renderUserNameLink(p.employerId || p.employer_id, p.employerName)}</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(p.studentServiceTitle)}</div>` : ''}
         <div style="margin-top:10px">
@@ -11649,7 +11733,7 @@ function renderStudentProjectCard(p, listIndex=0){
           <div style="font-weight:800">Project Details</div>
           <div class="small" style="margin-top:6px">Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
           <div class="small">Location: ${esc(p.location || 'TBD')}</div>
-          ${p.contractHtml ? `<div class="contract-box small">${p.contractHtml}</div>` : ''}
+          <div class="contract-box small">${contractHtml}</div>
           ${p.changeRequestNote ? `<div class="warning" style="margin-top:10px">Employer requested changes: ${esc(p.changeRequestNote)}</div>` : ''}
         </div>
         <div class="card form-card" style="margin-top:10px;background:#fff">
@@ -11671,13 +11755,7 @@ function openSubmitCompletion(projectId){
   const p = getProjects().find(x => x.id === projectId);
   if (!p) return;
   trackCogoEvent('project_complete_click', { source: 'student_projects' });
-  const snapshot = p.projectSnapshot || {
-    title: p.jobTitle,
-    description: p.scope || p.description || '',
-    rate: p.rate,
-    location: p.location || '',
-    estimatedHours: p.estimatedHours
-  };
+  const snapshot = getProjectSnapshotForDisplay(p);
   const estimatedBreakdown = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0);
   openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
@@ -11718,13 +11796,7 @@ async function submitFinalInvoice(projectId){
   const platformFee = breakdown.employerCommissionAmount;
   const totalDue = breakdown.employerTotal;
   const studentPayout = breakdown.studentPayout;
-  const snapshot = p.projectSnapshot || {
-    title: p.jobTitle,
-    description: p.scope || p.description || '',
-    rate: p.rate,
-    location: p.location || '',
-    estimatedHours: p.estimatedHours
-  };
+  const snapshot = getProjectSnapshotForDisplay(p);
   p.actualHours = actualHours;
   p.finalSubtotal = subtotal;
   p.studentPayout = studentPayout;
@@ -12709,7 +12781,8 @@ async function startProject(appId){
       toast('Stripe test payment authorized and held in escrow.');
     } catch (stripeError) {
       console.warn('Stripe project authorization failed', stripeError);
-      toast(stripeError.message || 'Stripe test payment authorization failed. Please check payment setup and try again.');
+      if (isStripePayoutSafetyError(stripeError)) showStripePayoutSafetyBlock(stripeError, a.studentName || 'this student');
+      else toast(stripeError.message || 'Stripe test payment authorization failed. Please check payment setup and try again.');
       return;
     }
   } else {
@@ -12720,22 +12793,24 @@ async function startProject(appId){
     }
   }
   const projectSnapshot = {
-    title: a.jobTitle,
+    title: a.studentServiceTitle || a.jobTitle,
     description: a.message,
     rate: a.rate,
     location: a.location,
     estimatedHours: a.estimatedHours
   };
-  const contractHtml = `
-    <div><strong>Work Agreement</strong></div>
-    <div>Title: ${esc(projectSnapshot.title)}</div>
-    <div>Description: ${esc(projectSnapshot.description)}</div>
-    <div>Rate: $${esc(projectSnapshot.rate)}/hr</div>
-    <div>Location: ${esc(projectSnapshot.location)}</div>
-    <div>Estimated hours: ${esc(projectSnapshot.estimatedHours)}</div>
-    <div>Status: In Progress</div>
-    <div>Final hours may be adjusted and confirmed before payment release.</div>
-  `;
+  const contractHtml = renderProjectContractHtml({
+    jobTitle: a.jobTitle,
+    studentServiceTitle: a.studentServiceTitle || '',
+    studentServiceId: a.studentServiceId || null,
+    studentProfileId: a.studentProfileId || null,
+    studentUserId: a.studentUserId,
+    scope: a.message,
+    rate: a.rate,
+    location: a.location,
+    estimatedHours: a.estimatedHours,
+    projectSnapshot
+  });
 
   projects.push({
     id: projectId,
@@ -12809,12 +12884,14 @@ function renderEmployerProjectCard(p, listIndex=0){
   if (p.status === 'completed' && !p.reviewSubmitted) actions.push(`<button class="btn btn-green btn-sm" onclick="openReviewModal('${esc(p.id)}')">Leave Review</button>`);
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openProjectJobChat('${esc(p.id)}','${esc(p.studentUserId)}')">Open Job Chat</button>`);
   const collapsed = isProjectCollapsed(p.id, listIndex);
+  const displayTitle = getProjectDisplayTitle(p);
+  const contractHtml = renderProjectContractHtml(p);
 
   return `
     <div class="card item-card">
       <div class="split">
       <div>
-        <div style="font-weight:800">${esc(p.jobTitle)}</div>
+        <div style="font-weight:800">${esc(displayTitle)}</div>
         <div class="muted small">Student: ${renderMessagePartnerName(p.studentUserId, p.studentName)} \u00B7 Rate: $${esc(p.rate)}/hr</div>
         <div class="small muted" style="margin-top:4px">Click the student name to open profile.</div>
         ${p.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(p.studentServiceTitle)}</div>` : ''}
@@ -12827,7 +12904,7 @@ function renderEmployerProjectCard(p, listIndex=0){
           <div class="small">Status: ${esc(String(p.status).replaceAll('_',' '))}</div>
           <div class="small">Location: ${esc(p.location || 'TBD')}</div>
           ${p.actualHours ? `<div class="small">Final submitted hours: ${esc(p.actualHours)} hrs</div>` : ''}
-          <div class="contract-box small">${p.contractHtml}</div>
+          <div class="contract-box small">${contractHtml}</div>
         </div>
         <div class="card form-card" style="margin-top:10px;background:#fff">
           <div style="font-weight:800">Payment & Funding</div>
@@ -12881,20 +12958,15 @@ function markInProgress(projectId){
 function openEmployerApproval(projectId){
   const p = getProjects().find(x => x.id === projectId);
   if (!p) return;
-  const snapshot = p.finalInvoice || p.projectSnapshot || {
-    title: p.jobTitle,
-    description: p.scope || p.description || '',
-    rate: p.rate,
-    location: p.location || ''
-  };
+  const snapshot = getProjectSnapshotForDisplay(p);
   const breakdown = calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0);
   const escrowHeld = Number(p.escrowAmount || p.estimatedEmployerTotal || breakdown.employerTotal).toFixed(2);
 
   openModal('Review Final Invoice', `
     <div class="card form-card">
-      <div style="font-weight:800;margin-bottom:8px">${esc(snapshot.title || p.jobTitle)}</div>
+      <div style="font-weight:800;margin-bottom:8px">${esc(snapshot.title || getProjectDisplayTitle(p))}</div>
       <div class="contract-box small" style="margin-bottom:12px">
-        <div><strong>Title:</strong> ${esc(snapshot.title || p.jobTitle)}</div>
+        <div><strong>Title:</strong> ${esc(snapshot.title || getProjectDisplayTitle(p))}</div>
         <div><strong>Description:</strong> ${esc(snapshot.description || p.scope || '')}</div>
         <div><strong>Rate:</strong> $${esc(snapshot.rate || p.rate)}/hr</div>
         <div><strong>Location:</strong> ${esc(snapshot.location || p.location || '')}</div>
@@ -12955,7 +13027,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
         buttonEl.textContent = 'Approve & Release Payment';
       }
       console.warn('Stripe final invoice payment authorization failed', error);
-      toast(error.message || 'Stripe final invoice payment authorization failed. Please check payment setup and try again.');
+      if (isStripePayoutSafetyError(error)) showStripePayoutSafetyBlock(error, p.studentName || 'this student');
+      else toast(error.message || 'Stripe final invoice payment authorization failed. Please check payment setup and try again.');
       return;
     }
   }
@@ -12978,7 +13051,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
         buttonEl.textContent = 'Approve & Release Payment';
       }
       console.warn('Stripe capture failed', error);
-      toast(error.message || 'Stripe payment capture failed. Please try again before completing this project.');
+      if (isStripePayoutSafetyError(error)) showStripePayoutSafetyBlock(error, p.studentName || 'this student');
+      else toast(error.message || 'Stripe payment capture failed. Please try again before completing this project.');
       return;
     }
   }
@@ -13035,7 +13109,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
       payoutReleased = false;
       p.payout_error = error.message || 'Stripe payout transfer could not be created.';
       console.warn('Stripe payout transfer failed', error);
-      toast(`${p.payout_error} Captured payment is visible in Stripe; payout remains pending.`);
+      if (isStripePayoutSafetyError(error)) showStripePayoutSafetyBlock(error, p.studentName || 'this student');
+      else toast(`${p.payout_error} Captured payment is visible in Stripe; payout remains pending.`);
     }
   } else {
     payoutTransfer = recordLocalPayoutTransfer({
