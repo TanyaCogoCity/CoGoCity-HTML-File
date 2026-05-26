@@ -12283,9 +12283,9 @@ function renderEmployerMyJobs(el){
     <div class="section-title">My Jobs</div>
     <div class="subtabs">
       <button class="pill ${employerMyJobsTab==='all'?'active':''}" onclick="employerMyJobsTab='all';renderDashboard()">All</button>
-      <button class="pill ${employerMyJobsTab==='create'?'active':''}" onclick="employerMyJobsTab='create';renderDashboard()">Create Job</button>
       <button class="pill ${employerMyJobsTab==='manage'?'active':''}" onclick="employerMyJobsTab='manage';renderDashboard()">Manage Jobs</button>
       <button class="pill ${employerMyJobsTab==='applications'?'active':''}" onclick="employerMyJobsTab='applications';renderDashboard()">Resumes</button>
+      <button class="pill ${employerMyJobsTab==='create'?'active':''}" style="margin-left:auto" onclick="employerMyJobsTab='create';renderDashboard()">Create Job</button>
     </div>
     ${employerMyJobsTab !== 'create' ? `
       <div class="card form-card" style="margin-bottom:14px">
