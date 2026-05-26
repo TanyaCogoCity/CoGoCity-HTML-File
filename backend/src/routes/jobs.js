@@ -153,6 +153,15 @@ router.get('/applications/me', requireAuth, async (req, res) => {
   return ok(res, applications.map(serializeApplication));
 });
 
+router.get('/:id', async (req, res) => {
+  const job = await prisma.job.findFirst({
+    where: { id: req.params.id, deletedAt: null },
+    include: { creator: { include: { userProfile: true } } },
+  });
+  if (!job) return fail(res, 404, 'Job not found');
+  return ok(res, serializeJob(job));
+});
+
 router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
   const existing = await prisma.application.findFirst({
     where: { id: req.params.applicationId, deletedAt: null },

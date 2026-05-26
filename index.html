@@ -1171,6 +1171,13 @@ async function createBackendJobCheckoutSession(jobId){
     body: JSON.stringify({ job_id: jobId })
   });
 }
+async function verifyBackendJobCheckoutSession(jobId, checkoutSessionId=''){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || (!jobId && !checkoutSessionId)) return null;
+  return backendAuthRequest('/stripe/verify-job-checkout-session', {
+    method:'POST',
+    body: JSON.stringify({ job_id: jobId, checkout_session_id: checkoutSessionId })
+  });
+}
 function redirectToStripeCheckoutSession(session){
   if (session && session.url) {
     window.location.href = session.url;
@@ -1423,12 +1430,39 @@ async function startStripeConnectOnboarding(){
 }
 function handleStripeReturnParams(){
   const query = new URLSearchParams(window.location.search || '');
-  if (!query.has('stripe_connect')) return;
-  if (backendAuthEnabled() && getBackendAccessToken()) {
-    refreshStripeOnboardingStatus({ rerender:true, toast:false });
-    toast(query.get('stripe_connect') === 'refresh' ? 'Payout setup link refreshed. Please continue setup.' : 'Returned from secure payout setup. Status refreshed.');
+  let changed = false;
+  if (query.has('stripe_connect')) {
+    if (backendAuthEnabled() && getBackendAccessToken()) {
+      refreshStripeOnboardingStatus({ rerender:true, toast:false });
+      toast(query.get('stripe_connect') === 'refresh' ? 'Payout setup link refreshed. Please continue setup.' : 'Returned from secure payout setup. Status refreshed.');
+    }
+    query.delete('stripe_connect');
+    changed = true;
   }
-  query.delete('stripe_connect');
+  if (query.get('stripe_status') === 'success' && query.has('stripe_job')) {
+    const jobId = query.get('stripe_job') || '';
+    const sessionId = query.get('stripe_session') || '';
+    verifyBackendJobCheckoutSession(jobId, sessionId).then(job => {
+      if (job) {
+        upsertBackendDirectJob(job);
+        toast('Stripe payment verified. Job listing is active.');
+        renderPage();
+      }
+    }).catch(error => {
+      console.error('Job checkout verification failed', error);
+      toast(error.message || 'Could not verify Stripe payment yet. Please refresh in a moment.');
+    });
+    query.delete('stripe_job');
+    query.delete('stripe_session');
+    query.delete('stripe_status');
+    changed = true;
+  } else if (query.has('stripe_status') && (query.has('stripe_job') || query.has('stripe_session'))) {
+    query.delete('stripe_job');
+    query.delete('stripe_session');
+    query.delete('stripe_status');
+    changed = true;
+  }
+  if (!changed) return;
   const clean = `${window.location.pathname}${query.toString() ? `?${query.toString()}` : ''}${window.location.hash || '#/dashboard'}`;
   window.history.replaceState({}, '', clean);
 }
@@ -1624,6 +1658,11 @@ function mapBackendDirectJob(row={}){
     payment_provider: row.payment_provider || row.paymentProvider || 'backend',
     payment_provider_mode: row.payment_provider_mode || row.paymentProviderMode || PAYMENT_PROVIDER_MODE,
     payment_status: row.payment_status || row.paymentStatus || 'captured',
+    stripe_checkout_session_id: row.stripe_checkout_session_id || row.stripeCheckoutSessionId || row.checkout_session_id || '',
+    stripe_payment_intent_id: row.stripe_payment_intent_id || row.stripePaymentIntentId || row.payment_intent_id || '',
+    stripe_charge_id: row.stripe_charge_id || row.stripeChargeId || row.charge_id || '',
+    stripe_payment_status: row.stripe_payment_status || row.stripePaymentStatus || '',
+    paid_at: row.paid_at || row.paidAt || row.date_paid || '',
     status: row.status === 'open' ? 'active' : (row.status || 'active'),
     created_at: createdAt,
     updated_at: row.updated_at || row.updatedAt || createdAt,
@@ -2366,6 +2405,11 @@ function normalizeDirectJobRecord(job){
     posting_payment_status: 'paid',
     listing_months: 1,
     status: 'active',
+    stripe_checkout_session_id: '',
+    stripe_payment_intent_id: '',
+    stripe_charge_id: '',
+    stripe_payment_status: '',
+    paid_at: '',
     created_at: new Date().toISOString(),
     updated_at: ''
   }, job || {});
@@ -2389,9 +2433,14 @@ function normalizeDirectJobRecord(job){
   normalized.posting_package = pkgKey || 'basic';
   normalized.posting_fee = Math.max(0, Number(normalized.posting_fee || 0) || 0);
   normalized.subscription_total = Math.max(0, Number(normalized.subscription_total || normalized.posting_fee || 0) || 0);
-  normalized.posting_payment_status = ['pending','paid','failed'].includes(normalized.posting_payment_status) ? normalized.posting_payment_status : 'paid';
+  normalized.posting_payment_status = ['pending','paid','failed','captured','succeeded','complete','completed'].includes(normalized.posting_payment_status) ? normalized.posting_payment_status : 'paid';
   normalized.listing_months = Math.max(1, Number(normalized.listing_months || 1) || 1);
-  normalized.status = ['active','closed','removed'].includes(normalized.status) ? normalized.status : 'active';
+  normalized.stripe_checkout_session_id = String(normalized.stripe_checkout_session_id || '').trim();
+  normalized.stripe_payment_intent_id = String(normalized.stripe_payment_intent_id || '').trim();
+  normalized.stripe_charge_id = String(normalized.stripe_charge_id || '').trim();
+  normalized.stripe_payment_status = String(normalized.stripe_payment_status || '').trim();
+  normalized.paid_at = normalized.paid_at ? new Date(normalized.paid_at).toISOString() : '';
+  normalized.status = ['active','pending','closed','removed'].includes(normalized.status) ? normalized.status : 'active';
   normalized.created_at = normalized.created_at || new Date().toISOString();
   normalized.updated_at = normalized.updated_at ? new Date(normalized.updated_at).toISOString() : '';
   const packageDays = Math.max(1, Number(normalized.listing_duration_days || getDirectJobPackageDuration(normalized.posting_package) || 30) || 30);
@@ -15726,7 +15775,11 @@ function getAdminSubscriptionRows(){
     expirationDate: getDirectJobEffectiveCloseDate(job),
     total: Number(job.subscription_total || job.posting_fee || 0),
     status: job.status || 'active',
-    paymentStatus: job.posting_payment_status || job.payment_status || 'paid'
+    paymentStatus: job.posting_payment_status || job.payment_status || 'paid',
+    cogoId: job.id || job.backendJobId || '',
+    stripeCheckoutSessionId: job.stripe_checkout_session_id || job.checkout_session_id || '',
+    stripePaymentIntentId: job.stripe_payment_intent_id || job.payment_intent_id || '',
+    stripeChargeId: job.stripe_charge_id || job.charge_id || ''
   })).sort((a,b) => new Date(b.dateStarted || 0) - new Date(a.dateStarted || 0));
 }
 function renderSubscriptionTransactionsResults(){
@@ -15734,7 +15787,7 @@ function renderSubscriptionTransactionsResults(){
   if (!wrap || !currentUser || currentUser.role !== 'admin') return;
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getAdminSubscriptionRows().filter(row => {
-    const haystack = [row.jobName, row.status, row.paymentStatus, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
+    const haystack = [row.jobName, row.status, row.paymentStatus, row.cogoId, row.stripeCheckoutSessionId, row.stripePaymentIntentId, row.stripeChargeId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
     return !query || haystack.includes(query);
   });
   const totals = rows.reduce((acc, row) => {
@@ -15745,13 +15798,17 @@ function renderSubscriptionTransactionsResults(){
   }, { count:0, total:0, active:0 });
   transactionTableExportRows.subscription = {
     fileName: 'admin-subscription-transactions',
-    headers: ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total'],
+    headers: ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID', 'Stripe Checkout Session ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID'],
     rows: rows.map(row => [
       row.jobName,
       formatDirectJobCloseMessageDate(row.dateStarted),
       formatDirectJobCloseMessageDate(row.expirationDate),
       stripeStatusLabel(row.paymentStatus || 'paid'),
-      `$${money(row.total || 0)}`
+      `$${money(row.total || 0)}`,
+      row.cogoId || '',
+      row.stripeCheckoutSessionId || '',
+      row.stripePaymentIntentId || '',
+      row.stripeChargeId || ''
     ])
   };
   const displayRows = getTransactionTablePagedRows('subscription', rows);
@@ -15776,6 +15833,7 @@ function renderSubscriptionTransactionsResults(){
                 <th style="padding:10px 8px">Expiration Date</th>
                 <th style="padding:10px 8px">Status</th>
                 <th style="padding:10px 8px">Transaction Total</th>
+                <th style="padding:10px 8px">Reconciliation IDs</th>
               </tr>
             </thead>
             <tbody>
@@ -15786,6 +15844,11 @@ function renderSubscriptionTransactionsResults(){
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.expirationDate))}</td>
                   <td style="padding:12px 8px">${esc(stripeStatusLabel(row.paymentStatus || 'paid'))}</td>
                   <td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td>
+                  <td style="padding:12px 8px">
+                    ${renderAdminTransactionReconciliationIds({ id: row.cogoId, stripe_payment_intent_id: row.stripePaymentIntentId })}
+                    ${row.stripeCheckoutSessionId ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">Stripe CS:</span> ${esc(row.stripeCheckoutSessionId)}</div>` : `<div class="muted" style="font-size:.78rem">Stripe CS: —</div>`}
+                    ${row.stripeChargeId ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">Stripe Ch:</span> ${esc(row.stripeChargeId)}</div>` : `<div class="muted" style="font-size:.78rem">Stripe Ch: —</div>`}
+                  </td>
                 </tr>
               `).join('')}
             </tbody>

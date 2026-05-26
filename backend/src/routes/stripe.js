@@ -7,7 +7,7 @@ const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/di
 const config = require('../config');
 const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
-const { notificationType } = require('../lib/compat');
+const { notificationType, serializeJob } = require('../lib/compat');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
@@ -287,15 +287,39 @@ async function completeWorkshopCheckoutSession(session) {
   return updated;
 }
 
+async function getCheckoutPaymentIntent(session) {
+  if (!session?.payment_intent) return null;
+  if (typeof session.payment_intent === 'object') return session.payment_intent;
+  return stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] });
+}
+
+function checkoutChargeId(paymentIntent) {
+  const charge = paymentIntent?.latest_charge;
+  if (!charge) return null;
+  return typeof charge === 'string' ? charge : charge.id;
+}
+
 async function completeJobCheckoutSession(session) {
-  const jobId = session.metadata?.job_id;
+  const jobId = session.metadata?.job_id || session.client_reference_id;
   if (!jobId) return null;
   const paymentStatus = paymentStatusForCheckoutSession(session);
-  const data = { paymentStatus };
-  if (paymentStatus === 'paid') data.status = 'open';
+  const paymentIntent = await getCheckoutPaymentIntent(session);
+  const existing = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!existing) return null;
+  const data = {
+    paymentStatus,
+    stripeCheckoutSessionId: session.id || existing.stripeCheckoutSessionId,
+    stripePaymentIntentId: paymentIntent?.id || (typeof session.payment_intent === 'string' ? session.payment_intent : existing.stripePaymentIntentId),
+    stripeChargeId: checkoutChargeId(paymentIntent) || existing.stripeChargeId,
+    stripePaymentStatus: paymentIntent?.status || session.payment_status || existing.stripePaymentStatus,
+  };
+  if (paymentStatus === 'paid') {
+    data.status = 'open';
+    data.paidAt = existing.paidAt || new Date();
+  }
   const job = await prisma.job.update({ where: { id: jobId }, data, include: { creator: true } });
 
-  if (paymentStatus === 'paid') {
+  if (paymentStatus === 'paid' && existing.paymentStatus !== 'paid') {
     await createNotification({
       data: {
         userId: job.createdBy,
@@ -672,7 +696,7 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
-        success_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=success`,
+        success_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=success&stripe_session={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=cancel`,
         client_reference_id: pricedJob.id,
         customer: customerId,
@@ -693,11 +717,48 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
       },
     );
 
-    await prisma.job.update({ where: { id: pricedJob.id }, data: { paymentStatus: 'pending', status: 'pending' } });
+    await prisma.job.update({
+      where: { id: pricedJob.id },
+      data: {
+        paymentStatus: 'pending',
+        status: 'pending',
+        stripeCheckoutSessionId: session.id,
+        stripePaymentIntentId: null,
+        stripeChargeId: null,
+        stripePaymentStatus: session.payment_status || session.status || 'pending',
+      },
+    });
     await writeAuditLog({ userId: req.user.id, action: 'job.checkout.create', entityType: 'job', entityId: pricedJob.id, payload: { checkoutSessionId: session.id, amount } });
     return ok(res, serializeCheckoutSession(session, { job_id: pricedJob.id, amount }));
   } catch (error) {
     return fail(res, 400, 'Failed to create job checkout session', error.message);
+  }
+});
+
+router.post('/verify-job-checkout-session', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  const jobId = String(req.body?.job_id || req.body?.jobId || '').trim();
+  const requestedSessionId = String(req.body?.checkout_session_id || req.body?.checkoutSessionId || req.body?.session_id || req.body?.sessionId || '').trim();
+  if (!jobId && !requestedSessionId) return fail(res, 400, 'job_id or checkout_session_id is required');
+
+  const job = jobId
+    ? await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } })
+    : await prisma.job.findFirst({ where: { stripeCheckoutSessionId: requestedSessionId, deletedAt: null } });
+  if (!job) return fail(res, 404, 'Job not found');
+  if (req.user.role !== 'admin' && job.createdBy !== req.user.id) return fail(res, 403, 'Only the job owner can verify this listing payment');
+
+  const sessionId = requestedSessionId || job.stripeCheckoutSessionId;
+  if (!sessionId) return fail(res, 409, 'No Stripe Checkout session is recorded for this job');
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent', 'payment_intent.latest_charge'] });
+    const sessionJobId = session.metadata?.job_id || session.client_reference_id;
+    if (sessionJobId && sessionJobId !== job.id) return fail(res, 409, 'Checkout session does not match this job');
+    const updated = await completeJobCheckoutSession(session);
+    await writeAuditLog({ userId: req.user.id, action: 'job.checkout.verify', entityType: 'job', entityId: job.id, payload: { checkoutSessionId: session.id, status: session.status, paymentStatus: session.payment_status } });
+    return ok(res, Object.assign(serializeJob(updated || job), serializeCheckoutSession(session, { job_id: job.id })));
+  } catch (error) {
+    return fail(res, 400, 'Failed to verify job checkout session', error.message);
   }
 });
 
