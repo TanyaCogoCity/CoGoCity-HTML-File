@@ -9,6 +9,7 @@ const { createNotification, createNotifications } = require('../lib/notification
 const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/messaging');
 const { getOrCreateSystemUser } = require('../lib/systemUser');
 const { requirePlatformReady } = require('../lib/onboardingGate');
+const { calculateHourlyProjectFees } = require('../lib/platformFees');
 
 const router = express.Router();
 
@@ -86,20 +87,15 @@ router.post('/start', requireAuth, async (req, res) => {
 
     const existingTx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
     if (!existingTx) {
-      const workTotal = Number(project.totalAmount || 0);
-      const employerFee = Number((workTotal * 0.1).toFixed(2));
-      const studentFee = Number((workTotal * 0.1).toFixed(2));
-      const amountTotal = Number((workTotal + employerFee).toFixed(2));
-      const platformFee = Number((employerFee + studentFee).toFixed(2));
-      const studentPayout = Number((workTotal - studentFee).toFixed(2));
+      const fees = calculateHourlyProjectFees(Number(project.totalAmount || 0));
       await prisma.transaction.create({
         data: {
           projectId: project.id,
           payerId: project.employerId,
           payeeId: project.studentId,
-          amountTotal,
-          platformFee,
-          studentPayout,
+          amountTotal: fees.employerTotal,
+          platformFee: fees.platformFeeTotal,
+          studentPayout: fees.studentPayout,
           status: 'pending',
         },
       });
@@ -177,12 +173,15 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
   if (tx) {
-    const employerFee = Number((totalAmount * 0.1).toFixed(2));
-    const studentFee = Number((totalAmount * 0.1).toFixed(2));
-    const amountTotal = Number((totalAmount + employerFee).toFixed(2));
-    const platformFee = Number((employerFee + studentFee).toFixed(2));
-    const studentPayout = Number((totalAmount - studentFee).toFixed(2));
-    await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal, platformFee, studentPayout } });
+    const fees = calculateHourlyProjectFees(totalAmount);
+    await prisma.transaction.update({
+      where: { id: tx.id },
+      data: {
+        amountTotal: fees.employerTotal,
+        platformFee: fees.platformFeeTotal,
+        studentPayout: fees.studentPayout,
+      },
+    });
   }
 
   await createNotification({
