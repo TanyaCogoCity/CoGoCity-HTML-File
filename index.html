@@ -12261,6 +12261,7 @@ function renderEmployerMyJobs(el){
     return [app.student_name, app.message, job && job.job_title].join(' ').toLowerCase().includes(query);
   });
   const companyName = getEmployerCompanyName(currentUser);
+  const searchPlaceholder = employerMyJobsTab === 'applications' ? 'Search applicants' : employerMyJobsTab === 'manage' ? 'Search jobs' : 'Search jobs or applicants';
   el.innerHTML = `
     <div class="section-title">My Jobs</div>
     <div class="subtabs">
@@ -12269,9 +12270,11 @@ function renderEmployerMyJobs(el){
       <button class="pill ${employerMyJobsTab==='manage'?'active':''}" onclick="employerMyJobsTab='manage';renderDashboard()">Manage Jobs</button>
       <button class="pill ${employerMyJobsTab==='applications'?'active':''}" onclick="employerMyJobsTab='applications';renderDashboard()">Applications</button>
     </div>
-    <div class="card form-card" style="margin-bottom:14px">
-      <div class="field" style="margin-bottom:0"><label>Search</label><input id="employer-direct-jobs-query" value="${esc(query)}" placeholder="Search jobs or candidates" oninput="renderDashboard()"></div>
-    </div>
+    ${employerMyJobsTab !== 'create' ? `
+      <div class="card form-card" style="margin-bottom:14px">
+        <div class="field" style="margin-bottom:0"><label>Search</label><input id="employer-direct-jobs-query" value="${esc(query)}" placeholder="${esc(searchPlaceholder)}" oninput="renderDashboard()"></div>
+      </div>
+    ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'create') ? `
       <div class="card form-card" style="margin-bottom:14px">
         <div style="font-weight:800;margin-bottom:12px">Create Direct Hire Job</div>
