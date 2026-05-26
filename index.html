@@ -651,7 +651,9 @@ const COGO_IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(COGO_HOSTNAME);
 const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
 const PAYMENT_PROVIDER_MODE = COGO_IS_STAGING ? 'mock_stripe_ready' : 'stripe_manual_capture';
 const STRIPE_STAGING_PUBLISHABLE_KEY = 'pk_test_51TCSvbIGDb9LYiIhFx8UwBFDVG4riDKKJwiqejiGzjrtDzc7lWzIiQGJ6tBczfPGQzBPKqJMwlDEJW9Wer2Piv5L00apSTPPNZ';
-const STRIPE_PUBLISHABLE_KEY = (typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || (COGO_IS_STAGING ? STRIPE_STAGING_PUBLISHABLE_KEY : '');
+const STRIPE_PUBLISHABLE_KEY = COGO_IS_STAGING
+  ? STRIPE_STAGING_PUBLISHABLE_KEY
+  : ((typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || '');
 const STRIPE_ENABLED = COGO_IS_STAGING;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = COGO_IS_STAGING || COGO_IS_LOCAL_DEV;
 const BACKEND_MIGRATION = {
