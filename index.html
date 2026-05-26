@@ -1232,6 +1232,12 @@ let stripeSetupIntentContext = null;
 function stripeOnboardingEnabled(){
   return !!(STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken());
 }
+function requireStagingStripePayments(actionLabel='continue'){
+  if (!STRIPE_ENABLED) return true;
+  if (backendAuthEnabled() && getBackendAccessToken()) return true;
+  toast(`Secure Stripe payment is required to ${actionLabel}. Please sign in again and complete payment setup.`);
+  return false;
+}
 function userStripeOnboarding(user=currentUser){
   return (user && user.stripe_onboarding) || { payer:{ payment_setup_status:'not_started', ready:false }, connect:{ onboarding_status:'not_started', ready:false } };
 }
@@ -11977,6 +11983,10 @@ async function saveEmployerDirectHireJob(){
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
   const useBackendStripeCheckout = Boolean(STRIPE_ENABLED && backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token') && fee > 0);
+  if (STRIPE_ENABLED && fee > 0 && !useBackendStripeCheckout) {
+    toast('Secure Stripe checkout is required to post paid employer jobs on staging. Please sign in again and complete payment setup.');
+    return;
+  }
   const listingCharge = useBackendStripeCheckout ? { success:true, event:null } : recordLocalPaymentCharge({
     amount: fee,
     user_id: currentUser.id,
@@ -12609,6 +12619,10 @@ async function startProject(appId){
   const estimatedEmployerTotal = estimatedBreakdown.employerTotal;
   const projectId = uid('proj');
   let paymentAttempt = null;
+  if (STRIPE_ENABLED && (!backendAuthEnabled() || !getBackendAccessToken())) {
+    toast('Secure Stripe payment setup is required before starting a project on staging. Please sign in again and complete payment setup.');
+    return;
+  }
   if (STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken()) {
     try {
       const stripePayment = await createManualProjectStripePayment({
@@ -12840,7 +12854,41 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   saveProjects(projects);
   const now = new Date().toISOString();
   const finalBreakdown = calculateCommissionBreakdown(p.actualHours || p.estimatedHours || 0, p.rate || 0);
-  const isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
+  let isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
+  if (STRIPE_ENABLED && (!backendAuthEnabled() || !getBackendAccessToken())) {
+    delete p.approvalInProgress;
+    saveProjects(projects);
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = 'Approve & Release Payment';
+    }
+    toast('Secure Stripe payment setup is required before approving this project on staging. Please sign in again.');
+    return;
+  }
+  if (STRIPE_ENABLED && (!p.stripe_payment_intent_id || isLocalPaymentReference) && backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      const stripePayment = await createManualProjectStripePayment(p, finalBreakdown);
+      if (stripePayment && stripePayment.payment_intent_id) {
+        p.stripe_payment_intent_id = stripePayment.payment_intent_id;
+        p.payment_status = stripePayment.status || 'held';
+        p.escrowProvider = 'stripe';
+        p.paymentProviderMode = 'stripe_manual_capture';
+        p.escrowStatus = 'held';
+        isLocalPaymentReference = false;
+        saveProjects(projects);
+      }
+    } catch (error) {
+      delete p.approvalInProgress;
+      saveProjects(projects);
+      if (buttonEl) {
+        buttonEl.disabled = false;
+        buttonEl.textContent = 'Approve & Release Payment';
+      }
+      console.warn('Stripe final invoice payment authorization failed', error);
+      toast(error.message || 'Stripe final invoice payment authorization failed. Please check payment setup and try again.');
+      return;
+    }
+  }
   if (STRIPE_ENABLED && p.stripe_payment_intent_id && !isLocalPaymentReference && backendAuthEnabled() && getBackendAccessToken()) {
     try {
       const authorizedAmount = Number(p.escrowAmount || p.estimatedEmployerTotal || finalBreakdown.employerTotal || 0);
