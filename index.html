@@ -1121,6 +1121,30 @@ async function refreshBackendAccessToken(){
   saveBackendAuthSession(payload.data);
   return payload.data.access_token;
 }
+async function publicBackendRequest(path, options={}){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BACKEND_AUTH.timeoutMs || 10000);
+  try {
+    const headers = Object.assign({ 'content-type':'application/json' }, options.headers || {});
+    const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
+    const text = await response.text();
+    let payload = null;
+    try { payload = text ? JSON.parse(text) : null; } catch (error) {}
+    if (!response.ok || !payload || payload.ok === false) {
+      const details = payload?.error?.details;
+      const message = typeof details === 'string'
+        ? details
+        : payload?.error?.message || `Backend request failed (${response.status})`;
+      const error = new Error(message);
+      error.details = details;
+      error.status = response.status;
+      throw error;
+    }
+    return payload.data || {};
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function backendAuthRequest(path, options={}){
   const attemptRequest = async (accessToken='') => {
     const controller = new AbortController();
@@ -2453,7 +2477,9 @@ async function loadBackendCommunityPosts(options={}){
   if (!backendAuthEnabled() || backendCommunityPostsLoading) return [];
   backendCommunityPostsLoading = true;
   try {
-    const data = await backendAuthRequest('/community-posts', { method:'GET' });
+    const data = getBackendAccessToken()
+      ? await backendAuthRequest('/community-posts', { method:'GET' })
+      : await publicBackendRequest('/community-posts', { method:'GET' });
     const merged = mergeCommunityPosts(getPosts(), data.posts || []);
     if (JSON.stringify(merged) !== JSON.stringify(getPosts())) ls('cogo_posts', merged);
     backendCommunityPostsLoaded = true;
@@ -10146,6 +10172,10 @@ function syncCommunityJobDescriptionFromPost(force=false){
 }
 async function submitPost(){
   if (!currentUser) return openLoginModal();
+  if (backendAuthEnabled() && !getBackendAccessToken()) {
+    toast('Please sign in again before posting so this appears for everyone in the community feed.');
+    return openLoginModal();
+  }
   const content = (document.getElementById('postContent').value || '').trim();
   const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 1);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
