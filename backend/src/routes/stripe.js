@@ -24,6 +24,105 @@ function paymentStatusForIntent(paymentIntent) {
   return 'pending';
 }
 
+function fromCents(amount) {
+  return Number(((Number(amount || 0) || 0) / 100).toFixed(2));
+}
+
+function marketplaceAmounts(tx, overrides = {}) {
+  const amountTotal = Number(overrides.amountTotal ?? overrides.amount_total ?? tx?.amountTotal ?? 0);
+  const storedPlatformFee = Number(tx?.platformFee || 0);
+  const storedStudentPayout = Number(tx?.studentPayout || 0);
+  let studentPayout = Number(overrides.studentPayout ?? overrides.student_payout ?? storedStudentPayout);
+  let platformFee = Number(overrides.platformFee ?? overrides.platform_fee_total ?? overrides.platformFeeTotal ?? storedPlatformFee);
+
+  if (!Number.isFinite(studentPayout) || studentPayout <= 0) studentPayout = Math.max(0, amountTotal - platformFee);
+  if (!Number.isFinite(platformFee) || platformFee < 0) platformFee = Math.max(0, amountTotal - studentPayout);
+  if (studentPayout + platformFee > amountTotal) platformFee = Math.max(0, amountTotal - studentPayout);
+
+  return {
+    amountTotal,
+    amountTotalCents: toCents(amountTotal),
+    studentPayout,
+    studentPayoutCents: toCents(studentPayout),
+    platformFee,
+    platformFeeCents: Math.max(0, Math.round(platformFee * 100)),
+  };
+}
+
+function marketplacePaymentIntentData({ tx, project, student, overrides = {}, type = 'project_escrow' }) {
+  const amounts = marketplaceAmounts(tx, overrides);
+  return {
+    amounts,
+    data: {
+      application_fee_amount: amounts.platformFeeCents,
+      transfer_data: { destination: student.stripeAccountId },
+      metadata: {
+        type,
+        project_id: project?.id || overrides.projectId || '',
+        transaction_id: tx?.id || overrides.transactionId || '',
+        payer_id: project?.employerId || overrides.payerId || '',
+        payee_id: student?.id || project?.studentId || overrides.payeeId || '',
+        amount_total: String(amounts.amountTotal),
+        student_payout: String(amounts.studentPayout),
+        platform_fee_total: String(amounts.platformFee),
+        stripe_connect_flow: 'destination_charge_application_fee',
+      },
+    },
+  };
+}
+
+function latestChargeObject(paymentIntent) {
+  const charge = paymentIntent?.latest_charge;
+  return charge && typeof charge === 'object' ? charge : null;
+}
+
+function isMarketplaceDestinationChargeIntent(paymentIntent, expectedDestination) {
+  if (!paymentIntent) return false;
+  const destination = typeof paymentIntent.transfer_data?.destination === 'string'
+    ? paymentIntent.transfer_data.destination
+    : paymentIntent.transfer_data?.destination?.id;
+  return paymentIntent.metadata?.stripe_connect_flow === 'destination_charge_application_fee'
+    && !!paymentIntent.application_fee_amount
+    && !!destination
+    && (!expectedDestination || destination === expectedDestination);
+}
+
+async function retrievePaymentIntentForSync(paymentIntentId) {
+  return stripe.paymentIntents.retrieve(paymentIntentId, {
+    expand: ['latest_charge', 'latest_charge.balance_transaction', 'latest_charge.application_fee'],
+  });
+}
+
+async function syncTransactionStripeReporting(txId, paymentIntentOrId, extra = {}) {
+  if (!txId || !stripe) return null;
+  const paymentIntent = typeof paymentIntentOrId === 'string'
+    ? await retrievePaymentIntentForSync(paymentIntentOrId)
+    : paymentIntentOrId;
+  const charge = latestChargeObject(paymentIntent);
+  const balanceTransaction = charge?.balance_transaction && typeof charge.balance_transaction === 'object' ? charge.balance_transaction : null;
+  const applicationFee = charge?.application_fee && typeof charge.application_fee === 'object' ? charge.application_fee : null;
+  const transferId = typeof charge?.transfer === 'string' ? charge.transfer : charge?.transfer?.id;
+  const stripeProcessingFee = balanceTransaction ? fromCents(balanceTransaction.fee) : undefined;
+  const platformFee = applicationFee ? fromCents(applicationFee.amount) : undefined;
+  const data = {
+    status: paymentStatusForIntent(paymentIntent),
+    stripePaymentIntentId: paymentIntent.id,
+    stripeChargeId: charge?.id || undefined,
+    stripeTransferId: transferId || extra.stripeTransferId || undefined,
+    stripeApplicationFeeId: applicationFee?.id || extra.stripeApplicationFeeId || undefined,
+    stripeBalanceTransactionId: balanceTransaction?.id || undefined,
+    stripeProcessingFee,
+    platformNetRevenue: platformFee == null || stripeProcessingFee == null ? undefined : Number((platformFee - stripeProcessingFee).toFixed(2)),
+    transferStatus: transferId || extra.stripeTransferId ? 'created' : extra.transferStatus,
+    payoutStatus: extra.payoutStatus,
+  };
+  Object.keys(data).forEach((key) => data[key] === undefined && delete data[key]);
+  const updated = await prisma.transaction.update({ where: { id: txId }, data });
+  if (data.status === 'funded') await prisma.project.update({ where: { id: updated.projectId }, data: { status: 'funded' } });
+  if (data.status === 'paid') await prisma.project.update({ where: { id: updated.projectId }, data: { status: 'completed', completedAt: new Date() } });
+  return updated;
+}
+
 
 function stripeOrigin(req) {
   return req.get('origin') || config.appUrl || 'https://staging.cogocity.com';
@@ -256,11 +355,7 @@ function failPayoutSafety(res, validation) {
 async function markTransactionFromIntent(paymentIntent) {
   const tx = await prisma.transaction.findFirst({ where: { stripePaymentIntentId: paymentIntent.id } });
   if (!tx) return null;
-  const status = paymentStatusForIntent(paymentIntent);
-  const updated = await prisma.transaction.update({ where: { id: tx.id }, data: { status } });
-  if (status === 'funded') await prisma.project.update({ where: { id: tx.projectId }, data: { status: 'funded' } });
-  if (status === 'paid') await prisma.project.update({ where: { id: tx.projectId }, data: { status: 'completed', completedAt: new Date() } });
-  return updated;
+  return syncTransactionStripeReporting(tx.id, paymentIntent.id);
 }
 
 
@@ -460,14 +555,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       } else if (checkoutType === 'job_listing') {
         await completeJobCheckoutSession(session);
       } else if (session.payment_intent) {
-        const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+        const paymentIntent = await retrievePaymentIntentForSync(session.payment_intent);
         const txId = session.metadata?.transaction_id || paymentIntent.metadata?.transaction_id;
         if (txId) {
-          await prisma.transaction.update({
-            where: { id: txId },
-            data: { stripePaymentIntentId: paymentIntent.id, status: paymentStatusForIntent(paymentIntent) },
-          });
-          if (paymentIntent.status === 'requires_capture') await prisma.project.update({ where: { id: session.metadata.project_id }, data: { status: 'funded' } });
+          await syncTransactionStripeReporting(txId, paymentIntent);
         } else {
           await markTransactionFromIntent(paymentIntent);
         }
@@ -486,10 +577,33 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       if (session.metadata?.type === 'job_listing') await completeJobCheckoutSession(session);
     }
 
-    if (event.type === 'transfer.paid') {
+    if (['transfer.created', 'transfer.updated', 'transfer.paid', 'transfer.failed', 'transfer.reversed'].includes(event.type)) {
       const transfer = event.data.object;
       const txId = transfer.metadata?.transaction_id;
-      if (txId) await prisma.transaction.update({ where: { id: txId }, data: { status: 'paid', stripeTransferId: transfer.id } });
+      const transferStatus = event.type.replace('transfer.', '');
+      if (txId) await prisma.transaction.update({ where: { id: txId }, data: { stripeTransferId: transfer.id, transferStatus } });
+    }
+
+    if (['application_fee.created', 'application_fee.refunded'].includes(event.type)) {
+      const fee = event.data.object;
+      const chargeId = typeof fee.charge === 'string' ? fee.charge : fee.charge?.id;
+      const tx = chargeId ? await prisma.transaction.findFirst({ where: { stripeChargeId: chargeId } }) : null;
+      if (tx) {
+        const stripeProcessingFee = Number(tx.stripeProcessingFee || 0);
+        const platformFee = fromCents(fee.amount_refunded && fee.refunded ? 0 : fee.amount);
+        await prisma.transaction.update({
+          where: { id: tx.id },
+          data: {
+            stripeApplicationFeeId: fee.id,
+            platformFee,
+            platformNetRevenue: Number((platformFee - stripeProcessingFee).toFixed(2)),
+          },
+        });
+      }
+    }
+
+    if (['payout.paid', 'payout.failed', 'payout.canceled'].includes(event.type)) {
+      await writeAuditLog({ userId: null, action: `stripe.${event.type}`, entityType: 'stripe_payout', entityId: event.data.object.id, payload: { status: event.data.object.status, amount: event.data.object.amount } });
     }
 
     if (event.type === 'charge.refunded') {
@@ -642,36 +756,41 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
   const loaded = await loadProjectForPayment(projectId, req.user);
   if (loaded.error) return fail(res, loaded.error[0], loaded.error[1]);
   const { project, tx } = loaded;
+  const payoutValidation = await validateProjectPayoutSafetyWithAutoHeal({ project, transaction: tx });
+  if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
 
   try {
     const existingIntent = tx.stripePaymentIntentId ? await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId) : null;
     if (existingIntent && !['canceled', 'succeeded'].includes(existingIntent.status)) {
-      return ok(res, {
-        payment_intent_id: existingIntent.id,
-        client_secret: existingIntent.client_secret,
-        status: paymentStatusForIntent(existingIntent),
-        stripe_status: existingIntent.status,
-        project_id: project.id,
-      });
+      if (isMarketplaceDestinationChargeIntent(existingIntent, project.student.stripeAccountId)) {
+        return ok(res, {
+          payment_intent_id: existingIntent.id,
+          client_secret: existingIntent.client_secret,
+          status: paymentStatusForIntent(existingIntent),
+          stripe_status: existingIntent.status,
+          project_id: project.id,
+        });
+      }
+      if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingIntent.status)) {
+        await stripe.paymentIntents.cancel(existingIntent.id);
+      } else {
+        return fail(res, 409, 'Existing project payment was created before Stripe Connect marketplace splitting. Cancel/refund it before collecting funds again.');
+      }
     }
 
+    const marketplace = marketplacePaymentIntentData({ tx, project, student: project.student });
     const paymentIntent = await stripe.paymentIntents.create(
       {
-        amount: toCents(tx.amountTotal),
+        amount: marketplace.amounts.amountTotalCents,
         currency: 'usd',
         capture_method: 'manual',
         automatic_payment_methods: { enabled: true },
         customer: project.employer?.stripeCustomerId || undefined,
         payment_method: project.employer?.stripeDefaultPaymentMethodId || undefined,
         description: `CoGo City project funding${project.job?.title ? `: ${project.job.title}` : ''}`,
-        metadata: {
-          project_id: project.id,
-          transaction_id: tx.id,
-          payer_id: project.employerId,
-          payee_id: project.studentId,
-        },
+        ...marketplace.data,
       },
-      { idempotencyKey: `project:${project.id}:tx:${tx.id}:intent:v2` }
+      { idempotencyKey: `project:${project.id}:tx:${tx.id}:intent:v3:connect` }
     );
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { stripePaymentIntentId: paymentIntent.id, status: paymentStatusForIntent(paymentIntent) } });
@@ -884,6 +1003,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
   const origin = stripeOrigin(req);
 
   try {
+    const marketplace = marketplacePaymentIntentData({ tx, project, student: project.student });
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
@@ -897,7 +1017,7 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
             quantity: 1,
             price_data: {
               currency: 'usd',
-              unit_amount: toCents(tx.amountTotal),
+              unit_amount: marketplace.amounts.amountTotalCents,
               product_data: { name: project.job?.title || 'CoGo City project funding' },
             },
           },
@@ -905,16 +1025,11 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
         payment_intent_data: {
           capture_method: 'manual',
           setup_future_usage: project.employer?.stripeCustomerId ? undefined : 'off_session',
-          metadata: {
-            project_id: project.id,
-            transaction_id: tx.id,
-            payer_id: project.employerId,
-            payee_id: project.studentId,
-          },
+          ...marketplace.data,
         },
         metadata: { project_id: project.id, transaction_id: tx.id },
       },
-      { idempotencyKey: `project:${project.id}:tx:${tx.id}:checkout:v1` }
+      { idempotencyKey: `project:${project.id}:tx:${tx.id}:checkout:v2:connect` }
     );
 
     if (session.payment_intent) {
@@ -944,14 +1059,26 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId);
+    if (!isMarketplaceDestinationChargeIntent(paymentIntent, project.student.stripeAccountId)) {
+      return fail(res, 409, 'PaymentIntent is missing Stripe Connect destination charge/app fee data. Do not capture; create a new marketplace-split payment instead.');
+    }
     if (paymentIntent.status === 'succeeded') return ok(res, { payment_intent_id: paymentIntent.id, status: 'paid', stripe_status: paymentIntent.status, project_id: project.id });
     if (paymentIntent.status !== 'requires_capture') return fail(res, 409, `Payment is not ready to capture (${paymentIntent.status})`);
 
-    const captureAmount = req.body?.amount_total || req.body?.amountTotal ? toCents(req.body.amount_total ?? req.body.amountTotal) : undefined;
-    const captured = await stripe.paymentIntents.capture(paymentIntent.id, captureAmount ? { amount_to_capture: captureAmount } : undefined);
+    const amountOverride = req.body?.amount_total ?? req.body?.amountTotal;
+    const finalAmounts = marketplaceAmounts(tx, {
+      amountTotal: amountOverride,
+      studentPayout: req.body?.student_payout ?? req.body?.studentPayout,
+      platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal,
+    });
+    const feeOverride = req.body?.platform_fee_total ?? req.body?.platformFeeTotal;
+    const captureParams = amountOverride || feeOverride != null ? { application_fee_amount: finalAmounts.platformFeeCents } : undefined;
+    if (captureParams && amountOverride) captureParams.amount_to_capture = finalAmounts.amountTotalCents;
+    const captured = await stripe.paymentIntents.capture(paymentIntent.id, captureParams);
+    const synced = await syncTransactionStripeReporting(tx.id, captured.id);
 
-    await prisma.transaction.update({ where: { id: tx.id }, data: { status: 'paid' } });
-    await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date() } });
+    await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, status: synced?.status || 'paid' } });
+    await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date(), totalAmount: finalAmounts.amountTotal } });
     await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
     await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id } });
 
@@ -982,9 +1109,19 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
     const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
     if (!requirements.payout_ready) return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
 
+    const marketplace = marketplacePaymentIntentData({
+      tx: { amountTotal, studentPayout, platformFee: platformFeeTotal },
+      project: { id: projectId, employerId: req.user.id, studentId: studentUserId },
+      student,
+      overrides: { amountTotal, studentPayout, platformFee: platformFeeTotal },
+      type: 'project_escrow_test',
+    });
+    marketplace.data.metadata.job_title = jobTitle.slice(0, 450);
+    marketplace.data.metadata.work_total = String(workTotal || '');
+
     const paymentIntent = await stripe.paymentIntents.create(
       {
-        amount: toCents(amountTotal),
+        amount: marketplace.amounts.amountTotalCents,
         currency: 'usd',
         customer: req.user.stripeCustomerId,
         payment_method: req.user.stripeDefaultPaymentMethodId,
@@ -992,19 +1129,9 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
         confirm: true,
         off_session: true,
         description: `CoGo City project escrow: ${jobTitle}`,
-        metadata: {
-          type: 'project_escrow_test',
-          project_id: projectId,
-          payer_id: req.user.id,
-          payee_id: studentUserId,
-          job_title: jobTitle.slice(0, 450),
-          work_total: String(workTotal || ''),
-          amount_total: String(amountTotal),
-          student_payout: String(studentPayout || ''),
-          platform_fee_total: String(platformFeeTotal || ''),
-        },
+        ...marketplace.data,
       },
-      { idempotencyKey: `manual-project:${req.user.id}:${projectId || jobTitle}:${amountTotal}:intent:v1` }
+      { idempotencyKey: `manual-project:${req.user.id}:${projectId || jobTitle}:${amountTotal}:intent:v2:connect` }
     );
 
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.create', entityType: 'stripe_payment_intent', entityId: paymentIntent.id, payload: { amountTotal, projectId, studentUserId } });
@@ -1037,9 +1164,13 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
     }
     if (paymentIntent.status === 'succeeded') return ok(res, { payment_intent_id: paymentIntent.id, status: 'paid', stripe_status: paymentIntent.status });
     if (paymentIntent.status !== 'requires_capture') return fail(res, 409, `Payment is not ready to capture (${paymentIntent.status})`);
-    const captureAmount = req.body?.amount_total || req.body?.amountTotal ? toCents(req.body.amount_total ?? req.body.amountTotal) : undefined;
-    const captured = await stripe.paymentIntents.capture(paymentIntent.id, captureAmount ? { amount_to_capture: captureAmount } : undefined);
-    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received } });
+    const finalAmounts = marketplaceAmounts(paymentIntent.metadata || {}, {
+      amountTotal: req.body?.amount_total ?? req.body?.amountTotal ?? paymentIntent.metadata?.amount_total,
+      studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? paymentIntent.metadata?.student_payout,
+      platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? paymentIntent.metadata?.platform_fee_total,
+    });
+    const captured = await stripe.paymentIntents.capture(paymentIntent.id, { amount_to_capture: finalAmounts.amountTotalCents, application_fee_amount: finalAmounts.platformFeeCents });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout } });
     return ok(res, { payment_intent_id: captured.id, status: 'paid', stripe_status: captured.status });
   } catch (error) {
     return fail(res, 400, 'Failed to capture Stripe project payment', error.message);
@@ -1058,9 +1189,11 @@ router.post('/manual-project-transfer', requireAuth, async (req, res) => {
   if (!Number.isFinite(amount) || amount <= 0) return fail(res, 400, 'amount must be greater than 0');
 
   try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
     if (paymentIntent.metadata?.payer_id && paymentIntent.metadata.payer_id !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
     if (paymentIntent.status !== 'succeeded') return fail(res, 409, `Payment must be captured before payout transfer (${paymentIntent.status})`);
+    const existingTransfer = latestChargeObject(paymentIntent)?.transfer || paymentIntent.transfer_data?.destination;
+    if (existingTransfer) return ok(res, { transfer_id: typeof existingTransfer === 'string' ? existingTransfer : existingTransfer.id, status: 'created', automatic_destination_charge: true });
 
     const student = await prisma.user.findUnique({ where: { id: studentUserId } });
     const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
@@ -1105,8 +1238,13 @@ router.post('/transfer-payout', requireAuth, async (req, res) => {
   if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
 
   try {
-    const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId);
+    const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId, { expand: ['latest_charge'] });
     if (paymentIntent.status !== 'succeeded') return fail(res, 409, `Payment is not captured (${paymentIntent.status})`);
+    const destinationTransfer = latestChargeObject(paymentIntent)?.transfer;
+    if (destinationTransfer) {
+      await prisma.transaction.update({ where: { id: tx.id }, data: { stripeTransferId: typeof destinationTransfer === 'string' ? destinationTransfer : destinationTransfer.id, transferStatus: 'created' } });
+      return ok(res, { transfer_id: typeof destinationTransfer === 'string' ? destinationTransfer : destinationTransfer.id, status: 'created', project_id: project.id, automatic_destination_charge: true });
+    }
     const latestCharge = typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
 
     const transfer = await stripe.transfers.create(

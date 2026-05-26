@@ -15714,10 +15714,26 @@ function renderAdminTransactionReconciliationIds(tx={}){
   if (!tx) return '';
   const platformTxId = String(tx.id || tx.transaction_id || '').trim();
   const stripePaymentIntentId = String(tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id || '').trim();
+  const stripeChargeId = String(tx.stripe_charge_id || tx.stripeChargeId || '').trim();
+  const stripeTransferId = String(tx.stripe_transfer_id || tx.stripeTransferId || '').trim();
+  const stripeApplicationFeeId = String(tx.stripe_application_fee_id || tx.stripeApplicationFeeId || '').trim();
   const idLine = (label, value) => value
     ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">${label}:</span> ${esc(value)}</div>`
     : `<div class="muted" style="font-size:.78rem">${label}: —</div>`;
-  return `${idLine('CoGo Tx', platformTxId)}${idLine('Stripe PI', stripePaymentIntentId)}`;
+  return `${idLine('CoGo Tx', platformTxId)}${idLine('Stripe PI', stripePaymentIntentId)}${idLine('Charge', stripeChargeId)}${idLine('Transfer', stripeTransferId)}${idLine('App Fee', stripeApplicationFeeId)}`;
+}
+function renderAdminTransactionMoneyFlow(tx={}){
+  const line = (label, value, fallback='—') => `<div><span class="muted">${label}:</span> <strong>${value == null || value === '' ? fallback : esc(value)}</strong></div>`;
+  const moneyValue = value => `$${Number(value || 0).toFixed(2)}`;
+  return `
+    ${line('Gross', moneyValue(tx.total_amount || tx.amount_total))}
+    ${line('Student payout', moneyValue(tx.payout_amount || tx.student_payout))}
+    ${line('CoGo commission', moneyValue(tx.cogo_commission || tx.platform_fee_total))}
+    ${line('Stripe fee', tx.stripe_processing_fee == null ? '' : moneyValue(tx.stripe_processing_fee))}
+    ${line('Platform net', tx.platform_net_revenue == null ? '' : moneyValue(tx.platform_net_revenue))}
+    ${line('Transfer', tx.transfer_status || tx.transferStatus || '')}
+    ${line('Payout', tx.payout_status || tx.payoutStatus || '')}
+  `;
 }
 function getTransactionStudentId(tx={}){
   return tx.student_id || tx.studentId || tx.studentUserId || '';
@@ -15815,7 +15831,7 @@ function renderTransactionsResults(){
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
-        <th style="padding:10px 8px">Final Commission</th>
+        <th style="padding:10px 8px">Marketplace Money Flow</th>
         <th style="padding:10px 8px">Reconciliation IDs</th>
       </tr>
     ` : isEmployer ? `
@@ -15862,14 +15878,14 @@ function renderTransactionsResults(){
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
-        <td class="money" style="padding:12px 8px">${platformFeeLabel}</td>
+        <td class="money" style="padding:12px 8px">${isAdmin ? renderAdminTransactionMoneyFlow(tx) : platformFeeLabel}</td>
         ${isAdmin ? `<td style="padding:12px 8px">${renderAdminTransactionReconciliationIds(tx)}</td>` : ''}
         ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
       </tr>
     `;
   }).join('');
   const headers = isAdmin
-    ? [dateHeader, 'Job Title', 'Student', 'Employer / Neighbor', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Final Commission', 'CoGo Transaction ID', 'Stripe PaymentIntent ID']
+    ? [dateHeader, 'Job Title', 'Student', 'Employer / Neighbor', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Gross Employer Payment', 'Student Payout', 'CoGo Commission', 'Stripe Processing Fee', 'Platform Net Revenue', 'Transfer Status', 'Payout Status', 'CoGo Transaction ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID', 'Stripe Transfer ID', 'Stripe Application Fee ID']
     : [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Platform Fee', isEmployer ? 'Final Payment' : 'Final Payout'];
   transactionTableExportRows.main = {
     fileName: `${currentUser.role || 'user'}-transactions`,
@@ -15895,8 +15911,19 @@ function renderTransactionsResults(){
         platformFeeLabel
       ];
       if (isAdmin) {
+        base.pop();
+        base.push(`$${Number(tx.total_amount || tx.amount_total || 0).toFixed(2)}`);
+        base.push(`$${Number(tx.payout_amount || tx.student_payout || 0).toFixed(2)}`);
+        base.push(`$${Number(tx.cogo_commission || tx.platform_fee_total || 0).toFixed(2)}`);
+        base.push(tx.stripe_processing_fee == null ? '' : `$${Number(tx.stripe_processing_fee || 0).toFixed(2)}`);
+        base.push(tx.platform_net_revenue == null ? '' : `$${Number(tx.platform_net_revenue || 0).toFixed(2)}`);
+        base.push(tx.transfer_status || tx.transferStatus || '');
+        base.push(tx.payout_status || tx.payoutStatus || '');
         base.push(tx.id || tx.transaction_id || '');
         base.push(tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id || '');
+        base.push(tx.stripe_charge_id || tx.stripeChargeId || '');
+        base.push(tx.stripe_transfer_id || tx.stripeTransferId || '');
+        base.push(tx.stripe_application_fee_id || tx.stripeApplicationFeeId || '');
         return base;
       }
       base.push(isEmployer ? `$${Number(tx.total_amount || 0).toFixed(2)}` : `$${Number(tx.payout_amount || 0).toFixed(2)}`);
@@ -15931,7 +15958,7 @@ function renderTransactionsResults(){
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
-        <td class="money" style="padding:12px 8px">${platformFeeLabel}</td>
+        <td class="money" style="padding:12px 8px">${isAdmin ? renderAdminTransactionMoneyFlow(tx) : platformFeeLabel}</td>
         ${isAdmin ? `<td style="padding:12px 8px">${renderAdminTransactionReconciliationIds(tx)}</td>` : ''}
         ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
       </tr>
