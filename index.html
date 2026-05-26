@@ -10737,7 +10737,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   }
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, migrationOnboardingCompleted:true }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, businessName: business?.name, businessAbout: business?.about, businessPhone: business?.phone, businessAddress: business?.address, businessCity: business?.city, migrationOnboardingCompleted:true }) });
     } catch (error) { return showMigrationFormError(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
@@ -10785,10 +10785,11 @@ function renderEmployerProfile(el){
       <div class="card form-card" style="margin-top:16px">
         <div class="split" style="align-items:center;margin-bottom:14px">
           <div style="display:flex;gap:14px;align-items:center">${user.photo ? renderManagedImage(user.photo, user.publicName || user.name || 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(user.emoji || '\u{1F3E0}')}</div>`}<div><div style="font-weight:800;font-size:1.05rem">${esc(user.publicName || user.name || '')}</div><div class="small muted">${esc(user.city || '')}</div></div></div>
+          <button class="btn btn-outline btn-sm" onclick="openEmployerProfileEditForm(false)">Edit Profile</button>
         </div>
         <div class="row">
           <div><div class="small muted">Name</div><div style="font-weight:700">${esc(user.publicName || user.name || '')}</div></div>
-          <div><div class="small muted">Home address (private, not editable)</div><div style="font-weight:700">${esc(user.address || 'Not added yet')}</div></div>
+          <div><div class="small muted">Home address (private)</div><div style="font-weight:700">${esc(user.address || 'Not added yet')}</div></div>
         </div>
         <div class="row" style="margin-top:12px">
           <div><div class="small muted">Phone (private)</div><div style="font-weight:700">${esc(user.phone || 'Not added yet')}</div></div>
@@ -10799,18 +10800,81 @@ function renderEmployerProfile(el){
     ` : ''}
     ${showBusiness ? `
       <div class="card form-card" style="margin-top:16px">
-        <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Business</div>
+        <div class="split" style="margin-bottom:12px"><div style="font-weight:800;font-size:1.05rem">My Business</div><button class="btn btn-outline btn-sm" onclick="openEmployerProfileEditForm(true)">Edit Business</button></div>
         <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">${business.logo ? renderManagedImage(business.logo, business.name || 'Business logo', 'width:88px;height:88px;border-radius:16px;object-fit:cover;border:1px solid var(--border)', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:88px;height:88px;border-radius:16px;font-size:2rem">\u{1F3E2}</div>`}<div><div style="font-weight:800">${esc(business.name || user.company || '')}</div><div class="small muted">${esc(business.city || '')}</div></div></div>
         <div style="margin-top:14px"><div class="small muted">About</div>${renderFormattedLongText(business.about || 'No business about section added yet.', { small:true })}</div>
         <div class="row" style="margin-top:12px">
           <div><div class="small muted">Business phone (private)</div><div style="font-weight:700">${esc(business.phone || 'Not added yet')}</div></div>
 
         </div>
-        <div style="margin-top:12px"><div class="small muted">Business address (private, not editable)</div><div style="font-weight:700">${esc(business.address || 'Not added yet')}</div></div>
+        <div style="margin-top:12px"><div class="small muted">Business address (private)</div><div style="font-weight:700">${esc(business.address || 'Not added yet')}</div></div>
       </div>
     ` : ''}
   `;
 }
+
+function openEmployerProfileEditForm(showBusiness=false){
+  const user = getUserById(currentUser.id) || currentUser;
+  const isEmployer = user.role === 'employer' || user.type === 'business' || !!user.businessProfile;
+  openModal(showBusiness ? 'Edit Business' : 'Edit Profile', renderEmployerMigrationOnboardingForm(user, user.businessProfile || {}, isEmployer).replace('submitEmployerMigrationOnboarding(' + (isEmployer ? 'true' : 'false') + ')', 'submitEmployerProfileEdit(' + (isEmployer ? 'true' : 'false') + ')').replace('Confirm profile & continue', 'Save profile changes'), '760px');
+}
+async function submitEmployerProfileEdit(isEmployer=false){
+  const first = String(document.getElementById('migFirstName')?.value || '').trim();
+  const last = String(document.getElementById('migLastName')?.value || '').trim();
+  const email = String(document.getElementById('migEmail')?.value || '').trim().toLowerCase();
+  let phone = String(document.getElementById('migPhone')?.value || '').trim();
+  let address = migrationFormatUsAddress(document.getElementById('migAddress')?.value || '');
+  const addressInput = document.getElementById('migAddress');
+  if (addressInput) addressInput.value = address;
+  const about = String(document.getElementById('migAbout')?.value || '').trim();
+  const missingPersonal = requiredFieldsMessage({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile');
+  if (missingPersonal) return showMigrationFormError(missingPersonal);
+  if (!migrationIsValidEmailAddress(email)) return showMigrationFormError('Please enter a valid email address.');
+  if (!migrationIsValidUsPhone(phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. phone number.');
+  const addressCheck = await validateAddressExists(address, 'migAddress', 'home address');
+  if (!addressCheck.ok) return showMigrationFormError(addressCheck.message);
+  if (addressCheck.warning) toast(addressCheck.warning);
+  address = addressCheck.formattedAddress || address;
+  phone = migrationFormatUsPhone(phone);
+  let business = null;
+  if (isEmployer) {
+    business = {
+      name:String(document.getElementById('migBusinessName')?.value || '').trim(),
+      about:String(document.getElementById('migBusinessAbout')?.value || '').trim(),
+      phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
+      address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || '')
+    };
+    const missingBusiness = requiredFieldsMessage({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile');
+    if (missingBusiness) return showMigrationFormError(missingBusiness);
+    if (!migrationIsValidUsPhone(business.phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. business phone number.');
+    const businessAddressInput = document.getElementById('migBusinessAddress');
+    if (businessAddressInput) businessAddressInput.value = business.address;
+    const businessAddressCheck = await validateAddressExists(business.address, 'migBusinessAddress', 'business address');
+    if (!businessAddressCheck.ok) return showMigrationFormError(businessAddressCheck.message);
+    if (businessAddressCheck.warning) toast(businessAddressCheck.warning);
+    business.address = businessAddressCheck.formattedAddress || business.address;
+    business.phone = migrationFormatUsPhone(business.phone);
+    business.city = extractCity(business.address);
+  }
+  const users = getUsers();
+  const user = users.find(u => String(u.id) === String(currentUser.id));
+  if (user) {
+    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, address, about, city:extractCity(address) });
+    if (isEmployer) { user.company = business.name; user.businessProfile = Object.assign({}, user.businessProfile || {}, business); }
+    saveUsers(users); setCurrentUser(user);
+  }
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, businessName: business?.name, businessAbout: business?.about, businessPhone: business?.phone, businessAddress: business?.address, businessCity: business?.city }) });
+    } catch (error) { return showMigrationFormError(error.message || 'Could not save profile to backend.'); }
+  }
+  closeModal();
+  employerProfileTab = isEmployer ? 'business' : 'profile';
+  dashSection = 'profile';
+  toast('Profile changes saved.');
+  renderDashboard();
+}
+
 function renderStudentProfile(el){
   const profile = currentStudentProfile();
   if (!profile){
