@@ -1244,11 +1244,16 @@ function redirectToStripeCheckoutSession(session){
   }
   return false;
 }
-async function captureBackendStripePayment(project={}, amountTotal=null){
+async function captureBackendStripePayment(project={}, finalBreakdownOrAmount=null){
   const projectId = getProjectBackendId(project);
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId || !project.stripe_payment_intent_id) return null;
   const payload = { project_id: projectId };
-  if (amountTotal) payload.amount_total = amountTotal;
+  const finalBreakdown = typeof finalBreakdownOrAmount === 'object' && finalBreakdownOrAmount ? finalBreakdownOrAmount : null;
+  if (finalBreakdown) {
+    payload.amount_total = finalBreakdown.employerTotal;
+    payload.student_payout = finalBreakdown.studentPayout;
+    payload.platform_fee_total = finalBreakdown.platformFeeTotal;
+  } else if (finalBreakdownOrAmount) payload.amount_total = finalBreakdownOrAmount;
   return backendAuthRequest('/stripe/capture-payment-intent', {
     method:'POST',
     body: JSON.stringify(payload)
@@ -1269,10 +1274,15 @@ async function createManualProjectStripePayment(project={}, breakdown={}){
     })
   });
 }
-async function captureManualProjectStripePayment(project={}, amountTotal=null){
+async function captureManualProjectStripePayment(project={}, finalBreakdownOrAmount=null){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !project.stripe_payment_intent_id) return null;
   const payload = { payment_intent_id: project.stripe_payment_intent_id };
-  if (amountTotal) payload.amount_total = amountTotal;
+  const finalBreakdown = typeof finalBreakdownOrAmount === 'object' && finalBreakdownOrAmount ? finalBreakdownOrAmount : null;
+  if (finalBreakdown) {
+    payload.amount_total = finalBreakdown.employerTotal;
+    payload.student_payout = finalBreakdown.studentPayout;
+    payload.platform_fee_total = finalBreakdown.platformFeeTotal;
+  } else if (finalBreakdownOrAmount) payload.amount_total = finalBreakdownOrAmount;
   return backendAuthRequest('/stripe/capture-manual-project-payment-intent', {
     method:'POST',
     body: JSON.stringify(payload)
@@ -13316,8 +13326,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   if (STRIPE_ENABLED && p.stripe_payment_intent_id && !isLocalPaymentReference && backendAuthEnabled() && getBackendAccessToken()) {
     try {
       const captured = p.backendSource
-        ? await captureBackendStripePayment(p, finalBreakdown.employerTotal)
-        : await captureManualProjectStripePayment(p, finalBreakdown.employerTotal);
+        ? await captureBackendStripePayment(p, finalBreakdown)
+        : await captureManualProjectStripePayment(p, finalBreakdown);
 
       if (captured) {
         backendCaptureResult = captured;
