@@ -12347,6 +12347,19 @@ function getDirectJobRecommendedDeadlineISO(durationDays=30){
   const day = String(finalDate.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+function calculateDirectJobExpirationDate(startDate=new Date(), durationDays=30){
+  const start = startDate instanceof Date ? startDate : new Date(startDate);
+  const safeStart = Number.isNaN(start.getTime()) ? new Date() : start;
+  const safeDays = Math.max(1, Number(durationDays || 30) || 30);
+  return new Date(safeStart.getTime() + safeDays * 24 * 60 * 60 * 1000);
+}
+function formatDirectJobExpirationNoticeDate(startDate=new Date(), durationDays=30){
+  return calculateDirectJobExpirationDate(startDate, durationDays).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
 function updateEmployerDirectJobPackage(){
   const pkg = getSelectedDirectJobPackageFromForm();
   const monthsSelect = document.getElementById('directJobListingMonths');
@@ -12365,6 +12378,10 @@ function updateEmployerDirectJobPackage(){
   if (feeEl) feeEl.value = `$${money(placementFee.total)} listing`;
   const durationEl = document.getElementById('directJobListingLengthPreview');
   if (durationEl) durationEl.value = `${durationDays} days`;
+  const expirationNoticeEl = document.getElementById('directJobExpirationNotice');
+  if (expirationNoticeEl) {
+    expirationNoticeEl.textContent = `CoGoCity covers payment for direct-hire job postings. Student pay is handled directly by the employer outside the CoGo platform. This job listing expires on ${formatDirectJobExpirationNoticeDate(new Date(), durationDays)}.`;
+  }
 }
 function openEditDirectJobModal(jobId=''){
   const job = getDirectJobById(jobId);
@@ -12466,7 +12483,7 @@ async function saveEmployerDirectHireJob(){
   const listingOption = getDirectJobListingOptions(postingPkg).find(item => item.months === selectedMonths);
   const listingDurationDays = listingOption ? listingOption.days : 30;
   const createdAt = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = calculateDirectJobExpirationDate(createdAt, listingDurationDays).toISOString();
   const useBackendStripeCheckout = Boolean(STRIPE_ENABLED && backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token') && fee > 0);
   if (STRIPE_ENABLED && fee > 0 && !useBackendStripeCheckout) {
     toast('Secure Stripe checkout is required to post paid employer jobs on staging. Please sign in again and complete payment setup.');
@@ -12849,7 +12866,7 @@ function renderEmployerMyJobs(el){
           <div class="field"><label>Featured Benefits</label><input value="Pinned on top + highlighted card + fair rotation among featured jobs" readonly></div>
         </div>
         <div class="field"><label>Select Months</label><select id="directJobListingMonths" onchange="updateEmployerDirectJobPackage()"></select></div>
-        <div class="warning" style="margin-bottom:12px">CoGoCity covers payment/platform fees for direct-hire job postings. Student pay is handled directly by employer outside CoGo project escrow.</div>
+        <div id="directJobExpirationNotice" class="warning" style="margin-bottom:12px">CoGoCity covers payment for direct-hire job postings. Student pay is handled directly by the employer outside the CoGo platform. This job listing expires on ${esc(formatDirectJobExpirationNoticeDate(new Date(), 30))}.</div>
         <button class="btn btn-blue" onclick="saveEmployerDirectHireJob()">Pay Listing & Post Job</button>
       </div>
     ` : ''}
