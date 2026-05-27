@@ -2827,7 +2827,12 @@ async function refreshBackendProjects(options={}){
     backendProjectsLoading = false;
   }
 }
+function isBackendUuid(value=''){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
 function getProjectBackendId(project={}){ return project.backendProjectId || project.project_id || project.id; }
+function getProjectBackendUuid(project={}){
+  const id = getProjectBackendId(project);
+  return isBackendUuid(id) ? id : '';
+}
 function normalizeBookingTitleText(value=''){
   return String(value || '').toLowerCase().replace(/[\u2022|]/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -13591,12 +13596,13 @@ async function submitReview(projectId){
   const rating = Number(ratingEl.value || 5);
   const comment = (commentEl.value || '').trim();
   let backendReview = null;
-  if (backendAuthEnabled() && getBackendAccessToken() && getProjectBackendId(p)) {
+  const backendProjectUuid = getProjectBackendUuid(p);
+  if (backendAuthEnabled() && getBackendAccessToken() && backendProjectUuid) {
     try {
       const serviceId = String(p.studentServiceId || '').trim();
       const reviewPayload = { rating, comment };
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(serviceId)) reviewPayload.service_id = serviceId;
-      backendReview = await backendAuthRequest(`/projects/${encodeURIComponent(getProjectBackendId(p))}/review`, {
+      if (isBackendUuid(serviceId)) reviewPayload.service_id = serviceId;
+      backendReview = await backendAuthRequest(`/projects/${encodeURIComponent(backendProjectUuid)}/review`, {
         method: 'POST',
         body: JSON.stringify(reviewPayload)
       });

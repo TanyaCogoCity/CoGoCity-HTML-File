@@ -9,6 +9,10 @@ const { createNotification } = require('../lib/notifications');
 
 const router = express.Router();
 
+function isUuid(value = '') {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
 router.post('/projects/:id/review', requireAuth, async (req, res) => {
   try {
     const schema = z.object({
@@ -18,6 +22,8 @@ router.post('/projects/:id/review', requireAuth, async (req, res) => {
       serviceId: z.string().uuid().optional(),
     });
     const payload = schema.parse(req.body || {});
+
+    if (!isUuid(req.params.id)) return fail(res, 404, 'Project not found');
 
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
