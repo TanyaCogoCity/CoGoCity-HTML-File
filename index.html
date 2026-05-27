@@ -1573,8 +1573,9 @@ function openStripeConnectRecoveryModal(errorMessage=''){
 function handleStripeReturnParams(){
   const query = new URLSearchParams(window.location.search || '');
   let changed = false;
+  let connectReturnState = '';
   if (query.has('stripe_connect')) {
-    const connectReturnState = query.get('stripe_connect');
+    connectReturnState = query.get('stripe_connect') || '';
     if (backendAuthEnabled() && getBackendAccessToken()) {
       refreshStripeOnboardingStatus({ rerender:true, toast:false });
       if (connectReturnState === 'refresh') {
