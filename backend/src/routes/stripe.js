@@ -89,6 +89,58 @@ function isMarketplaceDestinationChargeIntent(paymentIntent, expectedDestination
     && (!expectedDestination || destination === expectedDestination);
 }
 
+function manualProjectDashboardLink(projectId = '') {
+  const id = String(projectId || '').trim();
+  return id ? `/dashboard?section=transactions&project=${encodeURIComponent(id)}` : '/dashboard?section=transactions';
+}
+
+async function notifyManualProjectPaymentCaptured({ paymentIntent, finalAmounts }) {
+  const metadata = paymentIntent?.metadata || {};
+  const studentUserId = String(metadata.payee_id || metadata.student_user_id || '').trim();
+  const payerUserId = String(metadata.payer_id || '').trim();
+  const projectId = String(metadata.project_id || '').trim();
+  const jobTitle = String(metadata.job_title || 'your project').trim() || 'your project';
+  const amountTotal = finalAmounts?.amountTotal ?? fromCents(paymentIntent?.amount_received || paymentIntent?.amount || 0);
+  const studentPayout = finalAmounts?.studentPayout ?? Number(metadata.student_payout || 0);
+  const rows = [];
+  if (studentUserId) {
+    rows.push({
+      userId: studentUserId,
+      type: notificationType('payout'),
+      title: 'Payment released',
+      body: `Payment for ${jobTitle} has been released.${studentPayout ? ` Estimated student payout: $${Number(studentPayout).toFixed(2)}.` : ''}`,
+      link: manualProjectDashboardLink(projectId),
+    });
+  }
+  if (payerUserId) {
+    rows.push({
+      userId: payerUserId,
+      type: notificationType('payment'),
+      title: 'Project payment completed',
+      body: `Your payment for ${jobTitle} is complete. Total paid: $${Number(amountTotal || 0).toFixed(2)}.`,
+      link: manualProjectDashboardLink(projectId),
+    });
+  }
+  if (rows.length) await createNotifications({ data: rows });
+}
+
+async function notifyManualProjectTransferSent({ paymentIntent, transferAmount }) {
+  const metadata = paymentIntent?.metadata || {};
+  const studentUserId = String(metadata.payee_id || metadata.student_user_id || '').trim();
+  if (!studentUserId) return;
+  const projectId = String(metadata.project_id || '').trim();
+  const jobTitle = String(metadata.job_title || 'your project').trim() || 'your project';
+  await createNotification({
+    data: {
+      userId: studentUserId,
+      type: notificationType('payout'),
+      title: 'Payout sent',
+      body: `Your payout for ${jobTitle} has been sent to Stripe.${transferAmount ? ` Amount: $${Number(transferAmount).toFixed(2)}.` : ''}`,
+      link: manualProjectDashboardLink(projectId),
+    },
+  });
+}
+
 async function retrievePaymentIntentForSync(paymentIntentId) {
   return stripe.paymentIntents.retrieve(paymentIntentId, {
     expand: ['latest_charge', 'latest_charge.balance_transaction', 'latest_charge.application_fee'],
@@ -1323,6 +1375,7 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       amount_to_capture: amountToCapture,
       application_fee_amount: applicationFeeToCaptureCents,
     });
+    await notifyManualProjectPaymentCaptured({ paymentIntent: captured, finalAmounts });
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, replacementPaymentIntentId: replacementIntent?.id || null } });
     return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
   } catch (error) {
@@ -1368,6 +1421,7 @@ router.post('/manual-project-transfer', requireAuth, async (req, res) => {
       },
       { idempotencyKey: `manual-project:${paymentIntent.id}:student:${student.id}:transfer:v1` }
     );
+    await notifyManualProjectTransferSent({ paymentIntent, transferAmount: amount });
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.transfer.create', entityType: 'stripe_transfer', entityId: transfer.id, payload: { paymentIntentId, studentUserId, amount } });
     return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid' });
   } catch (error) {
