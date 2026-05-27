@@ -16053,7 +16053,7 @@ function renderTransactionsPanel(){
           ${currentUser.role === 'student' ? `<div class="small muted">Stripe connection and live balance are placeholders for now.</div>` : ''}
         </div>
         <div style="min-width:260px">
-          <input id="transactionsSearch" placeholder="Search by date, amount, job title, name, or Stripe ID" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsResults();renderSubscriptionTransactionsResults();renderWorkshopTransactionsResults()">
+          <input id="transactionsSearch" placeholder="${isAdmin ? 'Search by date, amount, job title, name, or Stripe ID' : 'Search by date, amount, job title, name, or receipt ID'}" value="${esc(settingsTransactionQuery)}" oninput="settingsTransactionQuery=this.value;renderTransactionsResults();renderSubscriptionTransactionsResults();renderWorkshopTransactionsResults()">
         </div>
       </div>
       <div id="transactions-summary"></div>
@@ -16389,7 +16389,10 @@ function renderSubscriptionTransactionsResults(){
   const isAdmin = currentUser.role === 'admin';
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getCurrentUserSubscriptionRows().filter(row => {
-    const haystack = [row.jobName, row.employerName, row.status, row.paymentStatus, row.cogoId, row.stripeCheckoutSessionId, row.stripePaymentIntentId, row.stripeChargeId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total].join(' ').toLowerCase();
+    const searchableFields = isAdmin
+      ? [row.jobName, row.employerName, row.status, row.paymentStatus, row.cogoId, row.stripeCheckoutSessionId, row.stripePaymentIntentId, row.stripeChargeId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total]
+      : [row.jobName, row.employerName, row.status, row.paymentStatus, row.cogoId, formatDirectJobCloseMessageDate(row.dateStarted), formatDirectJobCloseMessageDate(row.expirationDate), row.total];
+    const haystack = searchableFields.join(' ').toLowerCase();
 
     return !query || haystack.includes(query);
   });
@@ -16403,20 +16406,28 @@ function renderSubscriptionTransactionsResults(){
     fileName: isAdmin ? 'admin-subscription-transactions' : `${currentUser.role || 'user'}-subscription-transactions`,
     headers: isAdmin
       ? ['Name of Job', 'Employer / Neighbor', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID', 'Stripe Checkout Session ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID']
-      : ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID', 'Stripe Checkout Session ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID'],
-    rows: rows.map(row => [
-      row.jobName,
-      ...(isAdmin ? [row.employerName || 'Employer / Neighbor'] : []),
-
-      formatDirectJobCloseMessageDate(row.dateStarted),
-      formatDirectJobCloseMessageDate(row.expirationDate),
-      stripeStatusLabel(row.paymentStatus || 'paid'),
-      `$${money(row.total || 0)}`,
-      row.cogoId || '',
-      row.stripeCheckoutSessionId || '',
-      row.stripePaymentIntentId || '',
-      row.stripeChargeId || ''
-    ])
+      : ['Name of Job', 'Date Started', 'Expiration Date', 'Status', 'Transaction Total', 'CoGo Job ID'],
+    rows: rows.map(row => isAdmin
+      ? [
+        row.jobName,
+        row.employerName || 'Employer / Neighbor',
+        formatDirectJobCloseMessageDate(row.dateStarted),
+        formatDirectJobCloseMessageDate(row.expirationDate),
+        stripeStatusLabel(row.paymentStatus || 'paid'),
+        `$${money(row.total || 0)}`,
+        row.cogoId || '',
+        row.stripeCheckoutSessionId || '',
+        row.stripePaymentIntentId || '',
+        row.stripeChargeId || ''
+      ]
+      : [
+        row.jobName,
+        formatDirectJobCloseMessageDate(row.dateStarted),
+        formatDirectJobCloseMessageDate(row.expirationDate),
+        stripeStatusLabel(row.paymentStatus || 'paid'),
+        `$${money(row.total || 0)}`,
+        row.cogoId || ''
+      ])
   };
   const displayRows = getTransactionTablePagedRows('subscription', rows);
   const subState = getTransactionTableState('subscription');
@@ -16442,7 +16453,7 @@ function renderSubscriptionTransactionsResults(){
                 <th style="padding:10px 8px">Expiration Date</th>
                 <th style="padding:10px 8px">Status</th>
                 <th style="padding:10px 8px">Transaction Total</th>
-                <th style="padding:10px 8px">Reconciliation IDs</th>
+                ${isAdmin ? `<th style="padding:10px 8px">Reconciliation IDs</th>` : ''}
               </tr>
             </thead>
             <tbody>
@@ -16455,11 +16466,11 @@ function renderSubscriptionTransactionsResults(){
                   <td style="padding:12px 8px">${esc(formatDirectJobCloseMessageDate(row.expirationDate))}</td>
                   <td style="padding:12px 8px">${esc(stripeStatusLabel(row.paymentStatus || 'paid'))}</td>
                   <td class="money" style="padding:12px 8px">$${esc(money(row.total || 0))}</td>
-                  <td style="padding:12px 8px">
+                  ${isAdmin ? `<td style="padding:12px 8px">
                     ${renderAdminTransactionReconciliationIds({ id: row.cogoId, stripe_payment_intent_id: row.stripePaymentIntentId })}
                     ${row.stripeCheckoutSessionId ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">Stripe CS:</span> ${esc(row.stripeCheckoutSessionId)}</div>` : `<div class="muted" style="font-size:.78rem">Stripe CS: —</div>`}
                     ${row.stripeChargeId ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">Stripe Ch:</span> ${esc(row.stripeChargeId)}</div>` : `<div class="muted" style="font-size:.78rem">Stripe Ch: —</div>`}
-                  </td>
+                  </td>` : ''}
                 </tr>
               `).join('')}
             </tbody>
