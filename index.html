@@ -10658,12 +10658,14 @@ function openBookDirect(studentId, serviceId=''){
   const s = getStudents().find(x => x.id === studentId);
   if (!s) return;
   const services = getRenderableStudentServices(s);
-  const selectedService = services.find(service => service.id === serviceId) || services[0] || {};
+  const selectedServiceIndex = Math.max(0, services.findIndex((service, index) => String(service.id || `service_${index}`) === String(serviceId || '')));
+  const selectedService = services[selectedServiceIndex] || services[0] || {};
+  const selectedServiceKey = selectedService.id || `service_${selectedServiceIndex}`;
   trackCogoEvent('book_button_click', { source: 'student_service' });
   openModal(`Book / Offer Job to ${s.name}`, `
     <div class="warning" style="margin-bottom:14px">This creates a direct employer-to-student offer flow similar to Fiverr/Upwork.</div>
     ${selectedService.title ? `<div class="card" style="padding:12px;margin-bottom:14px;background:#F9FAFB"><div style="font-weight:800">${esc(selectedService.title)}</div><div class="small money" style="margin-top:4px">$${esc(selectedService.rate || s.rate || 0)}/hr \u00B7 ${esc(selectedService.location || s.location || '')}</div></div>` : ''}
-    <div class="field"><label>Job Title</label><input id="directJobTitle" value="${esc(selectedService.title || '')}" placeholder="e.g. Website updates" /></div>
+    <div class="field"><label>Job Title</label><input id="directJobTitle" value="${esc(selectedService.title || '')}" autocomplete="off" placeholder="e.g. Website updates" /></div>
     <div class="field"><label>Employer Scope of Work</label><textarea id="directJobScope" placeholder="Describe your requirements..."></textarea></div>
     <div class="row">
       <div class="field"><label>Hourly Rate ($/hr)</label><input id="directJobRate" type="number" min="1" value="${esc(selectedService.rate || s.rate || 20)}" /></div>
@@ -10672,9 +10674,13 @@ function openBookDirect(studentId, serviceId=''){
     <div class="field"><label>Location</label><input id="directJobLocation" value="${esc(selectedService.location || s.location || '')}" placeholder="Danville, CA or Remote" /></div>
     <div style="display:flex;gap:10px">
       <button class="btn btn-outline" onclick="openDirectMessage('${esc(s.userId)}','${esc(s.name)}')">Message First</button>
-      <button class="btn btn-blue" onclick="sendDirectOffer('${esc(studentId)}','${esc(selectedService.id || '')}')">Offer Job</button>
+      <button class="btn btn-blue" onclick="sendDirectOffer('${esc(studentId)}','${esc(selectedServiceKey)}')">Offer Job</button>
     </div>
   `, '720px');
+  setTimeout(() => {
+    const titleInput = document.getElementById('directJobTitle');
+    if (titleInput) titleInput.value = selectedService.title || '';
+  }, 0);
 }
 function openDirectMessage(userId, name){
   if (!currentUser) return openLoginModal();
@@ -10707,7 +10713,7 @@ async function sendDirectOffer(studentId, serviceId=''){
   if (!blockTextCheck(scope)) return;
 
   const s = getStudents().find(x => x.id === studentId);
-  const selectedService = getRenderableStudentServices(s || {}).find(service => service.id === serviceId) || null;
+  const selectedService = getRenderableStudentServices(s || {}).find((service, index) => String(service.id || `service_${index}`) === String(serviceId || '')) || null;
   const apps = getApplications();
   apps.push({
     id: uid('app'),
