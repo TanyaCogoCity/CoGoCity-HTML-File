@@ -1115,57 +1115,68 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
       studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? recalculatedFees?.studentPayout,
       platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? recalculatedFees?.platformFeeTotal,
     });
-    const capturableCents = Number(paymentIntent.amount_capturable || paymentIntent.amount || 0);
-    const amountToCapture = Math.min(finalAmounts.amountTotalCents, capturableCents);
-    let adjustmentIntent = null;
+    let activePaymentIntent = paymentIntent;
+    let capturableCents = Number(activePaymentIntent.amount_capturable || activePaymentIntent.amount || 0);
+    let amountToCapture = Math.min(finalAmounts.amountTotalCents, capturableCents);
+    let applicationFeeToCaptureCents = Math.min(finalAmounts.platformFeeCents, Number(activePaymentIntent.application_fee_amount || finalAmounts.platformFeeCents));
+    let replacementIntent = null;
 
     if (finalAmounts.amountTotalCents > capturableCents) {
-      const originalAmounts = marketplaceAmounts(tx);
-      const additionalCents = finalAmounts.amountTotalCents - capturableCents;
-      const additionalPlatformFeeCents = Math.max(0, finalAmounts.platformFeeCents - originalAmounts.platformFeeCents);
-      const paymentMethodId = project.employer?.stripeDefaultPaymentMethodId || paymentIntent.payment_method;
-      const customerId = project.employer?.stripeCustomerId || (typeof paymentIntent.customer === 'string' ? paymentIntent.customer : paymentIntent.customer?.id);
-      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than the amount held in escrow and no saved payment method is available for the difference');
+      const paymentMethodId = project.employer?.stripeDefaultPaymentMethodId || activePaymentIntent.payment_method;
+      const customerId = project.employer?.stripeCustomerId || (typeof activePaymentIntent.customer === 'string' ? activePaymentIntent.customer : activePaymentIntent.customer?.id);
+      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than the amount held in escrow and no saved payment method is available for the final total');
 
-      adjustmentIntent = await stripe.paymentIntents.create(
+      replacementIntent = await stripe.paymentIntents.create(
         {
-          amount: additionalCents,
-          currency: paymentIntent.currency || 'usd',
+          amount: finalAmounts.amountTotalCents,
+          currency: activePaymentIntent.currency || 'usd',
           customer: customerId || undefined,
           payment_method: typeof paymentMethodId === 'string' ? paymentMethodId : paymentMethodId?.id,
           confirm: true,
           off_session: true,
-          application_fee_amount: additionalPlatformFeeCents,
+          application_fee_amount: finalAmounts.platformFeeCents,
           transfer_data: { destination: project.student.stripeAccountId },
-          description: `CoGo City final invoice adjustment${project.job?.title ? `: ${project.job.title}` : ''}`,
+          description: `CoGo City final invoice${project.job?.title ? `: ${project.job.title}` : ''}`,
           metadata: {
-            type: 'project_final_adjustment',
+            type: 'project_final_reauthorization',
             project_id: project.id,
             transaction_id: tx.id,
-            original_payment_intent_id: paymentIntent.id,
+            original_payment_intent_id: activePaymentIntent.id,
             payer_id: project.employerId,
             payee_id: project.studentId,
-            amount_total: String(fromCents(additionalCents)),
-            platform_fee_total: String(fromCents(additionalPlatformFeeCents)),
-            adjustment_type: 'final_invoice_increase',
+            amount_total: String(finalAmounts.amountTotal),
+            student_payout: String(finalAmounts.studentPayout),
+            platform_fee_total: String(finalAmounts.platformFee),
+            adjustment_type: 'final_invoice_reauthorization',
             stripe_connect_flow: 'destination_charge_application_fee',
           },
         },
-        { idempotencyKey: `project:${project.id}:tx:${tx.id}:final-adjustment:${finalAmounts.amountTotalCents}:v2:connect` }
+        { idempotencyKey: `project:${project.id}:tx:${tx.id}:final-reauthorization:${finalAmounts.amountTotalCents}:v1:connect` }
       );
-      if (adjustmentIntent.status !== 'succeeded') return fail(res, 402, `Additional final invoice charge did not complete (${adjustmentIntent.status})`);
+      if (replacementIntent.status !== 'succeeded') return fail(res, 402, `Final invoice charge did not complete (${replacementIntent.status})`);
+
+      try {
+        await stripe.paymentIntents.cancel(activePaymentIntent.id, { cancellation_reason: 'abandoned' });
+      } catch (cancelError) {
+        await writeAuditLog({ userId: req.user.id, action: 'payment.intent.cancel_replaced_failed', entityType: 'stripe_payment_intent', entityId: activePaymentIntent.id, payload: { replacementPaymentIntentId: replacementIntent.id, error: cancelError.message } });
+      }
+
+      activePaymentIntent = replacementIntent;
+      capturableCents = finalAmounts.amountTotalCents;
+      amountToCapture = finalAmounts.amountTotalCents;
+      applicationFeeToCaptureCents = finalAmounts.platformFeeCents;
     }
 
-    const captureParams = { amount_to_capture: amountToCapture, application_fee_amount: Math.min(finalAmounts.platformFeeCents, Number(paymentIntent.application_fee_amount || finalAmounts.platformFeeCents)) };
-    const captured = await stripe.paymentIntents.capture(paymentIntent.id, captureParams);
-    const synced = await syncTransactionStripeReporting(tx.id, captured.id, adjustmentIntent ? { payoutStatus: 'adjusted' } : {});
+    if (amountToCapture < finalAmounts.amountTotalCents && !replacementIntent) return fail(res, 409, 'Final invoice exceeds the authorized Stripe amount and could not be reauthorized');
+    const captured = replacementIntent || await stripe.paymentIntents.capture(activePaymentIntent.id, { amount_to_capture: amountToCapture, application_fee_amount: applicationFeeToCaptureCents });
+    const synced = await syncTransactionStripeReporting(tx.id, captured.id, replacementIntent ? { payoutStatus: 'reauthorized' } : {});
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, status: synced?.status || 'paid' } });
     await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date(), totalAmount: finalWorkTotal ?? project.totalAmount } });
     await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
-    await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, adjustmentPaymentIntentId: adjustmentIntent?.id || null } });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, replacementPaymentIntentId: replacementIntent?.id || null } });
 
-    return ok(res, { payment_intent_id: captured.id, adjustment_payment_intent_id: adjustmentIntent?.id || null, adjustment_status: adjustmentIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, project_id: project.id, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
+    return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, project_id: project.id, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
   } catch (error) {
     return fail(res, 400, 'Failed to capture payment intent', error.message);
   }
@@ -1252,56 +1263,68 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? paymentIntent.metadata?.student_payout,
       platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? paymentIntent.metadata?.platform_fee_total,
     });
-    const capturableCents = Number(paymentIntent.amount_capturable || paymentIntent.amount || 0);
-    const amountToCapture = Math.min(finalAmounts.amountTotalCents, capturableCents);
-    let adjustmentIntent = null;
+    let activePaymentIntent = paymentIntent;
+    let capturableCents = Number(activePaymentIntent.amount_capturable || activePaymentIntent.amount || 0);
+    let amountToCapture = Math.min(finalAmounts.amountTotalCents, capturableCents);
+    let applicationFeeToCaptureCents = Math.min(finalAmounts.platformFeeCents, Number(activePaymentIntent.application_fee_amount || finalAmounts.platformFeeCents));
+    let replacementIntent = null;
 
     if (finalAmounts.amountTotalCents > capturableCents) {
-      const originalAmounts = marketplaceAmounts(paymentIntent.metadata || {});
-      const additionalCents = finalAmounts.amountTotalCents - capturableCents;
-      const additionalPlatformFeeCents = Math.max(0, finalAmounts.platformFeeCents - originalAmounts.platformFeeCents);
-      const destination = typeof paymentIntent.transfer_data?.destination === 'string'
-        ? paymentIntent.transfer_data.destination
-        : paymentIntent.transfer_data?.destination?.id;
-      const paymentMethodId = typeof paymentIntent.payment_method === 'string' ? paymentIntent.payment_method : paymentIntent.payment_method?.id;
-      const customerId = typeof paymentIntent.customer === 'string' ? paymentIntent.customer : paymentIntent.customer?.id;
+      const destination = typeof activePaymentIntent.transfer_data?.destination === 'string'
+        ? activePaymentIntent.transfer_data.destination
+        : activePaymentIntent.transfer_data?.destination?.id;
+      const paymentMethodId = typeof activePaymentIntent.payment_method === 'string' ? activePaymentIntent.payment_method : activePaymentIntent.payment_method?.id;
+      const customerId = typeof activePaymentIntent.customer === 'string' ? activePaymentIntent.customer : activePaymentIntent.customer?.id;
       if (!destination) return fail(res, 409, 'Final invoice is higher than escrow, but the original Stripe payment is missing student payout destination data');
-      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than escrow and no saved payment method is available for the difference');
+      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than escrow and no saved payment method is available for the final total');
 
-      adjustmentIntent = await stripe.paymentIntents.create(
+      replacementIntent = await stripe.paymentIntents.create(
         {
-          amount: additionalCents,
-          currency: paymentIntent.currency || 'usd',
+          amount: finalAmounts.amountTotalCents,
+          currency: activePaymentIntent.currency || 'usd',
           customer: customerId || undefined,
           payment_method: paymentMethodId,
           confirm: true,
           off_session: true,
-          application_fee_amount: additionalPlatformFeeCents,
+          application_fee_amount: finalAmounts.platformFeeCents,
           transfer_data: { destination },
-          description: `CoGo City final invoice adjustment${paymentIntent.metadata?.job_title ? `: ${paymentIntent.metadata.job_title}` : ''}`,
+          description: `CoGo City final invoice${activePaymentIntent.metadata?.job_title ? `: ${activePaymentIntent.metadata.job_title}` : ''}`,
           metadata: {
-            type: 'manual_project_final_adjustment',
-            project_id: paymentIntent.metadata?.project_id || '',
-            original_payment_intent_id: paymentIntent.id,
-            payer_id: paymentIntent.metadata?.payer_id || req.user.id,
+            type: 'manual_project_final_reauthorization',
+            project_id: activePaymentIntent.metadata?.project_id || '',
+            original_payment_intent_id: activePaymentIntent.id,
+            payer_id: activePaymentIntent.metadata?.payer_id || req.user.id,
             payee_id: studentUserId,
-            amount_total: String(fromCents(additionalCents)),
-            platform_fee_total: String(fromCents(additionalPlatformFeeCents)),
-            adjustment_type: 'final_invoice_increase',
+            amount_total: String(finalAmounts.amountTotal),
+            student_payout: String(finalAmounts.studentPayout),
+            platform_fee_total: String(finalAmounts.platformFee),
+            adjustment_type: 'final_invoice_reauthorization',
             stripe_connect_flow: 'destination_charge_application_fee',
           },
         },
-        { idempotencyKey: `manual-project:${paymentIntent.id}:final-adjustment:${finalAmounts.amountTotalCents}:v2:connect` }
+        { idempotencyKey: `manual-project:${activePaymentIntent.id}:final-reauthorization:${finalAmounts.amountTotalCents}:v1:connect` }
       );
-      if (adjustmentIntent.status !== 'succeeded') return fail(res, 402, `Additional final invoice charge did not complete (${adjustmentIntent.status})`);
+      if (replacementIntent.status !== 'succeeded') return fail(res, 402, `Final invoice charge did not complete (${replacementIntent.status})`);
+
+      try {
+        await stripe.paymentIntents.cancel(activePaymentIntent.id, { cancellation_reason: 'abandoned' });
+      } catch (cancelError) {
+        await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.cancel_replaced_failed', entityType: 'stripe_payment_intent', entityId: activePaymentIntent.id, payload: { replacementPaymentIntentId: replacementIntent.id, error: cancelError.message } });
+      }
+
+      activePaymentIntent = replacementIntent;
+      capturableCents = finalAmounts.amountTotalCents;
+      amountToCapture = finalAmounts.amountTotalCents;
+      applicationFeeToCaptureCents = finalAmounts.platformFeeCents;
     }
 
-    const captured = await stripe.paymentIntents.capture(paymentIntent.id, {
+    if (amountToCapture < finalAmounts.amountTotalCents && !replacementIntent) return fail(res, 409, 'Final invoice exceeds the authorized Stripe amount and could not be reauthorized');
+    const captured = replacementIntent || await stripe.paymentIntents.capture(activePaymentIntent.id, {
       amount_to_capture: amountToCapture,
-      application_fee_amount: Math.min(finalAmounts.platformFeeCents, Number(paymentIntent.application_fee_amount || finalAmounts.platformFeeCents)),
+      application_fee_amount: applicationFeeToCaptureCents,
     });
-    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, adjustmentPaymentIntentId: adjustmentIntent?.id || null } });
-    return ok(res, { payment_intent_id: captured.id, adjustment_payment_intent_id: adjustmentIntent?.id || null, adjustment_status: adjustmentIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, replacementPaymentIntentId: replacementIntent?.id || null } });
+    return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
   } catch (error) {
     return fail(res, 400, 'Failed to capture Stripe project payment', error.message);
   }
