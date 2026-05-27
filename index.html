@@ -647,7 +647,9 @@ const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : '';
 const COGO_IS_STAGING = COGO_HOSTNAME === 'staging.cogocity.com';
+const COGO_IS_PRODUCTION = ['cogocity.com', 'www.cogocity.com'].includes(COGO_HOSTNAME);
 const COGO_IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(COGO_HOSTNAME);
+const COGO_BACKEND_ENABLED = COGO_IS_STAGING || COGO_IS_PRODUCTION;
 const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
 const PAYMENT_PROVIDER_MODE = COGO_IS_STAGING ? 'mock_stripe_ready' : 'stripe_manual_capture';
 const STRIPE_STAGING_PUBLISHABLE_KEY = 'pk_test_51TCSvbIGDb9LYiIhFx8UwBFDVG4riDKKJwiqejiGzjrtDzc7lWzIiQGJ6tBczfPGQzBPKqJMwlDEJW9Wer2Piv5L00apSTPPNZ';
@@ -657,13 +659,12 @@ const STRIPE_PUBLISHABLE_KEY = COGO_IS_STAGING
 const STRIPE_ENABLED = COGO_IS_STAGING;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = COGO_IS_STAGING || COGO_IS_LOCAL_DEV;
 const BACKEND_MIGRATION = {
-  enabled: COGO_IS_STAGING,
+  enabled: COGO_BACKEND_ENABLED,
   baseUrl: '/api',
   timeoutMs: 8000
 };
 const BACKEND_AUTH = {
-  // Staging-only: keep production/live behavior unchanged until the backend flow is fully verified.
-  enabled: COGO_IS_STAGING,
+  enabled: COGO_BACKEND_ENABLED,
   baseUrl: '/api',
   timeoutMs: 10000
 };
@@ -801,7 +802,6 @@ const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
   'students',
   'direct_jobs',
   'direct_job_applications',
-  'applications',
   'projects',
   'messages',
   'notifications',
@@ -1087,6 +1087,12 @@ function saveUsers(v){
 }
 function backendAuthEnabled(){
   return !!BACKEND_AUTH.enabled;
+}
+function requireBackendWriteSession(actionLabel='save this'){
+  if (!backendAuthEnabled()) return false;
+  if (getBackendAccessToken()) return false;
+  toast(`Please sign in again before you ${actionLabel} so it is saved to the backend.`);
+  return true;
 }
 function saveBackendAuthSession(authData={}){
   if (authData.access_token) {
@@ -2511,6 +2517,20 @@ function savePosts(v){
   ls('cogo_posts', payload);
   return syncCommunityPostsToBackend(payload);
 }
+async function persistCommunityPostsPermanently(v, failureMessage='Backend post save failed. Please try again so this change is saved for everyone.'){
+  const payload = ensureArray(v).map(normalizePostRecord);
+  if (backendAuthEnabled()) {
+    if (requireBackendWriteSession('save this post change')) return false;
+    try {
+      await syncCommunityPostsToBackend(payload);
+    } catch (error) {
+      toast(failureMessage);
+      return false;
+    }
+  }
+  ls('cogo_posts', payload);
+  return true;
+}
 function normalizeDirectJobRecord(job){
   const normalized = Object.assign({
     id: uid('djob'),
@@ -2909,8 +2929,13 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
       return project;
     } catch (error) {
       console.warn('Backend project start failed', error);
-      toast(error.message || 'Backend project creation failed. Saving a local booking for now.');
+      toast(error.message || 'Backend project creation failed. Please try again so the project is saved permanently.');
+      return null;
     }
+  }
+  if (backendAuthEnabled()) {
+    toast('Please sign in again before starting this project so it is saved to the backend.');
+    return null;
   }
   const projects = getProjects();
   const localProject = buildDirectHireProjectRecord(app, job, null);
@@ -3042,6 +3067,7 @@ async function confirmDirectJobExtension(jobId=''){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return toast('Job not found.');
+  if (requireBackendWriteSession('extend this job')) return;
   const pkg = getDirectJobPackageByKey(job.posting_package || 'basic');
   const feePerMonth = Number(pkg.fee || job.posting_fee || 0) || 0;
   const baseDays = Math.max(1, Number(pkg.duration_days || job.listing_duration_days || 30) || 30);
@@ -3067,7 +3093,8 @@ async function confirmDirectJobExtension(jobId=''){
       upsertBackendDirectJob(job);
     } catch (error) {
       console.warn('Backend job extend failed', error);
-      toast(error.message || 'Backend job update failed. Keeping local changes.');
+      toast(error.message || 'Backend job update failed. Please try again so this extension is saved permanently.');
+      return;
     }
   }
   saveDirectJobs(jobs);
@@ -3098,7 +3125,20 @@ function getApplications(){
 function saveApplications(v){
   const payload = ensureArray(v);
   ls('cogo_applications', payload);
-  syncEntityToBackend('applications', payload);
+  return syncEntityToBackend('applications', payload);
+}
+async function persistApplicationsPermanently(v, failureMessage='Backend application save failed. Please try again so this change is saved for everyone.'){
+  const payload = ensureArray(v);
+  if (backendAuthEnabled()) {
+    if (requireBackendWriteSession('save this application change')) return false;
+    const result = await syncEntityToBackend('applications', payload);
+    if (!result || !result.ok) {
+      toast(failureMessage);
+      return false;
+    }
+  }
+  ls('cogo_applications', payload);
+  return true;
 }
 function getBookings(){
   ensureBackendArraySettingLoaded('bookings', 'cogo_bookings');
@@ -7468,6 +7508,7 @@ function openDirectJobApplyModal(jobId=''){
 async function submitDirectJobApplication(jobId=''){
   const job = getDirectJobById(jobId);
   if (!job || !currentUser) return;
+  if (requireBackendWriteSession('apply for this job')) return;
   const message = String((document.getElementById('directJobApplicationMessage') || {}).value || '').trim();
   if (toastRequiredFields({ 'Message for the employer':message })) return;
   if (!blockTextCheck(message)) return;
@@ -7501,7 +7542,8 @@ async function submitDirectJobApplication(jobId=''){
       application = upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved));
     } catch (error) {
       console.warn('Backend application submit failed', error);
-      toast(error.message || 'Backend application failed. Saving local copy only.');
+      toast(error.message || 'Backend application failed. Please try again so the application is saved for everyone.');
+      return;
     }
   }
   if (!application.backendSource) {
@@ -8015,6 +8057,7 @@ function normalizeWorkshopTicketQuantity(workshopId=''){
 async function completeWorkshopRegistration(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop || !currentUser) return;
+  if (requireBackendWriteSession('register for this workshop')) return;
   if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
   const attendeeName = String((document.getElementById('workshopAttendeeName') || {}).value || '').trim();
   const attendeeEmail = String((document.getElementById('workshopAttendeeEmail') || {}).value || '').trim().toLowerCase();
@@ -8042,6 +8085,10 @@ async function completeWorkshopRegistration(workshopId=''){
       toast(error.message || 'Stripe checkout failed. Please try again.');
       return;
     }
+  }
+  if (backendAuthEnabled()) {
+    toast('Workshop registration must be completed through backend checkout. Please try again.');
+    return;
   }
   const mode = (document.querySelector('input[name=\"workshopPmMode\"]:checked') || {}).value || 'saved';
   const users = getUsers();
@@ -8153,6 +8200,8 @@ function canRequestWorkshopRefund(workshop){
 }
 function requestWorkshopRefund(registrationId=''){
   if (!currentUser) return openLoginModal();
+  if (requireBackendWriteSession('request this refund')) return;
+  if (backendAuthEnabled()) return toast('Backend workshop refunds are not enabled yet. Please contact CoGo City support so this is processed safely.');
   const registrations = getWorkshopRegistrations();
   const registration = registrations.find(item => String(item.id) === String(registrationId) && String(item.user_id) === String(currentUser.id));
   if (!registration) return toast('Registration not found.');
@@ -8547,8 +8596,9 @@ function removeWorkshopImage(index=0){
   workshopDraft.images = ensureArray(workshopDraft.images).filter((_, idx) => idx !== index);
   openWorkshopEditor('__current__');
 }
-function persistWorkshopDraft(mode='draft'){
+async function persistWorkshopDraft(mode='draft'){
   if (!workshopDraft) return;
+  if (requireBackendWriteSession(mode === 'active' ? 'publish this workshop' : 'save this workshop draft')) return;
   const formValues = collectWorkshopFormValues();
   if (formValues) {
     workshopDraft = Object.assign({}, workshopDraft, formValues);
@@ -8567,6 +8617,13 @@ function persistWorkshopDraft(mode='draft'){
   const mergedRecord = normalizeWorkshopRecord(Object.assign({}, index >= 0 ? workshops[index] : {}, workshopDraft));
   if (index >= 0) workshops[index] = mergedRecord;
   else workshops.unshift(mergedRecord);
+  if (backendAuthEnabled()) {
+    const result = await syncEntityToBackend('workshops', workshops.map(normalizeWorkshopRecord), { replace:true });
+    if (!result || !result.ok) {
+      toast('Backend workshop save failed. Please try again so this workshop is saved permanently.');
+      return;
+    }
+  }
   saveWorkshops(workshops);
   clearWorkshopEditorCache();
   closeModal();
@@ -8662,11 +8719,16 @@ function openWorkshopParticipantProfile(userId=''){
   if (student) return openProfile(student.id);
   openWorkshopHostProfile(userId);
 }
-function updateWorkshopRegistrationStatus(registrationId='', status='registered'){
+async function updateWorkshopRegistrationStatus(registrationId='', status='registered'){
+  if (requireBackendWriteSession('update participant status')) return;
   const rows = getWorkshopRegistrations();
   const row = rows.find(item => item.id === registrationId);
   if (!row) return;
   row.status = ['registered','attended','refunded'].includes(status) ? status : 'registered';
+  if (backendAuthEnabled()) {
+    const result = await syncEntityToBackend('workshop_registrations', rows.map(normalizeWorkshopRegistration));
+    if (!result || !result.ok) return toast('Backend participant update failed. Please try again so this change is saved permanently.');
+  }
   saveWorkshopRegistrations(rows);
   toast('Participant status updated.');
 }
@@ -8746,6 +8808,8 @@ function openWorkshopCancelModal(workshopId=''){
   `, '700px');
 }
 function cancelWorkshopEvent(workshopId=''){
+  if (requireBackendWriteSession('cancel this workshop')) return;
+  if (backendAuthEnabled()) return toast('Backend workshop cancellation/refunds are not enabled yet. Please contact CoGo City support so this is processed safely.');
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return;
   const reason = ((document.getElementById('workshopCancelReason') || {}).value || '').trim();
@@ -8790,7 +8854,8 @@ function cancelWorkshopEvent(workshopId=''){
   toast('Workshop canceled and refunds simulated.');
   openWorkshopManageModal(workshop.id);
 }
-function markWorkshopCompleted(workshopId=''){
+async function markWorkshopCompleted(workshopId=''){
+  if (requireBackendWriteSession('mark this workshop completed')) return;
   const workshops = getWorkshops();
   const workshop = workshops.find(item => item.id === workshopId);
   if (!workshop) return;
@@ -8798,11 +8863,16 @@ function markWorkshopCompleted(workshopId=''){
   workshop.completed_at = new Date().toISOString();
   workshop.payout_due_at = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
   workshop.payout_processed = false;
+  if (backendAuthEnabled()) {
+    const result = await syncEntityToBackend('workshops', workshops.map(normalizeWorkshopRecord), { replace:true });
+    if (!result || !result.ok) return toast('Backend workshop completion failed. Please try again so this change is saved permanently.');
+  }
   saveWorkshops(workshops);
   toast('Workshop marked completed. Payout split (70/30) scheduled in simulation after 24h.');
   openWorkshopManageModal(workshop.id);
 }
 function processWorkshopPayouts(){
+  if (backendAuthEnabled()) return;
   const workshops = getWorkshops();
   let changed = false;
   let transactionsChanged = false;
@@ -10286,8 +10356,9 @@ function togglePostComments(postId){
   openPostCommentId = openPostCommentId === postId ? '' : postId;
   renderCommunity();
 }
-function addPostComment(postId){
+async function addPostComment(postId){
   if (!currentUser) return openLoginModal();
+  if (requireBackendWriteSession('comment on this post')) return;
   const input = document.getElementById(`postCommentInput_${postId}`);
   const content = String((input || {}).value || '').trim();
   if (toastRequiredFields({ Comment:content })) return;
@@ -10303,32 +10374,55 @@ function addPostComment(postId){
     content,
     createdAt: new Date().toISOString()
   }));
-  savePosts(posts);
+  try {
+    if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+  } catch (error) {
+    return toast('Backend comment save failed. Please try again so this comment is saved for everyone.');
+  }
+  ls('cogo_posts', posts.map(normalizePostRecord));
   renderCommunity();
 }
-function sharePost(postId){
+async function sharePost(postId){
   const posts = getPosts();
   const post = posts.find(item => item.id === postId);
   if (!post) return;
-  post.shares = Number(post.shares || 0) + 1;
-  savePosts(posts);
   const shareUrl = getCommunityPostShareUrl(post.id);
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(shareUrl).then(() => toast('Post link copied.')).catch(() => toast('Post shared.'));
-  } else {
-    toast('Post shared.');
+  const copyShareLink = () => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(() => toast('Post link copied.')).catch(() => toast('Post shared.'));
+    } else {
+      toast('Post shared.');
+    }
+  };
+  if (backendAuthEnabled() && !getBackendAccessToken()) {
+    copyShareLink();
+    return;
   }
+  post.shares = Number(post.shares || 0) + 1;
+  try {
+    if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+  } catch (error) {
+    return toast('Backend share update failed. Please try again so this update is saved for everyone.');
+  }
+  ls('cogo_posts', posts.map(normalizePostRecord));
+  copyShareLink();
   renderCommunity();
 }
-function toggleLike(postId){
+async function toggleLike(postId){
   if (!currentUser) return openLoginModal();
+  if (requireBackendWriteSession('like this post')) return;
   const posts = getPosts();
   const p = posts.find(x => x.id === postId);
   if (!p) return;
   p.likes = p.likes || [];
   const idx = p.likes.indexOf(currentUser.id);
   if (idx >= 0) p.likes.splice(idx, 1); else p.likes.push(currentUser.id);
-  savePosts(posts);
+  try {
+    if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+  } catch (error) {
+    return toast('Backend like update failed. Please try again so this update is saved for everyone.');
+  }
+  ls('cogo_posts', posts.map(normalizePostRecord));
   renderCommunity();
 }
 function editPost(postId){
@@ -10451,7 +10545,8 @@ function applyToPost(postId){
     <button class="btn btn-blue" onclick="submitApplication('${esc(postId)}')">Submit Application</button>
   `, '620px');
 }
-function submitApplication(postId){
+async function submitApplication(postId){
+  if (requireBackendWriteSession('apply to this job')) return;
   const msg = (document.getElementById('applyMessage').value || '').trim();
   if (toastRequiredFields({ Message:msg })) return;
   if (!blockTextCheck(msg)) return;
@@ -10484,9 +10579,9 @@ function submitApplication(postId){
     status: 'pending',
     createdAt: new Date().toISOString()
   });
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend application failed. Please try again so the application is saved for everyone.')) return;
   trackCogoEvent('application_submitted', { source: 'community_feed' });
-  sendInboxMessage(
+  await sendInboxMessage(
     p.authorId,
     p.authorName,
     `New application for "${p.jobTitle}": ${msg}`,
@@ -10563,7 +10658,8 @@ function openDirectMessage(userId, name){
     if (input) input.focus();
   }, 100);
 }
-function sendDirectOffer(studentId, serviceId=''){
+async function sendDirectOffer(studentId, serviceId=''){
+  if (requireBackendWriteSession('send this booking offer')) return;
   if (!requireEmployerPaymentSetup('send a booking offer')) return;
   const title = (document.getElementById('directJobTitle').value || '').trim();
   const scope = (document.getElementById('directJobScope').value || '').trim();
@@ -10595,7 +10691,7 @@ function sendDirectOffer(studentId, serviceId=''){
     status: 'offer_sent',
     createdAt: new Date().toISOString()
   });
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend booking offer failed. Please try again so the offer is saved for everyone.')) return;
   trackCogoEvent('booking_submitted', { source: 'student_service', value: rate * hours, currency: 'USD' });
   pushNotif(s.userId, `You received an offer from ${currentUser.name}: "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
   closeModal();
@@ -11350,6 +11446,7 @@ async function saveStudentProfileForm(profileId=''){
   const students = getStudents();
   const profile = students.find(s => s.id === profileId) || currentStudentProfile();
   if (!profile) return;
+  if (currentUser && requireBackendWriteSession('save your profile')) return;
   const users = getUsers();
   const user = users.find(u => u.id === currentUser.id);
   syncStudentProfileDraftFromForm();
@@ -11420,7 +11517,7 @@ async function saveStudentProfileForm(profileId=''){
         saveStudents(refreshedStudents);
       }
     } catch (error) {
-      toast(error.message || 'Profile saved locally, but backend update failed.');
+      toast(error.message || 'Backend profile save failed. Please try again so your profile is saved permanently.');
       return;
     }
   }
@@ -11546,6 +11643,7 @@ async function saveStudentServiceForm(serviceIndex=''){
   const students = getStudents();
   const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
   if (!profile) return;
+  if (currentUser && requireBackendWriteSession('save this service')) return;
   profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
   syncStudentServiceDraftFromForm();
   const draft = studentServiceDraft || createStudentServiceFormDraft(profile);
@@ -11621,7 +11719,7 @@ async function saveStudentServiceForm(serviceIndex=''){
         saveStudents(refreshedStudents);
       }
     } catch (error) {
-      toast(error.message || 'Service saved locally, but backend update failed.');
+      toast(error.message || 'Backend service save failed. Please try again so this service is saved permanently.');
       return;
     }
   }
@@ -11635,6 +11733,7 @@ async function deleteStudentService(serviceIndex){
   const students = getStudents();
   const profile = students.find(s => s.id === (currentStudentProfile() || {}).id);
   if (!profile) return;
+  if (currentUser && requireBackendWriteSession('delete this service')) return;
   profile.services = getRenderableStudentServices(profile).map((service, index) => normalizeStudentServiceRecord(profile, service, index));
   if (profile.services.length <= 1) return toast('Keep at least one service on your profile.');
   const removed = profile.services.splice(Number(serviceIndex), 1)[0];
@@ -11647,7 +11746,7 @@ async function deleteStudentService(serviceIndex){
       await backendAuthRequest(`/services/${encodeURIComponent(removed.id)}`, { method:'DELETE' });
       await refreshBackendCurrentProfile();
     } catch (error) {
-      toast(error.message || 'Service removed locally, but backend delete failed.');
+      toast(error.message || 'Backend service delete failed. Please try again so this change is saved permanently.');
       return;
     }
   }
@@ -11747,6 +11846,7 @@ async function withdrawStudentDirectJobApplication(applicationId=''){
   const apps = getDirectJobApplications();
   const app = apps.find(item => String(item.id) === String(applicationId) && String(item.student_id) === String(currentUser.id));
   if (!app) return toast('Application not found.');
+  if (requireBackendWriteSession('withdraw this application')) return;
   if (['withdrawn','hired','rejected'].includes(String(app.status || ''))) return toast('This application can no longer be withdrawn.');
   const job = getDirectJobById(app.job_id);
   app.status = 'withdrawn';
@@ -11760,7 +11860,8 @@ async function withdrawStudentDirectJobApplication(applicationId=''){
       Object.assign(app, upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved)));
     } catch (error) {
       console.warn('Backend application withdraw failed', error);
-      toast(error.message || 'Backend withdraw failed. Saving local copy only.');
+      toast(error.message || 'Backend withdraw failed. Please try again so this change is saved permanently.');
+      return;
     }
   }
   saveDirectJobApplications(apps);
@@ -11807,12 +11908,12 @@ function renderStudentAppCard(a){
     </div>
   `;
 }
-function acceptOffer(appId){
+async function acceptOffer(appId){
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
   if (!a) return;
   a.status = 'accepted';
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend offer acceptance failed. Please try again so this change is saved for everyone.')) return;
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(a.postId, apps);
   pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
@@ -11823,12 +11924,12 @@ function acceptOffer(appId){
     </div>
   `, '620px');
 }
-function declineOffer(appId){
+async function declineOffer(appId){
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
   if (!a) return;
   a.status = 'declined';
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend offer decline failed. Please try again so this change is saved for everyone.')) return;
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(a.postId, apps);
   pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
@@ -11964,7 +12065,8 @@ async function submitFinalInvoice(projectId){
       upsertBackendProject(p);
     } catch (error) {
       console.warn('Backend project completion failed', error);
-      toast(error.message || 'Backend project completion failed. Saving local copy only.');
+      toast(error.message || 'Backend project completion failed. Please try again so the final invoice is saved permanently.');
+      return;
     }
   }
   saveProjects(pList);
@@ -12052,7 +12154,8 @@ function syncJobDescriptionFromPost(force=false){
   if (!postInput || !jobDescription || !jobToggle || !jobToggle.checked) return;
   if (force || !jobDescription.value.trim()) jobDescription.value = postInput.value || '';
 }
-function submitEmployerDashboardPost(){
+async function submitEmployerDashboardPost(){
+  if (requireBackendWriteSession('save this post')) return;
   const content = (document.getElementById('empPostContent').value || '').trim();
   const postImages = parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]').slice(0, 1);
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('empPostVideoUrl') || {}).value || '').trim());
@@ -12093,7 +12196,7 @@ function submitEmployerDashboardPost(){
   }
   const posts = getPosts();
   posts.unshift(post);
-  savePosts(posts);
+  if (!await persistCommunityPostsPermanently(posts, isJob ? 'Backend job post save failed. Please try again so this job is saved for everyone.' : 'Backend post save failed. Please try again so this post is saved for everyone.')) return;
   if (isJob) trackCogoEvent('job_published', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
   myPostsTab = 'all';
   toast('Post saved.');
@@ -12206,6 +12309,7 @@ async function saveDirectJobEdit(jobId=''){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return toast('Job not found.');
+  if (requireBackendWriteSession('edit this job')) return;
   const title = String((document.getElementById('directJobEditTitle') || {}).value || '').trim();
   const description = String((document.getElementById('directJobEditDescription') || {}).value || '').trim();
   const requirements = String((document.getElementById('directJobEditRequirements') || {}).value || '').trim();
@@ -12231,7 +12335,8 @@ async function saveDirectJobEdit(jobId=''){
       upsertBackendDirectJob(job);
     } catch (error) {
       console.warn('Backend job update failed', error);
-      toast(error.message || 'Backend job update failed. Keeping local changes.');
+      toast(error.message || 'Backend job update failed. Please try again so this change is saved permanently.');
+      return;
     }
   }
   saveDirectJobs(jobs);
@@ -12241,6 +12346,7 @@ async function saveDirectJobEdit(jobId=''){
 }
 async function saveEmployerDirectHireJob(){
   if (!currentUser || currentUser.role !== 'employer') return toast('Only employer accounts can post direct-hire jobs.');
+  if (requireBackendWriteSession('post this direct-hire job')) return;
   if (isNeighborAccount(currentUser)) return toast('Neighbor accounts cannot post direct-hire jobs. Use Community Feed for contract hiring.');
   if (!getEmployerCompanyName(currentUser)) return toast('Complete company information before posting a direct-hire job.');
   const title = String((document.getElementById('directJobTitle') || {}).value || '').trim();
@@ -12334,7 +12440,8 @@ async function saveEmployerDirectHireJob(){
       }
     } catch (error) {
       console.warn('Backend job create failed', error);
-      toast(error.message || 'Backend job save failed. Keeping a local draft.');
+      toast(error.message || 'Backend job save failed. Please try again so this job is saved permanently.');
+      return;
     }
   }
   jobs.unshift(newJob);
@@ -12378,6 +12485,7 @@ async function setEmployerDirectJobStatus(jobId='', status='closed'){
   const jobs = getDirectJobs();
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return;
+  if (requireBackendWriteSession('update this job')) return;
   job.status = status;
   job.updated_at = new Date().toISOString();
   if (canPersistDirectJobToBackend(job)) {
@@ -12390,7 +12498,8 @@ async function setEmployerDirectJobStatus(jobId='', status='closed'){
       upsertBackendDirectJob(job);
     } catch (error) {
       console.warn('Backend job status update failed', error);
-      toast(error.message || 'Backend job update failed. Keeping local changes.');
+      toast(error.message || 'Backend job update failed. Please try again so this change is saved permanently.');
+      return;
     }
   }
   saveDirectJobs(jobs);
@@ -12403,6 +12512,7 @@ async function removeEmployerDirectJob(jobId=''){
   const jobs = getDirectJobs();
   const idx = jobs.findIndex(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (idx < 0) return;
+  if (requireBackendWriteSession('remove this job')) return;
   const target = jobs[idx];
   if (canPersistDirectJobToBackend(target)) {
     try {
@@ -12410,7 +12520,8 @@ async function removeEmployerDirectJob(jobId=''){
       removeBackendDirectJob(target.id);
     } catch (error) {
       console.warn('Backend job remove failed', error);
-      toast(error.message || 'Backend job remove failed. Removing local copy only.');
+      toast(error.message || 'Backend job remove failed. Please try again so this change is saved permanently.');
+      return;
     }
   }
   jobs.splice(idx, 1);
@@ -12424,6 +12535,7 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   const items = getDirectJobApplications();
   const app = items.find(item => String(item.id) === String(applicationId));
   if (!app) return;
+  if (requireBackendWriteSession('update this application')) return;
   const job = getDirectJobById(app.job_id);
   if (!job || String(job.employer_id) !== String(currentUser.id)) return;
   app.status = status;
@@ -12437,7 +12549,8 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
       Object.assign(app, upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved)));
     } catch (error) {
       console.warn('Backend application status failed', error);
-      toast(error.message || 'Backend status update failed. Saving local copy only.');
+      toast(error.message || 'Backend status update failed. Please try again so this change is saved permanently.');
+      return;
     }
   }
   if (status === 'hired') {
@@ -12702,12 +12815,13 @@ function renderEmployerMyJobs(el){
   `;
   updateEmployerDirectJobPackage();
 }
-function toggleJobStatus(postId){
+async function toggleJobStatus(postId){
+  if (requireBackendWriteSession('update this job status')) return;
   const posts = getPosts();
   const p = posts.find(x => x.id === postId);
   if (!p) return;
   p.status = p.status === 'closed' ? 'open' : 'closed';
-  savePosts(posts);
+  if (!await persistCommunityPostsPermanently(posts, 'Backend job status update failed. Please try again so this job status is saved for everyone.')) return;
   toast('Job status updated.');
   renderDashboard();
 }
@@ -12811,7 +12925,7 @@ function openDeclineApplicantModal(appId){
     </div>
   `, '680px');
 }
-function declineApplicant(appId, shouldSendMessage){
+async function declineApplicant(appId, shouldSendMessage){
   const apps = getApplications();
   const application = apps.find(item => item.id === appId);
   if (!application) return toast('Applicant not found.');
@@ -12820,7 +12934,7 @@ function declineApplicant(appId, shouldSendMessage){
   const message = ((document.getElementById('declineApplicantMessage') || {}).value || '').trim();
   const sendableMessage = shouldSendMessage && message && !detectContactInfo(message);
   application.status = 'rejected';
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend applicant decline failed. Please try again so this change is saved for everyone.')) return;
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(application.postId, apps);
   if (sendableMessage) {
@@ -12858,7 +12972,8 @@ function sendOfferFromApplication(appId){
     <button class="btn btn-blue" onclick="confirmSendOffer('${esc(appId)}')">Send Offer</button>
   `, '720px');
 }
-function confirmSendOffer(appId){
+async function confirmSendOffer(appId){
+  if (requireBackendWriteSession('send this offer')) return;
   if (!requireEmployerPaymentSetup('send a hiring offer')) return;
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
@@ -12878,7 +12993,7 @@ function confirmSendOffer(appId){
     location,
     status:'offer_sent'
   });
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend offer send failed. Please try again so the offer is saved for everyone.')) return;
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(a.postId, apps);
   pushNotif(a.studentUserId, `You have an offer for "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
@@ -12887,6 +13002,7 @@ function confirmSendOffer(appId){
   renderDashboard();
 }
 async function startProject(appId){
+  if (requireBackendWriteSession('start this project')) return;
   if (!requireEmployerPaymentSetup('start a project')) return;
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
@@ -13004,13 +13120,18 @@ async function startProject(appId){
     createdAt: new Date().toISOString()
   });
   a.status = 'project_started';
-  saveApplications(apps);
+  if (!await persistApplicationsPermanently(apps, 'Backend project application update failed. Please try again so this project is saved correctly.')) return;
   syncCommunityJobApplicationCounts(apps);
   const posts = getPosts();
   const post = posts.find(x => x.id === a.postId);
   if (post) {
     post.status = 'in_progress';
-    savePosts(posts);
+    try {
+      if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+    } catch (error) {
+      return toast('Backend job status update failed. Please try again so this project is saved correctly.');
+    }
+    ls('cogo_posts', posts.map(normalizePostRecord));
   }
   saveProjects(projects);
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
@@ -13067,28 +13188,34 @@ function renderEmployerProjectCard(p, listIndex=0){
     </div>
   `;
 }
-function activateProject(projectId){
+async function activateProject(projectId){
+  if (requireBackendWriteSession('start this project')) return;
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
   trackCogoEvent('project_start_click', { source: 'project' });
   p.status = 'in_progress';
   p.escrowStatus = 'held';
-  saveProjects(projects);
 
   const apps = getApplications();
   const a = apps.find(x => x.id === p.applicationId);
   if (a) {
     a.status = 'project_started';
-    saveApplications(apps);
+    if (!await persistApplicationsPermanently(apps, 'Backend project application update failed. Please try again so this project is saved correctly.')) return;
     syncCommunityJobApplicationCounts(apps);
   }
   const posts = getPosts();
   const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
   if (post) {
     post.status = 'in_progress';
-    savePosts(posts);
+    try {
+      if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+    } catch (error) {
+      return toast('Backend job status update failed. Please try again so this project is saved correctly.');
+    }
+    ls('cogo_posts', posts.map(normalizePostRecord));
   }
+  saveProjects(projects);
 
   pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   trackCogoEvent('project_started', { source: 'existing_project', value: Number(p.escrowAmount || p.estimatedEmployerTotal || 0), currency: 'USD' });
@@ -13133,6 +13260,13 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
+  if (requireBackendWriteSession('approve this project')) {
+    if (buttonEl) {
+      buttonEl.disabled = false;
+      buttonEl.textContent = 'Approve & Release Payment';
+    }
+    return;
+  }
   if (p.status === 'completed' || p.paid || p.paymentReleasedAt || p.approvalInProgress) {
     closeModal();
     toast('This project payment was already released. No duplicate transaction was created.');
@@ -13346,7 +13480,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
   if (post) {
     post.status = 'completed';
-    savePosts(posts);
+    if (!await persistCommunityPostsPermanently(posts, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.')) return;
   }
 
   if (backendAuthEnabled() && p.backendSource && getBackendAccessToken()) {
@@ -13359,7 +13493,8 @@ async function approveFinalInvoice(projectId, buttonEl=null){
       upsertBackendProject(p);
     } catch (error) {
       console.warn('Backend project approval failed', error);
-      toast(error.message || 'Backend project approval failed. Saving local copy only.');
+      toast(error.message || 'Backend project approval failed. Please try again so this payment release is saved permanently.');
+      return;
     }
   }
 
@@ -13390,6 +13525,7 @@ async function submitProjectChangeRequest(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return;
+  if (requireBackendWriteSession('request project changes')) return;
   const note = (document.getElementById('requestChangesNote').value || '').trim();
   p.status = 'in_progress';
   p.changeRequestNote = note;
@@ -13403,7 +13539,8 @@ async function submitProjectChangeRequest(projectId){
       upsertBackendProject(p);
     } catch (error) {
       console.warn('Backend project change request failed', error);
-      toast(error.message || 'Backend change request failed. Saving local copy only.');
+      toast(error.message || 'Backend change request failed. Please try again so this change is saved permanently.');
+      return;
     }
   }
   saveProjects(projects);
@@ -13427,6 +13564,7 @@ async function submitReview(projectId){
   const projects = getProjects();
   const p = projects.find(x => x.id === projectId);
   if (!p) return toast('Project not found.');
+  if (requireBackendWriteSession('submit this review')) return;
   const hasExistingProjectReview = () => {
     const existingStudent = getStudents().find(s => s.id === p.studentProfileId) || getStudents().find(s => s.userId === p.studentUserId && s.status !== 'archived');
     if (!existingStudent) return false;
@@ -13454,7 +13592,8 @@ async function submitReview(projectId){
       });
     } catch (error) {
       console.warn('Backend review save failed', error);
-      toast(error.message || 'Backend review save failed. Saving local copy only.');
+      toast(error.message || 'Backend review save failed. Please try again so this review is saved permanently.');
+      return;
     }
   }
   const review = {
@@ -14057,6 +14196,9 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
   if (messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '') && !requirePlatformUseReady('message another user')) {
     return false;
   }
+  if (messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '') && requireBackendWriteSession('send this message')) {
+    return false;
+  }
   if (messageType === 'user' && containsRestrictedPaymentChatContent(content)) {
     toast('Payment details are sent automatically by CoGo Team. Keep chat focused on job scope and timing.');
     return false;
@@ -14095,9 +14237,15 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
       }
       return true;
     } catch (error) {
-      console.warn('Backend message send failed; saving locally', error);
-      if (!requirePlatformUseReady('message a student')) return false;
+      console.warn('Backend message send failed', error);
+      toast(error.message || 'Backend message send failed. Please try again so this message is saved permanently.');
+      return false;
     }
+  }
+
+  if (backendAuthEnabled() && messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '')) {
+    toast('Please sign in again before sending this message so it is saved to the backend.');
+    return false;
   }
 
   const msgs = getMessages();
@@ -14923,6 +15071,9 @@ async function saveAdminUserEdit(userId){
   }
   if (user.id === currentUser.id && nextRole !== 'admin') return toast('You cannot remove your own admin role.');
   if (user.id === currentUser.id && nextStatus === 'suspended') return toast('You cannot suspend your own admin account.');
+  if (backendAuthEnabled() && (!adminBackendUsersLoaded || !user.backendAuth)) {
+    return toast('This user is not loaded from the staging database, so local-only admin edits are blocked. Refresh Users and try again.');
+  }
   user.firstName = firstName;
   user.lastName = lastName;
   user.name = [firstName, lastName].filter(Boolean).join(' ').trim();

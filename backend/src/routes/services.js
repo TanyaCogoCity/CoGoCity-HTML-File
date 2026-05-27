@@ -78,4 +78,26 @@ router.patch('/:id', requireAuth, async (req, res) => {
   }
 });
 
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const service = await prisma.service.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+      include: { profile: true },
+    });
+    if (!service) return fail(res, 404, 'Service not found');
+    if (service.profile.userId !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
+
+    const updated = await prisma.service.update({
+      where: { id: service.id },
+      data: { deletedAt: new Date(), isActive: false },
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'service.delete', entityType: 'service', entityId: service.id, payload: null });
+
+    return ok(res, serializeService(updated));
+  } catch (error) {
+    return fail(res, 400, 'Unable to delete service', error.message);
+  }
+});
+
 module.exports = router;
