@@ -224,6 +224,9 @@
     .subtabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .pill{padding:8px 14px;border:none;border-radius:999px;background:#E5E7EB;font-weight:700;cursor:pointer}
     .pill.active{background:var(--color-primary);color:var(--color-text-main)}
+    .pill-primary{background:var(--color-primary);color:var(--color-text-main)}
+    .pill-primary:hover{background:var(--color-primary-hover)}
+    .pill-primary:active{background:var(--color-primary-active)}
     .item-card{padding:16px;margin-bottom:12px}
     .project-toggle{
       border:1px solid var(--border);
@@ -641,6 +644,7 @@ let directJobsSearchQuery = '';
 let browseStudentFilters = { query: '', location: '', maxRate: '' };
 let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
+let employerMyJobsSearchQuery = '';
 let directJobApplyDraft = null;
 
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
@@ -2628,6 +2632,21 @@ function saveDirectJobs(items){
   ls('cogo_direct_jobs', payload);
   syncEntityToBackend('direct_jobs', payload);
 }
+async function persistDirectJobsPermanently(items, failureMessage='Backend job save failed. Please try again so this change is saved for everyone.'){
+  const payload = ensureArray(items)
+    .map(normalizeDirectJobRecord)
+    .filter(item => !item.backendSource);
+  if (backendAuthEnabled() && payload.length) {
+    if (requireBackendWriteSession('save this job change')) return false;
+    const result = await syncEntityToBackend('direct_jobs', payload);
+    if (!result || !result.ok) {
+      toast(failureMessage);
+      return false;
+    }
+  }
+  ls('cogo_direct_jobs', payload);
+  return true;
+}
 function normalizeDirectJobApplication(application){
   const normalized = Object.assign({
     id: uid('dapp'),
@@ -2956,7 +2975,7 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
   const projects = getProjects();
   const localProject = buildDirectHireProjectRecord(app, job, null);
   projects.unshift(localProject);
-  saveProjects(projects);
+  if (!await persistProjectsPermanently(projects, 'Backend project creation failed. Please try again so the project is saved permanently.')) return null;
   return localProject;
 }
 function getEmployerCompanyName(user){
@@ -3113,7 +3132,7 @@ async function confirmDirectJobExtension(jobId=''){
       return;
     }
   }
-  saveDirectJobs(jobs);
+  if (!await persistDirectJobsPermanently(jobs, 'Backend job extension failed. Please try again so this extension is saved permanently.')) return;
   closeModal();
   toast(`Listing extended. New expiration: ${formatDirectJobCloseMessageDate(job.expires_at)}. Charge added: $${money(extensionFee)}.`);
 }
@@ -3190,6 +3209,22 @@ function saveProjects(v){
   ls('cogo_projects', localOnly);
   if (backendOnly.length) saveBackendProjects(backendOnly);
   syncEntityToBackend('projects', localOnly);
+}
+async function persistProjectsPermanently(v, failureMessage='Backend project save failed. Please try again so this change is saved for everyone.'){
+  const payload = ensureArray(v);
+  const localOnly = payload.filter(item => !item.backendSource);
+  const backendOnly = payload.filter(item => item.backendSource);
+  if (backendOnly.length) saveBackendProjects(backendOnly);
+  if (backendAuthEnabled() && localOnly.length) {
+    if (requireBackendWriteSession('save this project change')) return false;
+    const result = await syncEntityToBackend('projects', localOnly);
+    if (!result || !result.ok) {
+      toast(failureMessage);
+      return false;
+    }
+  }
+  ls('cogo_projects', localOnly);
+  return true;
 }
 function normalizeMessageRecord(message){
   const normalized = Object.assign({
@@ -3322,6 +3357,21 @@ function saveMessages(v){
   ls('cogo_messages', localOnly);
   saveBackendMessages(payload.filter(item => item.backendSource));
   syncEntityToBackend('messages', localOnly);
+}
+async function persistMessagesPermanently(v, failureMessage='Backend message save failed. Please try again so this message is saved for everyone.'){
+  const payload = ensureArray(v).map(normalizeMessageRecord);
+  const localOnly = payload.filter(item => !item.backendSource);
+  const backendOnly = payload.filter(item => item.backendSource);
+  if (backendOnly.length) saveBackendMessages(backendOnly);
+  if (backendAuthEnabled() && localOnly.length) {
+    const result = await syncEntityToBackend('messages', localOnly);
+    if (!result || !result.ok) {
+      toast(failureMessage);
+      return false;
+    }
+  }
+  ls('cogo_messages', localOnly);
+  return true;
 }
 function getNotifications(id){ return ls('cogo_notifs_' + id) || []; }
 function saveNotifications(id, data){
@@ -12116,7 +12166,7 @@ async function submitFinalInvoice(projectId){
       return;
     }
   }
-  saveProjects(pList);
+  if (!await persistProjectsPermanently(pList, 'Backend project completion failed. Please try again so the final invoice is saved permanently.')) return;
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. ${platformSupportFeeLabel(breakdown.employerCommissionPct)}: $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, ${platformSupportFeeLabel(breakdown.employerCommissionPct)} $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
   sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after ${platformSupportFeeLabel(breakdown.studentCommissionPct)}: $${money(studentPayout)}.`, p.id);
@@ -12386,7 +12436,7 @@ async function saveDirectJobEdit(jobId=''){
       return;
     }
   }
-  saveDirectJobs(jobs);
+  if (!await persistDirectJobsPermanently(jobs, 'Backend job update failed. Please try again so this change is saved permanently.')) return;
   closeModal();
   toast('Job updated.');
   renderDashboard();
@@ -12492,7 +12542,7 @@ async function saveEmployerDirectHireJob(){
     }
   }
   jobs.unshift(newJob);
-  saveDirectJobs(jobs);
+  if (!await persistDirectJobsPermanently(jobs, 'Backend job save failed. Please try again so this job is saved permanently.')) return;
   trackCogoEvent('job_published', { source: 'direct_hire', package: String(postingPkg.key || 'basic').toLowerCase(), value: placementFee.total, currency: 'USD' });
   trackCogoEvent('payment_success', { source: 'direct_job_listing', value: placementFee.total, currency: 'USD' });
   const txId = uid('tx');
@@ -12549,7 +12599,7 @@ async function setEmployerDirectJobStatus(jobId='', status='closed'){
       return;
     }
   }
-  saveDirectJobs(jobs);
+  if (!await persistDirectJobsPermanently(jobs, 'Backend job status update failed. Please try again so this change is saved permanently.')) return;
   toast(status === 'active'
     ? 'Job reopened and visible on the job board again.'
     : 'Your job will be removed from the job board now. You can reopen it anytime before expiration.');
@@ -12572,7 +12622,7 @@ async function removeEmployerDirectJob(jobId=''){
     }
   }
   jobs.splice(idx, 1);
-  saveDirectJobs(jobs);
+  if (!await persistDirectJobsPermanently(jobs, 'Backend job remove failed. Please try again so this change is saved permanently.')) return;
   const filteredApplications = getDirectJobApplications().filter(item => String(item.job_id) !== String(target.id));
   saveDirectJobApplications(filteredApplications);
   toast('Job removed.');
@@ -12693,6 +12743,17 @@ function submitDirectHireReview(applicationId=''){
   toast('Review submitted.');
   renderDashboard();
 }
+function updateEmployerMyJobsSearch(value=''){
+  employerMyJobsSearchQuery = String(value || '');
+  renderDashboard();
+  setTimeout(() => {
+    const input = document.getElementById('employer-direct-jobs-query');
+    if (!input) return;
+    input.focus();
+    const pos = input.value.length;
+    try { input.setSelectionRange(pos, pos); } catch (e) {}
+  }, 0);
+}
 function renderEmployerMyJobs(el){
   if (isNeighborAccount(currentUser)) {
     el.innerHTML = `
@@ -12726,7 +12787,7 @@ function renderEmployerMyJobs(el){
     .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   const apps = getDirectJobApplications().filter(item => String(item.employer_id) === String(currentUser.id))
     .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-  const query = String((document.getElementById('employer-direct-jobs-query') || {}).value || '').trim().toLowerCase();
+  const query = String(employerMyJobsSearchQuery || '').trim().toLowerCase();
   const filteredJobs = !query ? jobs : jobs.filter(job => [job.job_title, job.company_name, job.location, job.description].join(' ').toLowerCase().includes(query));
   const filteredApps = !query ? apps : apps.filter(app => {
     const job = getDirectJobById(app.job_id);
@@ -12740,11 +12801,11 @@ function renderEmployerMyJobs(el){
       <button class="pill ${employerMyJobsTab==='all'?'active':''}" onclick="employerMyJobsTab='all';renderDashboard()">All</button>
       <button class="pill ${employerMyJobsTab==='manage'?'active':''}" onclick="employerMyJobsTab='manage';renderDashboard()">Manage Jobs</button>
       <button class="pill ${employerMyJobsTab==='applications'?'active':''}" onclick="employerMyJobsTab='applications';renderDashboard()">Resumes</button>
-      <button class="pill ${employerMyJobsTab==='create'?'active':''}" style="margin-left:auto" onclick="employerMyJobsTab='create';renderDashboard()">Create Job</button>
+      <button class="pill pill-primary ${employerMyJobsTab==='create'?'active':''}" style="margin-left:auto" onclick="employerMyJobsTab='create';renderDashboard()">Create Job</button>
     </div>
     ${employerMyJobsTab !== 'create' ? `
       <div class="card form-card" style="margin-bottom:14px">
-        <div class="field" style="margin-bottom:0"><label>Search</label><input id="employer-direct-jobs-query" value="${esc(query)}" placeholder="${esc(searchPlaceholder)}" oninput="renderDashboard()"></div>
+        <div class="field" style="margin-bottom:0"><label>Search</label><input id="employer-direct-jobs-query" value="${esc(employerMyJobsSearchQuery)}" placeholder="${esc(searchPlaceholder)}" oninput="updateEmployerMyJobsSearch(this.value)"></div>
       </div>
     ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'create') ? `
@@ -13180,7 +13241,7 @@ async function startProject(appId){
     }
     ls('cogo_posts', posts.map(normalizePostRecord));
   }
-  saveProjects(projects);
+  if (!await persistProjectsPermanently(projects, 'Backend project save failed. Please try again so this project is saved correctly.')) return;
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${platformSupportFeeLabel(estimatedBreakdown.employerCommissionPct)}: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
@@ -13262,7 +13323,7 @@ async function activateProject(projectId){
     }
     ls('cogo_posts', posts.map(normalizePostRecord));
   }
-  saveProjects(projects);
+  if (!await persistProjectsPermanently(projects, 'Backend project start failed. Please try again so this project is saved correctly.')) return;
 
   pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   trackCogoEvent('project_started', { source: 'existing_project', value: Number(p.escrowAmount || p.estimatedEmployerTotal || 0), currency: 'USD' });
@@ -13546,7 +13607,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   }
 
   delete p.approvalInProgress;
-  saveProjects(projects);
+  if (!await persistProjectsPermanently(projects, 'Backend project approval failed. Please try again so this payment release is saved permanently.')) return;
   const completionDedupeKey = `project-payment-complete:${p.id}`;
   const finalStudentFeeLabel = platformSupportFeeLabel(p.studentCommissionPct ?? getPaymentSettings().studentCommissionPct);
   const finalEmployerFeeLabel = platformSupportFeeLabel(p.employerCommissionPct ?? getPaymentSettings().employerCommissionPct);
@@ -13590,7 +13651,7 @@ async function submitProjectChangeRequest(projectId){
       return;
     }
   }
-  saveProjects(projects);
+  if (!await persistProjectsPermanently(projects, 'Backend change request failed. Please try again so this change is saved permanently.')) return;
   pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`, p.id);
   closeModal();
@@ -13674,7 +13735,7 @@ async function submitReview(projectId){
   }
   p.reviewSubmitted = true;
   saveStudents(students);
-  saveProjects(projects);
+  if (!await persistProjectsPermanently(projects, 'Backend review status update failed. Please try again so this review is saved permanently.')) return;
   try {
     sendSystemMessage(
       p.studentUserId,
@@ -14327,8 +14388,7 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
     createdAt: new Date().toISOString(),
     read: false
   });
-  saveMessages(msgs);
-  return true;
+  return await persistMessagesPermanently(msgs, 'Backend message save failed. Please try again so this message is saved for everyone.');
 }
 async function sendMessageToActive(){
   if (!activeThreadUserId) return;
@@ -14677,7 +14737,7 @@ function openAdminMessageModal(userId){
     </div>
   `, '620px');
 }
-function sendAdminMessageToUser(userId){
+async function sendAdminMessageToUser(userId){
   const user = getUserById(userId);
   if (!user) return toast('User not found.');
   const content = (document.getElementById('adminMessageBody').value || '').trim();
@@ -14695,7 +14755,7 @@ function sendAdminMessageToUser(userId){
     createdAt: new Date().toISOString(),
     read: false
   });
-  saveMessages(msgs);
+  if (!await persistMessagesPermanently(msgs, 'Backend admin message save failed. Please try again so this message is saved for everyone.')) return;
   pushNotif(user.id, 'Admin sent you a message.', { type:'dashboard', section:'messages' });
   logAdminAction('message_sent', { targetUserId: user.id, targetUserName: user.name });
   closeModal();
