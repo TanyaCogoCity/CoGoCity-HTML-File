@@ -16091,7 +16091,7 @@ function renderAdminTransactionMoneyFlow(tx={}){
   const moneyValue = value => `$${Number(value || 0).toFixed(2)}`;
   return `
     ${line('Gross', moneyValue(tx.total_amount || tx.amount_total))}
-    ${line('Student payout', moneyValue(tx.payout_amount || tx.student_payout))}
+    ${line('Payout to student', moneyValue(tx.payout_amount || tx.student_payout))}
     ${line('CoGo commission', moneyValue(tx.cogo_commission || tx.platform_fee_total))}
     ${line('Stripe fee', tx.stripe_processing_fee == null ? '' : moneyValue(tx.stripe_processing_fee))}
     ${line('Platform net', tx.platform_net_revenue == null ? '' : moneyValue(tx.platform_net_revenue))}
@@ -16195,6 +16195,9 @@ function renderTransactionsResults(){
         <th style="padding:10px 8px">Student Rate</th>
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
+        <th style="padding:10px 8px">Employer Paid</th>
+        <th style="padding:10px 8px">CoGo Fees</th>
+        <th style="padding:10px 8px">Payout to Student</th>
         <th style="padding:10px 8px">Marketplace Money Flow</th>
         <th style="padding:10px 8px">Reconciliation IDs</th>
       </tr>
@@ -16248,6 +16251,9 @@ function renderTransactionsResults(){
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
+        ${isAdmin ? `<td class="money" style="padding:12px 8px">$${esc(Number(tx.total_amount || tx.amount_total || 0).toFixed(2))}</td>` : ''}
+        ${isAdmin ? `<td class="money" style="padding:12px 8px">$${esc(Number(tx.cogo_commission || tx.platform_fee_total || 0).toFixed(2))}</td>` : ''}
+        ${isAdmin ? `<td class="money" style="padding:12px 8px;font-weight:800">$${esc(Number(tx.payout_amount || tx.student_payout || 0).toFixed(2))}</td>` : ''}
         <td class="money" style="padding:12px 8px">${isAdmin ? renderAdminTransactionMoneyFlow(tx) : platformFeeLabel}</td>
         ${isAdmin ? `<td style="padding:12px 8px">${renderAdminTransactionReconciliationIds(tx)}</td>` : ''}
         ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
@@ -16255,7 +16261,7 @@ function renderTransactionsResults(){
     `;
   }).join('');
   const headers = isAdmin
-    ? [dateHeader, 'Job Title', 'Student', 'Employer / Neighbor', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Gross Employer Payment', 'Student Payout', 'CoGo Commission', 'Stripe Processing Fee', 'Platform Net Revenue', 'Transfer Status', 'Payout Status', 'CoGo Transaction ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID', 'Stripe Transfer ID', 'Stripe Application Fee ID']
+    ? [dateHeader, 'Job Title', 'Student', 'Employer / Neighbor', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Gross Employer Payment', 'Payout to Student', 'CoGo Commission', 'Stripe Processing Fee', 'Platform Net Revenue', 'Transfer Status', 'Payout Status', 'CoGo Transaction ID', 'Stripe PaymentIntent ID', 'Stripe Charge ID', 'Stripe Transfer ID', 'Stripe Application Fee ID']
     : [dateHeader, 'Job Title', 'Student Rate', 'Final Hours Worked', 'Work Total', 'Platform Fee', isEmployer ? 'Final Payment' : 'Final Payout'];
 
   transactionTableExportRows.main = {
@@ -16332,6 +16338,9 @@ function renderTransactionsResults(){
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.hourly_rate || 0).toFixed(2))}/hr</td>
         <td style="padding:12px 8px">${esc(tx.hours_worked || 0)} hrs</td>
         <td class="money" style="padding:12px 8px">$${esc(Number(tx.work_total || 0).toFixed(2))}</td>
+        ${isAdmin ? `<td class="money" style="padding:12px 8px">$${esc(Number(tx.total_amount || tx.amount_total || 0).toFixed(2))}</td>` : ''}
+        ${isAdmin ? `<td class="money" style="padding:12px 8px">$${esc(Number(tx.cogo_commission || tx.platform_fee_total || 0).toFixed(2))}</td>` : ''}
+        ${isAdmin ? `<td class="money" style="padding:12px 8px;font-weight:800">$${esc(Number(tx.payout_amount || tx.student_payout || 0).toFixed(2))}</td>` : ''}
         <td class="money" style="padding:12px 8px">${isAdmin ? renderAdminTransactionMoneyFlow(tx) : platformFeeLabel}</td>
         ${isAdmin ? `<td style="padding:12px 8px">${renderAdminTransactionReconciliationIds(tx)}</td>` : ''}
         ${isAdmin ? '' : `<td class="money" style="padding:12px 8px">${finalValue}</td>`}
