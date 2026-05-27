@@ -1,6 +1,6 @@
 const DEFAULT_STUDENT_PLATFORM_FEE_PERCENT = 12;
 const DEFAULT_EMPLOYER_PLATFORM_FEE_PERCENT = 12;
-const DEFAULT_JOB_PLACEMENT_EMPLOYER_PLATFORM_FEE_PERCENT = 12;
+const DEFAULT_JOB_PLACEMENT_EMPLOYER_PLATFORM_FEE_PERCENT = 0;
 const PLATFORM_SUPPORT_FEE_VERSION = 'platform-support-admin-managed';
 
 function money(value) {
@@ -55,14 +55,13 @@ async function calculateHourlyProjectFeesFromSettings(prisma, workTotal = 0) {
 }
 
 function calculateJobPlacementFees(listingFee = 0, settings = {}) {
-  const feeSettings = normalizePlatformFeeSettings(settings);
   const base = money(listingFee);
-  const employerPlatformFee = money(base * (feeSettings.jobPlacementEmployerCommissionPct / 100));
+  const employerPlatformFee = 0;
   return {
     listingFee: base,
     employerPlatformFee,
-    employerTotal: money(base + employerPlatformFee),
-    employerCommissionPct: feeSettings.jobPlacementEmployerCommissionPct,
+    employerTotal: base,
+    employerCommissionPct: 0,
   };
 }
 

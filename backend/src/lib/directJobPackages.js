@@ -1,6 +1,6 @@
 const DEFAULT_DIRECT_JOB_PACKAGES = [
   { id: 'pkg_basic', key: 'basic', label: 'Basic (30 days)', fee: 99, duration_days: 30, active: true },
-  { id: 'pkg_featured', key: 'featured', label: 'Featured (45 days)', fee: 199, duration_days: 45, active: true },
+  { id: 'pkg_featured', key: 'featured', label: 'Featured (30 days)', fee: 199, duration_days: 30, active: true },
 ];
 
 function normalizePackage(item = {}) {
@@ -9,7 +9,7 @@ function normalizePackage(item = {}) {
   return {
     id: String(item.id || `pkg_${key}`),
     key,
-    label: String(item.label || '').trim() || (key === 'featured' ? 'Featured' : 'Basic'),
+    label: (String(item.label || '').trim() || (key === 'featured' ? 'Featured' : 'Basic')).replace(/\(\s*45\s+days\s*\)/i, '(30 days)'),
     fee: Math.max(0, Number(item.fee || 0) || 0),
     duration_days: Math.max(1, Number(item.duration_days || item.durationDays || 30) || 30),
     active: item.active !== false,
@@ -42,7 +42,8 @@ async function getDirectJobPackage(prisma, packageType = 'basic') {
 function applyDirectJobPackagePricing(payload = {}, pkg = DEFAULT_DIRECT_JOB_PACKAGES[0]) {
   const listingMonths = Math.max(1, Number(payload.listingMonths || 1) || 1);
   const packageFee = Math.max(0, Number(pkg.fee || 0) || 0);
-  const durationDays = Math.max(1, Number(pkg.duration_days || pkg.durationDays || payload.listingDurationDays || 30) || 30) * listingMonths;
+  const durationOptions = [30, 60, 90, 120];
+  const durationDays = durationOptions[Math.min(listingMonths, durationOptions.length) - 1] || 30;
   const total = Number((packageFee * listingMonths).toFixed(2));
   return Object.assign({}, payload, {
     postingPackage: String(pkg.key || payload.postingPackage || 'basic').toLowerCase(),

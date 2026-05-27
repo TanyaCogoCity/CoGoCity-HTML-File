@@ -932,7 +932,6 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
         cancel_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=cancel`,
         client_reference_id: enrollment.id,
         customer: customerId,
-        payment_method_collection: 'if_required',
         line_items: [
           {
             quantity,
@@ -1008,7 +1007,6 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
         cancel_url: `${origin}/?stripe_job=${pricedJob.id}&stripe_status=cancel`,
         client_reference_id: pricedJob.id,
         customer: customerId,
-        payment_method_collection: 'if_required',
         line_items: [
           {
             quantity: 1,
@@ -1016,14 +1014,6 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
               currency: 'usd',
               unit_amount: toCents(placementFees.listingFee),
               product_data: { name: `CoGo City job listing: ${pricedJob.title}`, description: `Job placement listing package (${pricedPayload.postingPackage})` },
-            },
-          },
-          {
-            quantity: 1,
-            price_data: {
-              currency: 'usd',
-              unit_amount: toCents(placementFees.employerPlatformFee),
-              product_data: { name: 'CoGo City 12% platform support fee', description: 'Platform support fee added to employer job placement payments.' },
             },
           },
         ],
@@ -1102,7 +1092,6 @@ router.post('/create-checkout-session', requireAuth, async (req, res) => {
         cancel_url: `${origin}/?stripe_project=${project.id}&stripe_status=cancel`,
         client_reference_id: project.id,
         customer: project.employer?.stripeCustomerId || undefined,
-        payment_method_collection: project.employer?.stripeCustomerId ? 'if_required' : undefined,
         line_items: [
           {
             quantity: 1,

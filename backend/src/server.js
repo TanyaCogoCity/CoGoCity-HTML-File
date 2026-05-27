@@ -1,6 +1,7 @@
 const { app } = require('./app');
 const config = require('./config');
 const { prisma } = require('./lib/prisma');
+const { startDirectJobExpirationReminderSchedule } = require('./lib/jobExpirationNotifications');
 
 async function start() {
   try {
@@ -15,6 +16,7 @@ async function start() {
 
     app.listen(config.port, () => {
       console.log(`CoGo backend running on port ${config.port}`);
+      startDirectJobExpirationReminderSchedule();
     });
   } catch (error) {
     console.error('Failed to start server', error);

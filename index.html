@@ -3483,7 +3483,7 @@ function getDirectJobPackages(){
   ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages');
   const defaults = [
     { id:'pkg_basic', key:'basic', label:'Basic (30 days)', fee:99, duration_days:30, active:true },
-    { id:'pkg_featured', key:'featured', label:'Featured (45 days)', fee:199, duration_days:45, active:true }
+    { id:'pkg_featured', key:'featured', label:'Featured (30 days)', fee:199, duration_days:30, active:true }
   ];
   const stored = ensureArray(ls('cogo_direct_job_packages'));
   if (!stored.length) {
@@ -3493,7 +3493,7 @@ function getDirectJobPackages(){
   const normalized = stored.map(item => ({
     id: String(item.id || uid('pkg')),
     key: String(item.key || '').trim().toLowerCase(),
-    label: String(item.label || '').trim() || 'Package',
+    label: String(item.label || '').trim().replace(/\(\s*45\s+days\s*\)/i, '(30 days)') || 'Package',
     fee: Math.max(0, Number(item.fee || 0) || 0),
     duration_days: Math.max(1, Number(item.duration_days || 30) || 30),
     active: item.active !== false
@@ -5280,10 +5280,9 @@ async function doLogin(){
   renderPage();
 }
 function getDirectJobListingOptions(pkg){
-  const baseDays = Math.max(1, Number((pkg && pkg.duration_days) || 30) || 30);
-  return [1,2,3,4].map(multiplier => ({
-    months: multiplier,
-    days: baseDays * multiplier
+  return [30,60,90,120].map((days, index) => ({
+    months: index + 1,
+    days
   }));
 }
 function openPasswordResetModal(){
@@ -12308,11 +12307,11 @@ function getDirectJobPostingFee(packageType='basic'){
 }
 function calculateDirectJobPlacementFee(listingFee=0){
   const base = Number(listingFee || 0) || 0;
-  const platformSupportFee = Number((base * 0.12).toFixed(2));
+  const platformSupportFee = 0;
   return {
     listingFee: Number(base.toFixed(2)),
     platformSupportFee,
-    total: Number((base + platformSupportFee).toFixed(2))
+    total: Number(base.toFixed(2))
   };
 }
 function getDirectJobPackageByKey(packageType='basic'){
@@ -12360,9 +12359,10 @@ function updateEmployerDirectJobPackage(){
   const feePerMonth = Number(pkg.fee || 0) || 0;
   const fee = feePerMonth * selectedMonths;
   const placementFee = calculateDirectJobPlacementFee(fee);
-  const durationDays = Math.max(1, Number(pkg.duration_days || 30) || 30) * selectedMonths;
+  const selectedOption = listingOptions.find(item => item.months === selectedMonths) || listingOptions[0];
+  const durationDays = selectedOption ? selectedOption.days : 30;
   const feeEl = document.getElementById('directJobPostingFeePreview');
-  if (feeEl) feeEl.value = `$${money(placementFee.total)} total ($${money(placementFee.listingFee)} listing + $${money(placementFee.platformSupportFee)} support)`;
+  if (feeEl) feeEl.value = `$${money(placementFee.total)} listing`;
   const durationEl = document.getElementById('directJobListingLengthPreview');
   if (durationEl) durationEl.value = `${durationDays} days`;
 }
@@ -12463,7 +12463,8 @@ async function saveEmployerDirectHireJob(){
   const feePerMonth = Number(postingPkg.fee || 0) || 0;
   const fee = feePerMonth * selectedMonths;
   const placementFee = calculateDirectJobPlacementFee(fee);
-  const listingDurationDays = Math.max(1, Number(postingPkg.duration_days || 30) || 30) * selectedMonths;
+  const listingOption = getDirectJobListingOptions(postingPkg).find(item => item.months === selectedMonths);
+  const listingDurationDays = listingOption ? listingOption.days : 30;
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + listingDurationDays * 24 * 60 * 60 * 1000).toISOString();
   const useBackendStripeCheckout = Boolean(STRIPE_ENABLED && backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token') && fee > 0);
@@ -12574,7 +12575,7 @@ async function saveEmployerDirectHireJob(){
     created_at: createdAt
   });
   saveTransactions(transactions);
-  toast(`Job posted. Listing payment of $${money(placementFee.total)} verified and captured, including a $${money(placementFee.platformSupportFee)} 12% platform support fee.`);
+  toast(`Job posted. Listing payment of $${money(placementFee.total)} verified and captured.`);
   employerMyJobsTab = 'manage';
   renderDashboard();
 }
@@ -12841,15 +12842,15 @@ function renderEmployerMyJobs(el){
               ${activePackages.length ? activePackages.map(item => `<option value="${esc(item.key)}" data-key="${esc(item.key)}" data-fee="${esc(item.fee)}" data-days="${esc(item.duration_days)}">${esc(item.label)}</option>`).join('') : `<option value="basic" data-key="basic" data-fee="99" data-days="30">Basic (30 days)</option>`}
             </select>
           </div>
-          <div class="field"><label>Listing fee + 12% platform support</label><input id="directJobPostingFeePreview" value="$99.00" readonly></div>
+          <div class="field"><label>Listing fee</label><input id="directJobPostingFeePreview" value="$99.00" readonly></div>
         </div>
         <div class="row">
           <div class="field"><label>Listing Length</label><input id="directJobListingLengthPreview" value="30 days" readonly></div>
           <div class="field"><label>Featured Benefits</label><input value="Pinned on top + highlighted card + fair rotation among featured jobs" readonly></div>
         </div>
         <div class="field"><label>Select Months</label><select id="directJobListingMonths" onchange="updateEmployerDirectJobPackage()"></select></div>
-        <div class="warning" style="margin-bottom:12px">CoGoCity charges employers for direct-hire job postings plus a 12% platform support fee. Student pay is handled directly by employer outside CoGo project escrow.</div>
-        <button class="btn btn-blue" onclick="saveEmployerDirectHireJob()">Pay Listing + 12% Platform Support & Post Job</button>
+        <div class="warning" style="margin-bottom:12px">CoGoCity covers payment/platform fees for direct-hire job postings. Student pay is handled directly by employer outside CoGo project escrow.</div>
+        <button class="btn btn-blue" onclick="saveEmployerDirectHireJob()">Pay Listing & Post Job</button>
       </div>
     ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'manage') ? `
