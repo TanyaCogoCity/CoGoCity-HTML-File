@@ -165,15 +165,13 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
   const actualHours = Number(req.body?.actual_hours ?? req.body?.actualHours ?? project.actualHours ?? 0);
   const totalAmount = Number((actualHours * Number(project.hourlyRate)).toFixed(2));
 
-  const updated = await prisma.project.update({
+  await prisma.project.update({
     where: { id: project.id },
     data: {
       status: nextStatus,
       actualHours,
       totalAmount,
     },
-    include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true,
-      reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } }, application: { include: { student: true, job: true } } },
   });
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
@@ -200,6 +198,12 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
   });
 
   await writeAuditLog({ userId: req.user.id, action: 'project.complete', entityType: 'project', entityId: project.id, payload: req.body });
+
+  const updated = await prisma.project.findUnique({
+    where: { id: project.id },
+    include: { job: { include: { creator: { include: { userProfile: true } } } }, transaction: true,
+      reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } }, application: { include: { student: true, job: true } } },
+  });
 
   return ok(res, serializeProject(updated));
 });
