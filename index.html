@@ -821,6 +821,7 @@ let backendApplicationsError = '';
 let backendMessagesLoading = false;
 let backendMessagesLoaded = false;
 let backendMessagesError = '';
+let pendingDashboardThreadId = '';
 let backendProjectsLoading = false;
 let backendProjectsLoaded = false;
 let backendProjectsError = '';
@@ -4401,6 +4402,9 @@ function dashboardLinkForAction(action={}){
   if (action.employerTab) params.set('employerTab', action.employerTab);
   if (action.studentJobsTab) params.set('studentJobsTab', action.studentJobsTab);
   if (action.jobId) params.set('job', action.jobId);
+  if (action.projectId) params.set('project', action.projectId);
+  if (action.applicationId) params.set('application', action.applicationId);
+  if (action.threadId) params.set('thread', action.threadId);
   const query = params.toString();
   return `/dashboard${query ? `?${query}` : ''}`;
 }
@@ -6526,6 +6530,21 @@ function signOut(){
 // ---------- Routes ----------
 function getRoute(){ return location.hash || '#/'; }
 function goDashboard(){ location.hash = '#/dashboard'; renderPage(); }
+function applyDashboardRouteParams(route=''){
+  const queryStart = String(route || '').indexOf('?');
+  if (queryStart < 0) return;
+  const params = new URLSearchParams(String(route || '').slice(queryStart + 1));
+  const section = params.get('section');
+  if (section) dashSection = section;
+  if (params.get('employerMyJobsTab')) employerMyJobsTab = params.get('employerMyJobsTab');
+  if (params.get('employerTab')) employerTab = params.get('employerTab');
+  if (params.get('studentJobsTab')) studentJobsTab = params.get('studentJobsTab');
+  const threadId = params.get('thread') || params.get('conversation') || params.get('conversation_id') || '';
+  if (threadId) {
+    dashSection = 'messages';
+    pendingDashboardThreadId = threadId;
+  }
+}
 window.addEventListener('hashchange', renderPage);
 document.addEventListener('click', (event) => {
   if (!avatarMenuOpen) return;
@@ -6792,7 +6811,10 @@ function renderPage(){
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
     if (route === '#/community' || route.startsWith('#/community/') || route.startsWith('#post-')) return renderCommunity();
-    if (route === '#/dashboard') return renderDashboard();
+    if (route === '#/dashboard' || route.startsWith('#/dashboard?')) {
+      applyDashboardRouteParams(route);
+      return renderDashboard();
+    }
     if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
     const result = renderHome();
     renderRecoveryAttempted = false;
@@ -14031,6 +14053,18 @@ function renderMessages(el){
     }
     if (m.toId === me && !m.read) threads[threadKey].unread++;
   });
+
+  if (pendingDashboardThreadId) {
+    const pendingThread = String(pendingDashboardThreadId);
+    const match = Object.values(threads).find(t => String(t.threadId || '') === pendingThread || String(t.threadKey || '') === pendingThread);
+    if (match) {
+      activeThreadUserId = match.threadKey;
+      pendingDashboardThreadId = '';
+      if (isBackendConversationId(match.threadId) && !backendMessageThreadsLoaded[match.threadId]) refreshBackendThreadMessages(match.threadId, { rerender:true });
+    } else if (isBackendConversationId(pendingThread)) {
+      refreshBackendMessages({ threadId: pendingThread, rerender:true });
+    }
+  }
 
   if (activeThreadUserId && !threads[activeThreadUserId]) {
     const activeParts = String(activeThreadUserId || '').split('::');
