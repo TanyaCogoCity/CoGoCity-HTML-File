@@ -10661,8 +10661,10 @@ function openBookDirect(studentId, serviceId=''){
   const selectedServiceIndex = Math.max(0, services.findIndex((service, index) => String(service.id || `service_${index}`) === String(serviceId || '')));
   const selectedService = services[selectedServiceIndex] || services[0] || {};
   const selectedServiceKey = selectedService.id || `service_${selectedServiceIndex}`;
+  const modalTitle = `Book / Offer Job to ${s.name}`;
+  clearModalDraftByTitle(modalTitle);
   trackCogoEvent('book_button_click', { source: 'student_service' });
-  openModal(`Book / Offer Job to ${s.name}`, `
+  openModal(modalTitle, `
     <div class="warning" style="margin-bottom:14px">This creates a direct employer-to-student offer flow similar to Fiverr/Upwork.</div>
     ${selectedService.title ? `<div class="card" style="padding:12px;margin-bottom:14px;background:#F9FAFB"><div style="font-weight:800">${esc(selectedService.title)}</div><div class="small money" style="margin-top:4px">$${esc(selectedService.rate || s.rate || 0)}/hr \u00B7 ${esc(selectedService.location || s.location || '')}</div></div>` : ''}
     <div class="field"><label>Job Title</label><input id="directJobTitle" value="${esc(selectedService.title || '')}" autocomplete="off" placeholder="e.g. Website updates" /></div>
