@@ -5509,7 +5509,7 @@ function renderStudentSignupStepContent(){
   if (studentSignupStep === 1) return `
     <div class="card form-card">
       <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name"></div>
-      <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="field"><label>Email address</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"><div class="small muted" style="margin-top:6px">We will use this email for your account and important onboarding updates.</div></div>
       <div class="row">
         <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || d.birthday || '')}"><div class="small muted" style="margin-top:6px">You must be between 14–25 years old to sign up as a student on CoGo City. Your age will automatically update each year based on your birth date.</div></div>
         <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name"></div>
@@ -5580,7 +5580,7 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 5) return `
     <div class="card form-card">
-      <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com"></div>
+      <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"></div>
       <div class="field"><label>Phone</label><input id="studentFlowPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555"></div>
       <div class="field"><label>Home Address</label><input id="studentFlowAddress" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA 94526" onfocus="attachGoogleAddressAutocomplete('studentFlowAddress')"><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile. Choose a Google suggestion when available.</div></div>
     </div>
