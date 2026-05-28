@@ -7,6 +7,8 @@ const { writeAuditLog } = require('../lib/audit');
 const { requirePlatformReady } = require('../lib/onboardingGate');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
+const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/messaging');
+const { getOrCreateSystemUser } = require('../lib/systemUser');
 
 const router = express.Router();
 
@@ -217,6 +219,19 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
       link: dashboardLink,
     },
   });
+  if (isOwner && ['reviewing', 'shortlisted', 'hired', 'rejected'].includes(nextStatus)) {
+    const systemUser = await getOrCreateSystemUser();
+    const conversation = await ensureConversationBetweenUsers({
+      userAId: systemUser.id,
+      userBId: app.studentId,
+      label: `Direct Hire Job: ${app.job.title}`,
+    });
+    await sendSystemMessage({
+      conversationId: conversation.id,
+      senderId: systemUser.id,
+      text: `Direct Hire update for "${app.job.title}": your application is ${nextStatus.replaceAll('_', ' ')}.`,
+    });
+  }
   await writeAuditLog({ userId: req.user.id, action: 'application.update', entityType: 'application', entityId: app.id, payload: req.body });
   return ok(res, serializeApplication(app));
 });

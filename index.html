@@ -12676,12 +12676,14 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   saveDirectJobApplications(items);
   if (['shortlisted','hired','rejected','reviewing'].includes(status)) {
     pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'messages' });
-    sendInboxMessage(app.student_id, app.student_name || 'Student', `Direct Hire update for "${job.job_title}": your application is ${String(status).replaceAll('_', ' ')}.`, null, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
-      thread_id: `direct_job:${job.id}`,
-      thread_label: `Direct Hire Job: ${job.job_title}`,
-      message_type: 'system',
-      system_category: 'application'
-    });
+    if (!backendAuthEnabled() || !app.backendSource) {
+      sendInboxMessage(app.student_id, app.student_name || 'Student', `Direct Hire update for "${job.job_title}": your application is ${String(status).replaceAll('_', ' ')}.`, null, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
+        thread_id: `direct_job:${job.id}`,
+        thread_label: `Direct Hire Job: ${job.job_title}`,
+        message_type: 'system',
+        system_category: 'application'
+      });
+    }
   }
   toast('Application status updated.');
   renderDashboard();
