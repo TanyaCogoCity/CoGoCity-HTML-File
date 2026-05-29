@@ -342,6 +342,11 @@
     .workshop-price-badge{position:absolute;top:10px;right:10px;background:var(--color-success);color:#fff;padding:6px 10px;border-radius:999px;font-size:.78rem;font-weight:800;letter-spacing:.02em;z-index:2}
     .workshop-detail-media{position:relative;aspect-ratio:16/9;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;margin-bottom:16px}
     .workshop-detail-media img,.workshop-detail-media iframe{width:100%;height:100%;object-fit:cover;border:0;display:block}
+    .workshop-detail-info{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0;background:#F8FBFF;border:1px solid #BFDBFE;border-radius:16px;padding:14px}
+    .workshop-detail-item{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px;min-height:78px}
+    .workshop-detail-label{font-size:.72rem;text-transform:uppercase;color:var(--gray);font-weight:800;letter-spacing:.04em;margin-bottom:5px}
+    .workshop-detail-value{font-size:1rem;font-weight:900;color:var(--navy);line-height:1.25;overflow-wrap:anywhere}
+    .workshop-detail-note{font-size:.8rem;color:var(--gray);margin-top:5px;line-height:1.35;overflow-wrap:anywhere}
     .workshop-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 
     .faq-page{background:linear-gradient(180deg,#FFFFFF 0%,#F9FAFB 100%)}
@@ -483,6 +488,7 @@
       .thread-view{min-height:380px}
       .footer-inner{grid-template-columns:1fr}
       .split{align-items:stretch}
+      .workshop-detail-info{grid-template-columns:repeat(2,minmax(0,1fr))}
     }
     @media (max-width: 640px){
       body{font-size:15px}
@@ -555,6 +561,8 @@
       .msg-compose .btn{width:auto;flex-shrink:0}
       .blog-featured-media{min-height:190px}
       .blog-article-content iframe,.blog-article-content video{min-height:230px}
+      .workshop-detail-info{grid-template-columns:1fr;gap:10px;padding:12px;border-radius:14px}
+      .workshop-detail-item{min-height:auto}
       .workshop-detail-media{border-radius:12px}
       table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
       img,video,iframe{max-width:100%}
@@ -7954,6 +7962,31 @@ function formatWorkshopDateTime(value=''){
   if (!value) return 'Date TBD';
   return new Date(value).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
 }
+function formatWorkshopDurationLabel(duration=''){
+  const raw = String(duration || '').trim();
+  if (!raw) return 'Duration TBD';
+  const lower = raw.toLowerCase();
+  const numberMatch = lower.match(/(\d+(?:\.\d+)?)/);
+  if (!numberMatch) return raw;
+  const value = Number(numberMatch[1]);
+  if (!Number.isFinite(value) || value <= 0) return raw;
+  if (/\bh(ou)?rs?\b|\bhour/.test(lower)) {
+    const hours = value;
+    const displayHours = Number.isInteger(hours) ? String(hours) : String(hours);
+    return `${displayHours} hour${hours === 1 ? '' : 's'}`;
+  }
+  const minutes = Math.round(value);
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  if (minutes > 60) {
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder ? `${hours} hour${hours === 1 ? '' : 's'} ${remainder} minutes` : `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+}
 function workshopSummaryDescription(workshop){
   const text = String(workshop.description || '').trim();
   return text.length > 160 ? `${text.slice(0, 157)}...` : text;
@@ -7979,6 +8012,7 @@ function getWorkshopPublicItems(){
 function renderWorkshopCard(workshop){
   const cover = getWorkshopCoverImage(workshop, 'thumb');
   const spotsLeft = getWorkshopSpotsLeft(workshop);
+  const durationLabel = formatWorkshopDurationLabel(workshop.duration);
   return `
     <article class="card workshop-card" style="cursor:pointer" onclick="location.hash='#/workshops/${esc(workshop.id)}';renderPage()">
       <div class="workshop-cover">
@@ -7992,6 +8026,7 @@ function renderWorkshopCard(workshop){
         <div class="workshop-meta">
           <span class="workshop-chip">${esc(formatWorkshopDateTime(workshop.date_time))}</span>
           <span class="workshop-chip">${workshop.format === 'online' ? 'Online' : 'In-person'}</span>
+          <span class="workshop-chip">${esc(durationLabel)}</span>
           ${workshop.format === 'in_person' && workshop.location ? `<span class="workshop-chip">${esc(workshop.location)}</span>` : ''}
           ${spotsLeft !== null ? `<span class="workshop-chip">${esc(spotsLeft)} spot${spotsLeft === 1 ? '' : 's'} left</span>` : ''}
         </div>
@@ -8037,9 +8072,14 @@ function renderWorkshopDetailPage(workshopId=''){
     return;
   }
   const cover = getWorkshopCoverImage(workshop, 'full');
-  const included = ensureArray(workshop.included);
   const spotsLeft = getWorkshopSpotsLeft(workshop);
   const host = getUserById(workshop.host_id);
+  const durationLabel = formatWorkshopDurationLabel(workshop.duration);
+  const formatLabel = workshop.format === 'online' ? 'Online' : 'In-person';
+  const locationLabel = workshop.format === 'online'
+    ? (workshop.online_url || 'Online link shared after registration')
+    : (workshop.location || 'Location TBD');
+  const spotsLabel = spotsLeft === null ? 'Flexible' : `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`;
   const mediaHtml = workshop.video_url
     ? renderVideoPreviewHtml(workshop.video_url, 'Workshop video', { maxWidth:'100%', showLabel:false })
     : cover
@@ -8050,14 +8090,27 @@ function renderWorkshopDetailPage(workshopId=''){
     <div class="container" style="max-width:960px">
       <button class="btn btn-outline btn-sm" onclick="location.hash='#/workshops';renderPage()">Back to Workshops</button>
       <div class="card form-card" style="margin-top:16px">
-        <div class="small muted" style="margin-bottom:8px">${esc(formatWorkshopDateTime(workshop.date_time))}</div>
         <h1 style="margin:0 0 14px">${esc(workshop.title)}</h1>
         ${mediaHtml}
-        <div class="workshop-meta" style="margin-top:14px">
-          <span class="workshop-chip">${workshop.format === 'online' ? 'Online' : 'In-person'}</span>
-          <span class="workshop-chip">$${esc(money(workshop.price || 0))}</span>
-          <span class="workshop-chip">${esc(workshop.duration || 'Duration TBD')}</span>
-          ${spotsLeft !== null ? `<span class="workshop-chip">${esc(spotsLeft)} spot${spotsLeft === 1 ? '' : 's'} left</span>` : ''}
+        <div class="workshop-detail-info">
+          <div class="workshop-detail-item">
+            <div class="workshop-detail-label">Date & Time</div>
+            <div class="workshop-detail-value">${esc(formatWorkshopDateTime(workshop.date_time))}</div>
+          </div>
+          <div class="workshop-detail-item">
+            <div class="workshop-detail-label">Duration</div>
+            <div class="workshop-detail-value">${esc(durationLabel)}</div>
+          </div>
+          <div class="workshop-detail-item">
+            <div class="workshop-detail-label">Format</div>
+            <div class="workshop-detail-value">${esc(formatLabel)}</div>
+            <div class="workshop-detail-note">${esc(locationLabel)}</div>
+          </div>
+          <div class="workshop-detail-item">
+            <div class="workshop-detail-label">Price & Capacity</div>
+            <div class="workshop-detail-value">${esc(getWorkshopPriceLabel(workshop))}</div>
+            <div class="workshop-detail-note">${esc(spotsLabel)}</div>
+          </div>
         </div>
         <div style="margin-top:14px">${renderFormattedLongText(workshop.description || '')}</div>
         <div class="card form-card" style="margin-top:12px;background:#F9FAFB">
@@ -8068,18 +8121,14 @@ function renderWorkshopDetailPage(workshopId=''){
         <div class="row" style="margin-top:12px">
           <div class="card form-card">
             <div style="font-weight:800;margin-bottom:8px">Format & Location</div>
-            <div class="small">${workshop.format === 'online' ? 'Online class' : 'In-person class'}</div>
-            <div class="small muted" style="margin-top:6px">${esc(workshop.format === 'online' ? (workshop.online_url || 'Online link shared after registration') : (workshop.location || 'Location TBD'))}</div>
+            <div class="small">${esc(formatLabel)} class</div>
+            <div class="small muted" style="margin-top:6px">${esc(locationLabel)}</div>
           </div>
           <div class="card form-card">
             <div style="font-weight:800;margin-bottom:8px">Capacity</div>
             <div class="small">${workshop.capacity === '' ? 'Flexible' : `${esc(workshop.capacity)} seats`}</div>
             <div class="small muted" style="margin-top:6px">${spotsLeft === null ? 'No set limit' : `${esc(spotsLeft)} remaining`}</div>
           </div>
-        </div>
-        <div class="card form-card" style="margin-top:12px">
-          <div style="font-weight:800;margin-bottom:8px">What\u2019s Included</div>
-          ${included.length ? `<ul style="margin:0;padding-left:18px">${included.map(item => `<li style="margin:6px 0">${esc(item)}</li>`).join('')}</ul>` : `<div class="small muted">Details will be shared by the host.</div>`}
         </div>
         <div class="card form-card" style="margin-top:12px">
           <div style="font-weight:800;margin-bottom:8px">Reviews</div>
@@ -8623,10 +8672,7 @@ function syncWorkshopDraftFromForm(){
   const videoRaw = ((document.getElementById('workshopVideoUrl') || {}).value || '').trim();
   const videoState = normalizeVideoInputValue(videoRaw);
   workshopDraft.video_url = (videoState.video_type === 'youtube' || videoState.video_type === 'vimeo') ? videoState.input_url : '';
-  workshopDraft.included = ((document.getElementById('workshopIncluded') || {}).value || '')
-    .split('\n')
-    .map(item => item.trim())
-    .filter(Boolean);
+  workshopDraft.included = ensureArray(workshopDraft.included);
   persistWorkshopEditorCache();
 }
 function collectWorkshopFormValues(){
@@ -8646,7 +8692,7 @@ function collectWorkshopFormValues(){
     price: Number((document.getElementById('workshopPrice') || {}).value || 0) || 0,
     capacity: capacityRaw ? (Number(capacityRaw) || 0) : '',
     video_url: (videoState.video_type === 'youtube' || videoState.video_type === 'vimeo') ? videoState.input_url : '',
-    included: ((document.getElementById('workshopIncluded') || {}).value || '').split('\n').map(item => item.trim()).filter(Boolean)
+    included: ensureArray(workshopDraft.included)
   };
 }
 function getWorkshopDraftCacheKey(){
@@ -8681,7 +8727,7 @@ function openWorkshopEditor(workshopId=''){
       </div>
       <div class="field"><label>Description *</label><textarea id="workshopDescription" rows="5">${esc(workshopDraft.description)}</textarea></div>
       <div class="row">
-        <div class="field"><label>Duration *</label><input id="workshopDuration" value="${esc(workshopDraft.duration)}" placeholder="90 min"></div>
+        <div class="field"><label>Duration *</label><input id="workshopDuration" value="${esc(workshopDraft.duration)}" placeholder="45 minutes or 1 hour"></div>
         <div class="field"><label>Format *</label><select id="workshopFormat"><option value="in_person" ${workshopDraft.format === 'in_person' ? 'selected' : ''}>In-person</option><option value="online" ${workshopDraft.format === 'online' ? 'selected' : ''}>Online</option></select></div>
       </div>
       <div class="row">
@@ -8692,7 +8738,6 @@ function openWorkshopEditor(workshopId=''){
         <div class="field"><label>Price *</label><input id="workshopPrice" type="number" min="0" step="0.01" value="${esc(workshopDraft.price)}"></div>
         <div class="field"><label>Capacity (optional)</label><input id="workshopCapacity" type="number" min="1" value="${esc(workshopDraft.capacity)}"></div>
       </div>
-      <div class="field"><label>Included (one item per line)</label><textarea id="workshopIncluded" rows="4">${esc((workshopDraft.included || []).join('\n'))}</textarea></div>
       <div class="field"><label>Workshop Image (one image)</label><input type="file" accept="image/*" onchange="handleWorkshopImagesUpload(this)"></div>
       ${coverViews.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">${coverViews.map((image, index) => `<div style="position:relative">${renderManagedImage(image.id || image.url, 'Workshop image', 'width:88px;height:88px;border-radius:12px;object-fit:cover;border:1px solid var(--border)', 'thumb')}<button class="btn btn-danger btn-sm" style="position:absolute;top:4px;right:4px;padding:2px 6px" onclick="removeWorkshopImage(${index})">\u00D7</button></div>`).join('')}</div>` : `<div class="small muted" style="margin-bottom:10px">No workshop images uploaded yet.</div>`}
       <div class="field"><label>Optional Video URL (YouTube/Vimeo only)</label><input id="workshopVideoUrl" value="${esc(workshopDraft.video_url)}" placeholder="https://youtube.com/..."></div>
