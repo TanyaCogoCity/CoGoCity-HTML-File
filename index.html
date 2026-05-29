@@ -13053,7 +13053,7 @@ function renderEmployerAppCard(a){
   if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
   if (canDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" onclick="openDeclineApplicantModal('${esc(a.id)}')">Decline</button>`);
   else if (shouldDisableDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" disabled title="Decline is only available while the job is open and the applicant has not been accepted.">Decline</button>`);
-  if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}')">Start Project</button>`);
+  if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}','${esc(a.status)}')">Start Project</button>`);
 
   return `
     <div class="card item-card">
@@ -13174,12 +13174,22 @@ async function confirmSendOffer(appId){
   toast('Offer sent.');
   renderDashboard();
 }
-async function startProject(appId){
+function normalizedApplicationStatus(value=''){
+  return String(value || '').trim().toLowerCase();
+}
+async function startProject(appId, expectedStatus=''){
   if (requireBackendWriteSession('start this project')) return;
   if (!requireEmployerPaymentSetup('start a project')) return;
   const apps = getApplications();
-  const a = apps.find(x => x.id === appId);
-  if (!a || a.status !== 'accepted') return toast('Student must accept first.');
+  const a = apps.find(x => String(x.id) === String(appId));
+  if (!a) return toast('Application not found. Please refresh and try again.');
+  if (normalizedApplicationStatus(a.status) !== 'accepted') {
+    if (normalizedApplicationStatus(expectedStatus) === 'accepted') {
+      a.status = 'accepted';
+    } else {
+      return toast('Student must accept first.');
+    }
+  }
   trackCogoEvent('project_start_click', { source: 'application' });
   const projects = getProjects();
   if (projects.some(p => p.applicationId === appId)) {
