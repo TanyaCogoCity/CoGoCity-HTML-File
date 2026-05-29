@@ -63,7 +63,6 @@ const DEDICATED_ROUTE_ENTITIES = new Set([
   'students',
   'direct_jobs',
   'direct_job_applications',
-  'projects',
   'messages',
   'notifications',
   'transactions',
