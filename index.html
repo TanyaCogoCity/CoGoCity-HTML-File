@@ -6089,7 +6089,28 @@ async function publishStudentSignupProfile(){
   setTimeout(() => openPostSignupStripeOnboardingPrompt('connect'), 250);
 }
 function knownCityForZip(zip=''){
-  return ({ '94526':'Danville', '94507':'Alamo', '94583':'San Ramon', '94568':'Dublin', '94566':'Pleasanton', '94596':'Walnut Creek', '94549':'Lafayette', '94556':'Moraga', '94563':'Orinda' })[String(zip || '').trim()] || '';
+  return ({
+    '94102':'San Francisco', '94103':'San Francisco', '94104':'San Francisco', '94105':'San Francisco', '94107':'San Francisco', '94108':'San Francisco', '94109':'San Francisco', '94110':'San Francisco', '94111':'San Francisco', '94112':'San Francisco', '94114':'San Francisco', '94115':'San Francisco', '94116':'San Francisco', '94117':'San Francisco', '94118':'San Francisco', '94121':'San Francisco', '94122':'San Francisco', '94123':'San Francisco', '94124':'San Francisco', '94127':'San Francisco', '94129':'San Francisco', '94131':'San Francisco', '94132':'San Francisco', '94133':'San Francisco', '94134':'San Francisco', '94158':'San Francisco',
+    '94506':'Danville', '94526':'Danville', '94507':'Alamo', '94582':'San Ramon', '94583':'San Ramon', '94568':'Dublin', '94566':'Pleasanton', '94588':'Pleasanton', '94595':'Walnut Creek', '94596':'Walnut Creek', '94597':'Walnut Creek', '94598':'Walnut Creek', '94549':'Lafayette', '94556':'Moraga', '94563':'Orinda'
+  })[String(zip || '').trim()] || '';
+}
+function normalizeCityNameForComparison(city=''){
+  return String(city || '').trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
+}
+function parsedAddressParts(address=''){
+  const value = normalizeAddressForValidation(address);
+  const parts = value.split(',').map(part => part.trim()).filter(Boolean);
+  const stateZip = parts.slice(2).join(' ');
+  const stateMatch = stateZip.match(/\b([A-Z]{2})\b/i);
+  const zipMatch = stateZip.match(/\b(\d{5})(?:-\d{4})?\b/);
+  return {
+    value,
+    parts,
+    street: parts[0] || '',
+    city: parts[1] || '',
+    state: stateMatch ? stateMatch[1].toUpperCase() : '',
+    zip: zipMatch ? zipMatch[1] : ''
+  };
 }
 function normalizeAddressForValidation(address=''){
   let value = String(address || '')
@@ -6118,21 +6139,29 @@ function normalizeAddressForValidation(address=''){
   return `${beforeState}, ${state} ${zip}`;
 }
 function getAddressValidationMessage(address='', label='address'){
-  const value = normalizeAddressForValidation(address);
+  const parsed = parsedAddressParts(address);
+  const value = parsed.value;
   const field = label || 'address';
   const fieldLabel = field.charAt(0).toUpperCase() + field.slice(1);
   if (!value) return `Please enter a complete ${field}.`;
-  const parts = value.split(',').map(part => part.trim()).filter(Boolean);
+  const parts = parsed.parts;
   if (parts.length < 3) return `Please enter a complete ${field}: street address, city, state, and ZIP code.`;
-  const street = parts[0] || '';
-  const city = parts[1] || '';
+  const street = parsed.street;
+  const city = parsed.city;
   const stateZip = parts.slice(2).join(' ');
   const streetWithoutUnit = street.replace(/\s+(?:apt|apartment|unit|ste|suite|#)\s*[A-Za-z0-9-]+\s*$/i, '').trim();
   if (/\b(apt|apartment|unit|ste|suite|#)\s*$/i.test(street)) return `${fieldLabel} apartment/suite number appears incomplete.`;
   if (!/^\d+\s+\S+\s+\S+/.test(streetWithoutUnit)) return `${fieldLabel} needs a house/building number and street name, like 123 Main St.`;
-  if (!/^[A-Za-z .'-]{2,}$/.test(city)) return `Please check the city in your ${field}.`;
   if (!/\b[A-Z]{2}\b/i.test(stateZip)) return `Please include a 2-letter state in your ${field}.`;
   if (!/\b\d{5}(?:-\d{4})?\b/.test(stateZip)) return `Please include a valid ZIP code in your ${field}.`;
+  const issues = [];
+  if (!/^[A-Za-z .'-]{2,}$/.test(city)) issues.push('the city contains invalid characters');
+  else if (/^(sf|s f)$/i.test(city.trim())) issues.push('spell out the city as San Francisco instead of SF');
+  else if (/^[A-Z]{2,3}$/.test(city.trim())) issues.push(`spell out the city instead of using ${city.trim()}`);
+  if (parsed.state === 'CA' && !/^9\d{4}$/.test(parsed.zip)) issues.push(`${parsed.zip} is not a California ZIP code`);
+  const expectedCity = knownCityForZip(parsed.zip);
+  if (expectedCity && normalizeCityNameForComparison(city) !== normalizeCityNameForComparison(expectedCity)) issues.push(`ZIP ${parsed.zip} is for ${expectedCity}, not ${city}`);
+  if (issues.length) return `Please check your ${field}: ${issues.join('; ')}.`;
   return '';
 }
 function phoneDigits(value=''){
@@ -6212,15 +6241,18 @@ async function validateAddressExists(address='', inputId='', label='address'){
     return { ok:true, formattedAddress: input.dataset.googleFormattedAddress };
   }
   const ready = await ensureGooglePlacesLoaded();
-  if (!ready) return { ok:true, formattedAddress: migrationFormatUsAddress(normalizedAddress), warning:'Google address validation is not configured yet, so CoGo City used strict local address formatting.' };
+  if (!ready) return { ok:true, formattedAddress: migrationFormatUsAddress(normalizedAddress) };
   return new Promise(resolve => {
     const geocoder = new google.maps.Geocoder();
     geocoder.geocode({ address: normalizedAddress, componentRestrictions:{ country:'US' } }, (results, status) => {
       const result = (results || [])[0];
-      if (status !== 'OK' || !result) return resolve({ ok:true, formattedAddress: migrationFormatUsAddress(normalizedAddress), warning:`Google could not verify this ${label}, so CoGoCity accepted the address format you entered.` });
-      if (!addressHasRequiredGoogleParts(result.address_components || [])) return resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(normalizedAddress), warning:`Google returned a partial match for this ${label}, so CoGoCity accepted the address format you entered.` });
+      if (status !== 'OK' || !result) return resolve({ ok:false, message:`Please check this ${label}. Google could not verify it, so make sure the street, city, state, and ZIP are correct.` });
+      if (!addressHasRequiredGoogleParts(result.address_components || [])) return resolve({ ok:false, message:`Please enter a complete ${label}. Google found only a partial match, so check the street number, city, state, and ZIP.` });
       const locationType = result.geometry && result.geometry.location_type;
-      if (!['ROOFTOP','RANGE_INTERPOLATED'].includes(locationType)) return resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(normalizedAddress), warning:`Google returned an approximate match for this ${label}, so CoGoCity accepted the address format you entered.` });
+      if (!['ROOFTOP','RANGE_INTERPOLATED'].includes(locationType)) return resolve({ ok:false, message:`Please choose or enter a more exact ${label}. Google only found an approximate match.` });
+      const formattedAddress = result.formatted_address || migrationFormatUsAddress(normalizedAddress);
+      const googleProblem = getAddressValidationMessage(formattedAddress, label);
+      if (googleProblem) return resolve({ ok:false, message:googleProblem });
       resolve({ ok:true, formattedAddress: result.formatted_address || migrationFormatUsAddress(normalizedAddress) });
     });
   });
