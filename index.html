@@ -3712,6 +3712,15 @@ function getSiteSettings(){
     if (aboutIndex >= 0) merged.footer_important_links.splice(aboutIndex + 1, 0, faqLink);
     else merged.footer_important_links.unshift(faqLink);
   }
+  const stagingLegalFooterLinks = {
+    'youth labor law in ca': '#/youth-labor-law-in-ca',
+    'disclaimer': '#/disclaimer',
+    'terms and conditions': '#/terms-and-conditions'
+  };
+  merged.footer_important_links = ensureArray(merged.footer_important_links).map(link => {
+    const labelKey = String(link && link.label || '').trim().toLowerCase();
+    return stagingLegalFooterLinks[labelKey] ? Object.assign({}, link, { href: stagingLegalFooterLinks[labelKey] }) : link;
+  });
   return merged;
 }
 function saveSiteSettings(settings){
