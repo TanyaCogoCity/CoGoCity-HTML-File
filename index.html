@@ -10422,10 +10422,14 @@ function togglePostComposer(){
   }
   const draft = getPostComposerDraft();
   const canCreateJobPost = isEmployerAccount(currentUser);
+  const communityComposerHelp = canCreateJobPost
+    ? "Share your thoughts, ideas, or questions with the community. If you're looking to hire a student, check the box below to turn this post into a job opportunity."
+    : 'Share your thoughts, ideas, or questions with the community.';
   wrap.innerHTML = `
     <div class="card form-card" style="margin-bottom:16px">
       <div class="field">
         <label>Your post</label><textarea id="postContent" placeholder="Share something with the community..." oninput="syncCommunityJobDescriptionFromPost();savePostComposerDraft()">${esc(draft.content || '')}</textarea>
+        <div class="small muted" style="margin-top:8px">${esc(communityComposerHelp)}</div>
       </div>
       <div class="field">
         <label>Post Image (optional, one image)</label>
