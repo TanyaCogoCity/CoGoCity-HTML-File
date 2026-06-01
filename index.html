@@ -379,7 +379,7 @@
     .faq-chevron{flex:0 0 auto;transition:transform .22s ease;color:var(--color-text-secondary)}
     .faq-accordion.open .faq-chevron{transform:rotate(180deg)}
     .faq-answer{max-height:0;overflow:hidden;transition:max-height .28s ease,opacity .22s ease;opacity:0}
-    .faq-accordion.open .faq-answer{max-height:900px;opacity:1}
+    .faq-accordion.open .faq-answer{max-height:1800px;opacity:1}
     .faq-answer-inner{padding:0 18px 18px;color:var(--color-text-main);line-height:1.65}
 
     .home-content-container.has-ad{max-width:1428px;padding-left:8px;padding-right:8px}
@@ -400,6 +400,9 @@
     .cogo-ad-admin-preview img{width:100%;max-height:180px;object-fit:cover;display:block}
     .faq-answer-inner ul{margin:8px 0 12px;padding-left:1.2rem}
     .faq-answer-inner li{margin:4px 0}
+    .faq-answer-inner h3{font-size:1rem;margin:14px 0 6px}
+    .faq-answer-inner p{margin:.45rem 0}
+    .faq-answer-inner .faq-example{border-left:3px solid #FDE68A;background:#FFFBEB;border-radius:0 12px 12px 0;padding:10px 12px;margin:10px 0}
     .faq-resource-links{margin-top:12px;display:flex;flex-direction:column;gap:6px}
     .faq-resource-links a{color:var(--color-link);font-weight:700}
     .faq-notice{border-radius:18px;border:1px solid #FDE68A;background:#FFFBEB;padding:18px;margin-bottom:18px;box-shadow:var(--shadow)}
@@ -6756,7 +6759,8 @@ const FAQ_ITEMS = [
   { category:'employers', question:'What happens after the project is completed?', answer:['Once the student marks the project as completed, the employer will have the opportunity to review the final submitted hours and approve payment.','If no action is taken within 24 hours after project completion, CoGo City may automatically process payment for up to the originally approved estimated project amount.','If the employer previously approved additional hours through the platform, the employer remains responsible for payment of those approved additional hours.'] },
   { category:'neighbors', question:'Can neighbors hire students for small local jobs?', answer:['Yes. Examples may include babysitting, tutoring, pet care, yard work, tech help, event assistance, and other age-appropriate tasks.'] },
   { category:'neighbors', question:'What should neighbors avoid?', answer:['Neighbors should never ask students to perform dangerous work, roofing, heavy lifting, hazardous construction, unsafe transportation, or illegal activities.'] },
-  { category:'payments', question:'How does payment work?', answer:['Before work begins, the hiring party must approve the initial project estimate and authorize payment through the platform.'] },
+  { category:'payments', question:'How does payment work?', answer:['CoGo City securely processes payments through Stripe.','When a project is completed, students pay a 12% platform fee and employers pay a 12% platform fee.','Example: A student completes a project worth $75. Student View: Project Amount $75.00, CoGo City Service Fee (12%) -$9.00, Student Earnings $66.00. Employer View: Project Amount $75.00, Platform Fee (12%) +$9.00, Total Paid $84.00.','Payments are processed securely through Stripe, and earnings are deposited directly into the student\'s connected bank account.'], answerHtml:`<p>CoGo City securely processes payments through Stripe.</p><p>When a project is completed:</p><ul><li>Students pay a 12% platform fee.</li><li>Employers pay a 12% platform fee.</li></ul><div class="faq-example"><h3>Example</h3><p>A student completes a project worth $75.</p><h3>Student View (My Transactions)</h3><p>Project Amount: $75.00<br>CoGo City Service Fee (12%): -$9.00<br>Student Earnings: $66.00</p><h3>Employer View (My Transactions)</h3><p>Project Amount: $75.00<br>Platform Fee (12%): +$9.00<br>Total Paid: $84.00</p></div><p>Payments are processed securely through Stripe, and earnings are deposited directly into the student's connected bank account.</p>` },
+  { category:'payments', question:'How are taxes handled?', answer:['CoGo City processes payments through Stripe Connect. During onboarding, Stripe may require students and employers to provide identity, tax, and banking information to comply with financial regulations.','For Students: Students are responsible for reporting and paying any taxes related to their earnings. Stripe may collect tax information and issue required tax forms when applicable under federal or state regulations. Earnings received through CoGo City may be considered taxable income.','For Employers: Employers are responsible for determining any tax obligations related to hiring students and for complying with all applicable federal, state, and local laws. Employers should consult a tax professional if they have questions about their specific situation.','Important: CoGo City does not provide tax, legal, or accounting advice. Users are responsible for understanding and meeting their own tax obligations. We recommend consulting a qualified tax professional if you have questions regarding taxes or reporting requirements.'], answerHtml:`<p>CoGo City processes payments through Stripe Connect. During onboarding, Stripe may require students and employers to provide identity, tax, and banking information to comply with financial regulations.</p><h3>For Students</h3><p>Students are responsible for reporting and paying any taxes related to their earnings. Stripe may collect tax information and issue required tax forms when applicable under federal or state regulations. Earnings received through CoGo City may be considered taxable income.</p><h3>For Employers</h3><p>Employers are responsible for determining any tax obligations related to hiring students and for complying with all applicable federal, state, and local laws. Employers should consult a tax professional if they have questions about their specific situation.</p><h3>Important</h3><p>CoGo City does not provide tax, legal, or accounting advice. Users are responsible for understanding and meeting their own tax obligations. We recommend consulting a qualified tax professional if you have questions regarding taxes or reporting requirements.</p>` },
   { category:'payments', question:'Does CoGo City guarantee payment?', answer:['CoGo City facilitates payment processing between users. CoGo City may automatically process payment for approved project amounts, but does not guarantee payment for disputed work, unapproved additional hours, chargebacks, failed payments, or disagreements between users.'] },
   { category:'payments', question:'Who is responsible for disputes?', answer:['Users are responsible for resolving disputes directly with one another. CoGo City may review reported issues but is not responsible for resolving legal disputes between users.'] },
   { category:'legal', question:'Is CoGo City the employer?', answer:['No. CoGo City is a technology platform only.'] },
@@ -6773,6 +6777,7 @@ function getFaqContent(locale='en'){
 }
 
 function renderFaqAnswer(item){
+  if (item.answerHtml) return item.answerHtml;
   const answerHtml = ensureArray(item.answer).length > 1
     ? `<ul>${ensureArray(item.answer).map(line => `<li>${esc(line)}</li>`).join('')}</ul>`
     : ensureArray(item.answer).map(line => `<p>${esc(line)}</p>`).join('');
