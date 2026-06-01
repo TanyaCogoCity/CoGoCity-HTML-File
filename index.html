@@ -3375,7 +3375,7 @@ function saveMessages(v){
   saveBackendMessages(payload.filter(item => item.backendSource));
   syncEntityToBackend('messages', localOnly);
 }
-async function persistMessagesPermanently(v, failureMessage='Backend message save failed. Please try again so this message is saved for everyone.'){
+async function persistMessagesPermanently(v, failureMessage='Backend message save failed. Please try again so this message is saved for everyone.', options={}){
   const payload = ensureArray(v).map(normalizeMessageRecord);
   const localOnly = payload.filter(item => !item.backendSource);
   const backendOnly = payload.filter(item => item.backendSource);
@@ -3383,6 +3383,10 @@ async function persistMessagesPermanently(v, failureMessage='Backend message sav
   if (backendAuthEnabled() && localOnly.length) {
     const result = await syncEntityToBackend('messages', localOnly);
     if (!result || !result.ok) {
+      if (options.suppressFailureToast) {
+        ls('cogo_messages', localOnly);
+        return false;
+      }
       toast(failureMessage);
       return false;
     }
@@ -14598,7 +14602,9 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
     createdAt: new Date().toISOString(),
     read: false
   });
-  return await persistMessagesPermanently(msgs, 'Backend message save failed. Please try again so this message is saved for everyone.');
+  return await persistMessagesPermanently(msgs, 'Backend message save failed. Please try again so this message is saved for everyone.', {
+    suppressFailureToast: messageType === 'system' || meta.suppressBackendFailure === true
+  });
 }
 async function sendMessageToActive(){
   if (!activeThreadUserId) return;
