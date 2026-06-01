@@ -8659,6 +8659,11 @@ function renderWorkshopsDashboardSection(el){
       </div>
       ${currentUser.role !== 'admin' ? `<button class="btn btn-blue" onclick="openWorkshopEditor()">Create Workshop</button>` : ''}
     </div>
+    <div class="warning" style="margin:0 0 14px;line-height:1.55">
+      <strong>Have something to teach?</strong><br>
+      Create a workshop or class to share your skills, mentor students, and help them explore different careers and opportunities.<br>
+      Offer it for free to give back to the community, or charge a fee and earn money doing what you love.
+    </div>
     <div class="workshop-tabs">
       <button class="pill ${workshopsDashboardTab==='my_workshops' ? 'active' : ''}" onclick="workshopsDashboardTab='my_workshops';renderDashboard()">My Workshops (${myWorkshops.length})</button>
       <button class="pill ${workshopsDashboardTab==='my_registrations' ? 'active' : ''}" onclick="workshopsDashboardTab='my_registrations';renderDashboard()">My Registrations (${myRegistrations.length})</button>
