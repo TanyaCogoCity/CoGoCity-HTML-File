@@ -12938,6 +12938,12 @@ function updateEmployerMyJobsSearch(value=''){
   }, 0);
 }
 function renderEmployerMyJobs(el){
+  const employerMyJobsGuidance = `
+    <div class="warning" style="margin:0 0 14px;line-height:1.55">
+      <strong>Post a Job</strong> if you plan to hire and pay the student directly as your employee. We will charge a monthly job posting fee and help you find qualified candidates.<br>
+      <strong>Use the Community Feed</strong> if you're looking for part-time help and would like CoGo City to handle payments through the platform.
+    </div>
+  `;
   if (isNeighborAccount(currentUser)) {
     el.innerHTML = `
       <div class="section-title">My Jobs</div>
@@ -12955,6 +12961,7 @@ function renderEmployerMyJobs(el){
   if (!getEmployerCompanyName(currentUser)) {
     el.innerHTML = `
       <div class="section-title">My Jobs</div>
+      ${employerMyJobsGuidance}
       <div class="card form-card">
         <div class="warning">Complete your company information in My Profile before posting direct-hire jobs.</div>
         <div style="margin-top:12px"><button class="btn btn-blue" onclick="dashSection='profile';renderDashboard()">Complete Company Profile</button></div>
@@ -12980,6 +12987,7 @@ function renderEmployerMyJobs(el){
   const searchPlaceholder = employerMyJobsTab === 'applications' ? 'Search resumes' : employerMyJobsTab === 'manage' ? 'Search jobs' : 'Search jobs or applicants';
   el.innerHTML = `
     <div class="section-title">My Jobs</div>
+    ${employerMyJobsGuidance}
     <div class="subtabs">
       <button class="pill ${employerMyJobsTab==='all'?'active':''}" onclick="employerMyJobsTab='all';renderDashboard()">All</button>
       <button class="pill ${employerMyJobsTab==='manage'?'active':''}" onclick="employerMyJobsTab='manage';renderDashboard()">Manage Jobs</button>
