@@ -2801,7 +2801,7 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     ${rate ? `<div>Rate: $${esc(rate)}/hr</div>` : `<div>Compensation: ${esc(formatDirectJobCompensation(job))}</div>`}
     <div>Location: ${esc(projectSnapshot.location || 'TBD')}</div>
     <div>Status: In Progress</div>
-    <div>Direct-hire employer payments are handled securely through CoGo City.</div>
+    <div>Direct-hire payroll is handled directly by the employer outside CoGo City.</div>
   `;
   const backendStatus = backendProject && backendProject.status;
   const frontendStatus = backendStatus === 'awaiting_approval' ? 'awaiting_employer_approval' : backendStatus;
@@ -2978,19 +2978,6 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
         })
       });
       const project = upsertBackendProject(mapBackendProject(saved, { application: app, job }));
-      if (STRIPE_ENABLED) {
-        try {
-          const checkout = await createBackendStripeCheckoutSession(getProjectBackendId(project));
-          if (checkout && checkout.url) {
-            toast('Opening secure Stripe checkout to fund this project.');
-            window.location.href = checkout.url;
-          }
-        } catch (stripeError) {
-          console.warn('Stripe checkout create failed', stripeError);
-          if (isStripePayoutSafetyError(stripeError)) showStripePayoutSafetyBlock(stripeError, project.studentName || 'this student');
-          else toast(stripeError.message || 'Stripe checkout is not ready yet. Project was saved without funding.');
-        }
-      }
       return project;
     } catch (error) {
       console.warn('Backend project start failed', error);
@@ -4658,12 +4645,18 @@ function getProjectRolePaymentData(project){
 function projectPaymentStatusText(project={}){
   const paymentStatus = project.payment_status || project.paymentStatus || '';
   const escrowStatus = project.escrowStatus || project.escrow_status || '';
+  if (isDirectHireProject(project)) return 'Direct hire payroll is handled outside CoGo City';
   if (paymentStatus === 'funded' || escrowStatus === 'held') return 'Funds secured and held until project approval';
   if (paymentStatus === 'paid' || project.paid) return 'Paid and released';
   if (paymentStatus === 'requires_payment_method') return 'Payment method needed';
   if (paymentStatus === 'requires_capture') return 'Authorized; waiting for capture';
   if (paymentStatus) return stripeStatusLabel(paymentStatus);
   return 'Outside platform / not funded yet';
+}
+function isDirectHireProject(project={}){
+  return project.escrowProvider === 'direct_hire' ||
+    project.payment_status === 'outside_platform' ||
+    project.payout_status === 'outside_platform';
 }
 function renderProjectPaymentStatus(project={}){
   return `
@@ -4674,6 +4667,13 @@ function renderProjectPaymentStatus(project={}){
 }
 function renderProjectPaymentSection(project){
   const payment = getProjectRolePaymentData(project);
+  if (isDirectHireProject(project)) {
+    return `
+      ${renderProjectPaymentStatus(project)}
+      <div class="small">Employer payroll and student wages are handled directly between the employer and student outside CoGo City.</div>
+      <div class="small">CoGo City only collects the paid job-listing fee for this direct-hire posting.</div>
+    `;
+  }
   if (currentUser.role === 'student') {
     return `
       ${renderProjectPaymentStatus(project)}
@@ -12847,7 +12847,7 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
       });
     }
   }
-  toast('Application status updated.');
+  toast(status === 'hired' ? 'Candidate hired. No additional CoGo payment is required for direct-hire jobs.' : 'Application status updated.');
   renderDashboard();
 }
 function openDirectJobResume(applicationId=''){
@@ -13068,7 +13068,7 @@ function renderEmployerMyJobs(el){
     ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'applications') ? `
       <div style="font-weight:800;margin:12px 0 10px">Submitted Applications</div>
-      <div class="warning" style="margin-bottom:12px">Once you\u2019ve chosen a candidate, click \u201CHire\u201D to finalize your selection.</div>
+      <div class="warning" style="margin-bottom:12px">Once you\u2019ve chosen a candidate, click \u201CHire\u201D to finalize your selection. Direct-hire payroll is handled directly by the employer outside CoGo City, so no additional CoGo payment is collected when hiring.</div>
       ${filteredApps.length ? filteredApps.map(app => {
         const job = getDirectJobById(app.job_id);
         const student = getStudentByUserId(app.student_id);
