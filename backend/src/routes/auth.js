@@ -555,6 +555,69 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
   }
 });
 
+router.delete('/me', requireAuth, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { studentProfiles: { include: { services: true } } },
+    });
+    if (!user || user.deletedAt) return fail(res, 404, 'User not found');
+
+    const now = new Date();
+    const anonymizedEmail = `deleted+${user.id}@deleted.cogocity.local`;
+
+    await prisma.$transaction(async (tx) => {
+      const profileIds = user.studentProfiles.map((profile) => profile.id);
+
+      if (profileIds.length) {
+        await tx.service.updateMany({
+          where: { profileId: { in: profileIds }, deletedAt: null },
+          data: { deletedAt: now, isActive: false },
+        });
+        await tx.studentProfile.updateMany({
+          where: { id: { in: profileIds }, deletedAt: null },
+          data: { deletedAt: now, isActive: false },
+        });
+      }
+
+      await tx.job.updateMany({
+        where: { createdBy: user.id, deletedAt: null },
+        data: { deletedAt: now, status: 'closed' },
+      });
+      await tx.application.updateMany({
+        where: { studentId: user.id, deletedAt: null },
+        data: { deletedAt: now, status: 'withdrawn' },
+      });
+      await tx.refreshToken.deleteMany({ where: { userId: user.id } });
+      await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      await tx.userProfile.deleteMany({ where: { userId: user.id } });
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          email: anonymizedEmail,
+          firstName: 'Deleted',
+          lastName: 'User',
+          displayName: 'Deleted User',
+          phone: null,
+          city: null,
+          dateOfBirth: null,
+          profileImageId: null,
+          status: 'suspended',
+          deletedAt: now,
+          stripeDefaultPaymentMethodId: null,
+          stripePaymentSetupStatus: 'not_started',
+        },
+      });
+    });
+
+    await writeAuditLog({ userId: user.id, action: 'auth.user.delete', entityType: 'user', entityId: user.id });
+    return ok(res, { deleted: true });
+  } catch (error) {
+    if (error?.code === 'P2002') return fail(res, 409, 'Unable to anonymize account email.');
+    return fail(res, 500, 'Unable to delete account', error.message);
+  }
+});
+
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
