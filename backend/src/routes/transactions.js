@@ -121,10 +121,13 @@ function canReadManualTransaction(user, tx = {}) {
   return ids.payerId === user.id;
 }
 
-function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, projectMap = new Map()) {
+function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, projectMap = new Map(), applicationMap = new Map()) {
   const tx = row.payload || {};
   const projectPayload = projectMap.get(String(firstValue(tx.project_id, tx.projectId, '') || ''))
     || projectMap.get(String(firstValue(tx.job_title, tx.jobTitle, '') || ''))
+    || {};
+  const applicationPayload = applicationMap.get(String(firstValue(tx.application_id, tx.applicationId, '') || ''))
+    || applicationMap.get(String(firstValue(tx.job_title, tx.jobTitle, '') || ''))
     || {};
   const ids = manualTransactionUserIds(tx);
   const amountTotal = money(firstValue(tx.total_amount, tx.amount_total, tx.amountTotal, 0));
@@ -152,8 +155,8 @@ function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, 
     studentPlatformFee = money(Math.max(0, workTotal - payoutAmount));
     platformFeeTotal = money(employerPlatformFee + studentPlatformFee);
   }
-  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, projectPayload.hourly_rate, projectPayload.hourlyRate, projectPayload.rate, 0) || 0);
-  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, projectPayload.actual_hours, projectPayload.actualHours, projectPayload.estimated_hours, projectPayload.estimatedHours, projectPayload.duration, 0) || 0);
+  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, projectPayload.hourly_rate, projectPayload.hourlyRate, projectPayload.rate, applicationPayload.hourly_rate, applicationPayload.hourlyRate, applicationPayload.rate, 0) || 0);
+  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, projectPayload.actual_hours, projectPayload.actualHours, projectPayload.estimated_hours, projectPayload.estimatedHours, projectPayload.duration, applicationPayload.actual_hours, applicationPayload.actualHours, applicationPayload.estimated_hours, applicationPayload.estimatedHours, applicationPayload.duration, 0) || 0);
   if (!hourlyRate && hoursWorked && workTotal) hourlyRate = money(workTotal / hoursWorked);
   if (!hoursWorked && hourlyRate && workTotal) hoursWorked = money(workTotal / hourlyRate);
   return {
@@ -424,8 +427,23 @@ router.get('/', requireAuth, async (req, res) => {
       manualProjectMap.set(String(projectId), payload);
     });
   });
+  const manualApplicationRows = visibleManualRows.length
+    ? await prisma.syncRecord.findMany({
+        where: { entity: 'applications', deletedAt: null },
+        select: { recordId: true, payload: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 500,
+      })
+    : [];
+  const manualApplicationMap = new Map();
+  manualApplicationRows.forEach((row) => {
+    const payload = row.payload || {};
+    [row.recordId, payload.application_id, payload.applicationId, payload.id, payload.job_title, payload.jobTitle].filter(Boolean).forEach((applicationId) => {
+      manualApplicationMap.set(String(applicationId), payload);
+    });
+  });
   const manualTransactions = visibleManualRows
-    .map((row) => normalizeManualTransaction(row, userMap, feeSettings, manualProjectMap))
+    .map((row) => normalizeManualTransaction(row, userMap, feeSettings, manualProjectMap, manualApplicationMap))
     .filter((tx) => {
       const stripeId = tx.stripe_payment_intent_id;
       const projectId = tx.project_id;
