@@ -1685,7 +1685,7 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
         },
       });
     }
-    await updateManualProjectTransactionForIntent(activePaymentIntent, {
+    await updateManualProjectTransactionForIntent(captured, {
       amountTotal: finalAmounts.amountTotal,
       workTotal: req.body?.work_total ?? req.body?.workTotal ?? paymentIntent.metadata?.work_total,
       platformFee: finalAmounts.platformFee,
