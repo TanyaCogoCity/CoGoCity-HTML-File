@@ -264,8 +264,10 @@ router.get('/', requireAuth, async (req, res) => {
   });
   const workshopTransactions = workshopEnrollments.map((enrollment) => {
     const price = Number(enrollment.workshop?.price || 0);
-    const platformFee = money(price * 0.3);
-    const hostPayout = money(price - platformFee);
+    const quantity = Math.max(1, Number(enrollment.quantity || 1) || 1);
+    const total = money(enrollment.totalAmount || (price * quantity));
+    const platformFee = money(enrollment.platformFee || (total * 0.3));
+    const hostPayout = money(enrollment.hostPayout || (total - platformFee));
     return {
       id: `workshop:${enrollment.id}`,
       transaction_id: `workshop:${enrollment.id}`,
@@ -274,6 +276,9 @@ router.get('/', requireAuth, async (req, res) => {
       workshop_enrollment_id: enrollment.id,
       student_id: enrollment.userId,
       studentName: userDisplayName(enrollment.user, 'Student'),
+      quantity,
+      participants: quantity,
+      number_of_participants: quantity,
       host_id: enrollment.workshop?.createdBy || '',
       employer_id: enrollment.workshop?.createdBy || '',
       hostName: userDisplayName(enrollment.workshop?.creator, 'Host'),
@@ -283,9 +288,9 @@ router.get('/', requireAuth, async (req, res) => {
       created_at: enrollment.createdAt,
       date_charged: enrollment.paidAt || enrollment.createdAt,
       date_paid: enrollment.paidAt || enrollment.createdAt,
-      total_amount: price,
-      amount_total: price,
-      work_total: price,
+      total_amount: total,
+      amount_total: total,
+      work_total: total,
       platform_fee: platformFee,
       platform_fee_total: platformFee,
       cogo_commission: platformFee,

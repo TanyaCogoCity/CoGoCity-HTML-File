@@ -60,11 +60,12 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
   const workshop = await prisma.workshop.findUnique({ where: { id: req.params.id } });
   if (!workshop) return fail(res, 404, 'Workshop not found');
   if (Number(workshop.price || 0) > 0) return fail(res, 402, 'Paid workshop enrollments must use Stripe checkout');
+  const quantity = Math.max(1, Number(req.body?.quantity || 1) || 1);
 
   const enrollment = await prisma.workshopEnrollment.upsert({
     where: { workshopId_userId: { workshopId: workshop.id, userId: req.user.id } },
-    create: { workshopId: workshop.id, userId: req.user.id, paymentStatus: 'paid' },
-    update: { paymentStatus: 'paid' },
+    create: { workshopId: workshop.id, userId: req.user.id, quantity, paymentStatus: 'paid' },
+    update: { quantity: { increment: quantity }, paymentStatus: 'paid' },
   });
 
   await createNotification({
@@ -72,7 +73,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
       userId: workshop.createdBy,
       type: notificationType('workshop'),
       title: 'New workshop registration',
-      body: `${req.user.displayName} registered for ${workshop.title}`,
+      body: `${req.user.displayName} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for ${workshop.title}`,
       link: `/dashboard?section=workshops&id=${workshop.id}`,
     },
   });
@@ -83,6 +84,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
     id: enrollment.id,
     workshop_id: enrollment.workshopId,
     user_id: enrollment.userId,
+    quantity: enrollment.quantity,
     payment_status: enrollment.paymentStatus,
     created_at: enrollment.createdAt,
   });

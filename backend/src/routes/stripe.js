@@ -566,6 +566,18 @@ function workshopStartDate(value) {
   return date && !Number.isNaN(date.getTime()) ? date : new Date();
 }
 
+function workshopPaymentTotals(price = 0, quantity = 1) {
+  const qty = Math.max(1, Number(quantity || 1) || 1);
+  const gross = Number((Number(price || 0) * qty).toFixed(2));
+  const platformFee = Number((gross * 0.3).toFixed(2));
+  return {
+    quantity: qty,
+    gross,
+    platformFee,
+    hostPayout: Number((gross - platformFee).toFixed(2)),
+  };
+}
+
 async function ensureCoreWorkshop(workshopId, req) {
   if (isUuid(workshopId)) {
     const workshop = await prisma.workshop.findUnique({ where: { id: workshopId } });
@@ -619,9 +631,36 @@ async function completeWorkshopCheckoutSession(session) {
 
   const paymentStatus = paymentStatusForCheckoutSession(session);
   const paymentIntent = await getCheckoutPaymentIntent(session);
+  const quantity = Math.max(1, Number(session.metadata?.quantity || 1) || 1);
+  const totals = workshopPaymentTotals(enrollment.workshop?.price || 0, quantity);
+  const alreadyProcessedSession = session.id
+    && enrollment.stripeCheckoutSessionId === session.id
+    && enrollment.paymentStatus === 'paid'
+    && Number(enrollment.quantity || 1) === totals.quantity
+    && Math.abs(Number(enrollment.totalAmount || 0) - totals.gross) <= 0.01;
+  if (alreadyProcessedSession) return enrollment;
+  const shouldAddToExistingPaidEnrollment = enrollment.paymentStatus === 'paid' && session.id && enrollment.stripeCheckoutSessionId !== session.id;
+  const finalQuantity = paymentStatus === 'paid'
+    ? (shouldAddToExistingPaidEnrollment ? Number(enrollment.quantity || 1) + totals.quantity : totals.quantity)
+    : Number(enrollment.quantity || totals.quantity || 1);
+  const finalTotalAmount = paymentStatus === 'paid'
+    ? (shouldAddToExistingPaidEnrollment ? Number(enrollment.totalAmount || 0) + totals.gross : totals.gross)
+    : Number(enrollment.totalAmount || totals.gross || 0);
+  const finalPlatformFee = paymentStatus === 'paid'
+    ? (shouldAddToExistingPaidEnrollment ? Number(enrollment.platformFee || 0) + totals.platformFee : totals.platformFee)
+    : Number(enrollment.platformFee || totals.platformFee || 0);
+  const finalHostPayout = paymentStatus === 'paid'
+    ? (shouldAddToExistingPaidEnrollment ? Number(enrollment.hostPayout || 0) + totals.hostPayout : totals.hostPayout)
+    : Number(enrollment.hostPayout || totals.hostPayout || 0);
   const updated = await prisma.workshopEnrollment.update({
     where: { id: enrollment.id },
     data: {
+      quantity: finalQuantity,
+      totalAmount: Number(finalTotalAmount.toFixed(2)),
+      platformFee: Number(finalPlatformFee.toFixed(2)),
+      hostPayout: Number(finalHostPayout.toFixed(2)),
+      attendeeName: session.metadata?.attendee_name || enrollment.attendeeName || enrollment.user?.displayName || null,
+      attendeeEmail: String(session.metadata?.attendee_email || enrollment.attendeeEmail || enrollment.user?.email || '').toLowerCase() || null,
       paymentStatus,
       stripeCheckoutSessionId: session.id || enrollment.stripeCheckoutSessionId,
       stripePaymentIntentId: paymentIntent?.id || (typeof session.payment_intent === 'string' ? session.payment_intent : enrollment.stripePaymentIntentId),
@@ -633,12 +672,58 @@ async function completeWorkshopCheckoutSession(session) {
   });
 
   if (paymentStatus === 'paid') {
+    await prisma.syncRecord.upsert({
+      where: { entity_recordId: { entity: 'workshop_registrations', recordId: updated.id } },
+      create: {
+        entity: 'workshop_registrations',
+        recordId: updated.id,
+        payload: {
+          id: updated.id,
+          workshop_id: updated.workshopId,
+          user_id: updated.userId,
+          attendee_name: updated.attendeeName || updated.user?.displayName || '',
+          attendee_email: updated.attendeeEmail || updated.user?.email || '',
+          quantity: updated.quantity,
+          total_amount: Number(updated.totalAmount || 0),
+          platform_fee: Number(updated.platformFee || 0),
+          host_payout: Number(updated.hostPayout || 0),
+          platform_fee_percent: 30,
+          status: 'registered',
+          payment_status: updated.paymentStatus,
+          stripe_checkout_session_id: updated.stripeCheckoutSessionId || '',
+          stripe_payment_intent_id: updated.stripePaymentIntentId || '',
+          stripe_charge_id: updated.stripeChargeId || '',
+          created_at: updated.createdAt?.toISOString ? updated.createdAt.toISOString() : updated.createdAt,
+        },
+      },
+      update: {
+        payload: {
+          id: updated.id,
+          workshop_id: updated.workshopId,
+          user_id: updated.userId,
+          attendee_name: updated.attendeeName || updated.user?.displayName || '',
+          attendee_email: updated.attendeeEmail || updated.user?.email || '',
+          quantity: updated.quantity,
+          total_amount: Number(updated.totalAmount || 0),
+          platform_fee: Number(updated.platformFee || 0),
+          host_payout: Number(updated.hostPayout || 0),
+          platform_fee_percent: 30,
+          status: 'registered',
+          payment_status: updated.paymentStatus,
+          stripe_checkout_session_id: updated.stripeCheckoutSessionId || '',
+          stripe_payment_intent_id: updated.stripePaymentIntentId || '',
+          stripe_charge_id: updated.stripeChargeId || '',
+          created_at: updated.createdAt?.toISOString ? updated.createdAt.toISOString() : updated.createdAt,
+        },
+        deletedAt: null,
+      },
+    });
     await createNotification({
       data: {
         userId: updated.workshop.createdBy,
         type: notificationType('workshop'),
         title: 'New workshop registration',
-        body: `${updated.user?.displayName || 'Someone'} registered for ${updated.workshop.title}`,
+        body: `${updated.user?.displayName || 'Someone'} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for ${updated.workshop.title}`,
         link: `/dashboard?section=workshops&id=${updated.workshop.id}`,
       },
     });
@@ -996,18 +1081,42 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
   const quantity = Math.max(1, Number(req.body?.quantity || 1) || 1);
   const amount = Number(workshop.price || 0);
   const existingEnrollment = await prisma.workshopEnrollment.findUnique({ where: { workshopId_userId: { workshopId: workshop.id, userId: req.user.id } } });
-  if (existingEnrollment?.paymentStatus === 'paid') {
-    return ok(res, { workshop_id: workshop.id, enrollment_id: existingEnrollment.id, status: 'paid', already_paid: true });
-  }
   if (workshop.capacity != null) {
-    const paidCount = await prisma.workshopEnrollment.count({ where: { workshopId: workshop.id, paymentStatus: 'paid' } });
+    const paidRows = await prisma.workshopEnrollment.findMany({
+      where: { workshopId: workshop.id, paymentStatus: 'paid' },
+      select: { userId: true, quantity: true },
+    });
+    const paidCount = paidRows.reduce((sum, row) => sum + Math.max(1, Number(row.quantity || 1) || 1), 0);
     if (paidCount + quantity > Number(workshop.capacity)) return fail(res, 409, 'Workshop is full');
   }
 
+  const totals = workshopPaymentTotals(amount, quantity);
+  const attendeeName = String(req.body?.attendee_name || req.body?.attendeeName || req.user.displayName || '').trim();
+  const attendeeEmail = String(req.body?.attendee_email || req.body?.attendeeEmail || req.user.email || '').trim().toLowerCase();
   const enrollment = await prisma.workshopEnrollment.upsert({
     where: { workshopId_userId: { workshopId: workshop.id, userId: req.user.id } },
-    create: { workshopId: workshop.id, userId: req.user.id, paymentStatus: amount > 0 ? 'pending' : 'paid' },
-    update: { paymentStatus: amount > 0 ? 'pending' : 'paid' },
+    create: {
+      workshopId: workshop.id,
+      userId: req.user.id,
+      quantity,
+      totalAmount: totals.gross,
+      platformFee: totals.platformFee,
+      hostPayout: totals.hostPayout,
+      attendeeName: attendeeName || null,
+      attendeeEmail: attendeeEmail || null,
+      paymentStatus: amount > 0 ? 'pending' : 'paid',
+    },
+    update: existingEnrollment?.paymentStatus === 'paid'
+      ? { attendeeName: attendeeName || existingEnrollment.attendeeName || null, attendeeEmail: attendeeEmail || existingEnrollment.attendeeEmail || null }
+      : {
+          quantity,
+          totalAmount: totals.gross,
+          platformFee: totals.platformFee,
+          hostPayout: totals.hostPayout,
+          attendeeName: attendeeName || null,
+          attendeeEmail: attendeeEmail || null,
+          paymentStatus: amount > 0 ? 'pending' : 'paid',
+        },
   });
 
   if (amount <= 0) {
@@ -1021,7 +1130,7 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
-        success_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=success`,
+        success_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=success&stripe_session={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}/?stripe_workshop=${workshop.id}&stripe_status=cancel`,
         client_reference_id: enrollment.id,
         customer: customerId,
@@ -1042,9 +1151,11 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
             workshop_enrollment_id: enrollment.id,
             user_id: req.user.id,
             quantity: String(quantity),
+            attendee_name: attendeeName,
+            attendee_email: attendeeEmail,
           },
         },
-        metadata: { type: 'workshop', workshop_id: workshop.id, workshop_enrollment_id: enrollment.id, user_id: req.user.id, quantity: String(quantity) },
+        metadata: { type: 'workshop', workshop_id: workshop.id, workshop_enrollment_id: enrollment.id, user_id: req.user.id, quantity: String(quantity), attendee_name: attendeeName, attendee_email: attendeeEmail },
       },
     );
 
@@ -1052,6 +1163,44 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
     return ok(res, serializeCheckoutSession(session, { workshop_id: workshop.id, enrollment_id: enrollment.id }));
   } catch (error) {
     return fail(res, 400, 'Failed to create workshop checkout session', error.message);
+  }
+});
+
+router.post('/verify-workshop-checkout-session', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  const workshopId = String(req.body?.workshop_id || req.body?.workshopId || '').trim();
+  const requestedSessionId = String(req.body?.checkout_session_id || req.body?.checkoutSessionId || req.body?.session_id || req.body?.sessionId || '').trim();
+  if (!workshopId && !requestedSessionId) return fail(res, 400, 'workshop_id or checkout_session_id is required');
+
+  try {
+    let session = null;
+    if (requestedSessionId) {
+      session = await stripe.checkout.sessions.retrieve(requestedSessionId, { expand: ['payment_intent'] });
+    } else {
+      const coreWorkshop = await ensureCoreWorkshop(workshopId, req);
+      if (!coreWorkshop) return fail(res, 404, 'Workshop not found');
+      const enrollment = await prisma.workshopEnrollment.findUnique({
+        where: { workshopId_userId: { workshopId: coreWorkshop.id, userId: req.user.id } },
+      });
+      if (!enrollment?.stripeCheckoutSessionId) return fail(res, 404, 'Workshop checkout session not found');
+      session = await stripe.checkout.sessions.retrieve(enrollment.stripeCheckoutSessionId, { expand: ['payment_intent'] });
+    }
+
+    if (session.metadata?.type !== 'workshop') return fail(res, 400, 'Checkout session is not a workshop registration');
+    if (session.metadata?.user_id && session.metadata.user_id !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
+    const updated = await completeWorkshopCheckoutSession(session);
+    if (!updated) return fail(res, 404, 'Workshop registration not found');
+    return ok(res, {
+      workshop_id: updated.workshopId,
+      enrollment_id: updated.id,
+      status: updated.paymentStatus,
+      quantity: updated.quantity,
+      total_amount: Number(updated.totalAmount || 0),
+      platform_fee: Number(updated.platformFee || 0),
+      host_payout: Number(updated.hostPayout || 0),
+    });
+  } catch (error) {
+    return fail(res, 400, 'Failed to verify workshop checkout session', error.message);
   }
 });
 

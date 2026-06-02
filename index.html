@@ -17134,6 +17134,7 @@ function renderWorkshopTransactionsResults(){
       return String(tx.student_id || '') === String(currentUser.id);
     });
     rows = visibleBackendRows.map(tx => {
+      const quantity = Math.max(1, Number(tx.quantity || tx.participants || tx.number_of_participants || 1) || 1);
       const workshop = {
         id: tx.workshop_id || '',
         title: String(tx.job_title || 'Workshop').replace(/^Workshop:\s*/i, ''),
@@ -17143,7 +17144,7 @@ function renderWorkshopTransactionsResults(){
       };
       return {
         workshop,
-        participants: 1,
+        participants: quantity,
         participantLinks: [{ userId: tx.student_id || '', name: tx.studentName || tx.student_name || 'Student' }],
         hostId: tx.host_id || tx.employer_id || '',
         hostName: tx.hostName || tx.employerName || 'Host',
