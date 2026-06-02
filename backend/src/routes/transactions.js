@@ -15,6 +15,12 @@ function pct(amount, base, fallback) {
   return Number(((numerator / denominator) * 100).toFixed(2));
 }
 
+function userDisplayName(user, fallback = '') {
+  if (!user) return fallback;
+  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  return user.displayName || fullName || fallback;
+}
+
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res) => {
@@ -27,8 +33,8 @@ router.get('/', requireAuth, async (req, res) => {
   const rows = await prisma.transaction.findMany({
     where,
     include: {
-      payer: { select: { id: true, displayName: true, role: true } },
-      payee: { select: { id: true, displayName: true, role: true } },
+      payer: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } },
+      payee: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } },
       project: { select: { id: true, jobId: true, status: true, hourlyRate: true, actualHours: true, estimatedHours: true, job: { select: { id: true, title: true } } } },
     },
     orderBy: { createdAt: 'desc' },
@@ -51,8 +57,8 @@ router.get('/', requireAuth, async (req, res) => {
       job_id: tx.project?.jobId || tx.projectId,
       employer_id: tx.payerId,
       student_id: tx.payeeId,
-      employerName: tx.payer?.displayName || 'Employer / Neighbor',
-      studentName: tx.payee?.displayName || 'Student',
+      employerName: userDisplayName(tx.payer, 'Employer / Neighbor'),
+      studentName: userDisplayName(tx.payee, 'Student'),
       job_title: tx.project?.job?.title || 'Project payment',
       status: tx.status,
       created_at: tx.createdAt,
@@ -118,7 +124,7 @@ router.get('/', requireAuth, async (req, res) => {
   const jobs = ['admin', 'employer', 'neighbor'].includes(req.user.role)
     ? await prisma.job.findMany({
         where: jobWhere,
-        include: { creator: { select: { id: true, displayName: true, role: true } } },
+        include: { creator: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } } },
         orderBy: { createdAt: 'desc' },
         take: 200,
       })
@@ -130,7 +136,7 @@ router.get('/', requireAuth, async (req, res) => {
     job_id: job.id,
     direct_job_id: job.id,
     employer_id: job.createdBy,
-    employerName: job.creator?.displayName || 'Employer / Neighbor',
+    employerName: userDisplayName(job.creator, 'Employer / Neighbor'),
     job_title: `Job Posting: ${job.title}`,
     status: job.paymentStatus || 'paid',
     created_at: job.createdAt,
@@ -159,8 +165,8 @@ router.get('/', requireAuth, async (req, res) => {
   const workshopEnrollments = await prisma.workshopEnrollment.findMany({
     where: enrollmentWhere,
     include: {
-      user: { select: { id: true, displayName: true, role: true } },
-      workshop: { select: { id: true, title: true, price: true, startDate: true, createdBy: true, creator: { select: { id: true, displayName: true, role: true } } } },
+      user: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } },
+      workshop: { select: { id: true, title: true, price: true, startDate: true, createdBy: true, creator: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } } } },
     },
     orderBy: { createdAt: 'desc' },
     take: 500,
@@ -176,11 +182,11 @@ router.get('/', requireAuth, async (req, res) => {
       workshop_id: enrollment.workshopId,
       workshop_enrollment_id: enrollment.id,
       student_id: enrollment.userId,
-      studentName: enrollment.user?.displayName || 'Student',
+      studentName: userDisplayName(enrollment.user, 'Student'),
       host_id: enrollment.workshop?.createdBy || '',
       employer_id: enrollment.workshop?.createdBy || '',
-      hostName: enrollment.workshop?.creator?.displayName || 'Host',
-      employerName: enrollment.workshop?.creator?.displayName || 'Host',
+      hostName: userDisplayName(enrollment.workshop?.creator, 'Host'),
+      employerName: userDisplayName(enrollment.workshop?.creator, 'Host'),
       job_title: `Workshop: ${enrollment.workshop?.title || 'Workshop'}`,
       status: enrollment.paymentStatus,
       created_at: enrollment.createdAt,
