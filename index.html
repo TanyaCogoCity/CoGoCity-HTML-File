@@ -857,6 +857,9 @@ let backendApplicationsError = '';
 let backendMessagesLoading = false;
 let backendMessagesLoaded = false;
 let backendMessagesError = '';
+let backendTransactionsLoading = false;
+let backendTransactionsLoaded = false;
+let backendTransactionsError = '';
 let pendingDashboardThreadId = '';
 let backendProjectsLoading = false;
 let backendProjectsLoaded = false;
@@ -3772,18 +3775,48 @@ function parseLinksTextarea(value=''){
 function renderLinksTextarea(links=[]){
   return ensureArray(links).map(link => `${link.label} | ${link.href}`).join('\n');
 }
+function getBackendTransactions(){ return ensureArray(ls('cogo_backend_transactions')); }
+function saveBackendTransactions(rows){ ls('cogo_backend_transactions', ensureArray(rows)); }
+async function refreshBackendTransactions(options={}){
+  if (!backendAuthEnabled() || backendTransactionsLoading) return getBackendTransactions();
+  const token = getBackendAccessToken();
+  if (!token) return getBackendTransactions();
+  backendTransactionsLoading = true;
+  try {
+    const rows = await backendAuthRequest('/transactions');
+    const list = ensureArray(rows.data || rows.records || rows.items || rows);
+    saveBackendTransactions(list);
+    backendTransactionsLoaded = true;
+    backendTransactionsError = '';
+    if (options.rerender && typeof getRoute === 'function' && getRoute() === '#/dashboard' && dashSection === 'transactions') renderTransactionsPanel();
+    return list;
+  } catch (error) {
+    backendTransactionsError = error.message || 'Backend transaction load failed';
+    console.warn('Backend transaction load failed', error);
+    return getBackendTransactions();
+  } finally {
+    backendTransactionsLoading = false;
+  }
+}
+function ensureBackendTransactionsLoaded(options={}){
+  if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
+  if (!backendTransactionsLoaded && !backendTransactionsLoading) refreshBackendTransactions(options);
+}
 function getTransactions(){
-  ensureBackendArraySettingLoaded('transactions', 'cogo_transactions');
+  ensureBackendTransactionsLoaded({ rerender:true });
+  const backendRows = getBackendTransactions();
+  if (backendRows.length || backendTransactionsLoaded) return backendRows;
   return ls('cogo_transactions') || [];
 }
 function saveTransactions(v){
   const payload = ensureArray(v);
   ls('cogo_transactions', payload);
-  syncEntityToBackend('transactions', payload);
+  if (backendAuthEnabled() && getBackendAccessToken()) refreshBackendTransactions({ rerender:true });
 }
 function isWorkshopTransaction(tx){
   const title = String((tx && tx.job_title) || '').toLowerCase();
-  return title.startsWith('workshop:') || title.startsWith('workshop refund:') || title.startsWith('workshop payout:');
+  const type = String((tx && (tx.payment_type || tx.type)) || '').toLowerCase();
+  return type.startsWith('workshop') || title.startsWith('workshop:') || title.startsWith('workshop refund:') || title.startsWith('workshop payout:');
 }
 
 // ---------- Seed ----------
@@ -16307,7 +16340,7 @@ function dedupeTransactionRows(rows=[]){
 }
 function getCurrentUserTransactions(){
   const all = getTransactions();
-  const nonWorkshop = dedupeTransactionRows(all.filter(tx => !isWorkshopTransaction(tx)));
+  const nonWorkshop = dedupeTransactionRows(all.filter(tx => !isWorkshopTransaction(tx) && String(tx.payment_type || '').toLowerCase() !== 'direct_job_listing'));
   if (currentUser.role === 'admin') return nonWorkshop;
   if (currentUser.role === 'employer' || isNeighborAccount(currentUser)) return nonWorkshop.filter(tx => tx.employer_id === currentUser.id);
   return nonWorkshop.filter(tx => tx.student_id === currentUser.id);
@@ -16468,6 +16501,7 @@ function renderTransactionsPanel(){
 function renderAdminTransactionReconciliationIds(tx={}){
   if (!tx) return '';
   const platformTxId = String(tx.id || tx.transaction_id || '').trim();
+  const stripeCheckoutSessionId = String(tx.stripe_checkout_session_id || tx.stripeCheckoutSessionId || '').trim();
   const stripePaymentIntentId = String(tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id || '').trim();
   const stripeChargeId = String(tx.stripe_charge_id || tx.stripeChargeId || '').trim();
   const stripeTransferId = String(tx.stripe_transfer_id || tx.stripeTransferId || '').trim();
@@ -16475,7 +16509,7 @@ function renderAdminTransactionReconciliationIds(tx={}){
   const idLine = (label, value) => value
     ? `<div style="font-family:monospace;font-size:.78rem;white-space:nowrap"><span class="muted">${label}:</span> ${esc(value)}</div>`
     : `<div class="muted" style="font-size:.78rem">${label}: —</div>`;
-  return `${idLine('CoGo Tx', platformTxId)}${idLine('Stripe PI', stripePaymentIntentId)}${idLine('Charge', stripeChargeId)}${idLine('Transfer', stripeTransferId)}${idLine('App Fee', stripeApplicationFeeId)}`;
+  return `${idLine('CoGo Tx', platformTxId)}${idLine('Stripe CS', stripeCheckoutSessionId)}${idLine('Stripe PI', stripePaymentIntentId)}${idLine('Charge', stripeChargeId)}${idLine('Transfer', stripeTransferId)}${idLine('App Fee', stripeApplicationFeeId)}`;
 }
 function renderAdminTransactionMoneyFlow(tx={}){
   const line = (label, value, fallback='—') => `<div><span class="muted">${label}:</span> <strong>${value == null || value === '' ? fallback : esc(value)}</strong></div>`;
@@ -16755,6 +16789,26 @@ function isPaidDirectJobPosting(job={}){
   return ['paid','captured','succeeded','complete','completed'].includes(paymentStatus);
 }
 function getSubscriptionTransactionRows(){
+  const backendRows = getTransactions().filter(tx => String(tx.payment_type || '').toLowerCase() === 'direct_job_listing');
+  if (backendRows.length || backendTransactionsLoaded) {
+    return backendRows.map(tx => {
+      const employerId = tx.employer_id || tx.employerId || '';
+      return {
+        employerId,
+        employerName: tx.employerName || tx.employer_name || getUserById(employerId)?.publicName || getUserById(employerId)?.name || 'Employer / Neighbor',
+        jobName: String(tx.job_title || tx.jobTitle || 'Direct Hire Job').replace(/^Job Posting:\s*/i, ''),
+        dateStarted: tx.date_charged || tx.date_paid || tx.created_at || '',
+        expirationDate: tx.expiration_date || tx.expires_at || '',
+        total: Number(tx.total_amount || tx.amount_total || tx.listing_fee || 0),
+        status: tx.status || 'paid',
+        paymentStatus: tx.stripe_payment_status || tx.status || 'paid',
+        cogoId: tx.job_id || tx.direct_job_id || tx.id || tx.transaction_id || '',
+        stripeCheckoutSessionId: tx.stripe_checkout_session_id || '',
+        stripePaymentIntentId: tx.stripe_payment_intent_id || '',
+        stripeChargeId: tx.stripe_charge_id || ''
+      };
+    }).sort((a,b) => new Date(b.dateStarted || 0) - new Date(a.dateStarted || 0));
+  }
   const jobs = getDirectJobs();
   return jobs.filter(isPaidDirectJobPosting).map(job => {
     const employerId = job.employer_id || job.employerId || '';
@@ -16918,7 +16972,34 @@ function renderWorkshopTransactionsResults(){
   const isAdmin = currentUser.role === 'admin';
   const isHost = currentUser.role === 'employer';
   let rows = [];
-  if (isAdmin) {
+  const backendWorkshopRows = getTransactions().filter(tx => String(tx.payment_type || '').toLowerCase().startsWith('workshop'));
+  if (backendWorkshopRows.length || backendTransactionsLoaded) {
+    const visibleBackendRows = backendWorkshopRows.filter(tx => {
+      if (isAdmin) return true;
+      if (isHost) return String(tx.host_id || tx.employer_id || '') === String(currentUser.id);
+      return String(tx.student_id || '') === String(currentUser.id);
+    });
+    rows = visibleBackendRows.map(tx => {
+      const workshop = {
+        id: tx.workshop_id || '',
+        title: String(tx.job_title || 'Workshop').replace(/^Workshop:\s*/i, ''),
+        price: Number(tx.total_amount || tx.amount_total || 0),
+        date_time: tx.date_charged || tx.created_at || '',
+        completed_at: tx.date_paid || tx.date_charged || tx.created_at || ''
+      };
+      return {
+        workshop,
+        participants: 1,
+        participantLinks: [{ userId: tx.student_id || '', name: tx.studentName || tx.student_name || 'Student' }],
+        hostId: tx.host_id || tx.employer_id || '',
+        hostName: tx.hostName || tx.employerName || 'Host',
+        total: Number(tx.total_amount || tx.amount_total || 0),
+        commission: Number(tx.platform_fee_total || tx.cogo_commission || 0),
+        totalEarned: Number(tx.payout_amount || tx.student_payout || 0),
+        totalPaid: Number(tx.total_amount || tx.amount_total || 0)
+      };
+    });
+  } else if (isAdmin) {
     rows = workshops.map(workshop => {
       const activeRegs = registrations.filter(item => item.workshop_id === workshop.id && item.status !== 'refunded');
       const participants = activeRegs.reduce((sum, item) => sum + Math.max(1, Number(item.quantity || 1) || 1), 0);

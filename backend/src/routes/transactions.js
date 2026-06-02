@@ -27,14 +27,16 @@ router.get('/', requireAuth, async (req, res) => {
   const rows = await prisma.transaction.findMany({
     where,
     include: {
-      project: { select: { id: true, jobId: true, status: true, hourlyRate: true, actualHours: true, estimatedHours: true } },
+      payer: { select: { id: true, displayName: true, role: true } },
+      payee: { select: { id: true, displayName: true, role: true } },
+      project: { select: { id: true, jobId: true, status: true, hourlyRate: true, actualHours: true, estimatedHours: true, job: { select: { id: true, title: true } } } },
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
 
   const feeSettings = await getPlatformFeeSettings(prisma);
-  const data = rows.map((tx) => {
+  const projectTransactions = rows.map((tx) => {
     const hours = Number(tx.project?.actualHours || tx.project?.estimatedHours || 0);
     const rate = Number(tx.project?.hourlyRate || 0);
     const workTotal = Number((hours * rate).toFixed(2)) || Math.max(0, Number(tx.amountTotal || 0) - (Number(tx.platformFee || 0) / 2));
@@ -43,9 +45,20 @@ router.get('/', requireAuth, async (req, res) => {
     const storedEmployerPlatformFee = Number.isFinite(Number(tx.amountTotal)) ? money(Number(tx.amountTotal) - workTotal) : currentFees.employerPlatformFee;
     const base = {
       id: tx.id,
+      transaction_id: tx.id,
+      payment_type: 'project_payment',
       project_id: tx.projectId,
+      job_id: tx.project?.jobId || tx.projectId,
+      employer_id: tx.payerId,
+      student_id: tx.payeeId,
+      employerName: tx.payer?.displayName || 'Employer / Neighbor',
+      studentName: tx.payee?.displayName || 'Student',
+      job_title: tx.project?.job?.title || 'Project payment',
       status: tx.status,
       created_at: tx.createdAt,
+      date_charged: tx.createdAt,
+      date_completed: tx.updatedAt,
+      date_paid: tx.status === 'paid' ? tx.updatedAt : null,
       stripe_payment_intent_id: tx.stripePaymentIntentId,
       stripe_charge_id: tx.stripeChargeId,
       stripe_transfer_id: tx.stripeTransferId,
@@ -54,7 +67,12 @@ router.get('/', requireAuth, async (req, res) => {
       transfer_status: tx.transferStatus,
       payout_status: tx.payoutStatus,
       project: tx.project,
+      hourly_rate: rate,
+      hours_worked: hours,
       work_total: workTotal,
+      total_amount: Number(tx.amountTotal),
+      amount_total: Number(tx.amountTotal),
+      payout_amount: Number(tx.studentPayout),
       student_platform_fee: storedStudentPlatformFee,
       employer_platform_fee: storedEmployerPlatformFee,
       platform_fee_total: Number(tx.platformFee),
@@ -90,6 +108,103 @@ router.get('/', requireAuth, async (req, res) => {
       payee_id: tx.payeeId,
     };
   });
+
+  const paidJobStatuses = ['paid', 'captured', 'succeeded', 'complete', 'completed'];
+  const jobWhere = {
+    deletedAt: null,
+    OR: paidJobStatuses.map((status) => ({ paymentStatus: status })),
+  };
+  if (req.user.role !== 'admin') jobWhere.createdBy = req.user.id;
+  const jobs = ['admin', 'employer', 'neighbor'].includes(req.user.role)
+    ? await prisma.job.findMany({
+        where: jobWhere,
+        include: { creator: { select: { id: true, displayName: true, role: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })
+    : [];
+  const jobListingTransactions = jobs.map((job) => ({
+    id: `job:${job.id}`,
+    transaction_id: `job:${job.id}`,
+    payment_type: 'direct_job_listing',
+    job_id: job.id,
+    direct_job_id: job.id,
+    employer_id: job.createdBy,
+    employerName: job.creator?.displayName || 'Employer / Neighbor',
+    job_title: `Job Posting: ${job.title}`,
+    status: job.paymentStatus || 'paid',
+    created_at: job.createdAt,
+    date_charged: job.paidAt || job.updatedAt || job.createdAt,
+    date_paid: job.paidAt || job.updatedAt || job.createdAt,
+    total_amount: Number(job.postingFee || 0),
+    amount_total: Number(job.postingFee || 0),
+    listing_fee: Number(job.postingFee || 0),
+    platform_fee: 0,
+    platform_fee_total: 0,
+    payout_amount: 0,
+    stripe_checkout_session_id: job.stripeCheckoutSessionId || '',
+    stripe_payment_intent_id: job.stripePaymentIntentId || '',
+    stripe_charge_id: job.stripeChargeId || '',
+    stripe_payment_status: job.stripePaymentStatus || '',
+  }));
+
+  const enrollmentWhere = {
+    paymentStatus: 'paid',
+  };
+  if (req.user.role === 'student') {
+    enrollmentWhere.userId = req.user.id;
+  } else if (req.user.role !== 'admin') {
+    enrollmentWhere.workshop = { createdBy: req.user.id };
+  }
+  const workshopEnrollments = await prisma.workshopEnrollment.findMany({
+    where: enrollmentWhere,
+    include: {
+      user: { select: { id: true, displayName: true, role: true } },
+      workshop: { select: { id: true, title: true, price: true, startDate: true, createdBy: true, creator: { select: { id: true, displayName: true, role: true } } } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+  });
+  const workshopTransactions = workshopEnrollments.map((enrollment) => {
+    const price = Number(enrollment.workshop?.price || 0);
+    const platformFee = money(price * 0.3);
+    const hostPayout = money(price - platformFee);
+    return {
+      id: `workshop:${enrollment.id}`,
+      transaction_id: `workshop:${enrollment.id}`,
+      payment_type: 'workshop_registration',
+      workshop_id: enrollment.workshopId,
+      workshop_enrollment_id: enrollment.id,
+      student_id: enrollment.userId,
+      studentName: enrollment.user?.displayName || 'Student',
+      host_id: enrollment.workshop?.createdBy || '',
+      employer_id: enrollment.workshop?.createdBy || '',
+      hostName: enrollment.workshop?.creator?.displayName || 'Host',
+      employerName: enrollment.workshop?.creator?.displayName || 'Host',
+      job_title: `Workshop: ${enrollment.workshop?.title || 'Workshop'}`,
+      status: enrollment.paymentStatus,
+      created_at: enrollment.createdAt,
+      date_charged: enrollment.paidAt || enrollment.createdAt,
+      date_paid: enrollment.paidAt || enrollment.createdAt,
+      total_amount: price,
+      amount_total: price,
+      work_total: price,
+      platform_fee: platformFee,
+      platform_fee_total: platformFee,
+      cogo_commission: platformFee,
+      payout_amount: hostPayout,
+      student_payout: hostPayout,
+      stripe_checkout_session_id: enrollment.stripeCheckoutSessionId || '',
+      stripe_payment_intent_id: enrollment.stripePaymentIntentId || '',
+      stripe_charge_id: enrollment.stripeChargeId || '',
+      stripe_payment_status: enrollment.stripePaymentStatus || '',
+    };
+  });
+
+  const data = projectTransactions
+    .concat(jobListingTransactions, workshopTransactions)
+    .sort((a, b) => new Date(b.date_paid || b.date_charged || b.created_at || 0) - new Date(a.date_paid || a.date_charged || a.created_at || 0))
+    .slice(0, 500);
 
   return ok(res, data);
 });
