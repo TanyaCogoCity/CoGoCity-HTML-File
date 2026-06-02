@@ -228,6 +228,35 @@ async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
   return mirrored;
 }
 
+function countableApplicationStatus(value = '') {
+  return ['pending', 'applied', 'offer_sent', 'offer_pending'].includes(String(value || '').toLowerCase());
+}
+
+async function refreshCommunityPostApplicationCounts(postIds = []) {
+  const ids = [...new Set(postIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return 0;
+  const rows = await prisma.syncRecord.findMany({
+    where: { entity: 'applications', deletedAt: null },
+    select: { payload: true },
+  });
+  const counts = rows.reduce((map, row) => {
+    const payload = row.payload || {};
+    const postId = String(payload.postId || payload.post_id || '').trim();
+    if (!ids.includes(postId) || !countableApplicationStatus(payload.status || 'pending')) return map;
+    map.set(postId, (map.get(postId) || 0) + 1);
+    return map;
+  }, new Map());
+  let updatedCount = 0;
+  for (const postId of ids) {
+    const post = await prisma.communityPost.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) continue;
+    const payload = { ...(post.payload || {}), application_count: counts.get(postId) || 0 };
+    await prisma.communityPost.update({ where: { id: postId }, data: { payload } });
+    updatedCount += 1;
+  }
+  return updatedCount;
+}
+
 function requireReadAccess(req, res, next) {
   const entity = validateEntity(req.params.entity);
   if (!entity) return fail(res, 404, 'Unknown sync entity');
@@ -285,16 +314,19 @@ router.post('/:entity', requireAuth, async (req, res) => {
     }
     await prisma.$transaction(operations);
     const mirrored = entity === 'workshops' ? await mirrorWorkshopRecordsToCoreTable(normalized, req) : [];
+    const applicationCountUpdates = entity === 'applications'
+      ? await refreshCommunityPostApplicationCounts(normalized.map((record) => record.payload?.postId || record.payload?.post_id))
+      : 0;
 
     await writeAuditLog({
       userId: req.user.id,
       action: `sync.${entity}`,
       entityType: 'sync_record',
       entityId: entity,
-      payload: { count: normalized.length, mirrored_count: mirrored.length },
+      payload: { count: normalized.length, mirrored_count: mirrored.length, application_count_updates: applicationCountUpdates },
     });
 
-    return ok(res, { entity, count: normalized.length, mirrored });
+    return ok(res, { entity, count: normalized.length, mirrored, application_count_updates: applicationCountUpdates });
   } catch (error) {
     return fail(res, 400, 'Could not sync records', error.message);
   }

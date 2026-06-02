@@ -38,6 +38,26 @@ function serializeCommunityPost(row) {
   };
 }
 
+function countableApplicationStatus(value = '') {
+  return ['pending', 'applied', 'offer_sent', 'offer_pending'].includes(String(value || '').toLowerCase());
+}
+
+async function applicationCountsForPosts(postIds = []) {
+  const ids = [...new Set(postIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const rows = await prisma.syncRecord.findMany({
+    where: { entity: 'applications', deletedAt: null },
+    select: { payload: true },
+  });
+  return rows.reduce((map, row) => {
+    const payload = row.payload || {};
+    const postId = String(payload.postId || payload.post_id || '').trim();
+    if (!ids.includes(postId) || !countableApplicationStatus(payload.status || 'pending')) return map;
+    map.set(postId, (map.get(postId) || 0) + 1);
+    return map;
+  }, new Map());
+}
+
 router.get('/community-posts', async (_req, res) => {
   try {
     const rows = await prisma.communityPost.findMany({
@@ -45,7 +65,17 @@ router.get('/community-posts', async (_req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 250,
     });
-    res.json({ ok: true, data: { posts: rows.map(serializeCommunityPost) } });
+    const counts = await applicationCountsForPosts(rows.map((row) => row.id));
+    res.json({
+      ok: true,
+      data: {
+        posts: rows.map((row) => {
+          const post = serializeCommunityPost(row);
+          if (post.isJob) post.application_count = counts.get(row.id) || 0;
+          return post;
+        }),
+      },
+    });
   } catch (error) {
     return fail(res, 500, 'Could not load community posts', error.message);
   }
