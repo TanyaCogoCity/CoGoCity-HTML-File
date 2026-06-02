@@ -3453,7 +3453,15 @@ function getNotifications(id){ return ls('cogo_notifs_' + id) || []; }
 function saveNotifications(id, data){
   const payload = ensureArray(data);
   ls('cogo_notifs_' + id, payload);
-  syncEntityToBackend('notifications', [{ user_id: id, items: payload }]);
+}
+function syncNotificationEmail(userId, item){
+  if (backendAuthEnabled() && getBackendAccessToken() && isBackendUuid(userId)) {
+    backendAuthRequest('/notifications/sync', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, items: [item] }),
+      retryOnAuthFailure: false
+    }).catch(error => console.warn('Backend notification email sync failed', error));
+  }
 }
 function getPaymentLogs(){
   ensureBackendArraySettingLoaded('payment_logs', 'cogo_payment_logs');
@@ -4617,8 +4625,10 @@ function pushNotif(userId, title, action=''){
     : '/dashboard?section=notifications';
   const dedupeKey = action && typeof action === 'object' ? String(action.dedupeKey || '').trim() : '';
   if (dedupeKey && items.some(item => item && item.dedupeKey === dedupeKey)) return;
-  items.unshift({ id: uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() });
+  const item = { id: uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() };
+  items.unshift(item);
   saveNotifications(userId, items.slice(0, 50));
+  syncNotificationEmail(userId, item);
 }
 function currentUserRoleLabel(){
   if (!currentUser) return '';
