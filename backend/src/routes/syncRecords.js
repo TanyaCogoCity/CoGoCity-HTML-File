@@ -1,11 +1,14 @@
 const express = require('express');
+const Stripe = require('stripe');
 
 const { prisma } = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
 const { ok, fail } = require('../lib/http');
 const { writeAuditLog } = require('../lib/audit');
+const config = require('../config');
 
 const router = express.Router();
+const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 
 const ALLOWED_ENTITIES = new Set([
   'users',
@@ -87,6 +90,36 @@ function serialize(row) {
   };
 }
 
+function stripeSearchValue(value = '') {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function workshopQuantityFromPaymentIntent(paymentIntent, ticketPrice = 0) {
+  const metadataQuantity = Math.max(0, Number(paymentIntent?.metadata?.quantity || 0) || 0);
+  const paidAmount = Number(paymentIntent?.amount_received || paymentIntent?.amount || 0) / 100;
+  const price = Number(ticketPrice || 0);
+  const amountQuantity = price > 0 ? Math.max(0, Math.round(paidAmount / price)) : 0;
+  return Math.max(1, metadataQuantity, amountQuantity);
+}
+
+async function stripeWorkshopPaidCount(workshopId = '', ticketPrice = 0) {
+  if (!stripe || !workshopId) return 0;
+  try {
+    const result = await stripe.paymentIntents.search({
+      query: [
+        "metadata['type']:'workshop'",
+        `metadata['workshop_id']:'${stripeSearchValue(workshopId)}'`,
+        "status:'succeeded'",
+      ].join(' AND '),
+      limit: 100,
+    });
+    return (result.data || []).reduce((sum, paymentIntent) => sum + workshopQuantityFromPaymentIntent(paymentIntent, ticketPrice), 0);
+  } catch (error) {
+    console.warn('Could not load Stripe workshop seat count', error.message);
+    return 0;
+  }
+}
+
 async function serializeWorkshopRows(rows = []) {
   const backendWorkshopIds = rows
     .map((row) => row.payload?.backend_workshop_id || row.payload?.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : ''))
@@ -101,10 +134,18 @@ async function serializeWorkshopRows(rows = []) {
     map.set(enrollment.workshopId, (map.get(enrollment.workshopId) || 0) + Math.max(1, Number(enrollment.quantity || 1) || 1));
     return map;
   }, new Map());
+  const stripeCounts = new Map();
+  await Promise.all(rows.map(async (row) => {
+    const payload = row.payload || {};
+    const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : '');
+    if (!backendWorkshopId) return;
+    const stripeCount = await stripeWorkshopPaidCount(backendWorkshopId, Number(payload.price || 0));
+    if (stripeCount) stripeCounts.set(backendWorkshopId, stripeCount);
+  }));
   return rows.map((row) => {
     const payload = row.payload || {};
     const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : '');
-    const registeredCount = counts.get(backendWorkshopId) || 0;
+    const registeredCount = Math.max(counts.get(backendWorkshopId) || 0, stripeCounts.get(backendWorkshopId) || 0);
     const capacity = payload.capacity == null || payload.capacity === '' ? null : Number(payload.capacity);
     return {
       ...serialize(row),

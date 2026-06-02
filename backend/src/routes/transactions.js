@@ -1,8 +1,12 @@
 const express = require('express');
+const Stripe = require('stripe');
 const { prisma } = require('../lib/prisma');
 const { ok } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
+const config = require('../config');
 const { calculateHourlyProjectFees, getPlatformFeeSettings } = require('../lib/platformFees');
+
+const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 
 function money(value) {
   return Number((Number(value || 0) || 0).toFixed(2));
@@ -19,6 +23,84 @@ function userDisplayName(user, fallback = '') {
   if (!user) return fallback;
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
   return user.displayName || fullName || fallback;
+}
+
+function stripeSearchValue(value = '') {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function stripeWorkshopPaymentIntents(workshopId = '', userId = '') {
+  if (!stripe || !workshopId || !userId) return [];
+  try {
+    const query = [
+      "metadata['type']:'workshop'",
+      `metadata['workshop_id']:'${stripeSearchValue(workshopId)}'`,
+      `metadata['user_id']:'${stripeSearchValue(userId)}'`,
+      "status:'succeeded'",
+    ].join(' AND ');
+    const result = await stripe.paymentIntents.search({ query, limit: 100 });
+    return result.data || [];
+  } catch (error) {
+    console.warn('Could not load Stripe workshop payments', error.message);
+    return [];
+  }
+}
+
+function workshopQuantityFromPaymentIntent(paymentIntent, ticketPrice = 0) {
+  const metadataQuantity = Math.max(0, Number(paymentIntent?.metadata?.quantity || 0) || 0);
+  const paidAmount = money(Number(paymentIntent?.amount_received || paymentIntent?.amount || 0) / 100);
+  const price = Number(ticketPrice || 0);
+  const amountQuantity = price > 0 ? Math.max(0, Math.round(paidAmount / price)) : 0;
+  return Math.max(1, metadataQuantity, amountQuantity);
+}
+
+async function workshopTransactionRowsForEnrollment(enrollment) {
+  const price = Number(enrollment.workshop?.price || 0);
+  const paymentIntents = await stripeWorkshopPaymentIntents(enrollment.workshopId, enrollment.userId);
+  if (!paymentIntents.length) return [];
+  return paymentIntents.map((paymentIntent) => {
+    const quantity = workshopQuantityFromPaymentIntent(paymentIntent, price);
+    const total = money(Number(paymentIntent.amount_received || paymentIntent.amount || 0) / 100 || (price * quantity));
+    const platformFee = money(total * 0.3);
+    const hostPayout = money(total - platformFee);
+    const createdAt = paymentIntent.created ? new Date(paymentIntent.created * 1000) : (enrollment.paidAt || enrollment.createdAt);
+    const chargeId = typeof paymentIntent.latest_charge === 'string'
+      ? paymentIntent.latest_charge
+      : (paymentIntent.latest_charge?.id || enrollment.stripeChargeId || '');
+    return {
+      id: `workshop:${paymentIntent.id}`,
+      transaction_id: `workshop:${paymentIntent.id}`,
+      payment_type: 'workshop_registration',
+      workshop_id: enrollment.workshopId,
+      workshop_enrollment_id: enrollment.id,
+      student_id: enrollment.userId,
+      studentName: userDisplayName(enrollment.user, 'Student'),
+      quantity,
+      participants: quantity,
+      number_of_participants: quantity,
+      host_id: enrollment.workshop?.createdBy || '',
+      employer_id: enrollment.workshop?.createdBy || '',
+      hostName: userDisplayName(enrollment.workshop?.creator, 'Host'),
+      employerName: userDisplayName(enrollment.workshop?.creator, 'Host'),
+      job_title: `Workshop: ${enrollment.workshop?.title || 'Workshop'}`,
+      status: 'paid',
+      created_at: createdAt,
+      date_charged: createdAt,
+      date_paid: createdAt,
+      total_amount: total,
+      amount_total: total,
+      work_total: total,
+      platform_fee: platformFee,
+      platform_fee_total: platformFee,
+      cogo_commission: platformFee,
+      payout_amount: hostPayout,
+      student_payout: hostPayout,
+      stripe_checkout_session_id: enrollment.stripeCheckoutSessionId || '',
+      stripe_payment_intent_id: paymentIntent.id || '',
+      stripe_charge_id: chargeId,
+      stripe_payment_status: paymentIntent.status || enrollment.stripePaymentStatus || '',
+    };
+  });
 }
 
 function firstValue(...values) {
@@ -262,13 +344,15 @@ router.get('/', requireAuth, async (req, res) => {
     orderBy: { createdAt: 'desc' },
     take: 500,
   });
-  const workshopTransactions = workshopEnrollments.map((enrollment) => {
+  const workshopTransactions = (await Promise.all(workshopEnrollments.map(async (enrollment) => {
+    const stripeRows = await workshopTransactionRowsForEnrollment(enrollment);
+    if (stripeRows.length) return stripeRows;
     const price = Number(enrollment.workshop?.price || 0);
     const quantity = Math.max(1, Number(enrollment.quantity || 1) || 1);
     const total = money(enrollment.totalAmount || (price * quantity));
     const platformFee = money(enrollment.platformFee || (total * 0.3));
     const hostPayout = money(enrollment.hostPayout || (total - platformFee));
-    return {
+    return [{
       id: `workshop:${enrollment.id}`,
       transaction_id: `workshop:${enrollment.id}`,
       payment_type: 'workshop_registration',
@@ -300,8 +384,8 @@ router.get('/', requireAuth, async (req, res) => {
       stripe_payment_intent_id: enrollment.stripePaymentIntentId || '',
       stripe_charge_id: enrollment.stripeChargeId || '',
       stripe_payment_status: enrollment.stripePaymentStatus || '',
-    };
-  });
+    }];
+  }))).flat();
 
   const manualSyncRows = await prisma.syncRecord.findMany({
     where: { entity: 'transactions', deletedAt: null },
