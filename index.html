@@ -8011,7 +8011,10 @@ function normalizeWorkshopRecord(workshop){
     created_at: new Date().toISOString(),
     completed_at: '',
     payout_due_at: '',
-    payout_processed: false
+    payout_processed: false,
+    backend_workshop_id: '',
+    registered_count: 0,
+    spots_left: null
   }, workshop || {});
   normalized.host_id = normalized.host_id || normalized.hostId || normalized.createdBy || normalized.user_id || '';
   normalized.date_time = normalized.date_time || normalized.dateTime || normalized.starts_at || normalized.start_time || '';
@@ -8020,11 +8023,16 @@ function normalizeWorkshopRecord(workshop){
   normalized.created_at = normalized.created_at || normalized.createdAt || '';
   normalized.completed_at = normalized.completed_at || normalized.completedAt || '';
   normalized.payout_due_at = normalized.payout_due_at || normalized.payoutDueAt || '';
+  normalized.backend_workshop_id = normalized.backend_workshop_id || normalized.backendWorkshopId || '';
+  normalized.registered_count = Number(normalized.registered_count ?? normalized.registeredCount ?? 0) || 0;
+  const rawSpotsLeft = normalized.spots_left ?? normalized.spotsLeft;
+  normalized.spots_left = rawSpotsLeft === null || rawSpotsLeft === undefined || rawSpotsLeft === '' ? null : Number(rawSpotsLeft);
   if ((normalized.capacity === undefined || normalized.capacity === null || normalized.capacity === '') && normalized.seats !== undefined) normalized.capacity = normalized.seats;
   normalized.id = String(normalized.id || uid('ws'));
   normalized.title = String(normalized.title || '').trim();
   normalized.description = String(normalized.description || '').trim();
   normalized.host_id = String(normalized.host_id || '').trim();
+  normalized.backend_workshop_id = String(normalized.backend_workshop_id || '').trim();
   normalized.date_time = normalized.date_time ? new Date(normalized.date_time).toISOString() : '';
   normalized.duration = String(normalized.duration || '').trim();
   normalized.format = normalized.format === 'online' ? 'online' : 'in_person';
@@ -8180,6 +8188,14 @@ function saveWorkshopRegistrations(items){
   syncEntityToBackend('workshop_registrations', payload);
 }
 function getWorkshopById(workshopId=''){ return getWorkshops().find(workshop => String(workshop.id) === String(workshopId)); }
+function getWorkshopIdentityIds(workshopOrId=''){
+  const workshop = typeof workshopOrId === 'object' && workshopOrId ? workshopOrId : getWorkshopById(workshopOrId);
+  return new Set([
+    typeof workshopOrId === 'object' ? '' : String(workshopOrId || ''),
+    String(workshop?.id || ''),
+    String(workshop?.backend_workshop_id || workshop?.backendWorkshopId || '')
+  ].filter(Boolean));
+}
 function getWorkshopHostName(workshop){
   const host = getUserById(workshop && workshop.host_id);
   if (!host) return 'CoGo Host';
@@ -8189,14 +8205,15 @@ function getWorkshopHostName(workshop){
   return `${first} ${lastInitial}.`;
 }
 function getWorkshopRegistrationsFor(workshopId=''){
-  const id = String(workshopId || '').trim();
+  const ids = getWorkshopIdentityIds(workshopId);
   return getWorkshopRegistrations().filter(item => {
     const rowWorkshopId = String(item.workshop_id || item.workshopId || '').trim();
-    return rowWorkshopId === id;
+    return ids.has(rowWorkshopId);
   });
 }
 function getWorkshopRegisteredCount(workshopId=''){
-  return getWorkshopRegistrationsFor(workshopId)
+  const workshop = getWorkshopById(workshopId);
+  const localCount = getWorkshopRegistrationsFor(workshopId)
     .filter(item => {
       const status = String(item.status || '').toLowerCase();
       return ['registered','attended','paid','confirmed'].includes(status);
@@ -8205,10 +8222,14 @@ function getWorkshopRegisteredCount(workshopId=''){
       const qtyRaw = item.quantity !== undefined ? item.quantity : item.tickets;
       return sum + Math.max(1, Number(qtyRaw || 1) || 1);
     }, 0);
+  const backendCount = Number(workshop?.registered_count ?? workshop?.registeredCount ?? 0) || 0;
+  return Math.max(localCount, backendCount);
 }
 function getWorkshopSpotsLeft(workshop){
   if (!workshop || workshop.capacity === '' || Number(workshop.capacity || 0) <= 0) return null;
-  return Math.max(0, Number(workshop.capacity || 0) - getWorkshopRegisteredCount(workshop.id));
+  const computed = Math.max(0, Number(workshop.capacity || 0) - getWorkshopRegisteredCount(workshop.id));
+  const backendSpotsLeft = workshop.spots_left ?? workshop.spotsLeft;
+  return backendSpotsLeft === null || backendSpotsLeft === undefined ? computed : Math.min(computed, Math.max(0, Number(backendSpotsLeft || 0)));
 }
 function formatWorkshopDateTime(value=''){
   if (!value) return 'Date TBD';

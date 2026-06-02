@@ -87,6 +87,34 @@ function serialize(row) {
   };
 }
 
+async function serializeWorkshopRows(rows = []) {
+  const backendWorkshopIds = rows
+    .map((row) => row.payload?.backend_workshop_id || row.payload?.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : ''))
+    .filter(Boolean);
+  const enrollments = backendWorkshopIds.length
+    ? await prisma.workshopEnrollment.findMany({
+        where: { workshopId: { in: backendWorkshopIds }, paymentStatus: 'paid' },
+        select: { workshopId: true, quantity: true },
+      })
+    : [];
+  const counts = enrollments.reduce((map, enrollment) => {
+    map.set(enrollment.workshopId, (map.get(enrollment.workshopId) || 0) + Math.max(1, Number(enrollment.quantity || 1) || 1));
+    return map;
+  }, new Map());
+  return rows.map((row) => {
+    const payload = row.payload || {};
+    const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : '');
+    const registeredCount = counts.get(backendWorkshopId) || 0;
+    const capacity = payload.capacity == null || payload.capacity === '' ? null : Number(payload.capacity);
+    return {
+      ...serialize(row),
+      registered_count: registeredCount,
+      registeredCount,
+      spots_left: capacity && capacity > 0 ? Math.max(0, capacity - registeredCount) : null,
+    };
+  });
+}
+
 function isUuid(value = '') {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
@@ -175,7 +203,8 @@ router.get('/:entity', requireReadAccess, async (req, res) => {
       orderBy: { updatedAt: 'desc' },
       take: Math.min(Number(req.query.limit || 500) || 500, 1000),
     });
-    return ok(res, { entity, records: rows.map(serialize) });
+    const records = entity === 'workshops' ? await serializeWorkshopRows(rows) : rows.map(serialize);
+    return ok(res, { entity, records });
   } catch (error) {
     return fail(res, 500, 'Could not load synced records', error.message);
   }
