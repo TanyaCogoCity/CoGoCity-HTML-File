@@ -1036,6 +1036,7 @@ function ensureBackendPersistentStateLoaded(options={}){
   ensureBackendSingletonSettingLoaded('site_settings', 'cogo_site_settings', options);
   ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages', options);
   if (!currentUser || !getBackendAccessToken()) return;
+  ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', options);
   const route = typeof getRoute === 'function' ? getRoute() : '';
   const shouldLoadAdminSync = currentUser.role === 'admin' && route === '#/dashboard';
   if (!shouldLoadAdminSync) return;
@@ -1043,7 +1044,6 @@ function ensureBackendPersistentStateLoaded(options={}){
   ensureBackendArraySettingLoaded('bookings', 'cogo_bookings', options);
   ensureBackendArraySettingLoaded('payment_logs', 'cogo_payment_logs', options);
   ensureBackendSingletonSettingLoaded('finance', 'cogo_finance', options);
-  ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', options);
   ensureBackendArraySettingLoaded('admin_action_log', 'cogo_admin_action_log', options);
   ensureBackendArraySettingLoaded('email_queue', 'cogo_email_queue', options);
 }
@@ -1258,6 +1258,13 @@ async function createBackendWorkshopCheckoutSession(workshopId, options={}){
   return backendAuthRequest('/stripe/create-workshop-checkout-session', {
     method:'POST',
     body: JSON.stringify(Object.assign({ workshop_id: workshopId }, options || {}))
+  });
+}
+async function verifyBackendWorkshopCheckoutSession(workshopId='', checkoutSessionId=''){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || (!workshopId && !checkoutSessionId)) return null;
+  return backendAuthRequest('/stripe/verify-workshop-checkout-session', {
+    method:'POST',
+    body: JSON.stringify({ workshop_id: workshopId, checkout_session_id: checkoutSessionId })
   });
 }
 async function createBackendJobCheckoutSession(jobId){
@@ -1641,6 +1648,40 @@ function handleStripeReturnParams(){
   } else if (query.has('stripe_status') && (query.has('stripe_job') || query.has('stripe_session'))) {
     query.delete('stripe_job');
     query.delete('stripe_session');
+    query.delete('stripe_status');
+    changed = true;
+  }
+  if (query.get('stripe_status') === 'success' && (query.has('stripe_workshop') || query.has('workshop_id'))) {
+    const workshopId = query.get('stripe_workshop') || query.get('workshop_id') || '';
+    const sessionId = query.get('stripe_session') || query.get('session_id') || '';
+    verifyBackendWorkshopCheckoutSession(workshopId, sessionId).then(async () => {
+      await loadBackendArraySetting('workshop_registrations', 'cogo_workshop_registrations', { rerender:false });
+      await loadBackendWorkshops({ force:true, rerender:false });
+      toast('Payment verified. Workshop registration confirmed.');
+      workshopsDashboardTab = 'my_registrations';
+      dashSection = 'workshops';
+      if (getRoute() !== '#/dashboard') location.hash = '#/dashboard';
+      renderPage();
+    }).catch(async error => {
+      console.warn('Workshop checkout verification failed', error);
+      await loadBackendArraySetting('workshop_registrations', 'cogo_workshop_registrations', { rerender:false });
+      await loadBackendWorkshops({ force:true, rerender:false });
+      toast(error.message || 'Payment is processing. Refreshing registrations now.');
+      workshopsDashboardTab = 'my_registrations';
+      dashSection = 'workshops';
+      renderPage();
+    });
+    query.delete('stripe_workshop');
+    query.delete('workshop_id');
+    query.delete('stripe_session');
+    query.delete('session_id');
+    query.delete('stripe_status');
+    changed = true;
+  } else if (query.has('stripe_status') && (query.has('stripe_workshop') || query.has('workshop_id') || query.has('stripe_session') || query.has('session_id'))) {
+    query.delete('stripe_workshop');
+    query.delete('workshop_id');
+    query.delete('stripe_session');
+    query.delete('session_id');
     query.delete('stripe_status');
     changed = true;
   }
@@ -7852,6 +7893,14 @@ function normalizeWorkshopRecord(workshop){
     payout_due_at: '',
     payout_processed: false
   }, workshop || {});
+  normalized.host_id = normalized.host_id || normalized.hostId || normalized.createdBy || normalized.user_id || '';
+  normalized.date_time = normalized.date_time || normalized.dateTime || normalized.starts_at || normalized.start_time || '';
+  normalized.online_url = normalized.online_url || normalized.onlineUrl || '';
+  normalized.video_url = normalized.video_url || normalized.videoUrl || '';
+  normalized.created_at = normalized.created_at || normalized.createdAt || '';
+  normalized.completed_at = normalized.completed_at || normalized.completedAt || '';
+  normalized.payout_due_at = normalized.payout_due_at || normalized.payoutDueAt || '';
+  if ((normalized.capacity === undefined || normalized.capacity === null || normalized.capacity === '') && normalized.seats !== undefined) normalized.capacity = normalized.seats;
   normalized.id = String(normalized.id || uid('ws'));
   normalized.title = String(normalized.title || '').trim();
   normalized.description = String(normalized.description || '').trim();
@@ -7916,6 +7965,7 @@ function mergeWorkshops(localWorkshops=[], backendWorkshops=[]){
 }
 async function loadBackendWorkshops(options={}){
   if (!BACKEND_MIGRATION.enabled || backendWorkshopsLoading) return getWorkshops();
+  if (backendWorkshopsLoaded && !options.force) return getWorkshops();
   backendWorkshopsLoading = true;
   try {
     const result = await backendRequest('/sync/workshops', { method:'GET' });
@@ -8121,6 +8171,7 @@ function renderWorkshopCard(workshop){
   `;
 }
 function renderWorkshopsPage(){
+  if (currentUser && getBackendAccessToken()) ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', { rerender:true });
   ensureBackendWorkshopsLoaded({ rerender:true });
   const route = getRoute();
   const detailMatch = route.match(/^#\/workshops\/([^?#]+)/);
@@ -8140,6 +8191,7 @@ function renderWorkshopsPage(){
   `;
 }
 function renderWorkshopDetailPage(workshopId=''){
+  if (currentUser && getBackendAccessToken()) ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', { rerender:true });
   const workshop = getWorkshopById(workshopId);
   if (!workshop) {
     document.getElementById('app').innerHTML = `
@@ -8334,6 +8386,8 @@ async function completeWorkshopRegistration(workshopId=''){
     try {
       const session = await createBackendWorkshopCheckoutSession(workshop.id, { quantity, attendee_name: attendeeName, attendee_email: attendeeEmail });
       if (session && (session.free || session.already_paid)) {
+        await loadBackendArraySetting('workshop_registrations', 'cogo_workshop_registrations', { rerender:false });
+        await loadBackendWorkshops({ force:true, rerender:false });
         toast(session.already_paid ? 'You are already registered for this workshop.' : 'Registration confirmed. No payment was required.');
         closeModal();
         renderPage();
@@ -8656,6 +8710,7 @@ function addWorkshopToCalendar(workshopId=''){
   toast('Calendar file downloaded.');
 }
 function renderWorkshopsDashboardSection(el){
+  if (currentUser && getBackendAccessToken()) ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', { rerender:true });
   const workshops = getWorkshops();
   const registrations = getWorkshopRegistrations();
   const myWorkshops = workshops.filter(item => item.host_id === currentUser.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
@@ -8797,11 +8852,15 @@ function openWorkshopEditor(workshopId=''){
   if (!currentUser || currentUser.role === 'admin') return toast('Only host accounts can create workshops.');
   if (workshopId !== '__current__' || !workshopDraft) {
     if (!workshopId) {
-      const cached = ls(getWorkshopDraftCacheKey());
-      const canReuseCachedDraft = !!(cached && String(cached.host_id || '') === String(currentUser.id || '') && String(cached.status || '') === 'draft');
-      workshopDraft = canReuseCachedDraft ? normalizeWorkshopRecord(cached) : createWorkshopDraft(workshopId);
+      clearWorkshopEditorCache();
+      workshopDraft = createWorkshopDraft();
+      workshopDraft.host_id = currentUser.id;
     } else {
       workshopDraft = createWorkshopDraft(workshopId);
+      if (String(workshopDraft.host_id || '') !== String(currentUser.id || '')) {
+        workshopDraft = null;
+        return toast('Only the workshop owner can edit this workshop.');
+      }
     }
   }
   const coverViews = getImageViews(workshopDraft.images || [], 'thumb');
@@ -8873,8 +8932,15 @@ async function persistWorkshopDraft(mode='draft'){
   if (workshopDraft.format === 'in_person' && toastRequiredFields({ Location:workshopDraft.location }, 'In-person workshop')) return;
   if (workshopDraft.format === 'online' && toastRequiredFields({ 'Online link':workshopDraft.online_url }, 'Online workshop')) return;
   if (isPublish && !(workshopDraft.images || []).length) return toast('Please add at least one image before publishing.');
-  workshopDraft.host_id = workshopDraft.host_id || currentUser.id;
+  const existingWorkshop = getWorkshopById(workshopDraft.id);
+  if (existingWorkshop && String(existingWorkshop.host_id || '') !== String(currentUser.id || '')) {
+    toast('Only the workshop owner can save this workshop.');
+    return;
+  }
+  workshopDraft.host_id = currentUser.id;
   workshopDraft.status = isPublish ? 'active' : 'draft';
+  workshopDraft.updatedAt = new Date().toISOString();
+  if (BACKEND_MIGRATION.enabled) await loadBackendWorkshops({ force:true });
   const workshops = getWorkshops();
   const index = workshops.findIndex(item => item.id === workshopDraft.id);
   const mergedRecord = normalizeWorkshopRecord(Object.assign({}, index >= 0 ? workshops[index] : {}, workshopDraft));
@@ -8886,8 +8952,10 @@ async function persistWorkshopDraft(mode='draft'){
       toast('Backend workshop save failed. Please try again so this workshop is saved permanently.');
       return;
     }
+    ls('cogo_workshops', workshops.map(normalizeWorkshopRecord));
+  } else {
+    saveWorkshops(workshops);
   }
-  saveWorkshops(workshops);
   clearWorkshopEditorCache();
   closeModal();
   workshopDraft = null;
