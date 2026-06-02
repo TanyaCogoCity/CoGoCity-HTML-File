@@ -3775,8 +3775,39 @@ function parseLinksTextarea(value=''){
 function renderLinksTextarea(links=[]){
   return ensureArray(links).map(link => `${link.label} | ${link.href}`).join('\n');
 }
-function getBackendTransactions(){ return ensureArray(ls('cogo_backend_transactions')); }
-function saveBackendTransactions(rows){ ls('cogo_backend_transactions', ensureArray(rows)); }
+function normalizeTransactionRecord(tx={}){
+  const normalized = Object.assign({}, tx || {});
+  const project = normalized.project || {};
+  const job = normalized.job || project.job || {};
+  const firstValue = (...values) => values.find(value => value !== undefined && value !== null && value !== '');
+  normalized.id = firstValue(normalized.id, normalized.transaction_id, normalized.record_id, normalized.stripe_payment_intent_id, uid('tx'));
+  normalized.transaction_id = firstValue(normalized.transaction_id, normalized.id);
+  normalized.project_id = firstValue(normalized.project_id, normalized.projectId, project.id, normalized.job_id);
+  normalized.job_id = firstValue(normalized.job_id, normalized.jobId, normalized.direct_job_id, project.job_id, project.jobId, job.id);
+  normalized.student_id = firstValue(normalized.student_id, normalized.studentId, normalized.student_user_id, normalized.studentUserId, normalized.payee_id, project.student_id, project.studentId);
+  normalized.employer_id = firstValue(normalized.employer_id, normalized.employerId, normalized.neighbor_id, normalized.neighborId, normalized.payer_id, project.employer_id, project.employerId, job.employer_id, job.employerId, job.created_by, job.createdBy);
+  normalized.studentName = firstValue(normalized.studentName, normalized.student_name, normalized.payee_name, normalized.payeeName, project.studentName, project.student_name);
+  normalized.employerName = firstValue(normalized.employerName, normalized.employer_name, normalized.neighborName, normalized.neighbor_name, normalized.payer_name, normalized.payerName, job.employer_name, job.employerName, job.company_name, job.companyName);
+  normalized.job_title = firstValue(normalized.job_title, normalized.jobTitle, normalized.title, project.jobTitle, project.title, job.job_title, job.jobTitle, job.title, 'Job');
+  normalized.hourly_rate = Number(firstValue(normalized.hourly_rate, normalized.hourlyRate, normalized.rate, project.hourly_rate, project.hourlyRate, project.rate, 0) || 0);
+  normalized.hours_worked = Number(firstValue(normalized.hours_worked, normalized.hoursWorked, normalized.actual_hours, normalized.actualHours, project.actual_hours, project.actualHours, project.estimated_hours, project.estimatedHours, 0) || 0);
+  normalized.work_total = Number(firstValue(normalized.work_total, normalized.workTotal, project.total_amount, project.totalAmount, 0) || 0);
+  normalized.total_amount = Number(firstValue(normalized.total_amount, normalized.amount_total, normalized.amountTotal, normalized.totalAmount, project.amount_total, project.amountTotal, 0) || 0);
+  normalized.payout_amount = Number(firstValue(normalized.payout_amount, normalized.student_payout, normalized.studentPayout, project.student_payout, project.studentPayout, 0) || 0);
+  normalized.platform_fee_total = Number(firstValue(normalized.platform_fee_total, normalized.platformFeeTotal, normalized.cogo_commission, project.platform_fee, project.platformFee, 0) || 0);
+  normalized.student_platform_fee = Number(firstValue(normalized.student_platform_fee, normalized.studentPlatformFee, normalized.platform_fee, 0) || 0);
+  normalized.employer_platform_fee = Number(firstValue(normalized.employer_platform_fee, normalized.employerPlatformFee, 0) || 0);
+  normalized.stripe_payment_intent_id = firstValue(normalized.stripe_payment_intent_id, normalized.stripePaymentIntentId, normalized.payment_intent_id, normalized.payment_id, project.stripe_payment_intent_id, project.stripePaymentIntentId, '');
+  normalized.stripe_charge_id = firstValue(normalized.stripe_charge_id, normalized.stripeChargeId, normalized.charge_id, project.stripe_charge_id, project.stripeChargeId, '');
+  normalized.stripe_transfer_id = firstValue(normalized.stripe_transfer_id, normalized.stripeTransferId, project.stripe_transfer_id, project.stripeTransferId, '');
+  normalized.stripe_application_fee_id = firstValue(normalized.stripe_application_fee_id, normalized.stripeApplicationFeeId, project.stripe_application_fee_id, project.stripeApplicationFeeId, '');
+  normalized.date_charged = firstValue(normalized.date_charged, normalized.charged_at, normalized.created_at, normalized.createdAt, project.created_at, project.createdAt, '');
+  normalized.date_completed = firstValue(normalized.date_completed, normalized.completed_at, normalized.completedAt, project.completed_at, project.completedAt, '');
+  normalized.date_paid = firstValue(normalized.date_paid, normalized.paid_at, normalized.paidAt, '');
+  return normalized;
+}
+function getBackendTransactions(){ return ensureArray(ls('cogo_backend_transactions')).map(normalizeTransactionRecord); }
+function saveBackendTransactions(rows){ ls('cogo_backend_transactions', ensureArray(rows).map(normalizeTransactionRecord)); }
 async function refreshBackendTransactions(options={}){
   if (!backendAuthEnabled() || backendTransactionsLoading) return getBackendTransactions();
   const token = getBackendAccessToken();
@@ -3806,10 +3837,10 @@ function getTransactions(){
   ensureBackendTransactionsLoaded({ rerender:true });
   const backendRows = getBackendTransactions();
   if (backendRows.length || backendTransactionsLoaded) return backendRows;
-  return ls('cogo_transactions') || [];
+  return ensureArray(ls('cogo_transactions')).map(normalizeTransactionRecord);
 }
 function saveTransactions(v){
-  const payload = ensureArray(v);
+  const payload = ensureArray(v).map(normalizeTransactionRecord);
   ls('cogo_transactions', payload);
   if (backendAuthEnabled() && getBackendAccessToken()) refreshBackendTransactions({ rerender:true });
 }
@@ -16338,12 +16369,62 @@ function dedupeTransactionRows(rows=[]){
     return true;
   });
 }
+function projectHasCompletedPayment(project={}){
+  const status = String(project.status || '').toLowerCase();
+  const paymentStatus = String(project.payment_status || project.paymentStatus || '').toLowerCase();
+  const payoutStatus = String(project.payout_status || project.payoutStatus || '').toLowerCase();
+  return ['completed','paid'].includes(status)
+    || ['completed','paid','released'].includes(paymentStatus)
+    || ['released','paid'].includes(payoutStatus);
+}
+function buildTransactionRowFromProject(project={}){
+  const projectId = project.id || project.project_id || project.backendProjectId || '';
+  const fallbackTxId = `project:${projectId || uid('tx')}`;
+  const rate = Number(project.rate || project.hourly_rate || project.hourlyRate || 0);
+  const hours = Number(project.actualHours || project.actual_hours || project.finalSubmittedHours || project.estimatedHours || project.estimated_hours || 0);
+  const workTotal = Number(project.finalSubtotal || project.work_total || project.total_amount || project.totalAmount || (rate * hours) || 0);
+  const totalAmount = Number(project.finalTotal || project.employerTotal || project.amount_total || project.amountTotal || project.total_amount || project.totalAmount || 0);
+  const studentPayout = Number(project.studentPayout || project.student_payout || project.payout_amount || 0);
+  const platformFeeTotal = Number(project.platformFeeTotal || project.platform_fee_total || project.platform_fee || Math.max(0, totalAmount - studentPayout) || 0);
+  const studentFee = Number(project.studentPlatformFee || project.student_platform_fee || 0);
+  const employerFee = Number(project.employerPlatformFee || project.employer_platform_fee || Math.max(0, totalAmount - workTotal) || 0);
+  return normalizeTransactionRecord({
+    id: fallbackTxId,
+    transaction_id: fallbackTxId,
+    project_id: projectId,
+    job_id: project.job_id || project.jobId || project.postId || '',
+    employer_id: project.employer_id || project.employerId || '',
+    student_id: project.student_id || project.studentUserId || project.studentId || '',
+    employerName: project.employerName || project.employer_name || '',
+    studentName: project.studentName || project.student_name || '',
+    job_title: project.jobTitle || project.job_title || project.title || 'Job',
+    hourly_rate: rate,
+    hours_worked: hours,
+    work_total: workTotal,
+    total_amount: totalAmount,
+    employer_platform_fee: employerFee,
+    student_platform_fee: studentFee,
+    platform_fee_total: platformFeeTotal,
+    payout_amount: studentPayout,
+    status: project.payment_status || project.paymentStatus || project.status || 'paid',
+    stripe_payment_intent_id: project.stripe_payment_intent_id || project.stripePaymentIntentId || '',
+    stripe_charge_id: project.stripe_charge_id || project.stripeChargeId || '',
+    stripe_transfer_id: project.stripe_transfer_id || project.stripeTransferId || '',
+    stripe_application_fee_id: project.stripe_application_fee_id || project.stripeApplicationFeeId || '',
+    date_charged: project.date_charged || project.created_at || project.createdAt || '',
+    date_completed: project.completedAt || project.completed_at || project.updatedAt || project.updated_at || '',
+    date_paid: project.date_paid || project.paid_at || project.paidAt || project.completedAt || project.completed_at || ''
+  });
+}
+function getProjectBackedTransactionRows(){
+  return getProjects().filter(projectHasCompletedPayment).map(buildTransactionRowFromProject);
+}
 function getCurrentUserTransactions(){
-  const all = getTransactions();
+  const all = dedupeTransactionRows(getTransactions().concat(getProjectBackedTransactionRows()));
   const nonWorkshop = dedupeTransactionRows(all.filter(tx => !isWorkshopTransaction(tx) && String(tx.payment_type || '').toLowerCase() !== 'direct_job_listing'));
   if (currentUser.role === 'admin') return nonWorkshop;
-  if (currentUser.role === 'employer' || isNeighborAccount(currentUser)) return nonWorkshop.filter(tx => tx.employer_id === currentUser.id);
-  return nonWorkshop.filter(tx => tx.student_id === currentUser.id);
+  if (currentUser.role === 'employer' || isNeighborAccount(currentUser)) return nonWorkshop.filter(tx => String(getTransactionEmployerId(tx)) === String(currentUser.id));
+  return nonWorkshop.filter(tx => String(getTransactionStudentId(tx)) === String(currentUser.id));
 }
 function getTransactionTableState(key=''){
   const defaults = { expanded:false, page:1, pageSize:10 };
@@ -16525,10 +16606,10 @@ function renderAdminTransactionMoneyFlow(tx={}){
   `;
 }
 function getTransactionStudentId(tx={}){
-  return tx.student_id || tx.studentId || tx.studentUserId || '';
+  return tx.student_id || tx.studentId || tx.student_user_id || tx.studentUserId || tx.payee_id || '';
 }
 function getTransactionEmployerId(tx={}){
-  return tx.employer_id || tx.employerId || tx.neighbor_id || tx.neighborId || tx.host_id || '';
+  return tx.employer_id || tx.employerId || tx.neighbor_id || tx.neighborId || tx.payer_id || tx.host_id || '';
 }
 function getTransactionStudentName(tx={}){
   const userId = getTransactionStudentId(tx);
