@@ -149,8 +149,8 @@ function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}) 
     studentPlatformFee = money(Math.max(0, workTotal - payoutAmount));
     platformFeeTotal = money(employerPlatformFee + studentPlatformFee);
   }
-  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, 0) || 0);
-  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, 0) || 0);
+  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, 0) || 0);
+  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, 0) || 0);
   if (!hourlyRate && hoursWorked && workTotal) hourlyRate = money(workTotal / hoursWorked);
   if (!hoursWorked && hourlyRate && workTotal) hoursWorked = money(workTotal / hourlyRate);
   return {
