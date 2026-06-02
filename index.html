@@ -13,11 +13,14 @@
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
+    var cogoAnalyticsHostname = window.location && window.location.hostname;
+    var cogoAnalyticsIsStaging = cogoAnalyticsHostname === 'staging.cogocity.com';
+    var cogoAnalyticsStorageDefault = cogoAnalyticsIsStaging ? 'granted' : 'denied';
     gtag('consent', 'default', {
       ad_storage: 'denied',
       ad_user_data: 'denied',
       ad_personalization: 'denied',
-      analytics_storage: 'denied',
+      analytics_storage: cogoAnalyticsStorageDefault,
       functionality_storage: 'granted',
       security_storage: 'granted',
       wait_for_update: 500
@@ -26,9 +29,9 @@
     (function(w,d,s,l,i){
       var hostname = w.location && w.location.hostname;
       var isStaging = hostname === 'staging.cogocity.com';
-      var stagingGtmExplicitlyEnabled = w.COGO_ENABLE_STAGING_GTM === true;
-      if (isStaging && !stagingGtmExplicitlyEnabled) {
-        w[l].push({ event: 'cogo_gtm_blocked_pending_staging_routing', environment: 'staging', hostname: hostname });
+      var stagingGtmExplicitlyDisabled = w.COGO_ENABLE_STAGING_GTM === false;
+      if (isStaging && stagingGtmExplicitlyDisabled) {
+        w[l].push({ event: 'cogo_gtm_blocked_for_staging', environment: 'staging', hostname: hostname });
         return;
       }
       w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -581,7 +584,8 @@
   </style>
 </head>
 <body>
-  <!-- GTM noscript intentionally omitted for now so staging cannot leak to the live GA4 property before hostname routing is published in GTM. -->
+  <!-- Google Tag Manager noscript fallback. Staging routes through the staging GA4 stream in GTM. -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TMHS95ZD" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <div id="toast" class="toast"></div>
   <nav>
     <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
@@ -713,6 +717,7 @@ let googleMapsPlacesPromise = null;
 const COGO_GTM_CONTAINER_ID = 'GTM-TMHS95ZD';
 const COGO_GA4_STAGING_MEASUREMENT_ID = 'G-DDZV99NNSX';
 const COGO_GA4_MEASUREMENT_ID = (typeof window !== 'undefined' && window.COGO_GA4_MEASUREMENT_ID) || (COGO_IS_STAGING ? COGO_GA4_STAGING_MEASUREMENT_ID : '');
+const COGO_DIRECT_GA4_ENABLED = !COGO_IS_STAGING && !!COGO_GA4_MEASUREMENT_ID;
 let cogoAnalyticsInitialized = false;
 let cogoGa4Initialized = false;
 let cogoAnalyticsSearchTimer = null;
@@ -746,7 +751,7 @@ function sanitizeCogoAnalyticsParams(params={}){
   return sanitized;
 }
 function initCogoGa4(){
-  if (typeof window === 'undefined' || cogoGa4Initialized || !COGO_GA4_MEASUREMENT_ID) return;
+  if (typeof window === 'undefined' || cogoGa4Initialized || !COGO_DIRECT_GA4_ENABLED) return;
   cogoGa4Initialized = true;
   window.dataLayer = window.dataLayer || [];
   window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
@@ -758,7 +763,7 @@ function initCogoGa4(){
   window.gtag('config', COGO_GA4_MEASUREMENT_ID, { send_page_view: false });
 }
 function sendCogoGa4Event(eventName='', payload={}){
-  if (typeof window === 'undefined' || !eventName || !COGO_GA4_MEASUREMENT_ID) return;
+  if (typeof window === 'undefined' || !eventName || !COGO_DIRECT_GA4_ENABLED) return;
   initCogoGa4();
   if (typeof window.gtag !== 'function') return;
   const gaPayload = Object.assign({}, payload || {});
