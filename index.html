@@ -1581,7 +1581,17 @@ async function submitPayerStripeSetup(){
   if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
   try {
     const stripe = await getStripeClient();
-    const result = await stripe.confirmCardSetup(stripeSetupIntentContext.client_secret, { payment_method: { card: stripeCardElement, billing_details: { email: currentUser.email || undefined, name: currentUser.name || undefined } } });
+    const postalCode = parsedAddressParts(currentUser.address || '').zip || undefined;
+    const result = await stripe.confirmCardSetup(stripeSetupIntentContext.client_secret, {
+      payment_method: {
+        card: stripeCardElement,
+        billing_details: {
+          email: currentUser.email || undefined,
+          name: currentUser.name || undefined,
+          address: postalCode ? { postal_code: postalCode } : undefined
+        }
+      }
+    });
     if (result.error) throw new Error(result.error.message || 'Could not save this payment method.');
     const status = await backendAuthRequest('/stripe/onboarding/payment-method', { method:'POST', body: JSON.stringify({ setup_intent_id: result.setupIntent.id }) });
     syncCurrentUserStripeOnboarding(status);
