@@ -412,11 +412,25 @@ router.get('/', requireAuth, async (req, res) => {
     .filter(Boolean))];
   const manualProjectRows = manualProjectIds.length
     ? await prisma.syncRecord.findMany({
-        where: { entity: 'projects', recordId: { in: manualProjectIds }, deletedAt: null },
+        where: {
+          entity: 'projects',
+          deletedAt: null,
+          OR: [
+            { recordId: { in: manualProjectIds } },
+            ...manualProjectIds.map((projectId) => ({ payload: { path: ['project_id'], equals: projectId } })),
+            ...manualProjectIds.map((projectId) => ({ payload: { path: ['projectId'], equals: projectId } })),
+          ],
+        },
         select: { recordId: true, payload: true },
       })
     : [];
-  const manualProjectMap = new Map(manualProjectRows.map((row) => [row.recordId, row.payload || {}]));
+  const manualProjectMap = new Map();
+  manualProjectRows.forEach((row) => {
+    const payload = row.payload || {};
+    [row.recordId, payload.project_id, payload.projectId, payload.id].filter(Boolean).forEach((projectId) => {
+      manualProjectMap.set(String(projectId), payload);
+    });
+  });
   const manualTransactions = visibleManualRows
     .map((row) => normalizeManualTransaction(row, userMap, feeSettings, manualProjectMap))
     .filter((tx) => {
