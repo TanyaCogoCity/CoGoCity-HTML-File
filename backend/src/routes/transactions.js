@@ -107,6 +107,14 @@ function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== '');
 }
 
+function firstPositiveNumber(...values) {
+  for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number > 0) return number;
+  }
+  return 0;
+}
+
 function manualTransactionUserIds(tx = {}) {
   return {
     payerId: String(firstValue(tx.payer_id, tx.payerId, tx.employer_id, tx.employerId, tx.neighbor_id, tx.neighborId, '') || ''),
@@ -155,8 +163,8 @@ function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, 
     studentPlatformFee = money(Math.max(0, workTotal - payoutAmount));
     platformFeeTotal = money(employerPlatformFee + studentPlatformFee);
   }
-  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, projectPayload.hourly_rate, projectPayload.hourlyRate, projectPayload.rate, applicationPayload.hourly_rate, applicationPayload.hourlyRate, applicationPayload.rate, 0) || 0);
-  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, projectPayload.actual_hours, projectPayload.actualHours, projectPayload.estimated_hours, projectPayload.estimatedHours, projectPayload.duration, applicationPayload.actual_hours, applicationPayload.actualHours, applicationPayload.estimated_hours, applicationPayload.estimatedHours, applicationPayload.duration, 0) || 0);
+  let hourlyRate = firstPositiveNumber(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, projectPayload.hourly_rate, projectPayload.hourlyRate, projectPayload.rate, applicationPayload.hourly_rate, applicationPayload.hourlyRate, applicationPayload.rate);
+  let hoursWorked = firstPositiveNumber(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, projectPayload.actual_hours, projectPayload.actualHours, projectPayload.estimated_hours, projectPayload.estimatedHours, projectPayload.duration, applicationPayload.actual_hours, applicationPayload.actualHours, applicationPayload.estimated_hours, applicationPayload.estimatedHours, applicationPayload.duration);
   if (!hourlyRate && hoursWorked && workTotal) hourlyRate = money(workTotal / hoursWorked);
   if (!hoursWorked && hourlyRate && workTotal) hoursWorked = money(workTotal / hourlyRate);
   return {
