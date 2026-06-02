@@ -1295,8 +1295,8 @@ async function captureBackendStripePayment(project={}, finalBreakdownOrAmount=nu
   const projectId = getProjectBackendId(project);
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId || !project.stripe_payment_intent_id) return null;
   const payload = { project_id: projectId };
-  payload.hourly_rate = Number(project.rate || project.hourly_rate || project.hourlyRate || 0) || 0;
-  payload.hours_worked = Number(project.actualHours || project.actual_hours || (project.finalInvoice && (project.finalInvoice.actualHours || project.finalInvoice.hoursWorked)) || 0) || 0;
+  payload.hourly_rate = projectBillingRate(project);
+  payload.hours_worked = projectFinalHours(project);
   const finalBreakdown = typeof finalBreakdownOrAmount === 'object' && finalBreakdownOrAmount ? finalBreakdownOrAmount : null;
   if (finalBreakdown) {
     payload.work_total = finalBreakdown.workTotal;
@@ -1321,16 +1321,16 @@ async function createManualProjectStripePayment(project={}, breakdown={}){
       amount_total: breakdown.employerTotal,
       student_payout: breakdown.studentPayout,
       platform_fee_total: breakdown.platformFeeTotal,
-      hourly_rate: Number(project.rate || project.hourly_rate || project.hourlyRate || 0) || 0,
-      hours_worked: Number(project.actualHours || project.actual_hours || (project.finalInvoice && (project.finalInvoice.actualHours || project.finalInvoice.hoursWorked)) || project.estimatedHours || project.estimated_hours || 0) || 0
+      hourly_rate: projectBillingRate(project),
+      hours_worked: projectFinalHours(project, true)
     })
   });
 }
 async function captureManualProjectStripePayment(project={}, finalBreakdownOrAmount=null){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !project.stripe_payment_intent_id) return null;
   const payload = { payment_intent_id: project.stripe_payment_intent_id };
-  payload.hourly_rate = Number(project.rate || project.hourly_rate || project.hourlyRate || 0) || 0;
-  payload.hours_worked = Number(project.actualHours || project.actual_hours || (project.finalInvoice && (project.finalInvoice.actualHours || project.finalInvoice.hoursWorked)) || 0) || 0;
+  payload.hourly_rate = projectBillingRate(project);
+  payload.hours_worked = projectFinalHours(project);
   const finalBreakdown = typeof finalBreakdownOrAmount === 'object' && finalBreakdownOrAmount ? finalBreakdownOrAmount : null;
   if (finalBreakdown) {
     payload.work_total = finalBreakdown.workTotal;
@@ -3794,6 +3794,7 @@ function renderLinksTextarea(links=[]){
 function normalizeTransactionRecord(tx={}){
   const normalized = Object.assign({}, tx || {});
   const project = normalized.project || {};
+  const invoice = normalized.finalInvoice || project.finalInvoice || {};
   const job = normalized.job || project.job || {};
   const firstValue = (...values) => values.find(value => value !== undefined && value !== null && value !== '');
   normalized.id = firstValue(normalized.id, normalized.transaction_id, normalized.record_id, normalized.stripe_payment_intent_id, uid('tx'));
@@ -3805,14 +3806,36 @@ function normalizeTransactionRecord(tx={}){
   normalized.studentName = firstValue(normalized.studentName, normalized.student_name, normalized.payee_name, normalized.payeeName, project.studentName, project.student_name);
   normalized.employerName = firstValue(normalized.employerName, normalized.employer_name, normalized.neighborName, normalized.neighbor_name, normalized.payer_name, normalized.payerName, job.employer_name, job.employerName, job.company_name, job.companyName);
   normalized.job_title = firstValue(normalized.job_title, normalized.jobTitle, normalized.title, project.jobTitle, project.title, job.job_title, job.jobTitle, job.title, 'Job');
-  normalized.hourly_rate = Number(firstValue(normalized.hourly_rate, normalized.hourlyRate, normalized.rate, project.hourly_rate, project.hourlyRate, project.rate, 0) || 0);
-  normalized.hours_worked = Number(firstValue(normalized.hours_worked, normalized.hoursWorked, normalized.actual_hours, normalized.actualHours, project.actual_hours, project.actualHours, project.estimated_hours, project.estimatedHours, 0) || 0);
-  normalized.work_total = Number(firstValue(normalized.work_total, normalized.workTotal, project.total_amount, project.totalAmount, 0) || 0);
+  normalized.hourly_rate = Number(firstValue(normalized.hourly_rate, normalized.hourlyRate, normalized.rate, project.hourly_rate, project.hourlyRate, project.rate, invoice.rate, 0) || 0);
+  normalized.hours_worked = Number(firstValue(normalized.hours_worked, normalized.hoursWorked, normalized.actual_hours, normalized.actualHours, project.actual_hours, project.actualHours, invoice.actualHours, invoice.hoursWorked, project.estimated_hours, project.estimatedHours, 0) || 0);
+  normalized.work_total = Number(firstValue(normalized.work_total, normalized.workTotal, project.finalSubtotal, project.work_total, project.workTotal, invoice.subtotal, 0) || 0);
   normalized.total_amount = Number(firstValue(normalized.total_amount, normalized.amount_total, normalized.amountTotal, normalized.totalAmount, project.amount_total, project.amountTotal, 0) || 0);
   normalized.payout_amount = Number(firstValue(normalized.payout_amount, normalized.student_payout, normalized.studentPayout, project.student_payout, project.studentPayout, 0) || 0);
   normalized.platform_fee_total = Number(firstValue(normalized.platform_fee_total, normalized.platformFeeTotal, normalized.cogo_commission, project.platform_fee, project.platformFee, 0) || 0);
   normalized.student_platform_fee = Number(firstValue(normalized.student_platform_fee, normalized.studentPlatformFee, normalized.platform_fee, 0) || 0);
   normalized.employer_platform_fee = Number(firstValue(normalized.employer_platform_fee, normalized.employerPlatformFee, 0) || 0);
+  const feeSettings = getPaymentSettings();
+  const employerPct = Number(normalized.employer_commission_pct ?? normalized.employerCommissionPct ?? feeSettings.employerCommissionPct ?? 0) || 0;
+  const studentPct = Number(normalized.student_commission_pct ?? normalized.studentCommissionPct ?? feeSettings.studentCommissionPct ?? 0) || 0;
+  const inferredWorkFromEmployer = normalized.total_amount && employerPct ? Number((normalized.total_amount / (1 + (employerPct / 100))).toFixed(2)) : 0;
+  const inferredWorkFromStudent = normalized.payout_amount && studentPct < 100 ? Number((normalized.payout_amount / (1 - (studentPct / 100))).toFixed(2)) : 0;
+  const inferredWorkTotal = inferredWorkFromEmployer && inferredWorkFromStudent
+    ? Number(((inferredWorkFromEmployer + inferredWorkFromStudent) / 2).toFixed(2))
+    : (inferredWorkFromEmployer || inferredWorkFromStudent);
+  const feesMatchGrossMinusPayout = normalized.total_amount && normalized.payout_amount && normalized.platform_fee_total
+    ? Math.abs((normalized.total_amount - normalized.payout_amount) - normalized.platform_fee_total) <= 0.01
+    : false;
+  const employerFeeLooksWrong = normalized.work_total && normalized.employer_platform_fee
+    ? Math.abs(normalized.employer_platform_fee - (normalized.work_total * (employerPct / 100))) > 0.01
+    : false;
+  if (inferredWorkTotal && (!normalized.work_total || (feesMatchGrossMinusPayout && employerFeeLooksWrong))) {
+    normalized.work_total = inferredWorkTotal;
+  }
+  if (!normalized.employer_platform_fee && normalized.total_amount && normalized.work_total) normalized.employer_platform_fee = Number(Math.max(0, normalized.total_amount - normalized.work_total).toFixed(2));
+  if (!normalized.student_platform_fee && normalized.work_total && normalized.payout_amount) normalized.student_platform_fee = Number(Math.max(0, normalized.work_total - normalized.payout_amount).toFixed(2));
+  if (!normalized.platform_fee_total && (normalized.employer_platform_fee || normalized.student_platform_fee)) normalized.platform_fee_total = Number((Number(normalized.employer_platform_fee || 0) + Number(normalized.student_platform_fee || 0)).toFixed(2));
+  if (!normalized.hourly_rate && normalized.hours_worked && normalized.work_total) normalized.hourly_rate = Number((normalized.work_total / normalized.hours_worked).toFixed(2));
+  if (!normalized.hours_worked && normalized.hourly_rate && normalized.work_total) normalized.hours_worked = Number((normalized.work_total / normalized.hourly_rate).toFixed(2));
   normalized.stripe_payment_intent_id = firstValue(normalized.stripe_payment_intent_id, normalized.stripePaymentIntentId, normalized.payment_intent_id, normalized.payment_id, project.stripe_payment_intent_id, project.stripePaymentIntentId, '');
   normalized.stripe_charge_id = firstValue(normalized.stripe_charge_id, normalized.stripeChargeId, normalized.charge_id, project.stripe_charge_id, project.stripeChargeId, '');
   normalized.stripe_transfer_id = firstValue(normalized.stripe_transfer_id, normalized.stripeTransferId, project.stripe_transfer_id, project.stripeTransferId, '');
@@ -4681,6 +4704,21 @@ function calculateCommissionBreakdown(hours, rate){
     employerTotal,
     platformFeeTotal
   };
+}
+function projectBillingRate(project={}){
+  const invoice = project.finalInvoice || {};
+  return Number(project.rate ?? project.hourly_rate ?? project.hourlyRate ?? invoice.rate ?? 0) || 0;
+}
+function projectFinalHours(project={}, includeEstimate=false){
+  const invoice = project.finalInvoice || {};
+  const estimated = includeEstimate ? (project.estimatedHours ?? project.estimated_hours ?? 0) : 0;
+  return Number(project.actualHours ?? project.actual_hours ?? project.finalSubmittedHours ?? invoice.actualHours ?? invoice.hoursWorked ?? estimated ?? 0) || 0;
+}
+function projectFinalWorkTotal(project={}){
+  const invoice = project.finalInvoice || {};
+  const rate = projectBillingRate(project);
+  const hours = projectFinalHours(project);
+  return Number(project.finalSubtotal ?? project.work_total ?? project.workTotal ?? invoice.subtotal ?? ((rate && hours) ? rate * hours : 0) ?? 0) || 0;
 }
 function renderStudentCommissionBreakdownHtml(breakdown, label='Estimated'){
   return `
@@ -12412,7 +12450,7 @@ function openSubmitCompletion(projectId){
   trackCogoEvent('project_complete_click', { source: 'student_projects' });
   const snapshot = getProjectSnapshotForDisplay(p);
   const currentHours = Number(p.actualHours || (p.finalInvoice && p.finalInvoice.actualHours) || p.estimatedHours || 0);
-  const estimatedBreakdown = calculateCommissionBreakdown(currentHours || 0, p.rate || 0);
+  const estimatedBreakdown = calculateCommissionBreakdown(currentHours || 0, projectBillingRate(p));
   openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
       Once your work is complete, click \u201CProject Completed\u201D to notify the employer. After they review and approve it, CoGo City will release your payment. Do your best, great work leads to great reviews and helps you grow your skills.
@@ -12439,7 +12477,7 @@ function updateCompletionPreview(projectId){
   if (!p) return;
   const hours = Number(document.getElementById('finalHours').value || 0);
   const breakdownWrap = document.getElementById('student-completion-breakdown');
-  if (breakdownWrap) breakdownWrap.innerHTML = renderStudentCommissionBreakdownHtml(calculateCommissionBreakdown(hours, p.rate || 0), 'Actual');
+  if (breakdownWrap) breakdownWrap.innerHTML = renderStudentCommissionBreakdownHtml(calculateCommissionBreakdown(hours, projectBillingRate(p)), 'Actual');
 }
 async function submitFinalInvoice(projectId){
   const pList = getProjects();
@@ -12447,7 +12485,7 @@ async function submitFinalInvoice(projectId){
   if (!p) return;
   const actualHours = Number(document.getElementById('finalHours').value || 0);
   if (toastRequiredFields({ 'Actual hours':actualHours })) return;
-  const breakdown = calculateCommissionBreakdown(actualHours, p.rate || 0);
+  const breakdown = calculateCommissionBreakdown(actualHours, projectBillingRate(p));
   const subtotal = breakdown.workTotal;
   const platformFee = breakdown.employerCommissionAmount;
   const totalDue = breakdown.employerTotal;
@@ -13710,7 +13748,7 @@ function openEmployerApproval(projectId){
   const p = getProjects().find(x => x.id === projectId);
   if (!p) return;
   const snapshot = getProjectSnapshotForDisplay(p);
-  const breakdown = calculateCommissionBreakdown(p.actualHours || 0, p.rate || 0);
+  const breakdown = calculateCommissionBreakdown(projectFinalHours(p), projectBillingRate(p));
   const escrowHeld = Number(p.escrowAmount || p.estimatedEmployerTotal || breakdown.employerTotal).toFixed(2);
 
   openModal('Review Final Invoice', `
@@ -13753,7 +13791,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   p.approvalInProgress = true;
   saveProjects(projects);
   const now = new Date().toISOString();
-  const finalBreakdown = calculateCommissionBreakdown(p.actualHours || p.estimatedHours || 0, p.rate || 0);
+  const finalBreakdown = calculateCommissionBreakdown(projectFinalHours(p, true), projectBillingRate(p));
   let isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
   if (STRIPE_ENABLED && (!backendAuthEnabled() || !getBackendAccessToken())) {
     delete p.approvalInProgress;
@@ -13831,7 +13869,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   p.finalTotal = finalBreakdown.employerTotal;
   p.employerTotal = finalBreakdown.employerTotal;
 
-  const baseline = calculateCommissionBreakdown(p.estimatedHours || 0, p.rate || 0).employerTotal;
+  const baseline = calculateCommissionBreakdown(p.estimatedHours || 0, projectBillingRate(p)).employerTotal;
   const diff = Number((p.finalTotal - baseline).toFixed(2));
   const realStripeCapture = !!(backendCaptureResult && !isLocalPaymentReference);
   if (realStripeCapture) {
@@ -13922,9 +13960,9 @@ async function approveFinalInvoice(projectId, buttonEl=null){
     employerName: p.employerName,
     studentName: p.studentName,
     job_title: p.jobTitle,
-    hourly_rate: Number(p.rate || 0),
-    hours_worked: Number(p.actualHours || 0),
-    work_total: Number(p.finalSubtotal || 0),
+    hourly_rate: projectBillingRate(p),
+    hours_worked: projectFinalHours(p),
+    work_total: projectFinalWorkTotal(p),
     total_amount: Number(p.finalTotal || 0),
     employer_platform_fee: Number(p.employerPlatformFee || 0),
     student_platform_fee: Number(p.studentPlatformFee || 0),
@@ -16374,18 +16412,32 @@ function formatTransactionDate(value){
   return new Date(value).toLocaleDateString('en-US', { month:'short', day:'numeric' });
 }
 function dedupeTransactionRows(rows=[]){
-  const seen = new Set();
-  return (Array.isArray(rows) ? rows : []).filter(tx => {
+  const seen = new Map();
+  const mergedRows = [];
+  (Array.isArray(rows) ? rows : []).forEach(tx => {
     if (!tx) return false;
     const key = tx.stripe_payment_intent_id
       ? `stripe:${tx.stripe_payment_intent_id}`
       : (tx.project_id || tx.job_id)
         ? `project:${tx.project_id || tx.job_id}:${tx.employer_id || ''}:${tx.student_id || ''}:${tx.total_amount || tx.amount_total || tx.work_total || ''}`
         : `tx:${tx.id || tx.transaction_id || Math.random()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    if (!seen.has(key)) {
+      seen.set(key, mergedRows.length);
+      mergedRows.push(tx);
+      return;
+    }
+    const existing = mergedRows[seen.get(key)] || {};
+    const merged = Object.assign({}, existing);
+    Object.keys(tx).forEach(field => {
+      const current = merged[field];
+      const next = tx[field];
+      const currentMissing = current === undefined || current === null || current === '' || (typeof current === 'number' && current === 0);
+      const nextPresent = next !== undefined && next !== null && next !== '' && !(typeof next === 'number' && next === 0);
+      if (currentMissing && nextPresent) merged[field] = next;
+    });
+    mergedRows[seen.get(key)] = normalizeTransactionRecord(merged);
   });
+  return mergedRows;
 }
 function projectHasCompletedPayment(project={}){
   const status = String(project.status || '').toLowerCase();
@@ -16398,9 +16450,9 @@ function projectHasCompletedPayment(project={}){
 function buildTransactionRowFromProject(project={}){
   const projectId = project.id || project.project_id || project.backendProjectId || '';
   const fallbackTxId = `project:${projectId || uid('tx')}`;
-  const rate = Number(project.rate || project.hourly_rate || project.hourlyRate || 0);
-  const hours = Number(project.actualHours || project.actual_hours || project.finalSubmittedHours || project.estimatedHours || project.estimated_hours || 0);
-  const workTotal = Number(project.finalSubtotal || project.work_total || project.total_amount || project.totalAmount || (rate * hours) || 0);
+  const rate = projectBillingRate(project);
+  const hours = projectFinalHours(project, true);
+  const workTotal = projectFinalWorkTotal(project) || Number((rate * hours).toFixed(2)) || 0;
   const totalAmount = Number(project.finalTotal || project.employerTotal || project.amount_total || project.amountTotal || project.total_amount || project.totalAmount || 0);
   const studentPayout = Number(project.studentPayout || project.student_payout || project.payout_amount || 0);
   const platformFeeTotal = Number(project.platformFeeTotal || project.platform_fee_total || project.platform_fee || Math.max(0, totalAmount - studentPayout) || 0);

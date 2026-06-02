@@ -1281,6 +1281,9 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
             amount_total: String(finalAmounts.amountTotal),
             student_payout: String(finalAmounts.studentPayout),
             platform_fee_total: String(finalAmounts.platformFee),
+            work_total: String(finalWorkTotal ?? req.body?.work_total ?? req.body?.workTotal ?? ''),
+            hourly_rate: String(req.body?.hourly_rate ?? req.body?.hourlyRate ?? project.hourlyRate ?? ''),
+            hours_worked: String(req.body?.hours_worked ?? req.body?.hoursWorked ?? project.actualHours ?? ''),
             adjustment_type: 'final_invoice_reauthorization',
             stripe_connect_flow: 'destination_charge_application_fee',
           },
@@ -1427,7 +1430,19 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
       if (!requirements.payout_ready) return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
     }
-    if (paymentIntent.status === 'succeeded') return ok(res, { payment_intent_id: paymentIntent.id, status: 'paid', stripe_status: paymentIntent.status });
+    if (paymentIntent.status === 'succeeded') {
+      await updateManualProjectTransactionForIntent(paymentIntent, {
+        amountTotal: req.body?.amount_total ?? req.body?.amountTotal ?? paymentIntent.metadata?.amount_total,
+        workTotal: req.body?.work_total ?? req.body?.workTotal ?? paymentIntent.metadata?.work_total,
+        platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? paymentIntent.metadata?.platform_fee_total,
+        studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? paymentIntent.metadata?.student_payout,
+        hourlyRate: req.body?.hourly_rate ?? req.body?.hourlyRate ?? paymentIntent.metadata?.hourly_rate,
+        hoursWorked: req.body?.hours_worked ?? req.body?.hoursWorked ?? paymentIntent.metadata?.hours_worked,
+        status: 'paid',
+        stripeChargeId: latestChargeObject(paymentIntent)?.id || '',
+      });
+      return ok(res, { payment_intent_id: paymentIntent.id, status: 'paid', stripe_status: paymentIntent.status });
+    }
     if (paymentIntent.status !== 'requires_capture') return fail(res, 409, `Payment is not ready to capture (${paymentIntent.status})`);
     const finalAmounts = marketplaceAmounts(paymentIntent.metadata || {}, {
       amountTotal: req.body?.amount_total ?? req.body?.amountTotal ?? paymentIntent.metadata?.amount_total,
@@ -1468,6 +1483,7 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
             original_payment_intent_id: activePaymentIntent.id,
             payer_id: activePaymentIntent.metadata?.payer_id || req.user.id,
             payee_id: studentUserId,
+            job_title: activePaymentIntent.metadata?.job_title || '',
             amount_total: String(finalAmounts.amountTotal),
             student_payout: String(finalAmounts.studentPayout),
             platform_fee_total: String(finalAmounts.platformFee),

@@ -39,15 +39,38 @@ function canReadManualTransaction(user, tx = {}) {
   return ids.payerId === user.id;
 }
 
-function normalizeManualTransaction(row, userMap = new Map()) {
+function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}) {
   const tx = row.payload || {};
   const ids = manualTransactionUserIds(tx);
   const amountTotal = money(firstValue(tx.total_amount, tx.amount_total, tx.amountTotal, 0));
-  const workTotal = money(firstValue(tx.work_total, tx.workTotal, 0));
   const payoutAmount = money(firstValue(tx.payout_amount, tx.student_payout, tx.studentPayout, 0));
-  const platformFeeTotal = money(firstValue(tx.platform_fee_total, tx.cogo_commission, tx.platformFeeTotal, 0));
-  const employerPlatformFee = money(firstValue(tx.employer_platform_fee, tx.employerPlatformFee, Math.max(0, amountTotal - workTotal)));
-  const studentPlatformFee = money(firstValue(tx.student_platform_fee, tx.studentPlatformFee, tx.platform_fee, Math.max(0, workTotal - payoutAmount)));
+  let workTotal = money(firstValue(tx.work_total, tx.workTotal, 0));
+  let platformFeeTotal = money(firstValue(tx.platform_fee_total, tx.cogo_commission, tx.platformFeeTotal, 0));
+  let employerPlatformFee = money(firstValue(tx.employer_platform_fee, tx.employerPlatformFee, Math.max(0, amountTotal - workTotal)));
+  let studentPlatformFee = money(firstValue(tx.student_platform_fee, tx.studentPlatformFee, tx.platform_fee, Math.max(0, workTotal - payoutAmount)));
+  const employerPct = Number(firstValue(tx.employer_commission_pct, tx.employerCommissionPct, feeSettings.employerCommissionPct, 0) || 0);
+  const studentPct = Number(firstValue(tx.student_commission_pct, tx.studentCommissionPct, feeSettings.studentCommissionPct, 0) || 0);
+  const inferredWorkFromEmployer = amountTotal && employerPct ? money(amountTotal / (1 + (employerPct / 100))) : 0;
+  const inferredWorkFromStudent = payoutAmount && studentPct < 100 ? money(payoutAmount / (1 - (studentPct / 100))) : 0;
+  const inferredWorkTotal = inferredWorkFromEmployer && inferredWorkFromStudent
+    ? money((inferredWorkFromEmployer + inferredWorkFromStudent) / 2)
+    : (inferredWorkFromEmployer || inferredWorkFromStudent);
+  const feesMatchGrossMinusPayout = amountTotal && payoutAmount && platformFeeTotal
+    ? Math.abs((amountTotal - payoutAmount) - platformFeeTotal) <= 0.01
+    : false;
+  const employerFeeLooksWrong = workTotal && employerPlatformFee && employerPct
+    ? Math.abs(employerPlatformFee - (workTotal * (employerPct / 100))) > 0.01
+    : false;
+  if (inferredWorkTotal && (!workTotal || (feesMatchGrossMinusPayout && employerFeeLooksWrong))) {
+    workTotal = inferredWorkTotal;
+    employerPlatformFee = money(Math.max(0, amountTotal - workTotal));
+    studentPlatformFee = money(Math.max(0, workTotal - payoutAmount));
+    platformFeeTotal = money(employerPlatformFee + studentPlatformFee);
+  }
+  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, 0) || 0);
+  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, 0) || 0);
+  if (!hourlyRate && hoursWorked && workTotal) hourlyRate = money(workTotal / hoursWorked);
+  if (!hoursWorked && hourlyRate && workTotal) hoursWorked = money(workTotal / hourlyRate);
   return {
     ...tx,
     id: firstValue(tx.id, tx.transaction_id, row.recordId),
@@ -67,8 +90,8 @@ function normalizeManualTransaction(row, userMap = new Map()) {
     date_charged: firstValue(tx.date_charged, tx.charged_at, tx.created_at, row.createdAt),
     date_completed: firstValue(tx.date_completed, tx.completed_at, ''),
     date_paid: firstValue(tx.date_paid, tx.paid_at, ''),
-    hourly_rate: Number(firstValue(tx.hourly_rate, tx.hourlyRate, 0) || 0),
-    hours_worked: Number(firstValue(tx.hours_worked, tx.hoursWorked, 0) || 0),
+    hourly_rate: hourlyRate,
+    hours_worked: hoursWorked,
     work_total: workTotal,
     total_amount: amountTotal,
     amount_total: amountTotal,
@@ -295,7 +318,7 @@ router.get('/', requireAuth, async (req, res) => {
   const coreStripeIds = new Set(projectTransactions.map((tx) => tx.stripe_payment_intent_id).filter(Boolean));
   const coreProjectIds = new Set(projectTransactions.map((tx) => tx.project_id).filter(Boolean));
   const manualTransactions = visibleManualRows
-    .map((row) => normalizeManualTransaction(row, userMap))
+    .map((row) => normalizeManualTransaction(row, userMap, feeSettings))
     .filter((tx) => {
       const stripeId = tx.stripe_payment_intent_id;
       const projectId = tx.project_id;
