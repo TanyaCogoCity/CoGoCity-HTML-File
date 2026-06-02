@@ -1295,8 +1295,11 @@ async function captureBackendStripePayment(project={}, finalBreakdownOrAmount=nu
   const projectId = getProjectBackendId(project);
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !projectId || !project.stripe_payment_intent_id) return null;
   const payload = { project_id: projectId };
+  payload.hourly_rate = Number(project.rate || project.hourly_rate || project.hourlyRate || 0) || 0;
+  payload.hours_worked = Number(project.actualHours || project.actual_hours || (project.finalInvoice && (project.finalInvoice.actualHours || project.finalInvoice.hoursWorked)) || 0) || 0;
   const finalBreakdown = typeof finalBreakdownOrAmount === 'object' && finalBreakdownOrAmount ? finalBreakdownOrAmount : null;
   if (finalBreakdown) {
+    payload.work_total = finalBreakdown.workTotal;
     payload.amount_total = finalBreakdown.employerTotal;
     payload.student_payout = finalBreakdown.studentPayout;
     payload.platform_fee_total = finalBreakdown.platformFeeTotal;
@@ -1317,15 +1320,20 @@ async function createManualProjectStripePayment(project={}, breakdown={}){
       work_total: breakdown.workTotal,
       amount_total: breakdown.employerTotal,
       student_payout: breakdown.studentPayout,
-      platform_fee_total: breakdown.platformFeeTotal
+      platform_fee_total: breakdown.platformFeeTotal,
+      hourly_rate: Number(project.rate || project.hourly_rate || project.hourlyRate || 0) || 0,
+      hours_worked: Number(project.actualHours || project.actual_hours || (project.finalInvoice && (project.finalInvoice.actualHours || project.finalInvoice.hoursWorked)) || project.estimatedHours || project.estimated_hours || 0) || 0
     })
   });
 }
 async function captureManualProjectStripePayment(project={}, finalBreakdownOrAmount=null){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !project.stripe_payment_intent_id) return null;
   const payload = { payment_intent_id: project.stripe_payment_intent_id };
+  payload.hourly_rate = Number(project.rate || project.hourly_rate || project.hourlyRate || 0) || 0;
+  payload.hours_worked = Number(project.actualHours || project.actual_hours || (project.finalInvoice && (project.finalInvoice.actualHours || project.finalInvoice.hoursWorked)) || 0) || 0;
   const finalBreakdown = typeof finalBreakdownOrAmount === 'object' && finalBreakdownOrAmount ? finalBreakdownOrAmount : null;
   if (finalBreakdown) {
+    payload.work_total = finalBreakdown.workTotal;
     payload.amount_total = finalBreakdown.employerTotal;
     payload.student_payout = finalBreakdown.studentPayout;
     payload.platform_fee_total = finalBreakdown.platformFeeTotal;

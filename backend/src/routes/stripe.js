@@ -452,6 +452,8 @@ function manualProjectTransactionPayload(paymentIntent, overrides = {}) {
   const amountTotal = Number(overrides.amountTotal ?? overrides.amount_total ?? metadata.amount_total ?? fromCents(paymentIntent?.amount_received || paymentIntent?.amount || 0));
   const studentPayout = Number(overrides.studentPayout ?? overrides.student_payout ?? metadata.student_payout ?? 0);
   const platformFeeTotal = Number(overrides.platformFee ?? overrides.platform_fee_total ?? metadata.platform_fee_total ?? Math.max(0, amountTotal - studentPayout));
+  const hourlyRate = Number(overrides.hourlyRate ?? overrides.hourly_rate ?? metadata.hourly_rate ?? 0);
+  const hoursWorked = Number(overrides.hoursWorked ?? overrides.hours_worked ?? metadata.hours_worked ?? 0);
   const employerPlatformFee = Math.max(0, Number((amountTotal - workTotal).toFixed(2)));
   const studentPlatformFee = Math.max(0, Number((workTotal - studentPayout).toFixed(2)));
   const now = new Date().toISOString();
@@ -473,6 +475,8 @@ function manualProjectTransactionPayload(paymentIntent, overrides = {}) {
     date_charged: overrides.dateCharged || now,
     date_completed: status === 'paid' ? now : '',
     date_paid: status === 'paid' ? now : '',
+    hourly_rate: hourlyRate,
+    hours_worked: hoursWorked,
     work_total: workTotal,
     total_amount: amountTotal,
     amount_total: amountTotal,
@@ -1321,6 +1325,8 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
   const workTotal = Number(req.body?.work_total ?? req.body?.workTotal ?? 0);
   const studentPayout = Number(req.body?.student_payout ?? req.body?.studentPayout ?? 0);
   const platformFeeTotal = Number(req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? 0);
+  const hourlyRate = Number(req.body?.hourly_rate ?? req.body?.hourlyRate ?? 0);
+  const hoursWorked = Number(req.body?.hours_worked ?? req.body?.hoursWorked ?? 0);
   const projectId = String(req.body?.project_id || req.body?.projectId || '').trim();
   const studentUserId = String(req.body?.student_user_id || req.body?.studentUserId || req.body?.payee_id || req.body?.payeeId || '').trim();
   const jobTitle = String(req.body?.job_title || req.body?.jobTitle || 'CoGo City project').trim();
@@ -1342,6 +1348,8 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
     });
     marketplace.data.metadata.job_title = jobTitle.slice(0, 450);
     marketplace.data.metadata.work_total = String(workTotal || '');
+    marketplace.data.metadata.hourly_rate = String(hourlyRate || '');
+    marketplace.data.metadata.hours_worked = String(hoursWorked || '');
 
     const paymentIntent = await stripe.paymentIntents.create(
       {
@@ -1363,6 +1371,8 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
       amountTotal,
       studentPayout,
       platformFee: platformFeeTotal,
+      hourlyRate,
+      hoursWorked,
       status: paymentStatusForIntent(paymentIntent),
     });
 
@@ -1424,6 +1434,8 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? paymentIntent.metadata?.student_payout,
       platformFee: req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? paymentIntent.metadata?.platform_fee_total,
     });
+    const hourlyRate = Number(req.body?.hourly_rate ?? req.body?.hourlyRate ?? paymentIntent.metadata?.hourly_rate ?? 0);
+    const hoursWorked = Number(req.body?.hours_worked ?? req.body?.hoursWorked ?? paymentIntent.metadata?.hours_worked ?? 0);
     let activePaymentIntent = paymentIntent;
     let capturableCents = Number(activePaymentIntent.amount_capturable || activePaymentIntent.amount || 0);
     let amountToCapture = Math.min(finalAmounts.amountTotalCents, capturableCents);
@@ -1459,6 +1471,9 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
             amount_total: String(finalAmounts.amountTotal),
             student_payout: String(finalAmounts.studentPayout),
             platform_fee_total: String(finalAmounts.platformFee),
+            work_total: String(req.body?.work_total ?? req.body?.workTotal ?? paymentIntent.metadata?.work_total ?? ''),
+            hourly_rate: String(hourlyRate || ''),
+            hours_worked: String(hoursWorked || ''),
             adjustment_type: 'final_invoice_reauthorization',
             stripe_connect_flow: 'destination_charge_application_fee',
           },
@@ -1507,8 +1522,11 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
     }
     await updateManualProjectTransactionForIntent(activePaymentIntent, {
       amountTotal: finalAmounts.amountTotal,
+      workTotal: req.body?.work_total ?? req.body?.workTotal ?? paymentIntent.metadata?.work_total,
       platformFee: finalAmounts.platformFee,
       studentPayout: finalAmounts.studentPayout,
+      hourlyRate,
+      hoursWorked,
       status: 'paid',
       stripeChargeId: latestChargeObject(captured)?.id || '',
       payoutStatus: replacementIntent ? 'reauthorized' : '',
