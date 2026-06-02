@@ -123,7 +123,9 @@ function canReadManualTransaction(user, tx = {}) {
 
 function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, projectMap = new Map()) {
   const tx = row.payload || {};
-  const projectPayload = projectMap.get(String(firstValue(tx.project_id, tx.projectId, '') || '')) || {};
+  const projectPayload = projectMap.get(String(firstValue(tx.project_id, tx.projectId, '') || ''))
+    || projectMap.get(String(firstValue(tx.job_title, tx.jobTitle, '') || ''))
+    || {};
   const ids = manualTransactionUserIds(tx);
   const amountTotal = money(firstValue(tx.total_amount, tx.amount_total, tx.amountTotal, 0));
   const payoutAmount = money(firstValue(tx.payout_amount, tx.student_payout, tx.studentPayout, 0));
@@ -407,27 +409,18 @@ router.get('/', requireAuth, async (req, res) => {
   const userMap = new Map(manualUsers.map((user) => [user.id, user]));
   const coreStripeIds = new Set(projectTransactions.map((tx) => tx.stripe_payment_intent_id).filter(Boolean));
   const coreProjectIds = new Set(projectTransactions.map((tx) => tx.project_id).filter(Boolean));
-  const manualProjectIds = [...new Set(visibleManualRows
-    .map((row) => String(firstValue(row.payload?.project_id, row.payload?.projectId, '') || ''))
-    .filter(Boolean))];
-  const manualProjectRows = manualProjectIds.length
+  const manualProjectRows = visibleManualRows.length
     ? await prisma.syncRecord.findMany({
-        where: {
-          entity: 'projects',
-          deletedAt: null,
-          OR: [
-            { recordId: { in: manualProjectIds } },
-            ...manualProjectIds.map((projectId) => ({ payload: { path: ['project_id'], equals: projectId } })),
-            ...manualProjectIds.map((projectId) => ({ payload: { path: ['projectId'], equals: projectId } })),
-          ],
-        },
+        where: { entity: 'projects', deletedAt: null },
         select: { recordId: true, payload: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 500,
       })
     : [];
   const manualProjectMap = new Map();
   manualProjectRows.forEach((row) => {
     const payload = row.payload || {};
-    [row.recordId, payload.project_id, payload.projectId, payload.id].filter(Boolean).forEach((projectId) => {
+    [row.recordId, payload.project_id, payload.projectId, payload.id, payload.job_title, payload.jobTitle].filter(Boolean).forEach((projectId) => {
       manualProjectMap.set(String(projectId), payload);
     });
   });
