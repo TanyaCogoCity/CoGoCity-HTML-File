@@ -440,6 +440,87 @@ async function markTransactionFromIntent(paymentIntent) {
   return syncTransactionStripeReporting(tx.id, paymentIntent.id);
 }
 
+function manualProjectTransactionRecordId(paymentIntent) {
+  const metadata = paymentIntent?.metadata || {};
+  const projectId = String(metadata.project_id || '').trim();
+  return `manual-project:${projectId || paymentIntent.id}`;
+}
+
+function manualProjectTransactionPayload(paymentIntent, overrides = {}) {
+  const metadata = paymentIntent?.metadata || {};
+  const workTotal = Number(overrides.workTotal ?? overrides.work_total ?? metadata.work_total ?? 0);
+  const amountTotal = Number(overrides.amountTotal ?? overrides.amount_total ?? metadata.amount_total ?? fromCents(paymentIntent?.amount_received || paymentIntent?.amount || 0));
+  const studentPayout = Number(overrides.studentPayout ?? overrides.student_payout ?? metadata.student_payout ?? 0);
+  const platformFeeTotal = Number(overrides.platformFee ?? overrides.platform_fee_total ?? metadata.platform_fee_total ?? Math.max(0, amountTotal - studentPayout));
+  const employerPlatformFee = Math.max(0, Number((amountTotal - workTotal).toFixed(2)));
+  const studentPlatformFee = Math.max(0, Number((workTotal - studentPayout).toFixed(2)));
+  const now = new Date().toISOString();
+  const status = overrides.status || paymentStatusForIntent(paymentIntent);
+  return {
+    id: manualProjectTransactionRecordId(paymentIntent),
+    transaction_id: manualProjectTransactionRecordId(paymentIntent),
+    payment_type: 'project_payment',
+    source: 'manual_project_stripe',
+    project_id: metadata.project_id || '',
+    job_id: metadata.project_id || '',
+    employer_id: metadata.payer_id || '',
+    payer_id: metadata.payer_id || '',
+    student_id: metadata.payee_id || metadata.student_user_id || '',
+    payee_id: metadata.payee_id || metadata.student_user_id || '',
+    job_title: metadata.job_title || 'Project payment',
+    status,
+    created_at: overrides.createdAt || now,
+    date_charged: overrides.dateCharged || now,
+    date_completed: status === 'paid' ? now : '',
+    date_paid: status === 'paid' ? now : '',
+    work_total: workTotal,
+    total_amount: amountTotal,
+    amount_total: amountTotal,
+    payout_amount: studentPayout,
+    student_payout: studentPayout,
+    platform_fee_total: platformFeeTotal,
+    cogo_commission: platformFeeTotal,
+    employer_platform_fee: employerPlatformFee,
+    student_platform_fee: studentPlatformFee,
+    platform_fee: studentPlatformFee,
+    stripe_payment_intent_id: paymentIntent.id,
+    stripe_charge_id: overrides.stripeChargeId || '',
+    stripe_transfer_id: overrides.stripeTransferId || '',
+    stripe_payment_status: paymentIntent.status || '',
+    transfer_status: overrides.transferStatus || '',
+    payout_status: overrides.payoutStatus || '',
+  };
+}
+
+async function upsertManualProjectTransaction(paymentIntent, overrides = {}) {
+  if (!paymentIntent?.id) return null;
+  const recordId = manualProjectTransactionRecordId(paymentIntent);
+  const existing = await prisma.syncRecord.findUnique({ where: { entity_recordId: { entity: 'transactions', recordId } } });
+  const payload = Object.assign({}, existing?.payload || {}, manualProjectTransactionPayload(paymentIntent, overrides));
+  return prisma.syncRecord.upsert({
+    where: { entity_recordId: { entity: 'transactions', recordId } },
+    create: { entity: 'transactions', recordId, payload },
+    update: { payload, deletedAt: null },
+  });
+}
+
+async function updateManualProjectTransactionForIntent(paymentIntent, overrides = {}) {
+  if (!paymentIntent?.id) return null;
+  const existing = await prisma.syncRecord.findFirst({
+    where: {
+      entity: 'transactions',
+      deletedAt: null,
+      payload: { path: ['stripe_payment_intent_id'], equals: paymentIntent.id },
+    },
+  });
+  if (!existing) return upsertManualProjectTransaction(paymentIntent, overrides);
+  const payload = Object.assign({}, existing.payload || {}, manualProjectTransactionPayload(paymentIntent, overrides));
+  return prisma.syncRecord.update({
+    where: { entity_recordId: { entity: 'transactions', recordId: existing.recordId } },
+    data: { payload, deletedAt: null },
+  });
+}
+
 
 function paymentStatusForCheckoutSession(session) {
   if (session.payment_status === 'paid') return 'paid';
@@ -1277,6 +1358,14 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
       { idempotencyKey: `manual-project:${req.user.id}:${projectId || jobTitle}:${amountTotal}:intent:v2:connect` }
     );
 
+    await upsertManualProjectTransaction(paymentIntent, {
+      workTotal,
+      amountTotal,
+      studentPayout,
+      platformFee: platformFeeTotal,
+      status: paymentStatusForIntent(paymentIntent),
+    });
+
     if (isUuid(projectId)) {
       const project = await prisma.project.findFirst({ where: { id: projectId, deletedAt: null } });
       if (project) {
@@ -1416,6 +1505,14 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
         },
       });
     }
+    await updateManualProjectTransactionForIntent(activePaymentIntent, {
+      amountTotal: finalAmounts.amountTotal,
+      platformFee: finalAmounts.platformFee,
+      studentPayout: finalAmounts.studentPayout,
+      status: 'paid',
+      stripeChargeId: latestChargeObject(captured)?.id || '',
+      payoutStatus: replacementIntent ? 'reauthorized' : '',
+    });
     await notifyManualProjectPaymentCaptured({ paymentIntent: captured, finalAmounts });
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, replacementPaymentIntentId: replacementIntent?.id || null } });
     return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
@@ -1464,6 +1561,12 @@ router.post('/manual-project-transfer', requireAuth, async (req, res) => {
     );
     const tx = await prisma.transaction.findFirst({ where: { stripePaymentIntentId: paymentIntent.id } });
     if (tx) await prisma.transaction.update({ where: { id: tx.id }, data: { stripeTransferId: transfer.id, transferStatus: 'created', payoutStatus: 'paid' } });
+    await updateManualProjectTransactionForIntent(paymentIntent, {
+      stripeTransferId: transfer.id,
+      transferStatus: 'created',
+      payoutStatus: 'paid',
+      status: 'paid',
+    });
     await notifyManualProjectTransferSent({ paymentIntent, transferAmount: amount });
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.transfer.create', entityType: 'stripe_transfer', entityId: transfer.id, payload: { paymentIntentId, studentUserId, amount } });
     return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid' });
