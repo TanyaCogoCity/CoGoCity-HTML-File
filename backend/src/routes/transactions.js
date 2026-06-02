@@ -121,8 +121,9 @@ function canReadManualTransaction(user, tx = {}) {
   return ids.payerId === user.id;
 }
 
-function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}) {
+function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, projectMap = new Map()) {
   const tx = row.payload || {};
+  const projectPayload = projectMap.get(String(firstValue(tx.project_id, tx.projectId, '') || '')) || {};
   const ids = manualTransactionUserIds(tx);
   const amountTotal = money(firstValue(tx.total_amount, tx.amount_total, tx.amountTotal, 0));
   const payoutAmount = money(firstValue(tx.payout_amount, tx.student_payout, tx.studentPayout, 0));
@@ -149,8 +150,8 @@ function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}) 
     studentPlatformFee = money(Math.max(0, workTotal - payoutAmount));
     platformFeeTotal = money(employerPlatformFee + studentPlatformFee);
   }
-  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, 0) || 0);
-  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, 0) || 0);
+  let hourlyRate = Number(firstValue(tx.hourly_rate, tx.hourlyRate, tx.student_rate, tx.studentRate, tx.rate, projectPayload.hourly_rate, projectPayload.hourlyRate, projectPayload.rate, 0) || 0);
+  let hoursWorked = Number(firstValue(tx.hours_worked, tx.hoursWorked, tx.final_hours_worked, tx.finalHoursWorked, tx.actual_hours, tx.actualHours, tx.estimated_hours, tx.estimatedHours, tx.duration, projectPayload.actual_hours, projectPayload.actualHours, projectPayload.estimated_hours, projectPayload.estimatedHours, projectPayload.duration, 0) || 0);
   if (!hourlyRate && hoursWorked && workTotal) hourlyRate = money(workTotal / hoursWorked);
   if (!hoursWorked && hourlyRate && workTotal) hoursWorked = money(workTotal / hourlyRate);
   return {
@@ -406,8 +407,18 @@ router.get('/', requireAuth, async (req, res) => {
   const userMap = new Map(manualUsers.map((user) => [user.id, user]));
   const coreStripeIds = new Set(projectTransactions.map((tx) => tx.stripe_payment_intent_id).filter(Boolean));
   const coreProjectIds = new Set(projectTransactions.map((tx) => tx.project_id).filter(Boolean));
+  const manualProjectIds = [...new Set(visibleManualRows
+    .map((row) => String(firstValue(row.payload?.project_id, row.payload?.projectId, '') || ''))
+    .filter(Boolean))];
+  const manualProjectRows = manualProjectIds.length
+    ? await prisma.syncRecord.findMany({
+        where: { entity: 'projects', recordId: { in: manualProjectIds }, deletedAt: null },
+        select: { recordId: true, payload: true },
+      })
+    : [];
+  const manualProjectMap = new Map(manualProjectRows.map((row) => [row.recordId, row.payload || {}]));
   const manualTransactions = visibleManualRows
-    .map((row) => normalizeManualTransaction(row, userMap, feeSettings))
+    .map((row) => normalizeManualTransaction(row, userMap, feeSettings, manualProjectMap))
     .filter((tx) => {
       const stripeId = tx.stripe_payment_intent_id;
       const projectId = tx.project_id;
