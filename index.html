@@ -1563,7 +1563,7 @@ async function openPayerStripeSetupModal(){
     stripeSetupIntentContext = setup;
     const stripe = await getStripeClient();
     stripeCardElements = stripe.elements();
-    stripeCardElement = stripeCardElements.create('card', { hidePostalCode:false });
+    stripeCardElement = stripeCardElements.create('card', { hidePostalCode:true });
     stripeCardElement.mount('#stripe-card-element');
     stripeCardElement.on('change', event => {
       const el = document.getElementById('stripe-card-errors');
