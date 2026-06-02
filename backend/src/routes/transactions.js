@@ -21,6 +21,74 @@ function userDisplayName(user, fallback = '') {
   return user.displayName || fullName || fallback;
 }
 
+function firstValue(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '');
+}
+
+function manualTransactionUserIds(tx = {}) {
+  return {
+    payerId: String(firstValue(tx.payer_id, tx.payerId, tx.employer_id, tx.employerId, tx.neighbor_id, tx.neighborId, '') || ''),
+    payeeId: String(firstValue(tx.payee_id, tx.payeeId, tx.student_id, tx.studentId, tx.student_user_id, tx.studentUserId, '') || ''),
+  };
+}
+
+function canReadManualTransaction(user, tx = {}) {
+  if (user.role === 'admin') return true;
+  const ids = manualTransactionUserIds(tx);
+  if (user.role === 'student') return ids.payeeId === user.id;
+  return ids.payerId === user.id;
+}
+
+function normalizeManualTransaction(row, userMap = new Map()) {
+  const tx = row.payload || {};
+  const ids = manualTransactionUserIds(tx);
+  const amountTotal = money(firstValue(tx.total_amount, tx.amount_total, tx.amountTotal, 0));
+  const workTotal = money(firstValue(tx.work_total, tx.workTotal, 0));
+  const payoutAmount = money(firstValue(tx.payout_amount, tx.student_payout, tx.studentPayout, 0));
+  const platformFeeTotal = money(firstValue(tx.platform_fee_total, tx.cogo_commission, tx.platformFeeTotal, 0));
+  const employerPlatformFee = money(firstValue(tx.employer_platform_fee, tx.employerPlatformFee, Math.max(0, amountTotal - workTotal)));
+  const studentPlatformFee = money(firstValue(tx.student_platform_fee, tx.studentPlatformFee, tx.platform_fee, Math.max(0, workTotal - payoutAmount)));
+  return {
+    ...tx,
+    id: firstValue(tx.id, tx.transaction_id, row.recordId),
+    transaction_id: firstValue(tx.transaction_id, tx.id, row.recordId),
+    payment_type: firstValue(tx.payment_type, 'project_payment'),
+    project_id: firstValue(tx.project_id, tx.projectId, ''),
+    job_id: firstValue(tx.job_id, tx.jobId, tx.project_id, ''),
+    employer_id: ids.payerId,
+    payer_id: ids.payerId,
+    student_id: ids.payeeId,
+    payee_id: ids.payeeId,
+    employerName: firstValue(tx.employerName, tx.employer_name, userDisplayName(userMap.get(ids.payerId), 'Employer / Neighbor')),
+    studentName: firstValue(tx.studentName, tx.student_name, userDisplayName(userMap.get(ids.payeeId), 'Student')),
+    job_title: firstValue(tx.job_title, tx.jobTitle, 'Project payment'),
+    status: firstValue(tx.status, 'pending'),
+    created_at: firstValue(tx.created_at, row.createdAt),
+    date_charged: firstValue(tx.date_charged, tx.charged_at, tx.created_at, row.createdAt),
+    date_completed: firstValue(tx.date_completed, tx.completed_at, ''),
+    date_paid: firstValue(tx.date_paid, tx.paid_at, ''),
+    hourly_rate: Number(firstValue(tx.hourly_rate, tx.hourlyRate, 0) || 0),
+    hours_worked: Number(firstValue(tx.hours_worked, tx.hoursWorked, 0) || 0),
+    work_total: workTotal,
+    total_amount: amountTotal,
+    amount_total: amountTotal,
+    payout_amount: payoutAmount,
+    student_payout: payoutAmount,
+    student_platform_fee: studentPlatformFee,
+    employer_platform_fee: employerPlatformFee,
+    platform_fee_total: platformFeeTotal,
+    cogo_commission: platformFeeTotal,
+    platform_fee: studentPlatformFee,
+    stripe_payment_intent_id: firstValue(tx.stripe_payment_intent_id, tx.stripePaymentIntentId, ''),
+    stripe_charge_id: firstValue(tx.stripe_charge_id, tx.stripeChargeId, ''),
+    stripe_transfer_id: firstValue(tx.stripe_transfer_id, tx.stripeTransferId, ''),
+    stripe_application_fee_id: firstValue(tx.stripe_application_fee_id, tx.stripeApplicationFeeId, ''),
+    stripe_balance_transaction_id: firstValue(tx.stripe_balance_transaction_id, tx.stripeBalanceTransactionId, ''),
+    transfer_status: firstValue(tx.transfer_status, tx.transferStatus, ''),
+    payout_status: firstValue(tx.payout_status, tx.payoutStatus, ''),
+  };
+}
+
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res) => {
@@ -207,8 +275,37 @@ router.get('/', requireAuth, async (req, res) => {
     };
   });
 
+  const manualSyncRows = await prisma.syncRecord.findMany({
+    where: { entity: 'transactions', deletedAt: null },
+    orderBy: { updatedAt: 'desc' },
+    take: 500,
+  });
+  const visibleManualRows = manualSyncRows.filter((row) => canReadManualTransaction(req.user, row.payload || {}));
+  const userIds = [...new Set(visibleManualRows.flatMap((row) => {
+    const ids = manualTransactionUserIds(row.payload || {});
+    return [ids.payerId, ids.payeeId].filter(Boolean);
+  }))];
+  const manualUsers = userIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, displayName: true, firstName: true, lastName: true, role: true },
+      })
+    : [];
+  const userMap = new Map(manualUsers.map((user) => [user.id, user]));
+  const coreStripeIds = new Set(projectTransactions.map((tx) => tx.stripe_payment_intent_id).filter(Boolean));
+  const coreProjectIds = new Set(projectTransactions.map((tx) => tx.project_id).filter(Boolean));
+  const manualTransactions = visibleManualRows
+    .map((row) => normalizeManualTransaction(row, userMap))
+    .filter((tx) => {
+      const stripeId = tx.stripe_payment_intent_id;
+      const projectId = tx.project_id;
+      if (stripeId && coreStripeIds.has(stripeId)) return false;
+      if (projectId && coreProjectIds.has(projectId)) return false;
+      return true;
+    });
+
   const data = projectTransactions
-    .concat(jobListingTransactions, workshopTransactions)
+    .concat(manualTransactions, jobListingTransactions, workshopTransactions)
     .sort((a, b) => new Date(b.date_paid || b.date_charged || b.created_at || 0) - new Date(a.date_paid || a.date_charged || a.created_at || 0))
     .slice(0, 500);
 
