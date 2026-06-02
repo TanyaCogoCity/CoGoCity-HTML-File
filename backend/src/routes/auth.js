@@ -12,6 +12,61 @@ const { sendEmail, buildAppLink } = require('../lib/email');
 
 const router = express.Router();
 
+const US_ONLY_SIGNUP_MESSAGE = 'Thanks for your interest in CoGo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
+const US_STATES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+]);
+const NON_US_COUNTRY_WORDS = /\b(canada|mexico|united kingdom|uk|england|france|germany|india|china|australia|brazil|italy|spain|israel|russia|japan)\b/i;
+
+function truthySignupConfirmation(value) {
+  if (value === true || value === 1) return true;
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['true', 'yes', 'y', '1', 'on'].includes(normalized);
+}
+
+function getSignupUsConfirmation(payload = {}) {
+  return payload.usOnlyConfirmed ?? payload.us_only_confirmed ?? payload.usaOnlyConfirmed ?? payload.usa_only_confirmed ?? payload.usConfirmation ?? payload.us_confirmation;
+}
+
+function isValidUsPhone(value = '') {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
+}
+
+function addressValueFromPayload(payload = {}) {
+  const profile = payload.profile || {};
+  return profile.address || payload.address || '';
+}
+
+function businessAddressValueFromPayload(payload = {}) {
+  const profile = payload.profile || {};
+  const business = payload.businessProfile || profile.businessProfile || {};
+  return business.address || payload.businessAddress || '';
+}
+
+function isUsAddress(value = '') {
+  const address = String(value || '').trim();
+  if (!address || NON_US_COUNTRY_WORDS.test(address)) return false;
+  const stateZipMatch = address.match(/\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/i);
+  if (!stateZipMatch) return false;
+  return US_STATES.has(stateZipMatch[1].toUpperCase());
+}
+
+function validateUsOnlySignup(payload = {}, normalizedPayload = {}) {
+  if (!truthySignupConfirmation(getSignupUsConfirmation(payload))) {
+    return 'Please confirm that you live in the United States and will use CoGo City only for U.S.-based opportunities.';
+  }
+  if (!isValidUsPhone(normalizedPayload.phone || payload.phone || '')) {
+    return 'Please enter a valid 10-digit U.S. phone number.';
+  }
+  const homeAddress = addressValueFromPayload(payload);
+  if (!isUsAddress(homeAddress)) return US_ONLY_SIGNUP_MESSAGE;
+  if (normalizedPayload.role === 'employer' && !isUsAddress(businessAddressValueFromPayload(payload))) return US_ONLY_SIGNUP_MESSAGE;
+  return '';
+}
+
 
 function passwordResetEmailHtml({ displayName, resetUrl }) {
   const safeName = String(displayName || 'there').replace(/[<>&"']/g, '');
@@ -168,6 +223,8 @@ router.post('/register', async (req, res) => {
   try {
     const payload = normalizeRegisterPayload(req.body || {});
     if (payload.role === 'admin') return fail(res, 403, 'Admin accounts cannot be created through public registration');
+    const usOnlySignupProblem = validateUsOnlySignup(req.body || {}, payload);
+    if (usOnlySignupProblem) return fail(res, 400, usOnlySignupProblem);
     const exists = await prisma.user.findUnique({ where: { email: payload.email } });
     if (exists) return fail(res, 409, 'Email already in use');
 

@@ -275,6 +275,16 @@
       text-decoration:underline;
       text-underline-offset:2px;
     }
+    .signup-us-only-note{
+      background:#F0F9FF;
+      border:1px solid #BAE6FD;
+      border-radius:12px;
+      color:#0F3F57;
+      font-size:.9rem;
+      line-height:1.4;
+      padding:12px 14px;
+      margin-bottom:14px;
+    }
     .toast{
       position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
       background:var(--color-text-main);color:#fff;padding:14px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100;
@@ -5700,6 +5710,34 @@ function renderSignupLegalAcknowledgement(id='signupLegalAck'){
 function isSignupLegalAcknowledged(id='signupLegalAck'){
   return !!document.getElementById(id)?.checked;
 }
+function renderUsOnlySignupNotice(){
+  return `<div class="signup-us-only-note">At this moment, CoGo City is available only within the United States. We hope to expand to other countries soon.</div>`;
+}
+function renderUsOnlyConfirmation(id='signupUsOnlyAck'){
+  return `
+    <label class="signup-legal-ack" for="${esc(id)}">
+      <input id="${esc(id)}" type="checkbox">
+      <span>I confirm that I live in the United States and will use CoGo City only for U.S.-based opportunities.</span>
+    </label>
+  `;
+}
+function isUsOnlyConfirmed(id='signupUsOnlyAck'){
+  return !!document.getElementById(id)?.checked;
+}
+function usOnlyBlockMessage(){
+  return 'Thanks for your interest in CoGo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
+}
+function addressLooksOutsideUs(address=''){
+  const value = String(address || '').toLowerCase();
+  return /\b(canada|mexico|united kingdom|uk|england|france|germany|india|china|australia|brazil|italy|spain|israel|russia|japan)\b/.test(value);
+}
+function googleAddressIsUs(components=[]){
+  const country = (components || []).find(component => (component.types || []).includes('country'));
+  if (!country) return true;
+  const shortName = String(country.short_name || '').toUpperCase();
+  const longName = String(country.long_name || '').toLowerCase();
+  return shortName === 'US' || longName === 'united states';
+}
 function renderStudentSignupModal(){
   const strength = getStudentSignupStrength();
   const suggestions = getStudentSignupSuggestions();
@@ -5817,6 +5855,7 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 5) return `
     <div class="card form-card">
+      ${renderUsOnlySignupNotice()}
       <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"></div>
       <div class="field"><label>Phone</label><input id="studentFlowPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555"></div>
       <div class="field"><label>Home Address</label><input id="studentFlowAddress" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA 94526" onfocus="attachGoogleAddressAutocomplete('studentFlowAddress')"><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile. Choose a Google suggestion when available.</div></div>
@@ -5836,6 +5875,7 @@ function renderStudentSignupStepContent(){
   if (studentSignupStep === 7) return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Create your password last. Your email verification is skipped in test mode for now.</div>
+      ${renderUsOnlySignupNotice()}
       ${renderPasswordField('Create Password', 'studentFlowPassword', { value:d.password, placeholder:'••••••••', autocomplete:'new-password' })}
       ${renderPasswordField('Confirm Password', 'studentFlowConfirmPassword', { value:d.confirmPassword, placeholder:'••••••••', autocomplete:'new-password' })}
     </div>
@@ -5854,7 +5894,7 @@ function renderStudentSignupStepContent(){
 function renderStudentSignupFooter(){
   const prev = studentSignupStep > 1 ? `<button class="btn btn-outline" onclick="goStudentSignupStep(${studentSignupStep - 1})">Back</button>` : `<span></span>`;
   if (studentSignupStep === 6) return `${prev}<button class="btn btn-blue" onclick="submitStudentSignupProfile()">Submit and Publish Profile</button>`;
-  if (studentSignupStep === 7) return `${prev}${renderSignupLegalAcknowledgement('studentSignupLegalAck')}<button class="btn btn-blue" onclick="publishStudentSignupProfile()">Create Password</button>`;
+  if (studentSignupStep === 7) return `${prev}<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">${renderUsOnlyConfirmation('studentSignupUsOnlyAck')}${renderSignupLegalAcknowledgement('studentSignupLegalAck')}</div><button class="btn btn-blue" onclick="publishStudentSignupProfile()">Create Password</button>`;
   return `${prev}<button class="btn btn-blue" onclick="goStudentSignupStep(${studentSignupStep + 1})">Next</button>`;
 }
 async function saveStudentSignupStep(step){
@@ -6191,6 +6231,7 @@ async function submitStudentSignupProfile(){
 async function publishStudentSignupProfile(){
   if (!studentSignupDraft.profileReady) return toast('Please submit and publish your profile first.');
   if (!(await saveStudentSignupStep(7))) return;
+  if (!isUsOnlyConfirmed('studentSignupUsOnlyAck')) return toast('Please confirm that you live in the United States and will use CoGo City only for U.S.-based opportunities.');
   if (!isSignupLegalAcknowledged('studentSignupLegalAck')) return toast('Please acknowledge the Privacy Policy, Disclaimer, and Safety & Legal Guidelines before signing up.');
   const d = studentSignupDraft;
   if (!(d.services || []).length) return toast('Please add at least one service.');
@@ -6212,6 +6253,7 @@ async function publishStudentSignupProfile(){
           email: d.email,
           password: d.password,
           role: 'student',
+          usOnlyConfirmed: true,
           phone: d.phone,
           phoneVerified: false,
           city: d.city || extractCity(d.address),
@@ -6374,6 +6416,7 @@ function getAddressValidationMessage(address='', label='address'){
   const field = label || 'address';
   const fieldLabel = field.charAt(0).toUpperCase() + field.slice(1);
   if (!value) return `Please enter a complete ${field}.`;
+  if (addressLooksOutsideUs(value)) return usOnlyBlockMessage();
   const parts = parsed.parts;
   if (parts.length < 3) return `Please enter a complete ${field}: street address, city, state, and ZIP code.`;
   const street = parsed.street;
@@ -6451,6 +6494,13 @@ function attachGoogleAddressAutocomplete(inputId, label='address'){
     });
     autocomplete.addListener('place_changed', () => {
       const place = autocomplete.getPlace() || {};
+      if (!googleAddressIsUs(place.address_components || [])) {
+        input.value = '';
+        input.dataset.googleFormattedAddress = '';
+        input.dataset.googleAddressValidated = '';
+        toast(usOnlyBlockMessage());
+        return;
+      }
       if (place.formatted_address) input.value = place.formatted_address;
       input.dataset.googleFormattedAddress = place.formatted_address || '';
       input.dataset.googleAddressValidated = place.geometry && addressHasRequiredGoogleParts(place.address_components || []) ? 'true' : '';
@@ -6477,6 +6527,7 @@ async function validateAddressExists(address='', inputId='', label='address'){
     geocoder.geocode({ address: normalizedAddress, componentRestrictions:{ country:'US' } }, (results, status) => {
       const result = (results || [])[0];
       if (status !== 'OK' || !result) return resolve({ ok:false, message:`Please check this ${label}. Google could not verify it, so make sure the street, city, state, and ZIP are correct.` });
+      if (!googleAddressIsUs(result.address_components || [])) return resolve({ ok:false, message:usOnlyBlockMessage() });
       if (!addressHasRequiredGoogleParts(result.address_components || [])) return resolve({ ok:false, message:`Please enter a complete ${label}. Google found only a partial match, so check the street number, city, state, and ZIP.` });
       const locationType = result.geometry && result.geometry.location_type;
       if (!['ROOFTOP','RANGE_INTERPOLATED'].includes(locationType)) return resolve({ ok:false, message:`Please choose or enter a more exact ${label}. Google only found an approximate match.` });
@@ -6606,6 +6657,7 @@ function renderEmployerSignupStepContent(){
   const d = employerSignupDraft;
   if (employerSignupStep === 1) return `
     <div class="card form-card">
+      ${renderUsOnlySignupNotice()}
       <div class="row">
         <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="Tanya" oninput="syncEmployerSignupPersonalDraft()"></div>
         <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip" oninput="syncEmployerSignupPersonalDraft()"></div>
@@ -6661,6 +6713,7 @@ function renderEmployerSignupStepContent(){
   return `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">${employerSignupMode === 'employer' ? 'After password setup, verification email is skipped in test mode and you will be redirected to your profile.' : 'After password setup, verification email is skipped in test mode and you will be redirected to your profile.'}</div>
+      ${renderUsOnlySignupNotice()}
       ${renderPasswordField('Create Password', 'employerSignupPassword', { value:d.password, placeholder:'••••••••', autocomplete:'new-password', oninput:'syncEmployerSignupPasswordDraft()' })}
       ${renderPasswordField('Confirm Password', 'employerSignupConfirmPassword', { value:d.confirmPassword, placeholder:'••••••••', autocomplete:'new-password', oninput:'syncEmployerSignupPasswordDraft()' })}
     </div>
@@ -6674,7 +6727,7 @@ function renderEmployerSignupFooter(){
     : 1;
   const prev = showBack ? `<button class="btn btn-outline" onclick="goEmployerSignupStep(${prevStep})">Back</button>` : `<span></span>`;
   if (employerSignupMode === 'employer' && employerSignupStep === 3) return `${prev}<button class="btn btn-blue" onclick="submitEmployerSignupPreview()">Submit</button>`;
-  if (employerSignupStep === passwordStep) return `${prev}${renderSignupLegalAcknowledgement('employerSignupLegalAck')}<button class="btn btn-blue" onclick="publishEmployerSignupProfile()">Submit</button>`;
+  if (employerSignupStep === passwordStep) return `${prev}<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start">${renderUsOnlyConfirmation('employerSignupUsOnlyAck')}${renderSignupLegalAcknowledgement('employerSignupLegalAck')}</div><button class="btn btn-blue" onclick="publishEmployerSignupProfile()">Submit</button>`;
   return `${prev}<button class="btn btn-blue" onclick="goEmployerSignupStep(${employerSignupStep + 1})">Next</button>`;
 }
 async function saveEmployerSignupStep(step){
@@ -6787,6 +6840,7 @@ async function submitEmployerSignupPreview(){
 async function publishEmployerSignupProfile(){
   const passwordStep = employerSignupMode === 'employer' ? 4 : 2;
   if (!(await saveEmployerSignupStep(passwordStep))) return;
+  if (!isUsOnlyConfirmed('employerSignupUsOnlyAck')) return toast('Please confirm that you live in the United States and will use CoGo City only for U.S.-based opportunities.');
   if (!isSignupLegalAcknowledged('employerSignupLegalAck')) return toast('Please acknowledge the Privacy Policy, Disclaimer, and Safety & Legal Guidelines before signing up.');
   const d = employerSignupDraft;
   const users = getUsers();
@@ -6804,6 +6858,7 @@ async function publishEmployerSignupProfile(){
           email: d.email,
           password: d.password,
           role,
+          usOnlyConfirmed: true,
           type: employerSignupMode === 'employer' ? 'business' : 'neighbor',
           phone: d.phone,
           phoneVerified: false,
