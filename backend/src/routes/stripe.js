@@ -525,6 +525,27 @@ async function updateManualProjectTransactionForIntent(paymentIntent, overrides 
   });
 }
 
+async function hideReplacedManualProjectTransaction(paymentIntent, replacementPaymentIntentId = '') {
+  if (!paymentIntent?.id) return null;
+  const existing = await prisma.syncRecord.findFirst({
+    where: {
+      entity: 'transactions',
+      deletedAt: null,
+      payload: { path: ['stripe_payment_intent_id'], equals: paymentIntent.id },
+    },
+  });
+  if (!existing) return null;
+  const payload = Object.assign({}, existing.payload || {}, {
+    status: 'replaced',
+    payout_status: 'reauthorized',
+    replacement_payment_intent_id: replacementPaymentIntentId,
+  });
+  return prisma.syncRecord.update({
+    where: { entity_recordId: { entity: 'transactions', recordId: existing.recordId } },
+    data: { payload, deletedAt: new Date() },
+  });
+}
+
 
 function paymentStatusForCheckoutSession(session) {
   if (session.payment_status === 'paid') return 'paid';
@@ -1652,6 +1673,7 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       } catch (cancelError) {
         await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.cancel_replaced_failed', entityType: 'stripe_payment_intent', entityId: activePaymentIntent.id, payload: { replacementPaymentIntentId: replacementIntent.id, error: cancelError.message } });
       }
+      await hideReplacedManualProjectTransaction(activePaymentIntent, replacementIntent.id);
 
       activePaymentIntent = replacementIntent;
       capturableCents = finalAmounts.amountTotalCents;
