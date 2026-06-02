@@ -746,7 +746,8 @@ function getCogoAnalyticsPagePath(route=''){
 function sanitizeCogoAnalyticsParams(params={}){
   const allowedKeys = new Set([
     'environment', 'hostname', 'page_path', 'page_type', 'user_role', 'source', 'results_count',
-    'service_category', 'category', 'package', 'value', 'currency', 'success', 'status'
+    'service_category', 'category', 'package', 'value', 'currency', 'success', 'status',
+    'user_type', 'onboarding_flow'
   ]);
   const sanitized = {};
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -807,6 +808,13 @@ function trackCogoEvent(eventName='', params={}){
   window.dataLayer = window.dataLayer || [];
   window.dataLayer.push(Object.assign({ event: eventName }, payload));
   sendCogoGa4Event(eventName, payload);
+}
+function trackOnboardingCompleted(userType='', onboardingFlow='signup'){
+  const type = String(userType || '').toLowerCase();
+  if (!['student','neighbor','employer'].includes(type)) return;
+  const payload = { user_type:type, onboarding_flow:onboardingFlow };
+  trackCogoEvent('onboarding_completed', payload);
+  trackCogoEvent(`${type}_onboarding_completed`, payload);
 }
 function trackCogoSearchEvent(searchTerm='', resultCount=0){
   if (!String(searchTerm || '').trim()) return;
@@ -6351,6 +6359,7 @@ async function publishStudentSignupProfile(){
   saveBlogPosts(getBlogPosts());
   ls('cogo_active_student_profile', studentId);
   setCurrentUser(newUser);
+  trackOnboardingCompleted('student', 'signup');
   studentSignupDraft = null;
   studentSignupEditingServiceIndex = null;
   closeModal();
@@ -6924,6 +6933,7 @@ async function publishEmployerSignupProfile(){
   users.push(newUser);
   saveUsers(users);
   setCurrentUser(newUser);
+  trackOnboardingCompleted(role, 'signup');
   employerSignupDraft = null;
   employerSignupStep = 1;
   closeModal();
@@ -11608,6 +11618,7 @@ async function submitStudentMigrationOnboarding(){
     } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
+  trackOnboardingCompleted('student', 'migration_review');
   studentProfileTab = 'all';
   dashSection = 'profile';
   toast('Profile confirmed. Opening your public profile preview.');
@@ -11688,6 +11699,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
     } catch (error) { return showMigrationFormError(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
+  trackOnboardingCompleted(isEmployer ? 'employer' : 'neighbor', 'migration_review');
   employerProfileTab = 'all';
   dashSection = 'profile';
   toast('Profile confirmed. Opening your public profile preview.');
