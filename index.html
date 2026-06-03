@@ -10889,16 +10889,32 @@ function getPostComposerDraft(){
   applyVideoState(draft, getRenderableVideoUrl(draft) || draft.video_url || '');
   return draft;
 }
-function renderCommunityPostImages(images=[], size=120){
+const COMMUNITY_POST_IMAGE_HELP = 'Recommended image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly in the feed.';
+const COMMUNITY_POST_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link, or upload a short video. MP4 or WebM under 15 MB works best.';
+const COMMUNITY_VIDEO_UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
+function renderCommunityPostImages(images=[]){
   const safe = ensureArray(images).slice(0, 1);
   if (!safe.length) return '';
-  return safe.length > 2 ? renderMediaCarousel(safe, size) : renderMediaThumbs(safe, 2, size, '');
+  return `
+    <div style="max-width:540px">
+      ${renderManagedImage(safe[0], 'Post image', 'width:100%;aspect-ratio:16/9;min-height:220px;max-height:340px;border-radius:16px;object-fit:cover;border:1px solid var(--border);background:#F9FAFB;display:block', 'full')}
+    </div>
+  `;
+}
+function renderCommunityVideoPreviewHtml(videoValue='', label='Post video'){
+  return renderVideoPreviewHtml(videoValue, label, { maxWidth:'540px' });
 }
 function renderPostComposerImagePreview(images=[], removeAction='removePostComposerImage'){
   const safe = ensureArray(images).filter(Boolean).slice(0, 1);
-  if (!safe.length) return `<div class="small muted">Image is optional. Upload one picture for this community post.</div>`;
+  if (!safe.length) return `<div class="small muted">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>`;
   const action = removeAction ? `${removeAction}()` : '';
-  return renderEditableSingleImage(safe[0], 'Post image', action, 110, 'No post image added yet.');
+  return `
+    <div style="max-width:540px;margin-bottom:14px">
+      ${renderManagedImage(safe[0], 'Post image', 'width:100%;aspect-ratio:16/9;min-height:220px;max-height:340px;border-radius:16px;object-fit:cover;border:1px solid var(--border);background:#F9FAFB;display:block', 'full', 'loading="eager"')}
+      <div style="margin-top:10px">${action ? `<button class="btn btn-outline btn-sm" type="button" onclick="${action}">Remove image</button>` : ''}</div>
+      <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
+    </div>
+  `;
 }
 function setHiddenSingleImage(inputId='', imageId=''){
   const hidden = document.getElementById(inputId);
@@ -10935,12 +10951,17 @@ function handlePostComposerImagesUpload(input){
 function previewPostComposerVideo(value){
   const state = normalizeVideoInputValue(value || '');
   const preview = document.getElementById('post-video-preview');
-  if (preview) preview.innerHTML = state.media_url ? renderVideoPreviewHtml(state.media_url, 'Post video') : `<div class="small muted">No video link added yet.</div>`;
+  if (preview) preview.innerHTML = state.media_url ? renderCommunityVideoPreviewHtml(state.media_url, 'Post video') : `<div class="small muted">No video link added yet.</div>`;
   savePostComposerDraft();
 }
 function readCommunityVideoFile(input, callback){
   const file = input && input.files && input.files[0];
   if (!file) return;
+  if (file.size > COMMUNITY_VIDEO_UPLOAD_MAX_BYTES) {
+    toast('Please upload a shorter video under 15 MB, or paste a YouTube/Vimeo link.');
+    if (input) input.value = '';
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     callback(reader.result || '');
@@ -10979,11 +11000,13 @@ function togglePostComposer(){
       <div class="field">
         <label>Post Image (optional, one image)</label>
         <input type="file" accept="image/*" onchange="handlePostComposerImagesUpload(this)">
+        <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
         <input type="hidden" id="postImagesValue" value="${esc(JSON.stringify(singleImageList(draft.entity_images || [])))}">
       </div>
       <div id="post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(draft.entity_images || [])}</div>
-      <div class="field"><label>Post Video Link (optional)</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"></div>
-      <div id="post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(draft) ? renderVideoPreviewHtml(getRenderableVideoUrl(draft), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
+      <div class="field"><label>Post Video Link or Upload (optional)</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handlePostComposerVideoUpload(this)"></div>
+      <div id="post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(draft) ? renderCommunityVideoPreviewHtml(getRenderableVideoUrl(draft), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
       ${canCreateJobPost ? `
         <div class="field">
           <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields();savePostComposerDraft()" style="width:auto;margin-right:8px" ${draft.isJob ? 'checked' : ''}>This is a Job Opportunity</label>
@@ -11111,8 +11134,8 @@ function renderPost(p){
   const postImages = ensureArray((p.entity_images && p.entity_images.length) ? p.entity_images : p.images).slice(0,1);
   const postVideoUrl = getRenderableVideoUrl(p);
   const mediaHtml = `
-    ${postImages.length ? `<div style="margin-bottom:10px;max-width:540px">${renderCommunityPostImages(postImages, 120)}</div>` : ''}
-    ${postVideoUrl ? `<div style="margin-bottom:10px;max-width:540px">${renderVideoPreviewHtml(postVideoUrl, 'Post video')}</div>` : ''}
+    ${postImages.length ? `<div style="margin-bottom:10px">${renderCommunityPostImages(postImages)}</div>` : ''}
+    ${postVideoUrl ? `<div style="margin-bottom:10px">${renderCommunityVideoPreviewHtml(postVideoUrl, 'Post video')}</div>` : ''}
   `;
   return `
     <div class="card post-card" id="post-${esc(p.id)}" style="${p.isJob ? 'border-left:4px solid var(--orange)' : ''}">
@@ -11234,11 +11257,13 @@ function editPost(postId){
     <div class="field">
       <label>Post Image (optional, one image)</label>
       <input type="file" accept="image/*" onchange="handleEditPostImagesUpload(this)">
+      <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
       <input type="hidden" id="editPostImagesValue" value="${esc(JSON.stringify(singleImageList(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [])))}">
     </div>
     <div id="edit-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [], 'removeEditPostImage')}</div>
-    <div class="field"><label>Post Video Link (optional)</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"></div>
-    <div id="edit-post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(p) ? renderVideoPreviewHtml(getRenderableVideoUrl(p), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
+    <div class="field"><label>Post Video Link or Upload (optional)</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
+    <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEditPostVideoUpload(this)"></div>
+    <div id="edit-post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(p) ? renderCommunityVideoPreviewHtml(getRenderableVideoUrl(p), 'Post video') : `<div class="small muted">No video link added yet.</div>`}</div>
     ${p.isJob ? `
       <div class="field"><label>Job Title</label><input id="editJobTitle" value="${esc(p.jobTitle || '')}"></div>
       <div class="field"><label>Description</label><textarea id="editJobDescription">${esc(p.description || '')}</textarea></div>
@@ -11263,7 +11288,7 @@ function handleEditPostImagesUpload(input){
 function previewEditPostVideo(value){
   const state = normalizeVideoInputValue(value || '');
   const preview = document.getElementById('edit-post-video-preview');
-  if (preview) preview.innerHTML = state.media_url ? renderVideoPreviewHtml(state.media_url, 'Post video') : `<div class="small muted">No video link added yet.</div>`;
+  if (preview) preview.innerHTML = state.media_url ? renderCommunityVideoPreviewHtml(state.media_url, 'Post video') : `<div class="small muted">No video link added yet.</div>`;
 }
 function handleEditPostVideoUpload(input){
   readCommunityVideoFile(input, (dataUrl) => {
@@ -12911,10 +12936,12 @@ function renderEmployerCommunityJobs(el){
       <div class="field">
         <label>Post Image (optional, one image)</label>
         <input type="file" accept="image/*" onchange="handleEmpPostImagesUpload(this)">
+        <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
         <input type="hidden" id="empPostImagesValue" value="[]">
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
-      <div class="field"><label>Post Video Link (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"></div>
+      <div class="field"><label>Post Video Link or Upload (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmpPostVideoUpload(this)"></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       <div class="field">
         <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
@@ -12950,7 +12977,7 @@ function handleEmpPostImagesUpload(input){
 function previewEmpPostVideo(value){
   const state = normalizeVideoInputValue(value || '');
   const preview = document.getElementById('emp-post-video-preview');
-  if (preview) preview.innerHTML = state.media_url ? renderVideoPreviewHtml(state.media_url, 'Post video') : `<div class="small muted">No video link added yet.</div>`;
+  if (preview) preview.innerHTML = state.media_url ? renderCommunityVideoPreviewHtml(state.media_url, 'Post video') : `<div class="small muted">No video link added yet.</div>`;
 }
 function handleEmpPostVideoUpload(input){
   readCommunityVideoFile(input, (dataUrl) => {
@@ -14551,10 +14578,12 @@ function renderMyPosts(el){
       <div class="field">
         <label>Post Image (optional, one image)</label>
         <input type="file" accept="image/*" onchange="handleEmpPostImagesUpload(this)">
+        <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
         <input type="hidden" id="empPostImagesValue" value="[]">
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
-      <div class="field"><label>Post Video Link (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"></div>
+      <div class="field"><label>Post Video Link or Upload (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmpPostVideoUpload(this)"></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       ${canCreateJobs ? `
         <div class="field">

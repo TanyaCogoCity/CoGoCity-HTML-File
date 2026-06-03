@@ -57,7 +57,7 @@ app.get('/health/db', async (_req, res) => {
 // Keep /api mounts for direct/local backend access and add unprefixed mounts for staging ingress.
 app.use(['/api/stripe', '/stripe'], stripeRoutes);
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 app.use(['/api/auth', '/auth'], authLimiter, authRoutes);
 app.use(['/api', '/'], profileRoutes);
