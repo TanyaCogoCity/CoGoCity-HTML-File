@@ -7,9 +7,15 @@ const config = require('../config');
 const { calculateHourlyProjectFees, getPlatformFeeSettings } = require('../lib/platformFees');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
+const WORKSHOP_PLATFORM_FEE_PERCENT = 12;
+const WORKSHOP_PLATFORM_FEE_RATE = WORKSHOP_PLATFORM_FEE_PERCENT / 100;
 
 function money(value) {
   return Number((Number(value || 0) || 0).toFixed(2));
+}
+
+function fromCents(amount) {
+  return money((Number(amount || 0) || 0) / 100);
 }
 
 function pct(amount, base, fallback) {
@@ -38,7 +44,11 @@ async function stripeWorkshopPaymentIntents(workshopId = '', userId = '') {
       `metadata['user_id']:'${stripeSearchValue(userId)}'`,
       "status:'succeeded'",
     ].join(' AND ');
-    const result = await stripe.paymentIntents.search({ query, limit: 100 });
+    const result = await stripe.paymentIntents.search({
+      query,
+      limit: 100,
+      expand: ['data.latest_charge', 'data.latest_charge.application_fee', 'data.latest_charge.balance_transaction'],
+    });
     return result.data || [];
   } catch (error) {
     console.warn('Could not load Stripe workshop payments', error.message);
@@ -61,12 +71,16 @@ async function workshopTransactionRowsForEnrollment(enrollment) {
   return paymentIntents.map((paymentIntent) => {
     const quantity = workshopQuantityFromPaymentIntent(paymentIntent, price);
     const total = money(Number(paymentIntent.amount_received || paymentIntent.amount || 0) / 100 || (price * quantity));
-    const platformFee = money(total * 0.3);
-    const hostPayout = money(total - platformFee);
+    const platformFee = money(firstValue(paymentIntent.metadata?.platform_fee_total, enrollment.platformFee, total * WORKSHOP_PLATFORM_FEE_RATE));
+    const hostPayout = money(firstValue(paymentIntent.metadata?.host_payout, enrollment.hostPayout, total - platformFee));
     const createdAt = paymentIntent.created ? new Date(paymentIntent.created * 1000) : (enrollment.paidAt || enrollment.createdAt);
+    const charge = paymentIntent.latest_charge && typeof paymentIntent.latest_charge === 'object' ? paymentIntent.latest_charge : null;
+    const applicationFee = charge?.application_fee && typeof charge.application_fee === 'object' ? charge.application_fee : null;
+    const balanceTransaction = charge?.balance_transaction && typeof charge.balance_transaction === 'object' ? charge.balance_transaction : null;
+    const stripeProcessingFee = balanceTransaction ? fromCents(balanceTransaction.fee) : null;
     const chargeId = typeof paymentIntent.latest_charge === 'string'
       ? paymentIntent.latest_charge
-      : (paymentIntent.latest_charge?.id || enrollment.stripeChargeId || '');
+      : (charge?.id || enrollment.stripeChargeId || '');
     return {
       id: `workshop:${paymentIntent.id}`,
       transaction_id: `workshop:${paymentIntent.id}`,
@@ -98,6 +112,9 @@ async function workshopTransactionRowsForEnrollment(enrollment) {
       stripe_checkout_session_id: enrollment.stripeCheckoutSessionId || '',
       stripe_payment_intent_id: paymentIntent.id || '',
       stripe_charge_id: chargeId,
+      stripe_application_fee_id: applicationFee?.id || '',
+      stripe_processing_fee: stripeProcessingFee,
+      stripe_platform_net: applicationFee ? money(fromCents(applicationFee.amount) - Number(stripeProcessingFee || 0)) : null,
       stripe_payment_status: paymentIntent.status || enrollment.stripePaymentStatus || '',
     };
   });
@@ -364,7 +381,7 @@ router.get('/', requireAuth, async (req, res) => {
     const price = Number(enrollment.workshop?.price || 0);
     const quantity = Math.max(1, Number(enrollment.quantity || 1) || 1);
     const total = money(enrollment.totalAmount || (price * quantity));
-    const platformFee = money(enrollment.platformFee || (total * 0.3));
+    const platformFee = money(enrollment.platformFee || (total * WORKSHOP_PLATFORM_FEE_RATE));
     const hostPayout = money(enrollment.hostPayout || (total - platformFee));
     return [{
       id: `workshop:${enrollment.id}`,

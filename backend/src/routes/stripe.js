@@ -10,10 +10,11 @@ const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { notificationType, serializeJob } = require('../lib/compat');
 const { payoutSafetyRequirementsForUser, validateProjectPayoutSafety } = require('../lib/payoutSafety');
-const { requirePlatformReady } = require('../lib/onboardingGate');
+const { requirePlatformReady, stripeConnectReady } = require('../lib/onboardingGate');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
+const WORKSHOP_PLATFORM_FEE_PERCENT = 12;
 
 function toCents(amount) {
   return Math.max(1, Math.round(Number(amount || 0) * 100));
@@ -186,9 +187,13 @@ function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ''));
 }
 
-function stripeStudentPayoutDescription(user) {
-  const name = user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Student';
-  return `${name} receives payouts for student services completed through CoGoCity, such as tutoring, childcare, pet care, creative work, errands, and local help.`;
+function stripePayoutDescription(user) {
+  const fallback = user?.role === 'student' ? 'Student' : 'Workshop provider';
+  const name = user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || fallback;
+  if (user?.role === 'student') {
+    return `${name} receives payouts for student services completed through CoGoCity, such as tutoring, childcare, pet care, creative work, errands, and local help.`;
+  }
+  return `${name} receives payouts for workshops, classes, and provider services completed through CoGo City.`;
 }
 
 function stripeIndividualPrefillPayload(user) {
@@ -212,11 +217,11 @@ function stripeStudentConnectAccountPayload(user, origin, country = 'US') {
     business_profile: {
       mcc: '8999',
       url: config.appUrl || origin || 'https://staging.cogocity.com',
-      product_description: stripeStudentPayoutDescription(user),
+      product_description: stripePayoutDescription(user),
     },
     individual: stripeIndividualPrefillPayload(user),
     capabilities: { transfers: { requested: true } },
-    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts', tax_identity_custodian: 'stripe_connect' },
+    metadata: { user_id: user.id, role: user.role, account_purpose: user.role === 'student' ? 'student_payouts' : 'provider_payouts', tax_identity_custodian: 'stripe_connect' },
   };
 }
 
@@ -255,9 +260,9 @@ async function prefillStudentConnectAccount(user, origin) {
     business_profile: {
       mcc: '8999',
       url: config.appUrl || origin || 'https://staging.cogocity.com',
-      product_description: stripeStudentPayoutDescription(user),
+      product_description: stripePayoutDescription(user),
     },
-    metadata: { user_id: user.id, role: user.role, account_purpose: 'student_payouts', tax_identity_custodian: 'stripe_connect' },
+    metadata: { user_id: user.id, role: user.role, account_purpose: user.role === 'student' ? 'student_payouts' : 'provider_payouts', tax_identity_custodian: 'stripe_connect' },
   });
 }
 
@@ -590,7 +595,7 @@ function workshopStartDate(value) {
 function workshopPaymentTotals(price = 0, quantity = 1) {
   const qty = Math.max(1, Number(quantity || 1) || 1);
   const gross = Number((Number(price || 0) * qty).toFixed(2));
-  const platformFee = Number((gross * 0.3).toFixed(2));
+  const platformFee = Number((gross * WORKSHOP_PLATFORM_FEE_PERCENT / 100).toFixed(2));
   return {
     quantity: qty,
     gross,
@@ -708,7 +713,7 @@ async function completeWorkshopCheckoutSession(session) {
           total_amount: Number(updated.totalAmount || 0),
           platform_fee: Number(updated.platformFee || 0),
           host_payout: Number(updated.hostPayout || 0),
-          platform_fee_percent: 30,
+          platform_fee_percent: WORKSHOP_PLATFORM_FEE_PERCENT,
           status: 'registered',
           payment_status: updated.paymentStatus,
           stripe_checkout_session_id: updated.stripeCheckoutSessionId || '',
@@ -728,7 +733,7 @@ async function completeWorkshopCheckoutSession(session) {
           total_amount: Number(updated.totalAmount || 0),
           platform_fee: Number(updated.platformFee || 0),
           host_payout: Number(updated.hostPayout || 0),
-          platform_fee_percent: 30,
+          platform_fee_percent: WORKSHOP_PLATFORM_FEE_PERCENT,
           status: 'registered',
           payment_status: updated.paymentStatus,
           stripe_checkout_session_id: updated.stripeCheckoutSessionId || '',
@@ -756,7 +761,7 @@ async function completeWorkshopCheckoutSession(session) {
 async function getCheckoutPaymentIntent(session) {
   if (!session?.payment_intent) return null;
   if (typeof session.payment_intent === 'object') return session.payment_intent;
-  return stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] });
+  return stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge', 'latest_charge.application_fee', 'latest_charge.balance_transaction'] });
 }
 
 function checkoutChargeId(paymentIntent) {
@@ -956,7 +961,7 @@ router.post('/onboarding/payment-method', requireAuth, async (req, res) => {
 
 router.post('/onboarding/connect-account', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
-  if (!['student', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can create Stripe Connect accounts');
+  if (!['student', 'employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can create Stripe Connect accounts');
 
   try {
     const origin = stripeOrigin(req);
@@ -974,7 +979,7 @@ router.post('/onboarding/connect-account', requireAuth, async (req, res) => {
 
 router.post('/onboarding/connect-account-link', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
-  if (!['student', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can onboard with Stripe Connect');
+  if (!['student', 'employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only payout accounts can onboard with Stripe Connect');
 
   try {
     let user = req.user.stripeAccountId ? await syncConnectAccount(req.user) : req.user;
@@ -983,7 +988,7 @@ router.post('/onboarding/connect-account-link', requireAuth, async (req, res) =>
       const account = await createStudentConnectAccountForUser(user, origin, req.body?.country);
       user = await prisma.user.findUnique({ where: { id: user.id } });
       user.stripeAccountId = account.id;
-    } else if (user.role === 'student') {
+    } else {
       try {
         await prefillStudentConnectAccount(user, origin);
       } catch (error) {
@@ -1112,6 +1117,28 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
   }
 
   const totals = workshopPaymentTotals(amount, quantity);
+  let host = null;
+  if (amount > 0) {
+    host = await prisma.user.findUnique({ where: { id: workshop.createdBy } });
+    if (!host) return fail(res, 404, 'Workshop provider not found');
+    try {
+      host = host.stripeAccountId ? await syncConnectAccount(host) : host;
+    } catch (error) {
+      return fail(res, 402, 'Workshop provider must refresh Stripe Connect payout setup before paid registrations can be accepted.', {
+        payout_setup_required: true,
+        payout_setup_ready: false,
+        host_id: workshop.createdBy,
+        reason: error.message,
+      });
+    }
+    if (!stripeConnectReady(host)) {
+      return fail(res, 402, 'Workshop provider must complete Stripe Connect payout setup before paid registrations can be accepted.', {
+        payout_setup_required: true,
+        payout_setup_ready: false,
+        host_id: workshop.createdBy,
+      });
+    }
+  }
   const attendeeName = String(req.body?.attendee_name || req.body?.attendeeName || req.user.displayName || '').trim();
   const attendeeEmail = String(req.body?.attendee_email || req.body?.attendeeEmail || req.user.email || '').trim().toLowerCase();
   const enrollment = await prisma.workshopEnrollment.upsert({
@@ -1166,17 +1193,41 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
           },
         ],
         payment_intent_data: {
+          application_fee_amount: Math.max(0, Math.round(totals.platformFee * 100)),
+          transfer_data: { destination: host.stripeAccountId },
           metadata: {
             type: 'workshop',
             workshop_id: workshop.id,
             workshop_enrollment_id: enrollment.id,
             user_id: req.user.id,
+            host_id: workshop.createdBy,
+            payee_id: workshop.createdBy,
             quantity: String(quantity),
+            amount_total: String(totals.gross),
+            platform_fee_total: String(totals.platformFee),
+            host_payout: String(totals.hostPayout),
+            platform_fee_percent: String(WORKSHOP_PLATFORM_FEE_PERCENT),
+            stripe_connect_flow: 'workshop_destination_charge_application_fee',
             attendee_name: attendeeName,
             attendee_email: attendeeEmail,
           },
         },
-        metadata: { type: 'workshop', workshop_id: workshop.id, workshop_enrollment_id: enrollment.id, user_id: req.user.id, quantity: String(quantity), attendee_name: attendeeName, attendee_email: attendeeEmail },
+        metadata: {
+          type: 'workshop',
+          workshop_id: workshop.id,
+          workshop_enrollment_id: enrollment.id,
+          user_id: req.user.id,
+          host_id: workshop.createdBy,
+          payee_id: workshop.createdBy,
+          quantity: String(quantity),
+          amount_total: String(totals.gross),
+          platform_fee_total: String(totals.platformFee),
+          host_payout: String(totals.hostPayout),
+          platform_fee_percent: String(WORKSHOP_PLATFORM_FEE_PERCENT),
+          stripe_connect_flow: 'workshop_destination_charge_application_fee',
+          attendee_name: attendeeName,
+          attendee_email: attendeeEmail,
+        },
       },
     );
 

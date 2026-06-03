@@ -700,7 +700,7 @@ let employerMyJobsSearchQuery = '';
 let directJobApplyDraft = null;
 
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
-const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
+const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 12;
 const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : '';
 const COGO_IS_STAGING = COGO_HOSTNAME === 'staging.cogocity.com';
 const COGO_IS_PRODUCTION = ['cogocity.com', 'www.cogocity.com'].includes(COGO_HOSTNAME);
@@ -3613,7 +3613,7 @@ function getPaymentSettings(){
   return {
     studentCommissionPct: usesAdminManagedFees ? Number(saved.studentCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT) : DEFAULT_PLATFORM_COMMISSION_PERCENT,
     employerCommissionPct: usesAdminManagedFees ? Number(saved.employerCommissionPct ?? DEFAULT_PLATFORM_COMMISSION_PERCENT) : DEFAULT_PLATFORM_COMMISSION_PERCENT,
-    workshopCommissionPct: Number(saved.workshopCommissionPct ?? DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT),
+    workshopCommissionPct: DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT,
     providerMode: saved.providerMode || PAYMENT_PROVIDER_MODE,
     platformSupportFeeVersion: 'platform-support-admin-managed'
 
@@ -17441,7 +17441,7 @@ function renderWorkshopTransactionsResults(){
         const participantName = item.attendee_name || item.user_name || item.userName || user?.publicName || user?.name || 'Student';
         const quantity = Math.max(1, Number(item.quantity || 1) || 1);
         const total = Number(item.total_amount || 0) || (Number(workshop.price || 0) * quantity);
-        const commission = Number(item.platform_fee || 0) || (total * 0.3);
+        const commission = Number(item.platform_fee || 0) || (total * DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT / 100);
         return {
           workshop,
           participants: quantity,
