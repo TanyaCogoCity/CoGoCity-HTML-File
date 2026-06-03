@@ -2221,6 +2221,23 @@ function syncAdImagesBeforeSettings(slots=[]){
   if (missing.length) return Promise.resolve({ ok:false, error:`Missing uploaded image record: ${missing[0]}` });
   return saveImages(images);
 }
+async function syncReferencedImagesBeforeCommunityPosts(posts=[]){
+  const referencedIds = new Set();
+  ensureArray(posts).forEach(post => {
+    ensureArray((post && post.entity_images && post.entity_images.length) ? post.entity_images : post && post.images).forEach(imageId => {
+      const cleanId = String(imageId || '').trim();
+      if (isImageRecordId(cleanId)) referencedIds.add(cleanId);
+    });
+  });
+  if (!referencedIds.size || !backendAuthEnabled()) return { ok:true, skipped:true };
+  const images = getImages();
+  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
+  const referencedImages = images.filter(image => referencedIds.has(String(image.id)));
+  const result = await syncEntityToBackend('images', referencedImages, { replace:false });
+  if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
+  return { ok:true };
+}
 function getImageById(imageId=''){
   return getImages().find(image => String(image.id) === String(imageId)) || null;
 }
@@ -2730,6 +2747,11 @@ async function persistCommunityPostsPermanently(v, failureMessage='Backend post 
   if (backendAuthEnabled()) {
     if (requireBackendWriteSession('save this post change')) return false;
     try {
+      const imageSync = await syncReferencedImagesBeforeCommunityPosts(payload);
+      if (imageSync && imageSync.ok === false) {
+        toast('Could not publish the post image. Please try uploading the image again before saving.');
+        return false;
+      }
       await syncCommunityPostsToBackend(payload);
     } catch (error) {
       toast(failureMessage);
@@ -11109,6 +11131,8 @@ async function submitPost(){
   posts.unshift(post);
   const nextPosts = posts.map(normalizePostRecord);
   try {
+    const imageSync = await syncReferencedImagesBeforeCommunityPosts(nextPosts);
+    if (imageSync && imageSync.ok === false) return toast('Could not publish the post image. Please try uploading the image again before posting.');
     await syncCommunityPostsToBackend(nextPosts);
   } catch (error) {
     return toast('Could not save this post to the backend. Please try again.');
@@ -11324,6 +11348,8 @@ async function savePostEdit(postId){
   p.updatedAt = new Date().toISOString();
   const nextPosts = posts.map(normalizePostRecord);
   try {
+    const imageSync = await syncReferencedImagesBeforeCommunityPosts(nextPosts);
+    if (imageSync && imageSync.ok === false) return toast('Could not publish the post image. Please try uploading the image again before saving.');
     await syncCommunityPostsToBackend(nextPosts);
   } catch (error) {
     return toast('Could not save this edit to the backend. Please try again.');
