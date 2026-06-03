@@ -325,6 +325,11 @@
     .bubble.new-message{border:2px solid var(--color-link);box-shadow:0 0 0 2px rgba(59,130,246,.15);font-weight:700}
     .msg-compose{display:flex;gap:10px;padding:12px;border-top:1px solid var(--border)}
     .msg-compose input{flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px}
+    .admin-contact-widget{position:fixed;right:18px;bottom:18px;z-index:80;width:min(340px,calc(100vw - 28px));box-shadow:0 18px 45px rgba(15,23,42,.18)}
+    .admin-contact-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #FDE047;background:var(--yellow);color:var(--navy);border-radius:14px;padding:12px 14px;font-weight:900;cursor:pointer}
+    .admin-contact-panel{margin-top:8px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 12px 36px rgba(15,23,42,.16)}
+    .admin-contact-panel textarea{min-height:92px;resize:vertical}
+    .admin-contact-note{font-size:.78rem;color:var(--gray);line-height:1.35}
     .warning{
       background:#FEF3C7;color:#92400E;border:1px solid #FEF3C7;padding:12px 14px;border-radius:12px;font-size:.88rem
     }
@@ -654,6 +659,8 @@ let myPostsTab = 'all';
 let activeThreadUserId = null;
 let messagePartnerNameHints = {};
 let avatarMenuOpen = false;
+let adminContactExpanded = false;
+let adminContactSending = false;
 let studentSignupStep = 1;
 let studentSignupDraft = null;
 let studentSignupEditingServiceIndex = null;
@@ -1155,6 +1162,28 @@ function saveUsers(v){
   const payload = ensureArray(v).map(normalizeUserRecord);
   ls('cogo_users', payload);
   syncEntityToBackend('users', payload);
+}
+function upsertLocalUserHint(user={}){
+  const id = String(user.id || user.user_id || '').trim();
+  if (!id) return null;
+  const users = getUsers();
+  const idx = users.findIndex(item => String(item.id) === id);
+  const name = user.name || user.display_name || user.displayName || user.publicName || 'User';
+  const record = normalizeUserRecord(Object.assign(idx >= 0 ? users[idx] : {}, {
+    id,
+    name,
+    publicName: user.publicName || name,
+    displayName: user.display_name || user.displayName || name,
+    role: user.role || (idx >= 0 ? users[idx].role : 'neighbor'),
+    status: user.status || (idx >= 0 ? users[idx].status : 'active'),
+    email: user.email || (idx >= 0 ? users[idx].email : `${id}@placeholder.cogocity.local`),
+    firstName: user.firstName || user.first_name || (idx >= 0 ? users[idx].firstName : name.split(' ')[0] || name),
+    lastName: user.lastName || user.last_name || (idx >= 0 ? users[idx].lastName : name.split(' ').slice(1).join(' ')),
+  }));
+  if (idx >= 0) users[idx] = Object.assign(users[idx], record); else users.push(record);
+  ls('cogo_users', users);
+  messagePartnerNameHints[id] = name;
+  return record;
 }
 function backendAuthEnabled(){
   return !!BACKEND_AUTH.enabled;
@@ -3527,6 +3556,12 @@ async function refreshBackendMessages(options={}){
     const list = Array.isArray(rows) ? rows : ensureArray(rows.items || rows.conversations || rows.data);
     const existing = getBackendMessages();
     list.forEach(thread => {
+      if (thread.partner_id) upsertLocalUserHint({
+        id: thread.partner_id,
+        name: thread.partner_name || 'User',
+        displayName: thread.partner_name || 'User',
+        role: thread.partner_role || 'neighbor'
+      });
       if (thread.last_message) upsertBackendMessage(mapBackendMessage(thread.last_message, thread));
     });
     if (!list.length && !existing.length) saveBackendMessages([]);
@@ -5328,6 +5363,87 @@ function toggleMobileNav(){
 function closeMobileNav(){
   setMobileNavOpen(false);
 }
+function removeAdminContactWidget(){
+  const existing = document.getElementById('adminContactWidget');
+  if (existing) existing.remove();
+}
+function renderAdminContactWidget(){
+  if (!currentUser || currentUser.role === 'admin' || isAdminImpersonating()) {
+    removeAdminContactWidget();
+    return;
+  }
+  let widget = document.getElementById('adminContactWidget');
+  if (!widget) {
+    widget = document.createElement('div');
+    widget.id = 'adminContactWidget';
+    widget.className = 'admin-contact-widget';
+    document.body.appendChild(widget);
+  }
+  const userName = currentUser.publicName || currentUser.name || 'User';
+  widget.innerHTML = `
+    <button class="admin-contact-toggle" type="button" onclick="toggleAdminContactWidget()">
+      <span>Text Admin</span>
+      <span style="font-size:.8rem;font-weight:800">${adminContactExpanded ? 'Close' : 'Need help?'}</span>
+    </button>
+    ${adminContactExpanded ? `
+      <div class="admin-contact-panel">
+        <div class="admin-contact-note" style="margin-bottom:10px">We will get back to you within 24 hours.</div>
+        <div class="field" style="margin-bottom:10px">
+          <label>Name</label>
+          <div style="font-weight:800">${renderUserNameLink(currentUser.id, userName)}</div>
+        </div>
+        <div class="field" style="margin-bottom:10px">
+          <label>Request/issue</label>
+          <textarea id="adminContactIssue" placeholder="Tell admin what you need help with."></textarea>
+        </div>
+        <button class="btn btn-blue" style="width:100%" onclick="submitAdminContactRequest()" ${adminContactSending ? 'disabled' : ''}>${adminContactSending ? 'Sending...' : 'Submit'}</button>
+      </div>
+    ` : ''}
+  `;
+}
+function toggleAdminContactWidget(){
+  adminContactExpanded = !adminContactExpanded;
+  renderAdminContactWidget();
+}
+async function submitAdminContactRequest(){
+  if (!currentUser) return toast('Please sign in first.');
+  if (requireBackendWriteSession('message admin')) return;
+  const issue = String(document.getElementById('adminContactIssue')?.value || '').trim();
+  if (!issue) return toast('Please enter your request or issue.');
+  if (!blockTextCheck(issue, { allowContactInfo:true })) return;
+  adminContactSending = true;
+  renderAdminContactWidget();
+  try {
+    const result = await backendAuthRequest('/messages/contact-admin', {
+      method:'POST',
+      body: JSON.stringify({ name: currentUser.publicName || currentUser.name || '', issue })
+    });
+    const admin = result.admin || {};
+    if (admin.id) upsertLocalUserHint(admin);
+    const conversationId = result.conversation_id || result.thread_id || result.message?.conversation_id || result.message?.thread_id || '';
+    if (result.message && conversationId && admin.id) {
+      upsertBackendMessage(mapBackendMessage(result.message, {
+        conversation_id: conversationId,
+        partner_id: admin.id,
+        partner_name: 'Admin',
+        thread_label: 'Admin Support'
+      }));
+      activeThreadUserId = `${admin.id}::${conversationId}`;
+      backendMessageThreadsLoaded[conversationId] = true;
+    }
+    backendMessagesLoaded = false;
+    adminContactExpanded = false;
+    toast('Message sent to Admin.');
+    dashSection = 'messages';
+    goDashboard();
+    refreshBackendMessages({ threadId: conversationId, rerender:true });
+  } catch (error) {
+    toast(error.message || 'Could not send your message to Admin.');
+  } finally {
+    adminContactSending = false;
+    renderAdminContactWidget();
+  }
+}
 function renderNav(){
   applySiteSettings();
   closeMobileNav();
@@ -5345,6 +5461,7 @@ function renderNav(){
   if (navBlog) navBlog.classList.toggle('active', route === '#/blog' || route.startsWith('#/blog/'));
 
   if (!currentUser){
+    removeAdminContactWidget();
     nav.innerHTML = `
       <button class="btn btn-navy btn-sm" onclick="openLoginModal()">Sign In / Sign Up</button>
     `;
@@ -5425,6 +5542,7 @@ function renderNav(){
       ` : ''}
     </div>
   `;
+  renderAdminContactWidget();
 }
 function isNotificationActionCompleted(notification){
   if (!notification || !notification.action) return false;
@@ -11419,7 +11537,7 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
-  if ((needsMigrationOnboarding() || needsRequiredPaymentMethod() || needsRequiredPayoutSetup()) && currentUser.role !== 'admin') {
+  if ((needsMigrationOnboarding() || needsRequiredPaymentMethod() || needsRequiredPayoutSetup()) && currentUser.role !== 'admin' && dashSection !== 'messages') {
     const sidebar = document.querySelector('.dashboard .sidebar');
     const payoutRequired = needsRequiredPayoutSetup();
     if (sidebar) sidebar.innerHTML = `
@@ -14695,21 +14813,11 @@ function scrollActiveThreadToBottom(){
   if (box) box.scrollTop = box.scrollHeight;
 }
 function renderMessages(el){
-  if (currentUser.role === 'admin' && !isAdminImpersonating()) {
-    el.innerHTML = `
-      <div class="section-title">Messages</div>
-      <div class="card form-card">
-        <div style="font-weight:800;margin-bottom:10px">Admin message access</div>
-        <div class="small muted">Use <strong>Users</strong> \u2192 <strong>Login as User</strong> to view each user\u2019s communication and actions from their profile/dashboard context.</div>
-      </div>
-    `;
-    return;
-  }
   if (backendAuthEnabled() && !backendMessagesLoaded && !backendMessagesLoading) refreshBackendMessages({ rerender:true });
   const all = getMessages();
   const me = currentUser.id;
   const threads = {};
-  const isAdmin = currentUser.role === 'admin';
+  const isAdmin = false;
 
   all.forEach(m => {
     if (isAdmin) {
@@ -14948,7 +15056,7 @@ function renderThreadView(userId){
 async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=null, meta={}){
   const sender = fromUser || currentUser || {};
   const messageType = meta.message_type || 'user';
-  if (messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '') && !requirePlatformUseReady('message another user')) {
+  if (messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '') && !meta.allow_admin_support && !requirePlatformUseReady('message another user')) {
     return false;
   }
   if (messageType === 'user' && String(sender.id || '') === String(currentUser?.id || '') && requireBackendWriteSession('send this message')) {
@@ -15028,7 +15136,6 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
 }
 async function sendMessageToActive(){
   if (!activeThreadUserId) return;
-  if (!requirePlatformUseReady('message a student')) return;
   const input = document.getElementById('msgInput');
   const content = (input.value || '').trim();
   if (!content) return;
@@ -15037,6 +15144,7 @@ async function sendMessageToActive(){
   const threadId = parts[1] || getDirectThreadId(currentUser.id, partnerId);
   const partnerRecord = getUserById(partnerId) || { id:partnerId, name:'User' };
   const partner = Object.assign({}, partnerRecord, { name: getMessagePartnerDisplayName(partnerId, partnerRecord.name || partnerRecord.publicName || 'User') });
+  const isAdminSupportThread = partnerRecord.role === 'admin';
   const isUnifiedUserThread = isUnifiedUserThreadId(threadId);
   const existing = getMessages().find(m => {
     const msgThreadId = String(m.thread_id || getDirectThreadId(m.fromId, m.toId));
@@ -15046,13 +15154,15 @@ async function sendMessageToActive(){
   const activeProject = threadId.startsWith('project:')
     ? getProjects().find(project => String(project.id) === String(threadId.replace('project:','')))
     : getProjectForUsers(currentUser.id, partner.id);
-  if (!blockTextCheck(content, { allowContactInfo: canExchangeProjectContactInfo(partner.id, threadId, activeProject) })) return;
+  if (!isAdminSupportThread && !requirePlatformUseReady('message another user')) return;
+  if (!blockTextCheck(content, { allowContactInfo: isAdminSupportThread || canExchangeProjectContactInfo(partner.id, threadId, activeProject) })) return;
   const nextThreadLabel = existing && existing.thread_label && !isUnifiedUserThread
     ? existing.thread_label
     : (threadId.startsWith('project:') ? 'Job Chat' : '');
   await sendInboxMessage(partner.id, partner.name, content, activeProject && !isUnifiedUserThread ? activeProject.id : null, currentUser, {
     thread_id: isUnifiedUserThread ? getDirectThreadId(currentUser.id, partner.id) : threadId,
-    thread_label: nextThreadLabel
+    thread_label: nextThreadLabel,
+    allow_admin_support: isAdminSupportThread
   });
   input.value = '';
   renderDashboard();

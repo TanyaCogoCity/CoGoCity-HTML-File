@@ -10,6 +10,47 @@ const { createNotification, createNotifications } = require('../lib/notification
 
 const router = express.Router();
 
+const SYSTEM_ADMIN_EMAIL = 'cogo.team@system.local';
+
+async function primaryAdminForUser(userId = '') {
+  const admins = await prisma.user.findMany({
+    where: {
+      role: 'admin',
+      status: 'active',
+      deletedAt: null,
+      id: userId ? { not: userId } : undefined,
+      email: { not: SYSTEM_ADMIN_EMAIL },
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 1,
+  });
+  return admins[0] || null;
+}
+
+function publicConversationName(user = null, viewer = null, fallback = 'Conversation') {
+  if (!user) return fallback;
+  if (user.role === 'admin' && viewer?.role !== 'admin') return 'Admin';
+  return user.displayName || fallback;
+}
+
+async function messageTargetsAdmin(payload = {}, senderId = '') {
+  if (payload.recipientId) {
+    const recipient = await prisma.user.findUnique({ where: { id: payload.recipientId }, select: { role: true } });
+    return recipient?.role === 'admin';
+  }
+  if (payload.conversationId) {
+    const adminParticipant = await prisma.conversationParticipant.findFirst({
+      where: {
+        conversationId: payload.conversationId,
+        userId: { not: senderId },
+        user: { role: 'admin' },
+      },
+    });
+    return Boolean(adminParticipant);
+  }
+  return false;
+}
+
 router.get('/', requireAuth, async (req, res) => {
   const conversationId = String(req.query.conversation_id || req.query.thread_id || '').trim();
 
@@ -20,7 +61,7 @@ router.get('/', requireAuth, async (req, res) => {
     const messages = await prisma.message.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
-      include: { sender: { select: { id: true, displayName: true } } },
+      include: { sender: { select: { id: true, displayName: true, role: true } } },
     });
 
     await prisma.conversationParticipant.update({
@@ -30,7 +71,7 @@ router.get('/', requireAuth, async (req, res) => {
 
     return ok(res, messages.map((m) => ({
       ...serializeMessage(m),
-      sender_name: m.sender.displayName,
+      sender_name: publicConversationName(m.sender, req.user, m.sender.displayName),
     })));
   }
 
@@ -57,7 +98,7 @@ router.get('/', requireAuth, async (req, res) => {
       thread_label: row.conversation.label,
       project_id: row.conversation.projectId,
       partner_id: partner?.id || null,
-      partner_name: partner?.displayName || 'Conversation',
+      partner_name: publicConversationName(partner, req.user, 'Conversation'),
       partner_role: partner?.role || null,
       last_message: lastMessage ? serializeMessage(lastMessage) : null,
       unread: Boolean(isUnread),
@@ -67,12 +108,67 @@ router.get('/', requireAuth, async (req, res) => {
   return ok(res, data);
 });
 
+router.post('/contact-admin', requireAuth, async (req, res) => {
+  try {
+    const messageText = String(req.body?.message || req.body?.message_text || req.body?.issue || '').trim();
+    if (!messageText) return fail(res, 400, 'Request/issue is required');
+
+    const admin = await primaryAdminForUser(req.user.id);
+    if (!admin) return fail(res, 404, 'Admin account not found');
+
+    const name = String(req.body?.name || req.user.displayName || '').trim();
+    const conversation = await ensureConversationBetweenUsers({
+      userAId: req.user.id,
+      userBId: admin.id,
+      label: 'Admin Support',
+    });
+    const body = `${name ? `Name: ${name}\n` : ''}Request/issue:\n${messageText}`;
+    const msg = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: req.user.id,
+        messageText: body,
+        messageType: 'user',
+      },
+    });
+
+    await prisma.conversationParticipant.update({
+      where: { conversationId_userId: { conversationId: conversation.id, userId: req.user.id } },
+      data: { lastReadAt: new Date() },
+    });
+
+    await createNotification({
+      data: {
+        userId: admin.id,
+        type: notificationType('message'),
+        title: `Admin support request from ${req.user.displayName || 'a CoGo City user'}`,
+        body: messageText.slice(0, 180),
+        link: `/dashboard?section=messages&thread=${conversation.id}`,
+      },
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'message.contact_admin', entityType: 'message', entityId: msg.id, payload: { conversationId: conversation.id } });
+
+    return created(res, {
+      conversation_id: conversation.id,
+      thread_id: conversation.id,
+      admin: { id: admin.id, display_name: 'Admin', name: 'Admin', role: 'admin' },
+      message: Object.assign(serializeMessage(msg), { sender_name: req.user.displayName }),
+    });
+  } catch (error) {
+    return fail(res, 400, 'Failed to send admin message', error.message);
+  }
+});
+
 router.post('/', requireAuth, async (req, res) => {
   try {
     const payload = normalizeMessagePayload(req.body || {});
     if (!payload.messageText.trim()) return fail(res, 400, 'message is required');
-    const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: ['employer', 'neighbor'].includes(req.user.role), requirePayout: req.user.role === 'student' });
-    if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
+    const isAdminSupportMessage = req.user.role !== 'admin' && await messageTargetsAdmin(payload, req.user.id);
+    if (!isAdminSupportMessage) {
+      const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: ['employer', 'neighbor'].includes(req.user.role), requirePayout: req.user.role === 'student' });
+      if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
+    }
 
     let conversationId = payload.conversationId;
 
