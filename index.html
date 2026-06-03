@@ -1536,9 +1536,12 @@ function userPaymentSetupReady(user=currentUser){
   return payerPaymentSetupReady(user);
 }
 function studentPayoutSetupReady(user=currentUser){
-  if (!user || user.role !== 'student') return true;
+  if (!user || !['student','employer','neighbor'].includes(user.role)) return true;
   const connect = userStripeOnboarding(user).connect || {};
   return Boolean(user.stripeConnectReady || connect.ready);
+}
+function payoutSetupReady(user=currentUser){
+  return studentPayoutSetupReady(user);
 }
 function employerPaymentSetupReady(user=currentUser){
   if (!isEmployerLikeUser(user)) return true;
@@ -1703,6 +1706,25 @@ function openStripeConnectRecoveryModal(errorMessage=''){
         <button class="btn btn-outline" onclick="refreshStripeOnboardingStatus({rerender:true,toast:true})">Refresh Status</button>
         <button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Restart secure Stripe setup</button>
       </div>
+    </div>
+  `, '640px');
+}
+function openWorkshopPayoutSetupModal(options={}){
+  const mode = options.mode || 'host';
+  const isHost = mode === 'host';
+  openModal(isHost ? 'Set Up Payouts for Paid Workshops' : 'Workshop Checkout Not Ready', `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">
+        ${isHost
+          ? 'Paid workshops and classes need Stripe Connect payout setup before ticket sales can work.'
+          : 'This paid workshop cannot accept registrations yet because the host still needs to complete payout setup.'}
+      </div>
+      <div class="small muted" style="line-height:1.55;margin-bottom:14px">
+        ${isHost
+          ? 'Stripe Connect is where you securely add payout and tax details so CoGo City can send you the remaining ticket balance after CoGo fees. CoGo City does not store your bank, SSN/TIN, identity, or tax details.'
+          : 'Please try again later or message the host/admin. Once the host completes Stripe Connect, paid registration will open automatically.'}
+      </div>
+      ${isHost ? `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-outline" onclick="closeModal()">Not Now</button><button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Set Up Payouts</button></div>` : `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-blue" onclick="closeModal()">Got it</button></div>`}
     </div>
   `, '640px');
 }
@@ -8831,6 +8853,10 @@ async function completeWorkshopRegistration(workshopId=''){
       return;
     } catch (error) {
       console.warn('Workshop Stripe checkout failed', error);
+      if (error.status === 402 && String(error.message || '').toLowerCase().includes('workshop provider')) {
+        openWorkshopPayoutSetupModal({ mode:'buyer' });
+        return;
+      }
       toast(error.message || 'Stripe checkout failed. Please try again.');
       return;
     }
@@ -9365,6 +9391,10 @@ async function persistWorkshopDraft(mode='draft'){
   if (workshopDraft.format === 'in_person' && toastRequiredFields({ Location:workshopDraft.location }, 'In-person workshop')) return;
   if (workshopDraft.format === 'online' && toastRequiredFields({ 'Online link':workshopDraft.online_url }, 'Online workshop')) return;
   if (isPublish && !(workshopDraft.images || []).length) return toast('Please add at least one image before publishing.');
+  if (isPublish && Number(workshopDraft.price || 0) > 0 && !payoutSetupReady(currentUser)) {
+    openWorkshopPayoutSetupModal({ mode:'host' });
+    return;
+  }
   const existingWorkshop = getWorkshopById(workshopDraft.id);
   if (existingWorkshop && String(existingWorkshop.host_id || '') !== String(currentUser.id || '')) {
     toast('Only the workshop owner can save this workshop.');
