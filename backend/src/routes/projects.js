@@ -10,7 +10,6 @@ const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/me
 const { getOrCreateSystemUser } = require('../lib/systemUser');
 const { requirePlatformReady } = require('../lib/onboardingGate');
 const { calculateHourlyProjectFeesFromSettings } = require('../lib/platformFees');
-const config = require('../config');
 
 const router = express.Router();
 
@@ -220,7 +219,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
   if (!canTransition(project.status, nextStatus)) return fail(res, 409, `Invalid status transition from ${project.status} to ${nextStatus}`);
 
   const tx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
-  if (nextStatus === 'completed' && config.stripeSecretKey) {
+  if (nextStatus === 'completed') {
     if (!tx) return fail(res, 409, 'Project payment transaction was not found. Please fund the project before approving the final invoice.');
     if (!tx.stripePaymentIntentId) return fail(res, 409, 'Project payment has not been funded with Stripe. Please complete payment before approving the final invoice.');
     if (tx.status !== 'paid') return fail(res, 409, 'Project payment has not been captured in Stripe yet. Please release payment before marking the project paid.');
