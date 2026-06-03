@@ -18,6 +18,16 @@ const US_STATES = new Set([
   'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
   'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
 ]);
+const US_STATE_NAMES = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE',
+  florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS',
+  kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN',
+  mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR',
+  pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX',
+  utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY',
+  'district of columbia': 'DC',
+};
 const NON_US_COUNTRY_WORDS = /\b(canada|mexico|united kingdom|uk|england|france|germany|india|china|australia|brazil|italy|spain|israel|russia|japan)\b/i;
 
 function truthySignupConfirmation(value) {
@@ -46,10 +56,19 @@ function businessAddressValueFromPayload(payload = {}) {
   return business.address || payload.businessAddress || '';
 }
 
+function normalizeUsAddressText(value = '') {
+  let address = String(value || '').trim().replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ');
+  address = address.replace(/\b(?:United States of America|United States|USA|US)\b\.?$/i, '').replace(/,\s*$/g, '').trim();
+  Object.entries(US_STATE_NAMES).forEach(([name, code]) => {
+    address = address.replace(new RegExp(`\\b${name}\\b`, 'gi'), code);
+  });
+  return address;
+}
+
 function isUsAddress(value = '') {
-  const address = String(value || '').trim();
+  const address = normalizeUsAddressText(value);
   if (!address || NON_US_COUNTRY_WORDS.test(address)) return false;
-  const stateZipMatch = address.match(/\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/i);
+  const stateZipMatch = address.match(/\b([A-Z]{2})\s*,?\s+\d{5}(?:-\d{4})?\b/i);
   if (!stateZipMatch) return false;
   return US_STATES.has(stateZipMatch[1].toUpperCase());
 }

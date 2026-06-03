@@ -6183,7 +6183,7 @@ function renderStudentSignupStepContent(){
       ${renderUsOnlySignupNotice()}
       <div class="field"><label>Email</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"></div>
       <div class="field"><label>Phone</label><input id="studentFlowPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555"></div>
-      <div class="field"><label>Home Address</label><input id="studentFlowAddress" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA 94526" onfocus="attachGoogleAddressAutocomplete('studentFlowAddress')"><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile. Choose a Google suggestion when available.</div></div>
+      <div class="field"><label>Home Address</label><input id="studentFlowAddress" value="${esc(d.address)}" placeholder="123 Main St, Danville, CA 94526" onfocus="attachGoogleAddressAutocomplete('studentFlowAddress')"><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile. Choose a Google suggestion when available. This address confirms U.S. eligibility; no separate country field is needed.</div></div>
     </div>
   `;
   if (studentSignupStep === 6) return `
@@ -6730,15 +6730,30 @@ function parsedAddressParts(address=''){
   };
 }
 function normalizeAddressForValidation(address=''){
+  const stateNames = {
+    'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA','colorado':'CO','connecticut':'CT','delaware':'DE',
+    'florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA','kansas':'KS',
+    'kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN',
+    'mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH','new jersey':'NJ',
+    'new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR',
+    'pennsylvania':'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX',
+    'utah':'UT','vermont':'VT','virginia':'VA','washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY',
+    'district of columbia':'DC'
+  };
   let value = String(address || '')
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/\bSuit\s+(?=\w)/gi, 'Suite ')
     .replace(/\bSte\.?(?=\s*\w)/gi, 'Suite')
     .replace(/\s*,\s*/g, ', ')
-    .replace(/\bCalifornia\b/gi, 'CA')
-    .replace(/\bca\b/g, 'CA');
-  const stateZip = value.match(/\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+    .replace(/\b(?:United States of America|United States|USA|US)\b\.?$/i, '')
+    .replace(/,\s*$/g, '')
+    .trim();
+  Object.entries(stateNames).forEach(([name, code]) => {
+    value = value.replace(new RegExp(`\\b${name}\\b`, 'gi'), code);
+  });
+  value = value.replace(/\bca\b/g, 'CA');
+  const stateZip = value.match(/\b([A-Z]{2})\s*,?\s+(\d{5}(?:-\d{4})?)$/i);
   if (!stateZip) return value;
   const state = stateZip[1].toUpperCase();
   const zip = stateZip[2];
