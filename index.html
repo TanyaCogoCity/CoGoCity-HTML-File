@@ -494,11 +494,21 @@
       color:#9CA3AF;
       font-size:.82rem;
     }
-    .transaction-table-scroll{scrollbar-width:thin;scrollbar-color:#9CA3AF #F3F4F6}
-    .transaction-table-scroll::-webkit-scrollbar{height:12px;width:12px}
-    .transaction-table-scroll::-webkit-scrollbar-track{background:#F3F4F6;border-radius:999px}
-    .transaction-table-scroll::-webkit-scrollbar-thumb{background:#9CA3AF;border-radius:999px;border:2px solid #F3F4F6}
-    .transaction-table-scroll::-webkit-scrollbar-thumb:hover{background:#6B7280}
+    .transaction-table-scroll{
+      display:block;
+      max-width:100%;
+      overflow-x:scroll;
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:auto;
+      scrollbar-color:#6B7280 #E5E7EB;
+      scrollbar-gutter:stable;
+      overscroll-behavior-x:contain;
+    }
+    .transaction-table-scroll::-webkit-scrollbar{height:16px;width:14px}
+    .transaction-table-scroll::-webkit-scrollbar-track{background:#E5E7EB;border-radius:999px}
+    .transaction-table-scroll::-webkit-scrollbar-thumb{background:#6B7280;border-radius:999px;border:3px solid #E5E7EB}
+    .transaction-table-scroll::-webkit-scrollbar-thumb:hover{background:#4B5563}
     @media (max-width: 900px){
       nav{gap:12px;padding:0 14px}
       .nav-links{gap:12px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -17906,7 +17916,12 @@ function renderSubscriptionTransactionsResults(){
   };
   const displayRows = getTransactionTablePagedRows('subscription', rows);
   const subState = getTransactionTableState('subscription');
-  const tableWrapStyle = subState.expanded ? 'overflow:auto' : 'overflow:auto;max-height:280px';
+  const tableWrapStyle = subState.expanded
+    ? 'overflow-x:scroll;overflow-y:visible;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)'
+    : 'overflow-x:scroll;overflow-y:auto;max-height:280px;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)';
+  const subscriptionTableStyle = isAdmin
+    ? 'width:max-content;min-width:1640px;border-collapse:collapse;font-size:.92rem;table-layout:auto'
+    : 'width:max-content;min-width:980px;border-collapse:collapse;font-size:.92rem;table-layout:auto';
   wrap.innerHTML = `
     <div class="card form-card" style="margin-top:16px">
       <div class="section-title" style="margin:0 0 10px">${isAdmin ? 'Employer Subscription Transactions' : 'Subscription Transactions'}</div>
@@ -17917,8 +17932,8 @@ function renderSubscriptionTransactionsResults(){
       </div>
       ${rows.length ? `
         ${renderTransactionTableControls('subscription', rows, 'Subscriptions')}
-        <div style="${tableWrapStyle}">
-          <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+        <div class="transaction-table-scroll" style="${tableWrapStyle}">
+          <table style="${subscriptionTableStyle}">
             <thead>
               <tr style="text-align:left;border-bottom:1px solid var(--border)">
                 <th style="padding:10px 8px">Name of Job</th>
@@ -18148,8 +18163,8 @@ function renderWorkshopTransactionsResults(){
       ` : ''}
       ${rows.length ? `
         ${renderTransactionTableControls('workshop', rows, 'Workshop Transactions')}
-        <div style="${getTransactionTableState('workshop').expanded ? 'overflow:auto' : 'overflow:auto;max-height:280px'}">
-          <table style="width:100%;border-collapse:collapse;font-size:.92rem"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table>
+        <div class="transaction-table-scroll" style="${getTransactionTableState('workshop').expanded ? 'overflow-x:scroll;overflow-y:visible;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)' : 'overflow-x:scroll;overflow-y:auto;max-height:280px;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)'}">
+          <table style="${isAdmin ? 'width:max-content;min-width:1500px;border-collapse:collapse;font-size:.92rem;table-layout:auto' : 'width:max-content;min-width:860px;border-collapse:collapse;font-size:.92rem;table-layout:auto'}"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table>
         </div>
       ` : `<div class="muted">No workshop transactions yet.</div>`}
     </div>
