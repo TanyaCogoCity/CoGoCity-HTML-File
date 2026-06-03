@@ -1528,6 +1528,29 @@ function openPostSignupStripeOnboardingPrompt(kind){
     </div>
   `, '620px');
 }
+function openStripeConnectBeforeYouStartModal(){
+  openModal('Before You Start Stripe Setup', `
+    <div class="card form-card">
+      <div class="warning" style="margin-bottom:14px">
+        Stripe will ask for business details so CoGo City can securely send payouts for services, workshops, and classes.
+      </div>
+      <div class="small muted" style="line-height:1.6;margin-bottom:12px">
+        When Stripe asks for a <strong>Business website</strong>, keep the CoGo City website that is already filled in:
+        <strong>${esc(location.origin || 'https://cogocity.com')}</strong>.
+      </div>
+      <div class="small muted" style="line-height:1.6;margin-bottom:12px">
+        You do not need to create your own website for this step. Stripe may still ask for your legal name, address, date of birth, bank details, and tax information. Those details are collected by Stripe, not stored by CoGo City.
+      </div>
+      <div class="small muted" style="line-height:1.6;margin-bottom:16px">
+        For business type, most individual users can continue with <strong>Individual or sole proprietorship</strong> unless they have their own registered company.
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="closeModal()">Back</button>
+        <button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding({confirmed:true})">Continue to Stripe</button>
+      </div>
+    </div>
+  `, '660px');
+}
 function isEmployerLikeUser(user=currentUser){
   return !!(user && ['employer','neighbor'].includes(user.role));
 }
@@ -1690,8 +1713,9 @@ async function submitPayerStripeSetup(){
     if (btn) { btn.disabled = false; btn.textContent = 'Save Payment Method'; }
   }
 }
-async function startStripeConnectOnboarding(){
+async function startStripeConnectOnboarding(options={}){
   if (!stripeOnboardingEnabled()) return toast('Secure payout setup is available on staging after sign-in.');
+  if (!options.confirmed) return openStripeConnectBeforeYouStartModal();
   try {
     await backendAuthRequest('/stripe/onboarding/connect-account', { method:'POST', body: JSON.stringify({ country:'US' }) });
     const returnUrl = `${window.location.origin}${window.location.pathname}?stripe_connect=return#/dashboard`;
