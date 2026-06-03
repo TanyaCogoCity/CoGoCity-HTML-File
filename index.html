@@ -1450,6 +1450,7 @@ let stripeClient = null;
 let stripeCardElement = null;
 let stripeCardElements = null;
 let stripeSetupIntentContext = null;
+let stripeConnectOpening = false;
 function stripeOnboardingEnabled(){
   return !!(STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken());
 }
@@ -1546,10 +1547,26 @@ function openStripeConnectBeforeYouStartModal(){
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Back</button>
-        <button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding({confirmed:true})">Continue to Stripe</button>
+        <button class="btn btn-blue" id="stripeConnectContinueBtn" onclick="continueStripeConnectFromIntro(this)">Continue to Stripe</button>
       </div>
     </div>
   `, '660px');
+}
+async function continueStripeConnectFromIntro(button){
+  if (stripeConnectOpening) return;
+  stripeConnectOpening = true;
+  const btn = button || document.getElementById('stripeConnectContinueBtn');
+  const backBtn = btn ? btn.parentElement?.querySelector('.btn-outline') : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Opening Stripe...';
+  }
+  if (backBtn) backBtn.disabled = true;
+  const statusEl = document.getElementById('stripeConnectOpeningStatus');
+  if (!statusEl && btn && btn.parentElement) {
+    btn.parentElement.insertAdjacentHTML('beforebegin', '<div id="stripeConnectOpeningStatus" class="small muted" style="margin:0 0 12px">Preparing your secure Stripe setup page. This can take a few seconds.</div>');
+  }
+  await startStripeConnectOnboarding({ confirmed:true, keepOpeningState:true });
 }
 function isEmployerLikeUser(user=currentUser){
   return !!(user && ['employer','neighbor'].includes(user.role));
@@ -1714,8 +1731,13 @@ async function submitPayerStripeSetup(){
   }
 }
 async function startStripeConnectOnboarding(options={}){
-  if (!stripeOnboardingEnabled()) return toast('Secure payout setup is available on staging after sign-in.');
+  if (!stripeOnboardingEnabled()) {
+    stripeConnectOpening = false;
+    return toast('Secure payout setup is available on staging after sign-in.');
+  }
   if (!options.confirmed) return openStripeConnectBeforeYouStartModal();
+  if (stripeConnectOpening && !options.keepOpeningState) return;
+  stripeConnectOpening = true;
   try {
     await backendAuthRequest('/stripe/onboarding/connect-account', { method:'POST', body: JSON.stringify({ country:'US' }) });
     const returnUrl = `${window.location.origin}${window.location.pathname}?stripe_connect=return#/dashboard`;
@@ -1724,6 +1746,7 @@ async function startStripeConnectOnboarding(options={}){
     if (!link.url) throw new Error('Secure payout setup did not return an onboarding link.');
     window.location.href = link.url;
   } catch (error) {
+    stripeConnectOpening = false;
     openStripeConnectRecoveryModal(error.message || 'Could not start secure payout setup.');
   }
 }
