@@ -1578,7 +1578,7 @@ function renderStripeOnboardingCard(){
   if (!stripeOnboardingEnabled()) return '';
   const status = userStripeOnboarding();
   const isPayer = isEmployerLikeUser(currentUser);
-  const isPayout = ['student','admin'].includes(currentUser.role);
+  const isPayout = ['student','employer','neighbor','admin'].includes(currentUser.role);
   const payer = status.payer || {};
   const connect = status.connect || {};
   const blocks = [];
@@ -11543,7 +11543,7 @@ function renderDashboard(){
     if (sidebar) sidebar.innerHTML = `
       <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
         <div style="font-weight:800;margin-bottom:6px">${needsMigrationOnboarding() ? 'Profile review required' : (payoutRequired ? 'Payout setup required' : 'Payment method required')}</div>
-        <div class="small muted">${needsMigrationOnboarding() ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : (payoutRequired ? 'Please complete Stripe Connect before applying, messaging, or offering student services.' : 'Please add a credit card before posting jobs, messaging students, or taking hiring actions.')}</div>
+        <div class="small muted">${needsMigrationOnboarding() ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : (payoutRequired ? 'Please complete Stripe Connect before receiving payouts for services, workshops, or classes.' : 'Please add a credit card before posting jobs, messaging students, or taking hiring actions.')}</div>
       </div>
     `;
     if (needsMigrationOnboarding()) return renderMigrationOnboarding(el);
