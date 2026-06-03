@@ -125,6 +125,16 @@ async function serializeWorkshopRows(rows = []) {
   const backendWorkshopIds = rows
     .map((row) => row.payload?.backend_workshop_id || row.payload?.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : ''))
     .filter(Boolean);
+  const hostIds = [...new Set(rows
+    .map((row) => workshopOwnerId(row.payload || {}))
+    .filter(Boolean))];
+  const hosts = hostIds.length
+    ? await prisma.user.findMany({ where: { id: { in: hostIds } } })
+    : [];
+  const hostReadiness = hosts.reduce((map, host) => {
+    map.set(host.id, stripeConnectReady(host));
+    return map;
+  }, new Map());
   const enrollments = backendWorkshopIds.length
     ? await prisma.workshopEnrollment.findMany({
         where: { workshopId: { in: backendWorkshopIds }, paymentStatus: 'paid' },
@@ -148,11 +158,13 @@ async function serializeWorkshopRows(rows = []) {
     const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId || (isUuid(row.recordId) ? row.recordId : '');
     const registeredCount = Math.max(counts.get(backendWorkshopId) || 0, stripeCounts.get(backendWorkshopId) || 0);
     const capacity = payload.capacity == null || payload.capacity === '' ? null : Number(payload.capacity);
+    const hostId = workshopOwnerId(payload);
     return {
       ...serialize(row),
       registered_count: registeredCount,
       registeredCount,
       spots_left: capacity && capacity > 0 ? Math.max(0, capacity - registeredCount) : null,
+      host_payout_setup_ready: hostId ? Boolean(hostReadiness.get(hostId)) : false,
     };
   });
 }

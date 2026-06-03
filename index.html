@@ -1712,19 +1712,19 @@ function openStripeConnectRecoveryModal(errorMessage=''){
 function openWorkshopPayoutSetupModal(options={}){
   const mode = options.mode || 'host';
   const isHost = mode === 'host';
-  openModal(isHost ? 'Set Up Payouts for Paid Workshops' : 'Workshop Checkout Not Ready', `
+  openModal(isHost ? 'Payment Setup Required' : 'Registration Not Open', `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">
         ${isHost
-          ? 'Paid workshops and classes need Stripe Connect payout setup before ticket sales can work.'
-          : 'This paid workshop cannot accept registrations yet because the host still needs to complete payout setup.'}
+          ? 'You need to set up your payment and payout information before you can publish a paid class or workshop. Free classes can be published without payout setup.'
+          : 'Registration is not open yet.'}
       </div>
       <div class="small muted" style="line-height:1.55;margin-bottom:14px">
         ${isHost
           ? 'Stripe Connect is where you securely add payout and tax details so CoGo City can send you the remaining ticket balance after CoGo fees. CoGo City does not store your bank, SSN/TIN, identity, or tax details.'
-          : 'Please try again later or message the host/admin. Once the host completes Stripe Connect, paid registration will open automatically.'}
+          : 'Please try again later or message the host/admin.'}
       </div>
-      ${isHost ? `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-outline" onclick="closeModal()">Not Now</button><button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Set Up Payouts</button></div>` : `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-blue" onclick="closeModal()">Got it</button></div>`}
+      ${isHost ? `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-outline" onclick="closeModal()">Not Now</button><button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Set Up Payment</button></div>` : `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-blue" onclick="closeModal()">Got it</button></div>`}
     </div>
   `, '640px');
 }
@@ -8440,7 +8440,8 @@ function normalizeWorkshopRecord(workshop){
     payout_processed: false,
     backend_workshop_id: '',
     registered_count: 0,
-    spots_left: null
+    spots_left: null,
+    host_payout_setup_ready: null
   }, workshop || {});
   normalized.host_id = normalized.host_id || normalized.hostId || normalized.createdBy || normalized.user_id || '';
   normalized.date_time = normalized.date_time || normalized.dateTime || normalized.starts_at || normalized.start_time || '';
@@ -8453,6 +8454,10 @@ function normalizeWorkshopRecord(workshop){
   normalized.registered_count = Number(normalized.registered_count ?? normalized.registeredCount ?? 0) || 0;
   const rawSpotsLeft = normalized.spots_left ?? normalized.spotsLeft;
   normalized.spots_left = rawSpotsLeft === null || rawSpotsLeft === undefined || rawSpotsLeft === '' ? null : Number(rawSpotsLeft);
+  const rawHostPayoutReady = normalized.host_payout_setup_ready ?? normalized.hostPayoutSetupReady ?? normalized.payout_setup_ready ?? normalized.hostStripeConnectReady;
+  normalized.host_payout_setup_ready = rawHostPayoutReady === null || rawHostPayoutReady === undefined || rawHostPayoutReady === ''
+    ? null
+    : ['true','1','yes','ready'].includes(String(rawHostPayoutReady).toLowerCase()) || rawHostPayoutReady === true;
   if ((normalized.capacity === undefined || normalized.capacity === null || normalized.capacity === '') && normalized.seats !== undefined) normalized.capacity = normalized.seats;
   normalized.id = String(normalized.id || uid('ws'));
   normalized.title = String(normalized.title || '').trim();
@@ -8466,6 +8471,7 @@ function normalizeWorkshopRecord(workshop){
   normalized.online_url = String(normalized.online_url || '').trim();
   normalized.price = Number(normalized.price || 0) || 0;
   normalized.capacity = normalized.capacity === '' ? '' : (Number(normalized.capacity || 0) || 0);
+  normalized.status = String(normalized.status || '').toLowerCase() === 'published' ? 'active' : normalized.status;
   normalized.status = ['draft','active','canceled','completed'].includes(normalized.status) ? normalized.status : 'draft';
   normalized.images = upsertImageRecords(normalized.images || [], { source:'workshop', entity_type:'workshop', entity_id: normalized.id }).slice(0,1);
   const videoState = normalizeVideoInputValue(normalized.video_url || '');
@@ -8690,11 +8696,29 @@ function workshopSummaryDescription(workshop){
   const text = String(workshop.description || '').trim();
   return text.length > 160 ? `${text.slice(0, 157)}...` : text;
 }
-function workshopCanRegister(workshop){
-  if (!workshop || workshop.status !== 'active') return false;
+function isPaidWorkshop(workshop){
+  return Number(workshop && workshop.price || 0) > 0;
+}
+function workshopHostPayoutSetupReady(workshop){
+  if (!isPaidWorkshop(workshop)) return true;
+  if (workshop && workshop.host_payout_setup_ready !== null && workshop.host_payout_setup_ready !== undefined) {
+    return Boolean(workshop.host_payout_setup_ready);
+  }
+  if (currentUser && workshop && String(currentUser.id || '') === String(workshop.host_id || '')) {
+    return payoutSetupReady(currentUser);
+  }
+  const host = getUserById(workshop && workshop.host_id);
+  return host ? payoutSetupReady(host) : false;
+}
+function workshopRegistrationUnavailableReason(workshop){
+  if (!workshop || workshop.status !== 'active') return 'This workshop is not open for registration yet.';
+  if (!workshopHostPayoutSetupReady(workshop)) return 'Registration is not open yet.';
   const spotsLeft = getWorkshopSpotsLeft(workshop);
-  if (spotsLeft !== null && spotsLeft <= 0) return false;
-  return true;
+  if (spotsLeft !== null && spotsLeft <= 0) return 'This workshop is full.';
+  return '';
+}
+function workshopCanRegister(workshop){
+  return !workshopRegistrationUnavailableReason(workshop);
 }
 function getWorkshopCoverImage(workshop, variant='thumb'){
   return getImageView((workshop && ensureArray(workshop.images)[0]) || '', variant);
@@ -8712,6 +8736,7 @@ function renderWorkshopCard(workshop){
   const cover = getWorkshopCoverImage(workshop, 'thumb');
   const spotsLeft = getWorkshopSpotsLeft(workshop);
   const durationLabel = formatWorkshopDurationLabel(workshop.duration);
+  const unavailableReason = workshopRegistrationUnavailableReason(workshop);
   return `
     <article class="card workshop-card" style="cursor:pointer" onclick="location.hash='#/workshops/${esc(workshop.id)}';renderPage()">
       <div class="workshop-cover">
@@ -8731,7 +8756,7 @@ function renderWorkshopCard(workshop){
         </div>
         <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();location.hash='#/workshops/${esc(workshop.id)}';renderPage()">View Details</button>
-          <button class="btn btn-blue btn-sm" ${workshopCanRegister(workshop) ? '' : 'disabled'} onclick="event.stopPropagation();openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
+          <button class="btn btn-blue btn-sm" ${unavailableReason ? 'disabled' : ''} ${unavailableReason ? `title="${esc(unavailableReason)}"` : ''} onclick="event.stopPropagation();openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
         </div>
       </div>
     </article>
@@ -8781,6 +8806,7 @@ function renderWorkshopDetailPage(workshopId=''){
     ? (workshop.online_url || 'Online link shared after registration')
     : (workshop.location || 'Location TBD');
   const spotsLabel = spotsLeft === null ? 'Flexible' : `${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left`;
+  const unavailableReason = workshopRegistrationUnavailableReason(workshop);
   const mediaHtml = workshop.video_url
     ? renderVideoPreviewHtml(workshop.video_url, 'Workshop video', { maxWidth:'100%', showLabel:false })
     : cover
@@ -8835,8 +8861,9 @@ function renderWorkshopDetailPage(workshopId=''){
           <div style="font-weight:800;margin-bottom:8px">Reviews</div>
           <div class="small muted">Reviews are coming soon.</div>
         </div>
+        ${isPaidWorkshop(workshop) && !workshopHostPayoutSetupReady(workshop) ? `<div class="warning" style="margin-top:12px">Registration is not open yet.</div>` : ''}
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-blue" ${workshopCanRegister(workshop) ? '' : 'disabled'} onclick="openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
+          <button class="btn btn-blue" ${unavailableReason ? 'disabled' : ''} ${unavailableReason ? `title="${esc(unavailableReason)}"` : ''} onclick="openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
           ${currentUser && currentUser.id === workshop.host_id ? `<button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Manage</button>` : ''}
         </div>
       </div>
@@ -8859,10 +8886,11 @@ function openWorkshopRegistrationFlow(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return toast('Workshop not found.');
   if (!currentUser) return openLoginModal();
-  if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
   if (currentUser.role === 'admin') return toast('Admin accounts cannot register for workshops.');
   if (currentUser.id === workshop.host_id) return toast('You cannot register for your own workshop.');
-  if (!workshopCanRegister(workshop)) return toast('This workshop is full or unavailable.');
+  const unavailableReason = workshopRegistrationUnavailableReason(workshop);
+  if (unavailableReason) return toast(unavailableReason);
+  if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
   const existing = getWorkshopRegistrationsFor(workshop.id).find(item => item.user_id === currentUser.id && item.status !== 'refunded');
   const spotsLeft = getWorkshopSpotsLeft(workshop);
   const paymentMethod = getEmployerPaymentMethod(currentUser.id);
@@ -8939,6 +8967,8 @@ async function completeWorkshopRegistration(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop || !currentUser) return;
   if (requireBackendWriteSession('register for this workshop')) return;
+  const unavailableReason = workshopRegistrationUnavailableReason(workshop);
+  if (unavailableReason) return toast(unavailableReason);
   if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
   const attendeeName = String((document.getElementById('workshopAttendeeName') || {}).value || '').trim();
   const attendeeEmail = String((document.getElementById('workshopAttendeeEmail') || {}).value || '').trim().toLowerCase();
@@ -8966,7 +8996,7 @@ async function completeWorkshopRegistration(workshopId=''){
     } catch (error) {
       console.warn('Workshop Stripe checkout failed', error);
       if (error.status === 402 && String(error.message || '').toLowerCase().includes('workshop provider')) {
-        openWorkshopPayoutSetupModal({ mode:'buyer' });
+        toast('Registration is not open yet.');
         return;
       }
       toast(error.message || 'Stripe checkout failed. Please try again.');
@@ -9308,6 +9338,7 @@ function renderWorkshopsDashboardSection(el){
         ? (myWorkshops.length ? myWorkshops.map(workshop => {
             const count = getWorkshopRegisteredCount(workshop.id);
             const spotsLeft = getWorkshopSpotsLeft(workshop);
+            const paidPayoutMissing = isPaidWorkshop(workshop) && !workshopHostPayoutSetupReady(workshop);
             return `
               <div class="item-card card" style="margin-bottom:12px">
                 <div class="split" style="gap:12px;align-items:flex-start">
@@ -9315,10 +9346,12 @@ function renderWorkshopsDashboardSection(el){
                     <div style="font-weight:800">${esc(workshop.title)}</div>
                     <div class="small muted" style="margin-top:6px">${esc(formatWorkshopDateTime(workshop.date_time))} \u00B7 ${workshop.format === 'online' ? 'Online' : esc(workshop.location || 'In-person')}</div>
                     <div class="small muted" style="margin-top:6px">Status: ${esc(workshop.status)} \u00B7 Participants: <button class="link-btn" onclick="openWorkshopParticipantsModal('${esc(workshop.id)}')" style="font-weight:700">${esc(count)}</button>${spotsLeft !== null ? ` \u00B7 Spots left: ${esc(spotsLeft)}` : ''}</div>
+                    ${paidPayoutMissing ? `<div class="warning" style="margin-top:8px">Set up payment before publishing this paid class or accepting registrations.</div>` : ''}
                   </div>
                   <div style="display:flex;gap:8px;flex-wrap:wrap">
                     <button class="btn btn-outline btn-sm" onclick="location.hash='#/workshops/${esc(workshop.id)}';renderPage()">View</button>
                     <button class="btn btn-outline btn-sm" onclick="openWorkshopEditor('${esc(workshop.id)}')">Edit</button>
+                    ${paidPayoutMissing ? `<button class="btn btn-blue btn-sm" onclick="startStripeConnectOnboarding()">Set Up Payment</button>` : ''}
                     <button class="btn btn-blue btn-sm" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Manage</button>
                   </div>
                 </div>

@@ -10,6 +10,7 @@ const { stripeConnectReady } = require('../lib/onboardingGate');
 const router = express.Router();
 
 function serialize(workshop) {
+  const creator = workshop.creator || workshop.createdByUser || null;
   return {
     id: workshop.id,
     title: workshop.title,
@@ -23,6 +24,7 @@ function serialize(workshop) {
     status: workshop.status,
     start_date: workshop.startDate,
     created_by: workshop.createdBy,
+    host_payout_setup_ready: creator ? stripeConnectReady(creator) : false,
     created_at: workshop.createdAt,
   };
 }
@@ -53,7 +55,11 @@ async function requirePaidWorkshopPayoutReady(req, res, payload = {}) {
 }
 
 router.get('/', async (_req, res) => {
-  const rows = await prisma.workshop.findMany({ orderBy: { startDate: 'asc' }, take: 200 });
+  const rows = await prisma.workshop.findMany({
+    orderBy: { startDate: 'asc' },
+    take: 200,
+    include: { creator: true },
+  });
   return ok(res, rows.map(serialize));
 });
 
@@ -78,6 +84,7 @@ router.post('/', requireAuth, async (req, res) => {
       startDate: payload.start_date ? new Date(payload.start_date) : new Date(),
       createdBy: req.user.id,
     },
+    include: { creator: true },
   });
 
   await writeAuditLog({ userId: req.user.id, action: 'workshop.create', entityType: 'workshop', entityId: workshop.id, payload: req.body });
@@ -110,7 +117,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
   if (payload.status != null) data.status = payload.status;
   if (payload.start_date != null) data.startDate = new Date(payload.start_date);
 
-  const updated = await prisma.workshop.update({ where: { id: workshop.id }, data });
+  const updated = await prisma.workshop.update({ where: { id: workshop.id }, data, include: { creator: true } });
   await writeAuditLog({ userId: req.user.id, action: 'workshop.update', entityType: 'workshop', entityId: workshop.id, payload: req.body });
   return ok(res, serialize(updated));
 });
