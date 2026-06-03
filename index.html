@@ -887,6 +887,9 @@ let pendingDashboardThreadId = '';
 let backendProjectsLoading = false;
 let backendProjectsLoaded = false;
 let backendProjectsError = '';
+let backendSyncedProjectsLoading = false;
+let backendSyncedProjectsLoaded = false;
+let backendSyncedProjectsError = '';
 let backendMessageThreadsLoading = {};
 let backendMessageThreadsLoaded = {};
 let backendCurrentProfileLoading = false;
@@ -1175,7 +1178,15 @@ function resetBackendSessionCaches(){
   backendTransactionsLoaded = false;
   backendTransactionsLoading = false;
   backendTransactionsError = '';
+  backendProjectsLoaded = false;
+  backendProjectsLoading = false;
+  backendProjectsError = '';
+  backendSyncedProjectsLoaded = false;
+  backendSyncedProjectsLoading = false;
+  backendSyncedProjectsError = '';
   localStorage.removeItem('cogo_backend_transactions');
+  localStorage.removeItem('cogo_backend_projects');
+  localStorage.removeItem('cogo_backend_synced_projects');
 }
 function backendSessionExpiredError(){
   return new Error('Your session expired. Please sign in again, then retry your last action.');
@@ -2953,25 +2964,66 @@ function mapBackendProject(row={}, context={}){
   const job = context.job || (row.job ? mapBackendDirectJob(row.job) : null) || getDirectJobById(app.job_id || row.job_id || row.jobId || '') || {};
   return buildDirectHireProjectRecord(app, job, row);
 }
+async function refreshBackendSyncedProjects(options={}){
+  if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return getBackendSyncedProjects();
+  if (backendSyncedProjectsLoading) return getBackendSyncedProjects();
+  backendSyncedProjectsLoading = true;
+  backendSyncedProjectsError = '';
+  try {
+    const rows = await loadBackendSyncedRecords('projects');
+    saveBackendSyncedProjects(rows);
+    backendSyncedProjectsLoaded = true;
+    if (options.rerender && getRoute() === '#/dashboard') renderDashboard();
+    return getBackendSyncedProjects();
+  } catch (error) {
+    backendSyncedProjectsError = error.message || 'Could not load synced backend projects';
+    console.warn('Backend synced projects refresh failed', error);
+    return getBackendSyncedProjects();
+  } finally {
+    backendSyncedProjectsLoading = false;
+  }
+}
 async function refreshBackendProjects(options={}){
   if (!backendAuthEnabled() || !getBackendAccessToken()) return getBackendProjects();
   if (backendProjectsLoading) return getBackendProjects();
   backendProjectsLoading = true;
   backendProjectsError = '';
+  const syncedPromise = refreshBackendSyncedProjects({ rerender:false });
   try {
     const rows = await backendAuthRequest('/projects');
     const mapped = ensureArray(rows).map(row => mapBackendProject(row));
     saveBackendProjects(mapped);
     backendProjectsLoaded = true;
+    await syncedPromise;
     if (options.rerender && getRoute() === '#/dashboard') renderDashboard();
-    return mapped;
+    return getProjects();
   } catch (error) {
     backendProjectsError = error.message || 'Could not load backend projects';
     console.warn('Backend projects refresh failed', error);
-    return getBackendProjects();
+    await syncedPromise.catch(() => null);
+    return getProjects();
   } finally {
     backendProjectsLoading = false;
   }
+}
+function ensureBackendProjectsLoaded(options={}){
+  if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
+  if (!backendProjectsLoaded && !backendProjectsLoading) {
+    refreshBackendProjects(options);
+    return;
+  }
+  if (!backendSyncedProjectsLoaded && !backendSyncedProjectsLoading) refreshBackendSyncedProjects(options);
+}
+function backendProjectsHydrating(){
+  return !!(backendAuthEnabled() && currentUser && getBackendAccessToken() && (backendProjectsLoading || backendSyncedProjectsLoading) && !getProjects().length);
+}
+async function refreshBackendDashboardData(options={}){
+  if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
+  await Promise.all([
+    refreshBackendProjects({ rerender:false }),
+    refreshBackendTransactions({ rerender:false })
+  ]);
+  if (options.rerender && getRoute() === '#/dashboard') renderDashboard();
 }
 function isBackendUuid(value=''){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '')); }
 function getProjectBackendId(project={}){ return project.backendProjectId || project.project_id || project.id; }
@@ -3089,6 +3141,7 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
   const localProject = buildDirectHireProjectRecord(app, job, null);
   projects.unshift(localProject);
   if (!await persistProjectsPermanently(projects, 'Backend project creation failed. Please try again so the project is saved permanently.')) return null;
+  await refreshBackendDashboardData();
   return localProject;
 }
 function getEmployerCompanyName(user){
@@ -3297,8 +3350,20 @@ function saveBookings(v){
   ls('cogo_bookings', payload);
   syncEntityToBackend('bookings', payload, { replace:true });
 }
+function backendDataSessionMissing(){ return !!(backendAuthEnabled() && currentUser && !getBackendAccessToken()); }
+function renderBackendDataSessionNotice(label='dashboard data'){
+  return `<div class="card form-card warning">Please sign in again to load your ${esc(label)} from the database. This keeps desktop and mobile showing the same saved information.</div>`;
+}
+function normalizeBackendSyncedProject(project={}){
+  return Object.assign({}, project || {}, {
+    backendSyncedSource:true,
+    backendSource:false
+  });
+}
 function getBackendProjects(){ return ensureArray(ls('cogo_backend_projects')).map(p => Object.assign({}, p, { backendSource:true })); }
 function saveBackendProjects(items){ ls('cogo_backend_projects', ensureArray(items).map(p => Object.assign({}, p, { backendSource:true }))); }
+function getBackendSyncedProjects(){ return ensureArray(ls('cogo_backend_synced_projects')).map(normalizeBackendSyncedProject); }
+function saveBackendSyncedProjects(items){ ls('cogo_backend_synced_projects', ensureArray(items).map(normalizeBackendSyncedProject)); }
 function upsertBackendProject(project){
   if (!project) return null;
   const normalized = Object.assign({}, project, { backendSource:true });
@@ -3310,9 +3375,23 @@ function upsertBackendProject(project){
 }
 function mergeBackendProjects(localProjects=[]){
   const backendProjects = getBackendProjects();
-  const backendIds = new Set(backendProjects.map(project => String(project.id)));
-  const backendApplicationIds = new Set(backendProjects.map(project => String(project.applicationId || '')).filter(Boolean));
-  return backendProjects.concat(ensureArray(localProjects).filter(project => !backendIds.has(String(project.id)) && !(project.applicationId && backendApplicationIds.has(String(project.applicationId)))));
+  const syncedProjects = getBackendSyncedProjects();
+  const merged = [];
+  const seenIds = new Set();
+  const seenApplicationIds = new Set();
+  const addProject = (project) => {
+    if (!project) return;
+    const id = String(project.id || project.project_id || '').trim();
+    const appId = String(project.applicationId || project.application_id || '').trim();
+    if ((id && seenIds.has(id)) || (appId && seenApplicationIds.has(appId))) return;
+    if (id) seenIds.add(id);
+    if (appId) seenApplicationIds.add(appId);
+    merged.push(project);
+  };
+  backendProjects.forEach(addProject);
+  ensureArray(localProjects).forEach(addProject);
+  syncedProjects.forEach(addProject);
+  return merged;
 }
 function getProjects(){ return mergeBackendProjects(ls('cogo_projects') || []); }
 function saveProjects(v){
@@ -3915,8 +3994,10 @@ function ensureBackendTransactionsLoaded(options={}){
 }
 function getTransactions(){
   ensureBackendTransactionsLoaded({ rerender:true });
+  if (backendDataSessionMissing()) return [];
   const backendRows = getBackendTransactions();
   if (backendRows.length || backendTransactionsLoaded) return backendRows;
+  if (backendAuthEnabled() && currentUser && getBackendAccessToken()) return backendRows;
   return ensureArray(ls('cogo_transactions')).map(normalizeTransactionRecord);
 }
 function saveTransactions(v){
@@ -12345,7 +12426,14 @@ function deleteStudentProfile(profileId){
 
 function renderStudentJobsBookings(el){
  if (backendAuthEnabled() && !backendApplicationsLoaded && !backendApplicationsLoading) refreshBackendDirectJobApplications({ rerender:true });
- if (backendAuthEnabled() && getBackendAccessToken() && !backendProjectsLoaded && !backendProjectsLoading) refreshBackendProjects({ rerender:true });
+ if (backendDataSessionMissing()) {
+   el.innerHTML = `
+    <div class="section-title">Jobs & Bookings</div>
+    ${renderBackendDataSessionNotice('projects and bookings')}
+   `;
+   return;
+ }
+ ensureBackendProjectsLoaded({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
@@ -12377,7 +12465,9 @@ function renderStudentJobsBookings(el){
 
   if (studentJobsTab === 'all' || studentJobsTab === 'projects'){
     html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Projects</div>`;
-    html += projects.length ? projects.map((p,index) => renderStudentProjectCard(p, index)).join('') : `<div class="card form-card muted">No active projects yet.</div>`;
+    html += backendProjectsHydrating()
+      ? `<div class="card form-card muted">Loading projects from the database...</div>`
+      : (projects.length ? projects.map((p,index) => renderStudentProjectCard(p, index)).join('') : `<div class="card form-card muted">No active projects yet.</div>`);
   }
 
   body.innerHTML = html;
@@ -12649,6 +12739,7 @@ async function submitFinalInvoice(projectId){
     }
   }
   if (!await persistProjectsPermanently(pList, 'Backend project completion failed. Please try again so the final invoice is saved permanently.')) return;
+  await refreshBackendDashboardData();
   pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. ${platformSupportFeeLabel(breakdown.employerCommissionPct)}: $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, ${platformSupportFeeLabel(breakdown.employerCommissionPct)} $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
   sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after ${platformSupportFeeLabel(breakdown.studentCommissionPct)}: $${money(studentPayout)}.`, p.id);
@@ -13461,7 +13552,14 @@ function shouldDisableDeclineApplicant(application){
   return application.status === 'accepted' || !!(job && !['open','pending'].includes(job.status));
 }
 function renderEmployerApplicantsBookings(el){
- if (backendAuthEnabled() && getBackendAccessToken() && !backendProjectsLoaded && !backendProjectsLoading) refreshBackendProjects({ rerender:true });
+ if (backendDataSessionMissing()) {
+   el.innerHTML = `
+    <div class="section-title">Hourly Projects</div>
+    ${renderBackendDataSessionNotice('hourly projects')}
+   `;
+   return;
+ }
+ ensureBackendProjectsLoaded({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const allApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
@@ -13489,7 +13587,9 @@ function renderEmployerApplicantsBookings(el){
   }
   if (employerTab === 'all' || employerTab === 'projects'){
     html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Projects</div>`;
-    html += myProjects.length ? myProjects.map((p,index) => renderEmployerProjectCard(p, index)).join('') : `<div class="card form-card muted">No projects yet.</div>`;
+    html += backendProjectsHydrating()
+      ? `<div class="card form-card muted">Loading projects from the database...</div>`
+      : (myProjects.length ? myProjects.map((p,index) => renderEmployerProjectCard(p, index)).join('') : `<div class="card form-card muted">No projects yet.</div>`);
   }
   document.getElementById('employer-body').innerHTML = html;
 }
@@ -13766,6 +13866,7 @@ async function startProject(appId, expectedStatus=''){
     ls('cogo_posts', posts.map(normalizePostRecord));
   }
   if (!await persistProjectsPermanently(projects, 'Backend project save failed. Please try again so this project is saved correctly.')) return;
+  await refreshBackendDashboardData();
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
   pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${platformSupportFeeLabel(estimatedBreakdown.employerCommissionPct)}: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
@@ -13848,6 +13949,7 @@ async function activateProject(projectId){
     ls('cogo_posts', posts.map(normalizePostRecord));
   }
   if (!await persistProjectsPermanently(projects, 'Backend project start failed. Please try again so this project is saved correctly.')) return;
+  await refreshBackendDashboardData();
 
   pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   trackCogoEvent('project_started', { source: 'existing_project', value: Number(p.escrowAmount || p.estimatedEmployerTotal || 0), currency: 'USD' });
@@ -14132,6 +14234,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
 
   delete p.approvalInProgress;
   if (!await persistProjectsPermanently(projects, 'Backend project approval failed. Please try again so this payment release is saved permanently.')) return;
+  await refreshBackendDashboardData();
   const completionDedupeKey = `project-payment-complete:${p.id}`;
   const finalStudentFeeLabel = platformSupportFeeLabel(p.studentCommissionPct ?? getPaymentSettings().studentCommissionPct);
   const finalEmployerFeeLabel = platformSupportFeeLabel(p.employerCommissionPct ?? getPaymentSettings().employerCommissionPct);
@@ -14176,6 +14279,7 @@ async function submitProjectChangeRequest(projectId){
     }
   }
   if (!await persistProjectsPermanently(projects, 'Backend change request failed. Please try again so this change is saved permanently.')) return;
+  await refreshBackendDashboardData();
   pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
   sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`, p.id);
   closeModal();
@@ -14260,6 +14364,7 @@ async function submitReview(projectId){
   p.reviewSubmitted = true;
   saveStudents(students);
   if (!await persistProjectsPermanently(projects, 'Backend review status update failed. Please try again so this review is saved permanently.')) return;
+  await refreshBackendDashboardData();
   try {
     sendSystemMessage(
       p.studentUserId,
@@ -16821,6 +16926,18 @@ function renderTransactionsResults(){
   const summaryWrap = document.getElementById('transactions-summary');
   const resultsWrap = document.getElementById('transactions-results');
   if (!summaryWrap || !resultsWrap) return;
+  if (backendDataSessionMissing()) {
+    summaryWrap.innerHTML = '';
+    resultsWrap.innerHTML = renderBackendDataSessionNotice('transactions');
+    transactionTableExportRows.main = { fileName:'transactions', headers:[], rows:[] };
+    return;
+  }
+  if (backendAuthEnabled() && getBackendAccessToken() && backendTransactionsLoading && !backendTransactionsLoaded && !getBackendTransactions().length) {
+    summaryWrap.innerHTML = '';
+    resultsWrap.innerHTML = `<div class="card form-card muted">Loading transactions from the database...</div>`;
+    transactionTableExportRows.main = { fileName:'transactions', headers:[], rows:[] };
+    return;
+  }
   const query = (settingsTransactionQuery || '').trim().toLowerCase();
   const rows = getCurrentUserTransactions().filter(tx => {
     const haystack = [
@@ -17412,6 +17529,7 @@ function renderWorkshopTransactionsResults(){
 }
 function renderTransactionsSection(el){
   el.innerHTML = `<div id="transactions-panel"></div>`;
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendTransactionsLoaded && !backendTransactionsLoading) refreshBackendTransactions({ rerender:true });
   renderTransactionsPanel();
 }
 function renderSettings(el){
