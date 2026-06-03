@@ -9,6 +9,7 @@ const { requireAuth, requireRoles } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { onboardingRequirementsForUser, userProfileMetadata } = require('../lib/onboardingGate');
 const { sendEmail, buildAppLink } = require('../lib/email');
+const { notifyAdminNewUser } = require('../lib/adminEmails');
 
 const router = express.Router();
 
@@ -320,6 +321,7 @@ router.post('/register', async (req, res) => {
     });
 
     await writeAuditLog({ userId: user.id, action: 'auth.register', entityType: 'user', entityId: user.id });
+    await notifyAdminNewUser(user);
 
     return created(res, {
       user: serializeUser(user, createdRecords),

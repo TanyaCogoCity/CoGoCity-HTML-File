@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { ok, fail } = require('../lib/http');
 const { writeAuditLog } = require('../lib/audit');
 const { requirePlatformReady } = require('../lib/onboardingGate');
+const { notifyAdminHourlyJobCreated } = require('../lib/adminEmails');
 
 const router = express.Router();
 
@@ -110,6 +111,13 @@ router.post('/sync/posts', requireAuth, async (req, res) => {
         return safePost;
       })
       .slice(0, 250);
+    const existingRows = normalized.length
+      ? await prisma.communityPost.findMany({
+          where: { id: { in: normalized.map((post) => post.id) } },
+          select: { id: true },
+        })
+      : [];
+    const existingIds = new Set(existingRows.map((row) => row.id));
     await prisma.$transaction(normalized.map((post) => prisma.communityPost.upsert({
       where: { id: post.id },
       create: {
@@ -124,6 +132,15 @@ router.post('/sync/posts', requireAuth, async (req, res) => {
         deletedAt: null,
       },
     })));
+    await Promise.all(normalized
+      .filter((post) => post.isJob && !existingIds.has(post.id))
+      .map((post) => notifyAdminHourlyJobCreated({
+        lister: req.user,
+        title: post.jobTitle || post.content || 'Community job opportunity',
+        source: 'Community feed',
+        amount: Number(post.rate || 0) * Number(post.hoursNeeded || 0),
+        link: `/community/post/${post.id}`,
+      })));
     res.json({ ok: true, data: { count: normalized.length } });
   } catch (error) {
     return fail(res, 400, 'Could not sync community posts', error.message);

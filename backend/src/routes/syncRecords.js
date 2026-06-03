@@ -7,6 +7,7 @@ const { ok, fail } = require('../lib/http');
 const { writeAuditLog } = require('../lib/audit');
 const config = require('../config');
 const { stripeConnectReady } = require('../lib/onboardingGate');
+const { notifyAdminWorkshopListed } = require('../lib/adminEmails');
 
 const router = express.Router();
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
@@ -243,7 +244,7 @@ async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
     const payload = record.payload || {};
     let createdBy = workshopOwnerId(payload);
     if (!isUuid(createdBy)) continue;
-    const creator = await prisma.user.findUnique({ where: { id: createdBy }, select: { id: true } }).catch(() => null);
+    const creator = await prisma.user.findUnique({ where: { id: createdBy } }).catch(() => null);
     if (!creator) continue;
 
     let workshop = null;
@@ -256,10 +257,18 @@ async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
     }
 
     const data = workshopDataFromPayload(payload, workshop?.createdBy || createdBy);
+    const wasPublished = workshop ? isPublishedWorkshopStatus(workshop.status) : false;
     if (workshop) {
       workshop = await prisma.workshop.update({ where: { id: workshop.id }, data });
     } else {
       workshop = await prisma.workshop.create({ data });
+    }
+    if (!wasPublished && isPublishedWorkshopStatus(workshop.status)) {
+      await notifyAdminWorkshopListed({
+        host: creator,
+        workshop,
+        link: `/workshops?id=${workshop.id}`,
+      });
     }
 
     const updatedPayload = { ...payload, backend_workshop_id: workshop.id };

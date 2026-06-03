@@ -9,6 +9,7 @@ const { createNotification, createNotifications } = require('../lib/notification
 const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
 const { ensureConversationBetweenUsers, sendSystemMessage } = require('../lib/messaging');
 const { getOrCreateSystemUser } = require('../lib/systemUser');
+const { notifyAdminJobListingCreated } = require('../lib/adminEmails');
 
 const router = express.Router();
 
@@ -60,6 +61,11 @@ router.post('/', requireAuth, async (req, res) => {
     });
 
     await writeAuditLog({ userId: req.user.id, action: 'job.create', entityType: 'job', entityId: job.id, payload: req.body });
+    await notifyAdminJobListingCreated({
+      employer: req.user,
+      job,
+      link: `/dashboard?section=my_jobs&job=${job.id}`,
+    });
 
     return created(res, serializeJob(job));
   } catch (error) {

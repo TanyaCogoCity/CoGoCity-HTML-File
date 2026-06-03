@@ -6,6 +6,7 @@ const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
 const { notificationType } = require('../lib/compat');
 const { stripeConnectReady } = require('../lib/onboardingGate');
+const { notifyAdminWorkshopListed } = require('../lib/adminEmails');
 
 const router = express.Router();
 
@@ -88,6 +89,13 @@ router.post('/', requireAuth, async (req, res) => {
   });
 
   await writeAuditLog({ userId: req.user.id, action: 'workshop.create', entityType: 'workshop', entityId: workshop.id, payload: req.body });
+  if (isPublishedStatus(workshop.status)) {
+    await notifyAdminWorkshopListed({
+      host: req.user,
+      workshop,
+      link: `/workshops?id=${workshop.id}`,
+    });
+  }
 
   return created(res, serialize(workshop));
 });
@@ -119,6 +127,13 @@ router.patch('/:id', requireAuth, async (req, res) => {
 
   const updated = await prisma.workshop.update({ where: { id: workshop.id }, data, include: { creator: true } });
   await writeAuditLog({ userId: req.user.id, action: 'workshop.update', entityType: 'workshop', entityId: workshop.id, payload: req.body });
+  if (!isPublishedStatus(workshop.status) && isPublishedStatus(updated.status)) {
+    await notifyAdminWorkshopListed({
+      host: req.user,
+      workshop: updated,
+      link: `/workshops?id=${updated.id}`,
+    });
+  }
   return ok(res, serialize(updated));
 });
 

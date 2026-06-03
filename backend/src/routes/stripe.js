@@ -11,6 +11,7 @@ const { createNotification, createNotifications } = require('../lib/notification
 const { notificationType, serializeJob } = require('../lib/compat');
 const { payoutSafetyRequirementsForUser, validateProjectPayoutSafety } = require('../lib/payoutSafety');
 const { requirePlatformReady, stripeConnectReady } = require('../lib/onboardingGate');
+const { notifyAdminProjectCommission, notifyAdminWorkshopCommission } = require('../lib/adminEmails');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
@@ -757,8 +758,8 @@ async function completeWorkshopCheckoutSession(session) {
   if (!enrollmentId && (!workshopId || !userId)) return null;
 
   const enrollment = enrollmentId
-    ? await prisma.workshopEnrollment.findUnique({ where: { id: enrollmentId }, include: { workshop: true, user: true } })
-    : await prisma.workshopEnrollment.findUnique({ where: { workshopId_userId: { workshopId, userId } }, include: { workshop: true, user: true } });
+    ? await prisma.workshopEnrollment.findUnique({ where: { id: enrollmentId }, include: { workshop: { include: { creator: true } }, user: true } })
+    : await prisma.workshopEnrollment.findUnique({ where: { workshopId_userId: { workshopId, userId } }, include: { workshop: { include: { creator: true } }, user: true } });
   if (!enrollment) return null;
 
   const paymentStatus = paymentStatusForCheckoutSession(session);
@@ -800,7 +801,7 @@ async function completeWorkshopCheckoutSession(session) {
       stripePaymentStatus: paymentIntent?.status || session.payment_status || enrollment.stripePaymentStatus,
       paidAt: paymentStatus === 'paid' ? (enrollment.paidAt || new Date()) : enrollment.paidAt,
     },
-    include: { workshop: true, user: true },
+    include: { workshop: { include: { creator: true } }, user: true },
   });
 
   if (paymentStatus === 'paid') {
@@ -859,6 +860,18 @@ async function completeWorkshopCheckoutSession(session) {
         link: `/dashboard?section=workshops&id=${updated.workshop.id}`,
       },
     });
+    if (Number(updated.platformFee || 0) > 0) {
+      await notifyAdminWorkshopCommission({
+        host: updated.workshop.creator,
+        registrant: updated.user,
+        workshop: updated.workshop,
+        quantity,
+        amountTotal: updated.totalAmount,
+        platformFee: updated.platformFee,
+        stripePaymentIntentId: updated.stripePaymentIntentId,
+        link: `/dashboard?section=transactions&workshop=${updated.workshop.id}`,
+      });
+    }
   }
 
   return updated;
@@ -1750,6 +1763,15 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
     await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, status: synced?.status || 'paid' } });
     await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date(), totalAmount: finalWorkTotal ?? project.totalAmount } });
     await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
+    await notifyAdminProjectCommission({
+      payer: project.employer,
+      payee: project.student,
+      title: project.job?.title || 'Project payment',
+      amountTotal: finalAmounts.amountTotal,
+      platformFee: finalAmounts.platformFee,
+      stripePaymentIntentId: captured.id,
+      link: `/dashboard?section=transactions&project=${project.id}`,
+    });
     await writeAuditLog({ userId: req.user.id, action: 'payment.intent.capture', entityType: 'transaction', entityId: tx.id, payload: { paymentIntentId: captured.id, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, replacementPaymentIntentId: replacementIntent?.id || null } });
 
     return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, project_id: project.id, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
@@ -1988,6 +2010,17 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       payoutStatus: replacementIntent ? 'reauthorized' : '',
     });
     await notifyManualProjectPaymentCaptured({ paymentIntent: captured, finalAmounts });
+    const payeeId = captured.metadata?.payee_id || captured.metadata?.student_user_id || '';
+    const payee = payeeId ? await prisma.user.findUnique({ where: { id: payeeId } }).catch(() => null) : null;
+    await notifyAdminProjectCommission({
+      payer: req.user,
+      payee,
+      title: captured.metadata?.job_title || 'Project payment',
+      amountTotal: finalAmounts.amountTotal,
+      platformFee: finalAmounts.platformFee,
+      stripePaymentIntentId: captured.id,
+      link: '/dashboard?section=transactions',
+    });
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, replacementPaymentIntentId: replacementIntent?.id || null } });
     return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
   } catch (error) {
