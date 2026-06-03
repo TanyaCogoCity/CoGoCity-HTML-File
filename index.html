@@ -5889,6 +5889,9 @@ async function submitPasswordResetConfirm(token=''){
   }
 }
 const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}','\u{1F3B5}','\u26BD','\u{1F9E0}','\u{1F6B2}','\u{1F4F7}','\u{1F6E0}\uFE0F','\u{1F31F}','\u{1F3AC}','\u{1F9D1}\u200D\u{1F373}','\u{1F9EA}'];
+const ONBOARDING_PROFILE_IMAGE_HELP = 'Recommended profile photo: square 800 x 800 px. JPG or PNG works best.';
+const ONBOARDING_SERVICE_IMAGE_HELP = 'Recommended service, workshop, or business image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly.';
+const ONBOARDING_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link, or upload a short video. 16:9 video at 720p or 1080p under 60 seconds and under 15 MB works best.';
 function createDefaultStudentSignupDraft(){
   return {
     name:'',
@@ -6051,14 +6054,15 @@ function renderStudentSignupStepContent(){
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Upload a profile photo or choose an avatar.</div>
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
-      <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"></div>
+      <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
       <div style="margin-bottom:14px">${renderEditableSingleImage(d.photo || '', 'Profile preview', 'removeStudentSignupPhoto()', 120, 'No photo uploaded yet.')}</div>
       <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
         ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
       </div>
-      <div class="field" style="margin-top:16px"><label>YouTube Video (optional)</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/..." oninput="previewStudentSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">Want to introduce yourself in a more personal way? Add a short YouTube video to tell people about yourself, your skills, interests, or the type of work you’re looking for.</div></div>
+      <div class="field" style="margin-top:16px"><label>Profile Video Link or Upload (optional)</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Profile Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupProfileVideoUpload(this)"></div>
       <div id="student-profile-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video preview')}</div>
     </div>
   `;
@@ -6093,10 +6097,11 @@ function renderStudentSignupStepContent(){
       <div style="font-weight:800;margin-bottom:10px">${studentSignupEditingServiceIndex === null ? 'Create Service' : 'Edit Service'}</div>
       <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
       <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
-      <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"></div>
+      <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderEditableSingleImage(((d.serviceForm || {}).images || [])[0] || '', 'Service image', 'removeStudentSignupServiceImage()', 120, 'No service image added yet.')}
-      <div class="field"><label>Show your work or explain your service</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"></div>
+      <div class="field"><label>Service Video Link or Upload (optional)</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Service Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupServiceVideoUpload(this)"></div>
       <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || '')}" placeholder="20" oninput="syncStudentSignupServiceForm()"></div>
@@ -6274,6 +6279,13 @@ function previewStudentSignupProfileVideo(value){
   const el = document.getElementById('student-profile-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentSignupDraft), 'Profile video preview');
 }
+function handleStudentSignupProfileVideoUpload(input){
+  readCommunityVideoFile(input, (dataUrl) => {
+    const field = document.getElementById('studentFlowProfileVideoLink');
+    if (field) field.value = dataUrl;
+    previewStudentSignupProfileVideo(dataUrl);
+  });
+}
 function handleStudentSignupProfileImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
     studentSignupDraft.profileImages = replaceWithSingleImage(images[0] || '');
@@ -6309,6 +6321,14 @@ function previewStudentSignupServiceVideo(value){
   applyVideoState(studentSignupDraft.serviceForm, value || '');
   const el = document.getElementById('student-service-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(studentSignupDraft.serviceForm), 'Service video preview');
+}
+function handleStudentSignupServiceVideoUpload(input){
+  syncStudentSignupServiceForm();
+  readCommunityVideoFile(input, (dataUrl) => {
+    const field = document.getElementById('studentFlowServiceVideoLink');
+    if (field) field.value = dataUrl;
+    previewStudentSignupServiceVideo(dataUrl);
+  });
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
@@ -6526,6 +6546,8 @@ async function publishStudentSignupProfile(){
             photo: d.photo || ((d.profileImages || [])[0]) || '',
             profileImages: d.profileImages || [],
             video_url: d.video_url || '',
+            video_type: d.video_type || '',
+            video_id: d.video_id || '',
             videoUrl: d.video_url || ''
           },
           services: (d.services || []).map(service => ({
@@ -6537,7 +6559,9 @@ async function publishStudentSignupProfile(){
             availability: service.availability || '',
             images: service.images || [],
             entity_images: service.images || [],
-            video_url: service.video_url || ''
+            video_url: service.video_url || '',
+            video_type: service.video_type || '',
+            video_id: service.video_id || ''
           }))
         })
       });
@@ -6808,6 +6832,9 @@ function createDefaultEmployerSignupDraft(mode='neighbor'){
     firstName:'',
     lastName:'',
     photo:'',
+    video_url:'',
+    video_type:'',
+    video_id:'',
     avatar:isEmployer ? '\u{1F3E2}' : '\u{1F3E0}',
     about:'',
     email:'',
@@ -6817,6 +6844,9 @@ function createDefaultEmployerSignupDraft(mode='neighbor'){
     isBusiness:isEmployer,
     businessName:'',
     businessLogo:'',
+    business_video_url:'',
+    business_video_type:'',
+    business_video_id:'',
     businessAbout:'',
     businessPhone:'',
     businessAddress:'',
@@ -6846,12 +6876,14 @@ function syncEmployerSignupPersonalDraft(){
   const firstNameEl = document.getElementById('employerSignupFirstName');
   const lastNameEl = document.getElementById('employerSignupLastName');
   const aboutEl = document.getElementById('employerSignupAbout');
+  const videoEl = document.getElementById('employerSignupProfileVideoLink');
   const emailEl = document.getElementById('employerSignupEmail');
   const phoneEl = document.getElementById('employerSignupPhone');
   const addressEl = document.getElementById('employerSignupAddress');
   if (firstNameEl) employerSignupDraft.firstName = (firstNameEl.value || '').trim();
   if (lastNameEl) employerSignupDraft.lastName = (lastNameEl.value || '').trim();
   if (aboutEl) employerSignupDraft.about = (aboutEl.value || '').trim();
+  if (videoEl) applyVideoState(employerSignupDraft, (videoEl.value || '').trim());
   if (emailEl) employerSignupDraft.email = (emailEl.value || '').trim().toLowerCase();
   if (phoneEl) {
     const nextPhone = (phoneEl.value || '').trim();
@@ -6868,10 +6900,17 @@ function syncEmployerSignupBusinessDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
   const nameEl = document.getElementById('employerBusinessName');
   const aboutEl = document.getElementById('employerBusinessAbout');
+  const videoEl = document.getElementById('employerBusinessVideoLink');
   const phoneEl = document.getElementById('employerBusinessPhone');
   const addressEl = document.getElementById('employerBusinessAddress');
   if (nameEl) employerSignupDraft.businessName = (nameEl.value || '').trim();
   if (aboutEl) employerSignupDraft.businessAbout = (aboutEl.value || '').trim();
+  if (videoEl) {
+    const state = normalizeVideoInputValue((videoEl.value || '').trim());
+    employerSignupDraft.business_video_url = state.media_url || '';
+    employerSignupDraft.business_video_type = state.video_type || '';
+    employerSignupDraft.business_video_id = state.video_id || '';
+  }
   if (phoneEl) employerSignupDraft.businessPhone = (phoneEl.value || '').trim();
   if (addressEl) {
     employerSignupDraft.businessAddress = (addressEl.value || '').trim();
@@ -6919,11 +6958,14 @@ function renderEmployerSignupStepContent(){
         <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="Tanya" oninput="syncEmployerSignupPersonalDraft()"></div>
         <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip" oninput="syncEmployerSignupPersonalDraft()"></div>
       </div>
-      <div class="field"><label>Profile Photo</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"></div>
+      <div class="field"><label>Profile Photo</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
       <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderEditableSingleImage(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
+      <div class="field"><label>Profile Video Link or Upload (optional)</label><input id="employerSignupProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmployerSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Profile Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmployerSignupProfileVideoUpload(this)"></div>
+      <div id="employer-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video')}</div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
       <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()" onblur="this.value=formatUsPhoneNumber(this.value);syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly. Use a complete 10-digit U.S. phone number.</div></div>
       <div class="field"><label>Home Address (private)</label><input id="employerSignupAddress" value="${esc(d.address)}" placeholder="123 Main St, Walnut Creek, CA 94596" oninput="syncEmployerSignupPersonalDraft()" onfocus="attachGoogleAddressAutocomplete('employerSignupAddress')"><div class="small muted" style="margin-top:6px">Enter street, city, state, and ZIP. Choose the correct Google suggestion when available. Full address is stored internally and only the city is shown publicly.</div></div>
@@ -6932,10 +6974,13 @@ function renderEmployerSignupStepContent(){
   if (employerSignupMode === 'employer' && employerSignupStep === 2) return `
     <div class="card form-card">
       <div class="field"><label>Business Name</label><input id="employerBusinessName" value="${esc(d.businessName)}" placeholder="Business name" oninput="syncEmployerSignupBusinessDraft()"></div>
-      <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/*" onchange="handleEmployerSignupBusinessLogoUpload(this)"></div>
+      <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/*" onchange="handleEmployerSignupBusinessLogoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupBusinessLogoFromLibrary')}</div>` : ''}
       <div style="margin-bottom:14px">${renderEditableSingleImage(d.businessLogo || '', 'Business logo', 'removeEmployerSignupBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business..." oninput="syncEmployerSignupBusinessDraft()">${esc(d.businessAbout)}</textarea></div>
+      <div class="field"><label>Business Video Link or Upload (optional)</label><input id="employerBusinessVideoLink" value="${esc(getEditableVideoInputValue({ video_url:d.business_video_url, video_type:d.business_video_type, video_id:d.business_video_id }))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmployerSignupBusinessVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
+      <div class="field"><label>Upload Business Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmployerSignupBusinessVideoUpload(this)"></div>
+      <div id="employer-business-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl({ video_url:d.business_video_url, video_type:d.business_video_type, video_id:d.business_video_id }), 'Business video')}</div>
       <div class="field"><label>Business Phone Number (private)</label><input id="employerBusinessPhone" value="${esc(d.businessPhone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">This is a separate field from the personal phone number.</div></div>
       <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA 94596" oninput="syncEmployerSignupBusinessDraft()" onfocus="attachGoogleAddressAutocomplete('employerBusinessAddress')"><div class="small muted" style="margin-top:6px">Enter street, city, state, and ZIP. Choose the correct Google suggestion when available. Only the city is shown publicly.</div></div>
       <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by CoGo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
@@ -6955,6 +7000,7 @@ function renderEmployerSignupStepContent(){
         </div>
         <div style="margin-top:12px"><div class="small muted">Home Address</div><div style="font-weight:700">${esc(d.address || 'Not added yet')}</div></div>
         <div style="margin-top:12px"><div class="small muted">About</div>${renderFormattedLongText(d.about || 'No about section added yet.', { small:true })}</div>
+        ${getRenderableVideoUrl(d) ? `<div style="margin-top:12px"><div class="small muted" style="margin-bottom:8px">Profile Video</div>${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video')}</div>` : ''}
       </div>
       <div class="card" style="padding:14px;background:#fff">
         <div class="split" style="align-items:center;gap:14px;flex-wrap:wrap">
@@ -6964,6 +7010,7 @@ function renderEmployerSignupStepContent(){
         <div style="margin-top:12px"><div class="small muted">Business Phone</div><div style="font-weight:700">${esc(d.businessPhone || 'Not added yet')}</div></div>
         <div style="margin-top:12px"><div class="small muted">Business Address</div><div style="font-weight:700">${esc(d.businessAddress || 'Not added yet')}</div></div>
         <div style="margin-top:12px"><div class="small muted">About Business</div><div>${esc(d.businessAbout || 'No business about section added yet.')}</div></div>
+        ${getRenderableVideoUrl({ video_url:d.business_video_url, video_type:d.business_video_type, video_id:d.business_video_id }) ? `<div style="margin-top:12px"><div class="small muted" style="margin-bottom:8px">Business Video</div>${renderVideoPreviewHtml(getRenderableVideoUrl({ video_url:d.business_video_url, video_type:d.business_video_type, video_id:d.business_video_id }), 'Business video')}</div>` : ''}
       </div>
     </div>
   `;
@@ -7060,6 +7107,20 @@ function removeEmployerSignupPhoto(){
   employerSignupDraft.photo = '';
   renderEmployerSignupModal();
 }
+function previewEmployerSignupProfileVideo(value){
+  syncEmployerSignupPersonalDraft();
+  applyVideoState(employerSignupDraft, value || '');
+  const el = document.getElementById('employer-profile-video-preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl(employerSignupDraft), 'Profile video');
+}
+function handleEmployerSignupProfileVideoUpload(input){
+  syncEmployerSignupPersonalDraft();
+  readCommunityVideoFile(input, (dataUrl) => {
+    const field = document.getElementById('employerSignupProfileVideoLink');
+    if (field) field.value = dataUrl;
+    previewEmployerSignupProfileVideo(dataUrl);
+  });
+}
 function handleEmployerSignupBusinessLogoUpload(input){
   syncEmployerSignupBusinessDraft();
   const file = input && input.files && input.files[0];
@@ -7084,6 +7145,23 @@ function removeEmployerSignupBusinessLogo(){
   syncEmployerSignupBusinessDraft();
   employerSignupDraft.businessLogo = '';
   renderEmployerSignupModal();
+}
+function previewEmployerSignupBusinessVideo(value){
+  syncEmployerSignupBusinessDraft();
+  const state = normalizeVideoInputValue(value || '');
+  employerSignupDraft.business_video_url = state.media_url || '';
+  employerSignupDraft.business_video_type = state.video_type || '';
+  employerSignupDraft.business_video_id = state.video_id || '';
+  const el = document.getElementById('employer-business-video-preview');
+  if (el) el.innerHTML = renderVideoPreviewHtml(getRenderableVideoUrl({ video_url:employerSignupDraft.business_video_url, video_type:employerSignupDraft.business_video_type, video_id:employerSignupDraft.business_video_id }), 'Business video');
+}
+function handleEmployerSignupBusinessVideoUpload(input){
+  syncEmployerSignupBusinessDraft();
+  readCommunityVideoFile(input, (dataUrl) => {
+    const field = document.getElementById('employerBusinessVideoLink');
+    if (field) field.value = dataUrl;
+    previewEmployerSignupBusinessVideo(dataUrl);
+  });
 }
 function editEmployerSignupPreview(section='personal'){
   employerSignupStep = section === 'business' ? 2 : 1;
@@ -7125,12 +7203,18 @@ async function publishEmployerSignupProfile(){
             address: d.address,
             avatar: d.avatar,
             photo: d.photo || '',
+            video_url: d.video_url || '',
+            video_type: d.video_type || '',
+            video_id: d.video_id || '',
             type: employerSignupMode === 'employer' ? 'business' : 'neighbor'
           },
           businessProfile: employerSignupMode === 'employer' ? {
             name: d.businessName,
             logo: d.businessLogo || '',
             about: d.businessAbout,
+            video_url: d.business_video_url || '',
+            video_type: d.business_video_type || '',
+            video_id: d.business_video_id || '',
             phone: d.businessPhone,
             address: d.businessAddress,
             city: d.businessCity || extractCity(d.businessAddress)
@@ -7158,6 +7242,9 @@ async function publishEmployerSignupProfile(){
     type:employerSignupMode === 'employer' ? 'business' : 'neighbor',
     emoji:d.avatar || (employerSignupMode === 'employer' ? '\u{1F3E2}' : '\u{1F3E0}'),
     photo:d.photo || '',
+    video_url:d.video_url || '',
+    video_type:d.video_type || '',
+    video_id:d.video_id || '',
     about:d.about || '',
     phone:d.phone,
     address:d.address,
@@ -7171,6 +7258,9 @@ async function publishEmployerSignupProfile(){
       name:d.businessName,
       logo:d.businessLogo || '',
       about:d.businessAbout,
+      video_url:d.business_video_url || '',
+      video_type:d.business_video_type || '',
+      video_id:d.business_video_id || '',
       phone:d.businessPhone,
       address:d.businessAddress,
       city:d.businessCity || extractCity(d.businessAddress),
