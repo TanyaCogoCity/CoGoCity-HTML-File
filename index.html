@@ -1346,6 +1346,20 @@ async function verifyBackendWorkshopCheckoutSession(workshopId='', checkoutSessi
     body: JSON.stringify({ workshop_id: workshopId, checkout_session_id: checkoutSessionId })
   });
 }
+async function cancelBackendWorkshop(workshopId='', reason=''){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !workshopId) return null;
+  return backendAuthRequest('/stripe/cancel-workshop', {
+    method:'POST',
+    body: JSON.stringify({ workshop_id: workshopId, reason })
+  });
+}
+async function requestBackendWorkshopRefund(registrationId='', reason=''){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !registrationId) return null;
+  return backendAuthRequest('/stripe/request-workshop-refund', {
+    method:'POST',
+    body: JSON.stringify({ registration_id: registrationId, reason })
+  });
+}
 async function createBackendJobCheckoutSession(jobId){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !jobId) return null;
   return backendAuthRequest('/stripe/create-job-checkout-session', {
@@ -9108,24 +9122,52 @@ async function completeWorkshopRegistration(workshopId=''){
   toast('Registration successful. Payment verified and funds held for this class.');
   renderPage();
 }
-function canRequestWorkshopRefund(workshop){
+const WORKSHOP_CANCEL_CUTOFF_HOURS = 72;
+const WORKSHOP_REFUND_CUTOFF_HOURS = 24;
+function workshopStartTimeMs(workshop){
   if (!workshop || !workshop.date_time) return false;
   const classTime = new Date(workshop.date_time).getTime();
-  if (!Number.isFinite(classTime)) return false;
-  const cutoff = classTime - (2 * 24 * 60 * 60 * 1000);
-  return Date.now() <= cutoff;
+  return Number.isFinite(classTime) ? classTime : 0;
 }
-function requestWorkshopRefund(registrationId=''){
+function canUseWorkshopCutoff(workshop, cutoffHours){
+  const classTime = workshopStartTimeMs(workshop);
+  if (!classTime) return false;
+  return Date.now() <= classTime - (cutoffHours * 60 * 60 * 1000);
+}
+function canCancelWorkshopEvent(workshop){
+  return canUseWorkshopCutoff(workshop, WORKSHOP_CANCEL_CUTOFF_HOURS);
+}
+function canRequestWorkshopRefund(workshop){
+  return canUseWorkshopCutoff(workshop, WORKSHOP_REFUND_CUTOFF_HOURS);
+}
+function workshopCancelPolicyMessage(){
+  return 'You can only cancel a workshop or class until 72 hours before the event. Canceling will mark the event as canceled and automatically refund all registered participants.';
+}
+function workshopRefundPolicyMessage(){
+  return 'Refund requests are available until 24 hours before the event.';
+}
+async function requestWorkshopRefund(registrationId=''){
   if (!currentUser) return openLoginModal();
   if (requireBackendWriteSession('request this refund')) return;
-  if (backendAuthEnabled()) return toast('Backend workshop refunds are not enabled yet. Please contact CoGo City support so this is processed safely.');
   const registrations = getWorkshopRegistrations();
   const registration = registrations.find(item => String(item.id) === String(registrationId) && String(item.user_id) === String(currentUser.id));
   if (!registration) return toast('Registration not found.');
   const workshop = getWorkshopById(registration.workshop_id);
   if (!workshop) return toast('Workshop not found.');
   if (registration.status === 'refunded') return toast('This registration is already refunded.');
-  if (!canRequestWorkshopRefund(workshop)) return toast('Refund is only available up to 2 days before class.');
+  if (!canRequestWorkshopRefund(workshop)) return toast(workshopRefundPolicyMessage());
+  if (backendAuthEnabled()) {
+    try {
+      await requestBackendWorkshopRefund(registration.id, 'Registrant requested refund from My Registrations.');
+      await loadBackendArraySetting('workshop_registrations', 'cogo_workshop_registrations', { rerender:false });
+      await loadBackendWorkshops({ force:true, rerender:false });
+      toast('Refund requested and processed.');
+      renderDashboard();
+    } catch (error) {
+      toast(error.message || 'Refund request failed. Please try again.');
+    }
+    return;
+  }
   const quantity = Math.max(1, Number(registration.quantity || 1) || 1);
   const refundAmount = (Number(registration.total_amount || 0) || ((Number(workshop.price || 0) || 0) * quantity));
   const refund = recordLocalPaymentRefund({
@@ -9367,15 +9409,16 @@ function renderWorkshopsDashboardSection(el){
                   <div class="small muted" style="margin-top:6px">Attendee: ${esc(item.registration.attendee_name || currentUser.publicName || currentUser.name || 'N/A')} (${esc(item.registration.attendee_email || currentUser.email || 'no email')})</div>
                   <div class="small muted" style="margin-top:6px">Tickets: ${esc(item.registration.quantity || 1)}</div>
                   <div class="small muted" style="margin-top:6px">Registration status: ${esc(item.registration.status)}</div>
+                  <div class="small muted" style="margin-top:6px">${esc(workshopRefundPolicyMessage())}</div>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
                   <button class="btn btn-outline btn-sm" onclick="location.hash='#/workshops/${esc(item.workshop.id)}';renderPage()">View Details</button>
                   <button class="btn btn-outline btn-sm" onclick="openWorkshopInstructorThread('${esc(item.workshop.id)}')">Message Instructor</button>
                   <button class="btn btn-outline btn-sm" onclick="addWorkshopToCalendar('${esc(item.workshop.id)}')">Add to Calendar</button>
-                  <button class="btn btn-danger btn-sm" ${item.registration.status === 'refunded' || !canRequestWorkshopRefund(item.workshop) ? 'disabled' : ''} onclick="requestWorkshopRefund('${esc(item.registration.id)}')">Request Refund</button>
+                  <button class="btn btn-danger btn-sm" ${item.registration.status === 'refunded' || !canRequestWorkshopRefund(item.workshop) ? 'disabled' : ''} title="${esc(workshopRefundPolicyMessage())}" onclick="requestWorkshopRefund('${esc(item.registration.id)}')">Request Refund</button>
                 </div>
               </div>
-              ${item.registration.status !== 'refunded' && !canRequestWorkshopRefund(item.workshop) ? `<div class="small muted" style="margin-top:8px">Refund window closed (refunds are available until 2 days before class).</div>` : ''}
+              ${item.registration.status !== 'refunded' && !canRequestWorkshopRefund(item.workshop) ? `<div class="small muted" style="margin-top:8px">Refund window closed. ${esc(workshopRefundPolicyMessage())}</div>` : ''}
             </div>
           `).join('') : `<div class="muted">No registrations yet.</div>`)}
     </div>
@@ -9577,6 +9620,7 @@ function openWorkshopManageModal(workshopId=''){
   if (!currentUser || currentUser.id !== workshop.host_id) return toast('Only the host can manage this workshop.');
   const rows = getWorkshopRegistrationsFor(workshop.id);
   const canMarkComplete = String(workshop.status || '').toLowerCase() !== 'canceled';
+  const canCancelEvent = canMarkComplete && canCancelWorkshopEvent(workshop);
   openModal('Manage Workshop', `
     <div class="card form-card" style="margin-bottom:12px">
       <div style="font-weight:800">${esc(workshop.title)}</div>
@@ -9586,9 +9630,10 @@ function openWorkshopManageModal(workshopId=''){
         <button class="btn btn-outline btn-sm" onclick="openWorkshopParticipantsModal('${esc(workshop.id)}')">Participants (${esc(getWorkshopRegisteredCount(workshop.id))})</button>
         <button class="btn btn-outline btn-sm" onclick="openWorkshopBroadcastModal('${esc(workshop.id)}')">Broadcast Message</button>
         <button class="btn btn-blue btn-sm" ${canMarkComplete ? '' : 'disabled'} onclick="${canMarkComplete ? `markWorkshopCompleted('${esc(workshop.id)}')` : 'return false;'}">Mark Completed</button>
-        <button class="btn btn-danger btn-sm" onclick="openWorkshopCancelModal('${esc(workshop.id)}')">Cancel Event</button>
+        <button class="btn btn-danger btn-sm" ${canCancelEvent ? '' : 'disabled'} title="${esc(workshopCancelPolicyMessage())}" onclick="${canCancelEvent ? `openWorkshopCancelModal('${esc(workshop.id)}')` : 'return false;'}">Cancel Event</button>
       </div>
       ${canMarkComplete ? '' : `<div class="small muted" style="margin-top:8px">This workshop is canceled, so Mark Completed is disabled.</div>`}
+      ${canMarkComplete && !canCancelEvent ? `<div class="small muted" style="margin-top:8px">${esc(workshopCancelPolicyMessage())}</div>` : ''}
     </div>
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:10px">Participants</div>
@@ -9735,24 +9780,40 @@ function sendWorkshopParticipantMessage(workshopId='', userId=''){
 function openWorkshopCancelModal(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return;
+  const canCancelEvent = canCancelWorkshopEvent(workshop);
   openModal('Cancel Workshop', `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:10px">Canceling will mark the event as canceled and automatically refund all registered participants.</div>
+      <div class="warning" style="margin-bottom:10px">${esc(workshopCancelPolicyMessage())}</div>
+      ${canCancelEvent ? '' : `<div class="small muted" style="margin-bottom:10px">The cancellation window is closed for this event.</div>`}
       <textarea id="workshopCancelReason" rows="5" placeholder="Required: explain why this event is canceled..."></textarea>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
         <button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Back</button>
-        <button class="btn btn-danger" onclick="cancelWorkshopEvent('${esc(workshop.id)}')">Cancel Event & Refund</button>
+        <button class="btn btn-danger" ${canCancelEvent ? '' : 'disabled'} onclick="${canCancelEvent ? `cancelWorkshopEvent('${esc(workshop.id)}')` : 'return false;'}">Cancel Event & Refund</button>
       </div>
     </div>
   `, '700px');
 }
-function cancelWorkshopEvent(workshopId=''){
+async function cancelWorkshopEvent(workshopId=''){
   if (requireBackendWriteSession('cancel this workshop')) return;
-  if (backendAuthEnabled()) return toast('Backend workshop cancellation/refunds are not enabled yet. Please contact CoGo City support so this is processed safely.');
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return;
+  if (!canCancelWorkshopEvent(workshop)) return toast(workshopCancelPolicyMessage());
   const reason = ((document.getElementById('workshopCancelReason') || {}).value || '').trim();
   if (toastRequiredFields({ 'Cancellation message':reason })) return;
+  if (backendAuthEnabled()) {
+    try {
+      await cancelBackendWorkshop(workshop.id, reason);
+      await loadBackendArraySetting('workshop_registrations', 'cogo_workshop_registrations', { rerender:false });
+      await loadBackendWorkshops({ force:true, rerender:false });
+      toast('Workshop canceled and registered participants refunded.');
+      closeModal();
+      dashSection = 'workshops';
+      renderDashboard();
+    } catch (error) {
+      toast(error.message || 'Workshop cancellation failed. Please try again.');
+    }
+    return;
+  }
   const workshops = getWorkshops();
   const target = workshops.find(item => item.id === workshop.id);
   if (!target) return;

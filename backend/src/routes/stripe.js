@@ -15,6 +15,8 @@ const { requirePlatformReady, stripeConnectReady } = require('../lib/onboardingG
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
 const WORKSHOP_PLATFORM_FEE_PERCENT = 30;
+const WORKSHOP_CANCEL_CUTOFF_HOURS = 72;
+const WORKSHOP_REFUND_CUTOFF_HOURS = 24;
 
 function toCents(amount) {
   return Math.max(1, Math.round(Number(amount || 0) * 100));
@@ -22,6 +24,12 @@ function toCents(amount) {
 
 function fromCents(amount) {
   return Number(((Number(amount || 0) || 0) / 100).toFixed(2));
+}
+
+function hoursBefore(date, hours) {
+  const time = date instanceof Date ? date.getTime() : new Date(date || '').getTime();
+  if (!Number.isFinite(time)) return false;
+  return Date.now() <= time - (hours * 60 * 60 * 1000);
 }
 
 function paymentStatusForIntent(paymentIntent) {
@@ -642,6 +650,99 @@ async function ensureCoreWorkshop(workshopId, req) {
     data: { payload: { ...payload, backend_workshop_id: workshop.id } },
   });
   return workshop;
+}
+
+async function updateSyncedWorkshopStatus(workshop, status, extraPayload = {}) {
+  if (!workshop) return 0;
+  const rows = await prisma.syncRecord.findMany({ where: { entity: 'workshops', deletedAt: null } });
+  let count = 0;
+  for (const row of rows) {
+    const payload = row.payload || {};
+    const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId || '';
+    if (String(row.recordId) !== String(workshop.id) && String(backendWorkshopId) !== String(workshop.id)) continue;
+    await prisma.syncRecord.update({
+      where: { entity_recordId: { entity: 'workshops', recordId: row.recordId } },
+      data: {
+        payload: {
+          ...payload,
+          status,
+          updatedAt: new Date().toISOString(),
+          ...extraPayload,
+        },
+      },
+    });
+    count += 1;
+  }
+  return count;
+}
+
+async function updateSyncedWorkshopEnrollment(enrollment, status, extraPayload = {}) {
+  if (!enrollment) return 0;
+  const rows = await prisma.syncRecord.findMany({ where: { entity: 'workshop_registrations', deletedAt: null } });
+  let count = 0;
+  for (const row of rows) {
+    const payload = row.payload || {};
+    const paymentIntentId = payload.stripe_payment_intent_id || payload.stripePaymentIntentId || '';
+    const matches = String(row.recordId) === String(enrollment.id)
+      || String(payload.id || '') === String(enrollment.id)
+      || (paymentIntentId && paymentIntentId === enrollment.stripePaymentIntentId);
+    if (!matches) continue;
+    await prisma.syncRecord.update({
+      where: { entity_recordId: { entity: 'workshop_registrations', recordId: row.recordId } },
+      data: {
+        payload: {
+          ...payload,
+          status,
+          payment_status: status,
+          refunded_at: status === 'refunded' ? new Date().toISOString() : payload.refunded_at,
+          updatedAt: new Date().toISOString(),
+          ...extraPayload,
+        },
+      },
+    });
+    count += 1;
+  }
+  return count;
+}
+
+async function refundWorkshopEnrollment(enrollment, requestedBy, reason = '') {
+  if (!enrollment || enrollment.paymentStatus === 'refunded') return { already_refunded: true };
+  let refund = null;
+  if (stripe && enrollment.stripePaymentIntentId && Number(enrollment.totalAmount || 0) > 0) {
+    refund = await stripe.refunds.create({
+      payment_intent: enrollment.stripePaymentIntentId,
+      reverse_transfer: true,
+      refund_application_fee: true,
+      metadata: {
+        type: 'workshop_refund',
+        workshop_id: enrollment.workshopId,
+        workshop_enrollment_id: enrollment.id,
+        requested_by: requestedBy?.id || '',
+        reason: String(reason || '').slice(0, 450),
+      },
+    });
+  }
+  const updated = await prisma.workshopEnrollment.update({
+    where: { id: enrollment.id },
+    data: {
+      paymentStatus: 'refunded',
+      stripePaymentStatus: refund?.status || 'refunded',
+    },
+    include: { workshop: { include: { creator: true } }, user: true },
+  });
+  await updateSyncedWorkshopEnrollment(updated, 'refunded', {
+    stripe_refund_id: refund?.id || '',
+    stripe_refund_status: refund?.status || 'refunded',
+    refund_reason: reason || '',
+  });
+  await writeAuditLog({
+    userId: requestedBy?.id || null,
+    action: 'workshop.registration.refund',
+    entityType: 'workshop_enrollment',
+    entityId: enrollment.id,
+    payload: { refund_id: refund?.id || null, reason },
+  });
+  return { enrollment: updated, refund };
 }
 
 async function completeWorkshopCheckoutSession(session) {
@@ -1273,6 +1374,118 @@ router.post('/verify-workshop-checkout-session', requireAuth, async (req, res) =
     });
   } catch (error) {
     return fail(res, 400, 'Failed to verify workshop checkout session', error.message);
+  }
+});
+
+router.post('/request-workshop-refund', requireAuth, async (req, res) => {
+  const registrationId = String(req.body?.registration_id || req.body?.registrationId || req.body?.enrollment_id || req.body?.enrollmentId || '').trim();
+  const reason = String(req.body?.reason || '').trim();
+  if (!registrationId) return fail(res, 400, 'registration_id is required');
+
+  try {
+    const enrollment = await prisma.workshopEnrollment.findUnique({
+      where: { id: registrationId },
+      include: { workshop: { include: { creator: true } }, user: true },
+    });
+    if (!enrollment) return fail(res, 404, 'Workshop registration not found');
+    if (req.user.role !== 'admin' && enrollment.userId !== req.user.id) return fail(res, 403, 'Only the registrant can request this refund');
+    if (enrollment.paymentStatus === 'refunded') return ok(res, { registration_id: enrollment.id, status: 'refunded', already_refunded: true });
+    if (!hoursBefore(enrollment.workshop.startDate, WORKSHOP_REFUND_CUTOFF_HOURS)) {
+      return fail(res, 409, 'Refund requests are available until 24 hours before the event.', {
+        refund_cutoff_hours: WORKSHOP_REFUND_CUTOFF_HOURS,
+      });
+    }
+
+    const result = await refundWorkshopEnrollment(enrollment, req.user, reason || 'Registrant refund request');
+    await createNotifications({
+      data: [
+        {
+          userId: enrollment.workshop.createdBy,
+          type: notificationType('refund'),
+          title: 'Workshop refund processed',
+          body: `${enrollment.user?.displayName || 'A registrant'} requested a refund for ${enrollment.workshop.title}.`,
+          link: `/dashboard?section=workshops&id=${enrollment.workshop.id}`,
+        },
+        {
+          userId: enrollment.userId,
+          type: notificationType('refund'),
+          title: 'Workshop refund processed',
+          body: `Your refund for ${enrollment.workshop.title} has been processed.`,
+          link: '/dashboard?section=workshops',
+        },
+      ],
+    });
+    return ok(res, {
+      registration_id: enrollment.id,
+      workshop_id: enrollment.workshopId,
+      status: 'refunded',
+      refund_id: result.refund?.id || '',
+    });
+  } catch (error) {
+    return fail(res, 400, 'Failed to refund workshop registration', error.message);
+  }
+});
+
+router.post('/cancel-workshop', requireAuth, async (req, res) => {
+  const workshopId = String(req.body?.workshop_id || req.body?.workshopId || '').trim();
+  const reason = String(req.body?.reason || '').trim();
+  if (!workshopId) return fail(res, 400, 'workshop_id is required');
+  if (!reason) return fail(res, 400, 'Cancellation message is required');
+
+  try {
+    const workshop = await ensureCoreWorkshop(workshopId, req);
+    if (!workshop) return fail(res, 404, 'Workshop not found');
+    if (req.user.role !== 'admin' && workshop.createdBy !== req.user.id) return fail(res, 403, 'Only the host can cancel this workshop');
+    if (workshop.status === 'canceled') return ok(res, { workshop_id: workshop.id, status: 'canceled', already_canceled: true });
+    if (!hoursBefore(workshop.startDate, WORKSHOP_CANCEL_CUTOFF_HOURS)) {
+      return fail(res, 409, 'Workshops/classes can only be canceled until 72 hours before the event.', {
+        cancel_cutoff_hours: WORKSHOP_CANCEL_CUTOFF_HOURS,
+      });
+    }
+
+    const enrollments = await prisma.workshopEnrollment.findMany({
+      where: { workshopId: workshop.id, paymentStatus: 'paid' },
+      include: { workshop: { include: { creator: true } }, user: true },
+    });
+    const refunded = [];
+    for (const enrollment of enrollments) {
+      const result = await refundWorkshopEnrollment(enrollment, req.user, reason);
+      refunded.push({ registration_id: enrollment.id, refund_id: result.refund?.id || '' });
+    }
+
+    const updated = await prisma.workshop.update({
+      where: { id: workshop.id },
+      data: { status: 'canceled' },
+    });
+    await updateSyncedWorkshopStatus(updated, 'canceled', {
+      cancellation_reason: reason,
+      canceled_at: new Date().toISOString(),
+    });
+    await writeAuditLog({
+      userId: req.user.id,
+      action: 'workshop.cancel',
+      entityType: 'workshop',
+      entityId: workshop.id,
+      payload: { reason, refunded_count: refunded.length },
+    });
+
+    const notificationRows = enrollments.map((enrollment) => ({
+      userId: enrollment.userId,
+      type: notificationType('workshop'),
+      title: 'Workshop canceled',
+      body: `${workshop.title} was canceled. Any paid registration has been refunded. Host message: ${reason}`,
+      link: '/dashboard?section=workshops',
+    }));
+    if (notificationRows.length) await createNotifications({ data: notificationRows });
+
+    return ok(res, {
+      workshop_id: workshop.id,
+      status: 'canceled',
+      refunded_count: refunded.length,
+      refunds: refunded,
+    });
+  } catch (error) {
+    return fail(res, 400, 'Failed to cancel workshop', error.message);
   }
 });
 
