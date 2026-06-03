@@ -7,7 +7,7 @@ const config = require('../config');
 const { calculateHourlyProjectFees, getPlatformFeeSettings } = require('../lib/platformFees');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
-const WORKSHOP_PLATFORM_FEE_PERCENT = 12;
+const WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const WORKSHOP_PLATFORM_FEE_RATE = WORKSHOP_PLATFORM_FEE_PERCENT / 100;
 
 function money(value) {

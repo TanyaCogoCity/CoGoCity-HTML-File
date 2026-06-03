@@ -14,7 +14,7 @@ const { requirePlatformReady, stripeConnectReady } = require('../lib/onboardingG
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const router = express.Router();
-const WORKSHOP_PLATFORM_FEE_PERCENT = 12;
+const WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 
 function toCents(amount) {
   return Math.max(1, Math.round(Number(amount || 0) * 100));
