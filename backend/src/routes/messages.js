@@ -88,10 +88,16 @@ router.get('/', requireAuth, async (req, res) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  const data = rows.map((row) => {
+  const data = await Promise.all(rows.map(async (row) => {
     const lastMessage = row.conversation.messages[0] || null;
     const partner = row.conversation.participants.find((p) => p.userId !== req.user.id)?.user;
     const isUnread = lastMessage && (!row.lastReadAt || new Date(lastMessage.createdAt) > new Date(row.lastReadAt));
+    const unreadWhere = {
+      conversationId: row.conversationId,
+      senderId: { not: req.user.id },
+    };
+    if (row.lastReadAt) unreadWhere.createdAt = { gt: row.lastReadAt };
+    const unreadCount = await prisma.message.count({ where: unreadWhere });
     return {
       conversation_id: row.conversationId,
       thread_id: row.conversationId,
@@ -102,8 +108,10 @@ router.get('/', requireAuth, async (req, res) => {
       partner_role: partner?.role || null,
       last_message: lastMessage ? serializeMessage(lastMessage) : null,
       unread: Boolean(isUnread),
+      unread_count: unreadCount,
+      unreadCount,
     };
-  });
+  }));
 
   return ok(res, data);
 });

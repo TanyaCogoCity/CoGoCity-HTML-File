@@ -3578,6 +3578,8 @@ function normalizeMessageRecord(message){
     message_type: 'user',
     system_category: '',
     conversation_id: '',
+    unread_count: 0,
+    unreadCount: 0,
     backendSource: false,
     createdAt: new Date().toISOString(),
     read: false
@@ -3586,6 +3588,8 @@ function normalizeMessageRecord(message){
     || String(normalized.fromName || '') === 'CoGo Team'
     || String(normalized.thread_id || '').startsWith('system:');
   normalized.message_type = normalized.message_type === 'system' || derivedSystem ? 'system' : 'user';
+  normalized.unread_count = Math.max(0, Number(normalized.unread_count ?? normalized.unreadCount ?? 0) || 0);
+  normalized.unreadCount = normalized.unread_count;
   return normalized;
 }
 function getBackendMessages(){ return ensureArray(ls('cogo_backend_messages')).map(message => normalizeMessageRecord(Object.assign({}, message, { backendSource:true }))); }
@@ -3622,6 +3626,8 @@ function mapBackendMessage(row={}, context={}){
     conversation_id: conversationId,
     thread_label: context.thread_label || '',
     message_type: row.message_type || row.messageType || 'user',
+    unread_count: context.unread_count ?? context.unreadCount ?? (context.unread ? 1 : 0),
+    unreadCount: context.unreadCount ?? context.unread_count ?? (context.unread ? 1 : 0),
     createdAt: row.created_at || row.createdAt,
     read: !context.unread,
     backendSource: true
@@ -3677,6 +3683,7 @@ async function refreshBackendMessages(options={}){
     backendMessagesLoaded = true;
     backendMessagesError = '';
     if (options.threadId) refreshBackendThreadMessages(options.threadId, { rerender: options.rerender });
+    if (options.renderNav) renderNav();
     else if (options.rerender) renderDashboard();
   } catch (error) {
     backendMessagesError = error.message || 'Could not load backend messages.';
@@ -3691,6 +3698,23 @@ function getMessages(){
   const localOnly = normalized.filter(item => !item.backendSource);
   if (JSON.stringify(messages) !== JSON.stringify(localOnly)) ls('cogo_messages', localOnly);
   return mergeBackendMessages(localOnly);
+}
+function getUnreadMessageCountForUser(userId=''){
+  const me = String(userId || currentUser?.id || '').trim();
+  if (!me) return 0;
+  const unreadThreadCounts = new Map();
+  let localUnreadMessages = 0;
+  getMessages().forEach(message => {
+    if (String(message.toId || '') !== me || message.read) return;
+    const threadId = String(message.thread_id || message.conversation_id || getDirectThreadId(message.fromId, message.toId));
+    const explicitCount = Math.max(0, Number(message.unread_count ?? message.unreadCount ?? 0) || 0);
+    if (message.backendSource && isBackendConversationId(threadId)) {
+      unreadThreadCounts.set(threadId, Math.max(unreadThreadCounts.get(threadId) || 0, explicitCount || 1));
+    } else {
+      localUnreadMessages += 1;
+    }
+  });
+  return localUnreadMessages + Array.from(unreadThreadCounts.values()).reduce((sum, count) => sum + count, 0);
 }
 function saveMessages(v){
   const payload = ensureArray(v).map(normalizeMessageRecord);
@@ -5577,7 +5601,8 @@ function renderNav(){
     return;
   }
 
-  const unreadMsgs = getMessages().filter(m => m.toId === currentUser.id && !m.read).length;
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendMessagesLoaded && !backendMessagesLoading) refreshBackendMessages({ renderNav:true });
+  const unreadMsgs = getUnreadMessageCountForUser(currentUser.id);
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
   const settings = getSiteSettings();
   const btnLabels = settings.nav_primary_buttons || {};
@@ -15455,6 +15480,8 @@ function renderThreadView(userId){
         : (m.toId === currentUser.id && m.fromId === partnerId && msgThreadId === threadId));
     if (shouldMarkRead && !m.read){
       m.read = true;
+      m.unread_count = 0;
+      m.unreadCount = 0;
       changed = true;
     }
   });
