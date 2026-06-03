@@ -5985,6 +5985,8 @@ const ONBOARDING_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link,
 function createDefaultStudentSignupDraft(){
   return {
     name:'',
+    firstName:'',
+    lastName:'',
     birthDate:'',
     birthday:'',
     birthYear:'',
@@ -6014,7 +6016,7 @@ function createDefaultStudentSignupDraft(){
 function getStudentSignupStrength(){
   const d = studentSignupDraft || createDefaultStudentSignupDraft();
   const checks = [
-    !!d.name,
+    !!(d.firstName && d.lastName),
     !!(d.birthDate || d.birthYear),
     !!d.school,
     !!(d.photo || d.avatar),
@@ -6132,7 +6134,10 @@ function renderStudentSignupStepContent(){
   const d = studentSignupDraft;
   if (studentSignupStep === 1) return `
     <div class="card form-card">
-      <div class="field"><label>Name</label><input id="studentFlowName" value="${esc(d.name)}" placeholder="Your full name"></div>
+      <div class="row">
+        <div class="field"><label>First Name</label><input id="studentFlowFirstName" value="${esc(d.firstName || splitFullName(d.name)[0] || '')}" placeholder="Daniel"></div>
+        <div class="field"><label>Last Name</label><input id="studentFlowLastName" value="${esc(d.lastName || splitFullName(d.name).slice(1).join(' ') || '')}" placeholder="Lipovich"></div>
+      </div>
       <div class="field"><label>Email address</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"><div class="small muted" style="margin-top:6px">We will use this email for your account and important onboarding updates.</div></div>
       <div class="row">
         <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || d.birthday || '')}"><div class="small muted" style="margin-top:6px">You must be between 14–25 years old to sign up as a student on CoGo City. Your age will automatically update each year based on your birth date.</div></div>
@@ -6251,17 +6256,19 @@ function renderStudentSignupFooter(){
 async function saveStudentSignupStep(step){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   if (step === 1){
-    const name = (document.getElementById('studentFlowName').value || '').trim();
+    const firstNameValue = (document.getElementById('studentFlowFirstName').value || '').trim();
+    const lastNameValue = (document.getElementById('studentFlowLastName').value || '').trim();
+    const name = [firstNameValue, lastNameValue].filter(Boolean).join(' ').trim();
     const email = (document.getElementById('studentFlowEmail').value || '').trim().toLowerCase();
     const birthDate = normalizeBirthDateInput(document.getElementById('studentFlowBirthday').value || '');
     const school = (document.getElementById('studentFlowSchool').value || '').trim();
     const age = calculateAgeFromBirthday(birthDate);
-    if (toastRequiredFields({ Name:name, Email:email, Birthday:birthDate, School:school }, 'Student profile')) return false;
+    if (toastRequiredFields({ 'First name':firstNameValue, 'Last name':lastNameValue, Email:email, Birthday:birthDate, School:school }, 'Student profile')) return false;
     if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.'), false;
-    const nameMessage = validateFullName(name, 'Student profile name');
-    if (nameMessage) return toast(nameMessage), false;
+    if (firstNameValue.length < 2) return toast('Please enter your full first name.'), false;
+    if (lastNameValue.length < 2) return toast('Please enter your full last name.'), false;
     if (age < 14 || age > 25) return toast('You must be between 14–25 years old to sign up as a student on CoGo City.'), false;
-    Object.assign(studentSignupDraft, { name, email, birthDate, birthday:birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school });
+    Object.assign(studentSignupDraft, { firstName:firstNameValue, lastName:lastNameValue, name, email, birthDate, birthday:birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school });
     return true;
   }
   if (step === 2){
@@ -6578,7 +6585,7 @@ function renderStudentSignupPreviewHtml(){
 }
 async function submitStudentSignupProfile(){
   const d = studentSignupDraft || {};
-  if (toastRequiredFields({ Name:d.name, Birthday:(d.birthDate || d.birthday || d.birthYear), School:d.school }, 'Basic profile')) return;
+  if (toastRequiredFields({ 'First name':d.firstName, 'Last name':d.lastName, Birthday:(d.birthDate || d.birthday || d.birthYear), School:d.school }, 'Basic profile')) return;
   if (!(d.photo || d.avatar)) return toast('Please add a photo or avatar first.');
   if (toastRequiredFields({ 'About me':d.about, Experience:d.experience }, 'Profile')) return;
   if (!(d.services || []).length) return toast('Please add at least one service.');
@@ -6604,18 +6611,24 @@ async function publishStudentSignupProfile(){
   const users = getUsers();
   if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
   const students = getStudents();
-  const nameMessage = validateFullName(d.name, 'Student profile name');
-  if (nameMessage) return toast(nameMessage);
-  const nameParts = splitFullName(d.name);
+  const firstNameValue = String(d.firstName || splitFullName(d.name)[0] || '').trim();
+  const lastNameValue = String(d.lastName || splitFullName(d.name).slice(1).join(' ') || '').trim();
+  if (toastRequiredFields({ 'First name':firstNameValue, 'Last name':lastNameValue }, 'Student profile')) return;
+  if (firstNameValue.length < 2) return toast('Please enter your full first name.');
+  if (lastNameValue.length < 2) return toast('Please enter your full last name.');
+  d.firstName = firstNameValue;
+  d.lastName = lastNameValue;
+  d.name = [firstNameValue, lastNameValue].join(' ').trim();
+  const publicDisplayName = `${firstNameValue} ${lastNameValue.slice(0,1).toUpperCase()}.`;
   let backendUser = null;
   if (backendAuthEnabled()) {
     try {
       const data = await backendAuthRequest('/auth/register', {
         method:'POST',
         body: JSON.stringify({
-          firstName: nameParts[0] || d.name || 'Student',
-          lastName: nameParts.slice(1).join(' '),
-          displayName: d.name,
+          firstName: firstNameValue,
+          lastName: lastNameValue,
+          displayName: publicDisplayName,
           email: d.email,
           password: d.password,
           role: 'student',
@@ -6671,8 +6684,10 @@ async function publishStudentSignupProfile(){
     backendUserId:backendUser?.id || '',
     email:d.email,
     name:d.name,
-    firstName:nameParts[0] || '',
-    lastName:nameParts.slice(1).join(' '),
+    firstName:firstNameValue,
+    lastName:lastNameValue,
+    publicName:publicDisplayName,
+    displayName:publicDisplayName,
     role:'student',
     emoji:d.avatar || '\u{1F393}',
     photo:d.photo || ((d.profileImages || [])[0]) || '',
