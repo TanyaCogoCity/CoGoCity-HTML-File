@@ -1577,7 +1577,7 @@ function requireEmployerPaymentSetup(actionLabel='interact with students'){
 function renderStripeOnboardingCard(){
   if (!stripeOnboardingEnabled()) return '';
   const status = userStripeOnboarding();
-  const isPayer = isEmployerLikeUser(currentUser);
+  const isPayer = ['student','employer','neighbor'].includes(currentUser.role);
   const isPayout = ['student','employer','neighbor','admin'].includes(currentUser.role);
   const payer = status.payer || {};
   const connect = status.connect || {};
@@ -1588,7 +1588,7 @@ function renderStripeOnboardingCard(){
         <div>
           <div style="font-weight:800">Payment method on file</div>
           <div class="small muted">Status: ${esc(payer.ready ? 'Ready' : stripeStatusLabel(payer.payment_setup_status))}</div>
-          <div class="small muted" style="margin-top:4px">Cards are saved securely; CoGo City never stores card numbers.</div>
+          <div class="small muted" style="margin-top:4px">Used to pay for paid registrations, job listings, bookings, or hires. Cards are saved securely; CoGo City never stores card numbers.</div>
         </div>
         <button class="btn ${payer.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="openPayerStripeSetupModal()">${payer.ready ? 'Update Card' : 'Add Card'}</button>
       </div>
@@ -1600,7 +1600,7 @@ function renderStripeOnboardingCard(){
         <div>
           <div style="font-weight:800">Payout setup</div>
           <div class="small muted">Status: ${esc(connect.ready ? 'Ready' : stripeStatusLabel(connect.onboarding_status))}</div>
-          <div class="small muted" style="margin-top:4px">Stripe Connect collects and stores bank, identity, SSN/TIN, and IRS tax-reporting details on a secure hosted page. CoGo City stores only Stripe account/status fields.</div>
+          <div class="small muted" style="margin-top:4px">Required when you receive money for services, workshops, or classes. Stripe Connect collects and stores bank, identity, SSN/TIN, and IRS tax-reporting details on a secure hosted page. CoGo City stores only Stripe account/status fields.</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
           <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Payouts' : 'Set Up Payouts'}</button>
