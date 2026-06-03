@@ -16973,20 +16973,24 @@ function renderTransactionsResults(){
   const totalPayout = rows.reduce((sum, tx) => sum + Number(tx.payout_amount || 0), 0);
   const totalPaid = rows.reduce((sum, tx) => sum + Number(tx.total_amount || 0), 0);
   const totalPlatformFees = rows.reduce((sum, tx) => sum + Number(tx.platform_fee_total || 0), 0);
+  const totalStudentFees = rows.reduce((sum, tx) => sum + Number(tx.student_platform_fee || tx.platform_fee || 0), 0);
+  const totalEmployerFees = rows.reduce((sum, tx) => sum + Number(tx.employer_platform_fee || 0), 0);
   const visibleTransactionCount = rows.length + (isEmployer ? employerSubscriptionRows.length : 0);
   const visibleTotalPaid = totalPaid + (isEmployer ? employerSubscriptionSpend : 0);
   const roleSummary = isAdmin
-    ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Platform Support Fees</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div></div>`
+    ? `<div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">CoGo Fees</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div><div class="small muted" style="margin-top:4px">Employer $${money(totalEmployerFees)} + Student $${money(totalStudentFees)}</div></div>`
     : isEmployer
       ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div class="money" style="font-size:1.2rem">$${money(visibleTotalPaid)}</div></div>`
       : `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div></div>`;
   summaryWrap.innerHTML = isAdmin ? `
-    <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:10px">
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Work</div><div class="money" style="font-size:1.2rem">$${money(totalWork)}</div></div>
-      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div class="money" style="font-size:1.2rem">$${money(totalPaid)}</div></div>
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Employer Paid</div><div class="money" style="font-size:1.2rem">$${money(totalPaid)}</div><div class="small muted" style="margin-top:4px">Work + employer fee</div></div>
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Payout to Students</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div><div class="small muted" style="margin-top:4px">Work - student fee</div></div>
       ${roleSummary}
     </div>
+    <div class="small muted" style="margin-bottom:14px">Admin accounting: Employer Paid = Work Total + employer platform fee. Payout to Students = Work Total - student platform fee. CoGo Fees = employer fee + student fee.</div>
   ` : `
     <div class="grid" style="grid-template-columns:repeat(${canUseDirectHireSubscriptions ? 3 : 2},1fr);gap:12px;margin-bottom:14px">
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${visibleTransactionCount}</div></div>
@@ -17006,7 +17010,7 @@ function renderTransactionsResults(){
         <th style="padding:10px 8px">Final Hours Worked</th>
         <th style="padding:10px 8px">Work Total</th>
         <th style="padding:10px 8px">Employer Paid</th>
-        <th style="padding:10px 8px">CoGo Fees</th>
+        <th style="padding:10px 8px">CoGo Fees<br><span class="small muted">(Both Sides)</span></th>
         <th style="padding:10px 8px">Payout to Student</th>
         <th style="padding:10px 8px">Marketplace Money Flow</th>
         <th style="padding:10px 8px">Reconciliation IDs</th>
