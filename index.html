@@ -10857,7 +10857,10 @@ async function submitPost(){
     return toast('Could not save this post to the backend. Please try again.');
   }
   ls('cogo_posts', nextPosts);
-  if (isJob) trackCogoEvent('job_published', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
+  if (isJob) {
+    trackCogoEvent('community_job_posted', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
+    trackCogoEvent('job_published', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
+  }
   ls('cogo_draft_post', null);
   toast('Posted successfully.');
   renderCommunity();
@@ -12773,7 +12776,10 @@ async function submitEmployerDashboardPost(){
   const posts = getPosts();
   posts.unshift(post);
   if (!await persistCommunityPostsPermanently(posts, isJob ? 'Backend job post save failed. Please try again so this job is saved for everyone.' : 'Backend post save failed. Please try again so this post is saved for everyone.')) return;
-  if (isJob) trackCogoEvent('job_published', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
+  if (isJob) {
+    trackCogoEvent('community_job_posted', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
+    trackCogoEvent('job_published', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
+  }
   myPostsTab = 'all';
   toast('Post saved.');
   dashSection = 'myposts';
