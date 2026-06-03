@@ -241,9 +241,10 @@ async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
   const mirrored = [];
   for (const record of normalized) {
     const payload = record.payload || {};
-    let createdBy = isUuid(payload.host_id) ? payload.host_id : req.user.id;
+    let createdBy = workshopOwnerId(payload);
+    if (!isUuid(createdBy)) continue;
     const creator = await prisma.user.findUnique({ where: { id: createdBy }, select: { id: true } }).catch(() => null);
-    if (!creator) createdBy = req.user.id;
+    if (!creator) continue;
 
     let workshop = null;
     const backendWorkshopId = payload.backend_workshop_id || payload.backendWorkshopId;

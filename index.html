@@ -8507,7 +8507,7 @@ function normalizeWorkshopRecord(workshop){
     spots_left: null,
     host_payout_setup_ready: null
   }, workshop || {});
-  normalized.host_id = normalized.host_id || normalized.hostId || normalized.createdBy || normalized.user_id || '';
+  normalized.host_id = normalized.host_id || normalized.hostId || normalized.created_by || normalized.createdBy || normalized.employer_id || normalized.employerId || '';
   normalized.date_time = normalized.date_time || normalized.dateTime || normalized.starts_at || normalized.start_time || '';
   normalized.online_url = normalized.online_url || normalized.onlineUrl || '';
   normalized.video_url = normalized.video_url || normalized.videoUrl || '';
@@ -8683,7 +8683,19 @@ function saveWorkshopRegistrations(items){
   ls('cogo_workshop_registrations', payload);
   syncEntityToBackend('workshop_registrations', payload);
 }
-function getWorkshopById(workshopId=''){ return getWorkshops().find(workshop => String(workshop.id) === String(workshopId)); }
+function getWorkshopById(workshopId=''){
+  const key = String(workshopId || '').trim();
+  return getWorkshops().find(workshop => {
+    const ids = [
+      workshop.id,
+      workshop.backend_workshop_id,
+      workshop.backendWorkshopId,
+      workshop.record_id,
+      workshop.recordId,
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return ids.includes(key);
+  });
+}
 function getWorkshopIdentityIds(workshopOrId=''){
   const workshop = typeof workshopOrId === 'object' && workshopOrId ? workshopOrId : getWorkshopById(workshopOrId);
   return new Set([
@@ -8928,7 +8940,7 @@ function renderWorkshopDetailPage(workshopId=''){
         ${isPaidWorkshop(workshop) && !workshopHostPayoutSetupReady(workshop) ? `<div class="warning" style="margin-top:12px">Registration is not open yet.</div>` : ''}
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-blue" ${unavailableReason ? 'disabled' : ''} ${unavailableReason ? `title="${esc(unavailableReason)}"` : ''} onclick="openWorkshopRegistrationFlow('${esc(workshop.id)}')">Register</button>
-          ${currentUser && currentUser.id === workshop.host_id ? `<button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Manage</button>` : ''}
+          ${workshopBelongsToCurrentUser(workshop) ? `<button class="btn btn-outline" onclick="openWorkshopManageModal('${esc(workshop.id)}')">Manage</button>` : ''}
         </div>
       </div>
     </div>
@@ -8954,7 +8966,8 @@ function openWorkshopRegistrationFlow(workshopId=''){
   if (currentUser.id === workshop.host_id) return toast('You cannot register for your own workshop.');
   const unavailableReason = workshopRegistrationUnavailableReason(workshop);
   if (unavailableReason) return toast(unavailableReason);
-  if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
+  const useBackendCheckout = STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken();
+  if (Number(workshop.price || 0) > 0 && !useBackendCheckout && !requirePayerPaymentSetup('register for a class')) return;
   const existing = getWorkshopRegistrationsFor(workshop.id).find(item => item.user_id === currentUser.id && item.status !== 'refunded');
   const spotsLeft = getWorkshopSpotsLeft(workshop);
   const paymentMethod = getEmployerPaymentMethod(currentUser.id);
@@ -9033,7 +9046,8 @@ async function completeWorkshopRegistration(workshopId=''){
   if (requireBackendWriteSession('register for this workshop')) return;
   const unavailableReason = workshopRegistrationUnavailableReason(workshop);
   if (unavailableReason) return toast(unavailableReason);
-  if (Number(workshop.price || 0) > 0 && !requirePayerPaymentSetup('register for a class')) return;
+  const useBackendCheckout = STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken();
+  if (Number(workshop.price || 0) > 0 && !useBackendCheckout && !requirePayerPaymentSetup('register for a class')) return;
   const attendeeName = String((document.getElementById('workshopAttendeeName') || {}).value || '').trim();
   const attendeeEmail = String((document.getElementById('workshopAttendeeEmail') || {}).value || '').trim().toLowerCase();
   if (toastRequiredFields({ Name:attendeeName })) return;
@@ -9043,7 +9057,7 @@ async function completeWorkshopRegistration(workshopId=''){
   const quantity = Math.max(0, Number(qtyRaw.replace(/[^\d]/g, '') || 0));
   if (toastRequiredFields({ 'Number of tickets':quantity })) return;
   if (spotsLeft !== null && quantity > spotsLeft) return toast(`Only ${spotsLeft} spot${spotsLeft === 1 ? '' : 's'} left.`);
-  if (STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken()) {
+  if (useBackendCheckout) {
     try {
       const session = await createBackendWorkshopCheckoutSession(workshop.id, { quantity, attendee_name: attendeeName, attendee_email: attendeeEmail });
       if (session && (session.free || session.already_paid)) {
@@ -9402,11 +9416,14 @@ function addWorkshopToCalendar(workshopId=''){
   URL.revokeObjectURL(url);
   toast('Calendar file downloaded.');
 }
+function workshopBelongsToCurrentUser(workshop){
+  return Boolean(currentUser && workshop && String(workshop.host_id || '') === String(currentUser.id || ''));
+}
 function renderWorkshopsDashboardSection(el){
   if (currentUser && getBackendAccessToken()) ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', { rerender:true });
   const workshops = getWorkshops();
   const registrations = getWorkshopRegistrations();
-  const myWorkshops = workshops.filter(item => item.host_id === currentUser.id).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const myWorkshops = workshops.filter(workshopBelongsToCurrentUser).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
   const myRegistrations = registrations.filter(item => item.user_id === currentUser.id).map(item => ({ registration:item, workshop:getWorkshopById(item.workshop_id) })).filter(item => item.workshop);
   el.innerHTML = `
     <div class="split" style="align-items:flex-start;margin-bottom:14px;gap:12px">
@@ -9667,7 +9684,7 @@ async function persistWorkshopDraft(mode='draft'){
 function openWorkshopManageModal(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return toast('Workshop not found.');
-  if (!currentUser || currentUser.id !== workshop.host_id) return toast('Only the host can manage this workshop.');
+  if (!workshopBelongsToCurrentUser(workshop)) return toast('Only the host can manage this workshop.');
   const rows = getWorkshopRegistrationsFor(workshop.id);
   const canMarkComplete = String(workshop.status || '').toLowerCase() !== 'canceled';
   const canCancelEvent = canMarkComplete && canCancelWorkshopEvent(workshop);
@@ -9714,7 +9731,7 @@ function openWorkshopManageModal(workshopId=''){
 function openWorkshopParticipantsModal(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return toast('Workshop not found.');
-  if (!currentUser || (currentUser.id !== workshop.host_id && currentUser.role !== 'admin')) return toast('Only the workshop owner can view participants.');
+  if (!currentUser || (!workshopBelongsToCurrentUser(workshop) && currentUser.role !== 'admin')) return toast('Only the workshop owner can view participants.');
   const rows = getWorkshopRegistrationsFor(workshop.id)
     .filter(row => ['registered','attended','paid','confirmed'].includes(String(row.status || '').toLowerCase()))
     .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));

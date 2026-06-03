@@ -589,6 +589,10 @@ function workshopStatus(value = '') {
   return 'published';
 }
 
+function workshopOwnerId(payload = {}) {
+  return String(payload.host_id || payload.hostId || payload.created_by || payload.createdBy || payload.employer_id || payload.employerId || '').trim();
+}
+
 function workshopDurationMinutes(value) {
   if (value == null || value === '') return null;
   const parsed = Number.parseInt(String(value).match(/\d+/)?.[0] || '', 10);
@@ -627,9 +631,10 @@ async function ensureCoreWorkshop(workshopId, req) {
     if (workshop) return workshop;
   }
 
-  let createdBy = isUuid(payload.host_id) ? payload.host_id : req.user.id;
+  let createdBy = workshopOwnerId(payload);
+  if (!isUuid(createdBy)) return null;
   const creator = await prisma.user.findUnique({ where: { id: createdBy }, select: { id: true } }).catch(() => null);
-  if (!creator) createdBy = req.user.id;
+  if (!creator) return null;
   const workshop = await prisma.workshop.create({
     data: {
       title: String(payload.title || 'CoGo City workshop').trim() || 'CoGo City workshop',
@@ -1196,7 +1201,7 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
 
 router.post('/create-workshop-checkout-session', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
-  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true, requirePaymentForAllRoles: true });
+  const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: false, requirePaymentForAllRoles: false });
   if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
 
   const workshopId = String(req.body?.workshop_id || req.body?.workshopId || '').trim();
