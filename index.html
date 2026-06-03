@@ -489,6 +489,11 @@
       color:#9CA3AF;
       font-size:.82rem;
     }
+    .transaction-table-scroll{scrollbar-width:thin;scrollbar-color:#9CA3AF #F3F4F6}
+    .transaction-table-scroll::-webkit-scrollbar{height:12px;width:12px}
+    .transaction-table-scroll::-webkit-scrollbar-track{background:#F3F4F6;border-radius:999px}
+    .transaction-table-scroll::-webkit-scrollbar-thumb{background:#9CA3AF;border-radius:999px;border:2px solid #F3F4F6}
+    .transaction-table-scroll::-webkit-scrollbar-thumb:hover{background:#6B7280}
     @media (max-width: 900px){
       nav{gap:12px;padding:0 14px}
       .nav-links{gap:12px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -16752,7 +16757,7 @@ function renderTransactionTableControls(key='', allRows=[], label='Rows'){
   if (!state.expanded) {
     return `
       <div class="split" style="gap:10px;align-items:center;margin-bottom:10px">
-        <div class="small muted">Scrollable table (${esc(total)} ${esc(label.toLowerCase())})</div>
+        <div class="small muted">Scrollable table (${esc(total)} ${esc(label.toLowerCase())}) · scroll sideways to see all columns</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" onclick="setTransactionTableExpanded('${esc(key)}', true)">Expand</button>
           <button class="btn btn-outline btn-sm" onclick="downloadTransactionTableCsv('${esc(key)}')">Download CSV</button>
@@ -16767,7 +16772,7 @@ function renderTransactionTableControls(key='', allRows=[], label='Rows'){
   }).join('');
   return `
     <div class="split" style="gap:10px;align-items:center;margin-bottom:10px">
-      <div class="small muted">Expanded view (${esc(total)} ${esc(label.toLowerCase())}) \u00B7 10 per page</div>
+      <div class="small muted">Expanded view (${esc(total)} ${esc(label.toLowerCase())}) \u00B7 10 per page \u00B7 scroll sideways to see all columns</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-outline btn-sm" onclick="setTransactionTableExpanded('${esc(key)}', false)">Collapse</button>
         <button class="btn btn-outline btn-sm" onclick="downloadTransactionTableCsv('${esc(key)}')">Download CSV</button>
@@ -17162,11 +17167,45 @@ function renderTransactionsResults(){
     `;
   }).join('');
   const mainState = getTransactionTableState('main');
-  const tableWrapStyle = mainState.expanded ? 'overflow:auto' : 'overflow:auto;max-height:320px';
+  const tableWrapStyle = mainState.expanded
+    ? 'overflow-x:auto;overflow-y:visible;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)'
+    : 'overflow:auto;max-height:340px;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)';
+  const mainTableStyle = isAdmin
+    ? 'width:max-content;min-width:1980px;border-collapse:collapse;font-size:.92rem;table-layout:auto'
+    : 'width:max-content;min-width:1180px;border-collapse:collapse;font-size:.92rem;table-layout:auto';
+  const mainTableColGroup = isAdmin ? `
+        <colgroup>
+          <col style="width:120px">
+          <col style="width:220px">
+          <col style="width:150px">
+          <col style="width:190px">
+          <col style="width:130px">
+          <col style="width:150px">
+          <col style="width:130px">
+          <col style="width:130px">
+          <col style="width:130px">
+          <col style="width:150px">
+          <col style="width:300px">
+          <col style="width:420px">
+        </colgroup>
+      ` : `
+        <colgroup>
+          <col style="width:120px">
+          <col style="width:220px">
+          <col style="width:150px">
+          <col style="width:190px">
+          <col style="width:130px">
+          <col style="width:150px">
+          <col style="width:130px">
+          <col style="width:180px">
+          <col style="width:140px">
+        </colgroup>
+      `;
   resultsWrap.innerHTML = rows.length ? `
     ${renderTransactionTableControls('main', rows, 'Transactions')}
-    <div style="${tableWrapStyle}">
-      <table style="width:100%;border-collapse:collapse;font-size:.92rem">
+    <div class="transaction-table-scroll" style="${tableWrapStyle}">
+      <table style="${mainTableStyle}">
+        ${mainTableColGroup}
         <thead>${tableHead}</thead>
         <tbody>${displayTableRows}</tbody>
       </table>
