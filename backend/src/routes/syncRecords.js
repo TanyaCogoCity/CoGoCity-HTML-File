@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 const { ok, fail } = require('../lib/http');
 const { writeAuditLog } = require('../lib/audit');
 const config = require('../config');
+const { stripeConnectReady } = require('../lib/onboardingGate');
 
 const router = express.Router();
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
@@ -167,6 +168,36 @@ function workshopStatus(value = '') {
   return 'draft';
 }
 
+function isPublishedWorkshopStatus(value = '') {
+  const status = String(value || '').trim().toLowerCase();
+  return status === 'active' || status === 'published';
+}
+
+function workshopOwnerId(payload = {}) {
+  return String(payload.host_id || payload.hostId || payload.created_by || payload.createdBy || payload.user_id || payload.userId || '').trim();
+}
+
+function isPaidPublishedWorkshopRecord(record = {}, currentUserId = '') {
+  const payload = record.payload || {};
+  const ownerId = workshopOwnerId(payload);
+  if (ownerId && ownerId !== currentUserId) return false;
+  return Number(payload.price || 0) > 0 && isPublishedWorkshopStatus(payload.status);
+}
+
+async function requireSyncedWorkshopPayoutReady(req, res, normalized = []) {
+  if (req.user.role === 'admin') return true;
+  const hasPaidPublishedWorkshop = normalized.some((record) => isPaidPublishedWorkshopRecord(record, req.user.id));
+  if (!hasPaidPublishedWorkshop) return true;
+  const host = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (stripeConnectReady(host)) return true;
+  fail(res, 402, 'Paid workshops and classes cannot be published until Stripe Connect payout setup is complete. Free workshops can be published without payout setup.', {
+    payout_setup_required: true,
+    payment_type: 'workshop',
+    action: 'complete_stripe_connect',
+  });
+  return false;
+}
+
 function workshopDurationMinutes(value) {
   if (value == null || value === '') return null;
   const parsed = Number.parseInt(String(value).match(/\d+/)?.[0] || '', 10);
@@ -289,6 +320,10 @@ router.post('/:entity', requireAuth, async (req, res) => {
   try {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
     const normalized = records.map((record) => normalizeRecord(record, entity)).filter(Boolean).slice(0, 1000);
+    if (entity === 'workshops') {
+      const payoutReady = await requireSyncedWorkshopPayoutReady(req, res, normalized);
+      if (!payoutReady) return null;
+    }
     const operations = normalized.map((record) => prisma.syncRecord.upsert({
       where: { entity_recordId: { entity, recordId: record.id } },
       create: {
