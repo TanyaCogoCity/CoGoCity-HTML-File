@@ -3163,7 +3163,8 @@ async function refreshBackendDashboardData(options={}){
   if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
   await Promise.all([
     refreshBackendProjects({ rerender:false }),
-    refreshBackendTransactions({ rerender:false })
+    refreshBackendTransactions({ rerender:false }),
+    refreshBackendBrowseStudents({ rerender:false })
   ]);
   if (options.rerender && getRoute() === '#/dashboard') renderDashboard();
 }
@@ -10658,9 +10659,19 @@ function normalizeStudentServiceRecord(student, service, index=0){
   return record;
 }
 function getServiceReviews(student, service, index=0){
-  if (service && Array.isArray(service.reviews) && service.reviews.length) return service.reviews;
-  if (index === 0 && Array.isArray(student.reviews) && student.reviews.length) return student.reviews;
-  return [];
+  const reviews = [];
+  const seen = new Set();
+  const addReview = review => {
+    if (!review) return;
+    const key = review.id || [review.projectId || review.project_id || '', review.reviewerId || review.reviewer_id || '', review.createdAt || review.created_at || '', review.comment || ''].join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    reviews.push(review);
+  };
+  if (service && Array.isArray(service.reviews)) service.reviews.forEach(addReview);
+  if (index === 0 && Array.isArray(student.reviews)) student.reviews.forEach(addReview);
+  getStudentProjectReviews(student, service).forEach(addReview);
+  return reviews;
 }
 function getServiceReviewSummary(student, service, index=0){
   const reviews = getServiceReviews(student, service, index);
@@ -10670,10 +10681,42 @@ function getServiceReviewSummary(student, service, index=0){
 }
 function getProfileReviewSummary(student){
   const services = getRenderableStudentServices(student);
-  const reviews = services.flatMap((service, index) => getServiceReviews(student, service, index));
+  const reviews = [];
+  const seen = new Set();
+  const addReview = review => {
+    if (!review) return;
+    const key = review.id || [review.projectId || review.project_id || '', review.reviewerId || review.reviewer_id || '', review.createdAt || review.created_at || '', review.comment || ''].join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    reviews.push(review);
+  };
+  services.forEach((service, index) => getServiceReviews(student, service, index).forEach(addReview));
+  if (!services.length && Array.isArray(student.reviews)) student.reviews.forEach(addReview);
+  getStudentProjectReviews(student).forEach(addReview);
   const total = reviews.length;
   const avg = total ? (reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / total) : 0;
   return { reviews, total, average: total ? avg.toFixed(1) : '0.0' };
+}
+function getStudentProjectReviews(student={}, service=null){
+  const studentUserId = String(student.userId || student.user_id || '').trim();
+  const studentProfileId = String(student.id || student.profile_id || '').trim();
+  const serviceId = service ? String(service.id || service.service_id || '').trim() : '';
+  if (!studentUserId && !studentProfileId) return [];
+  return getProjects()
+    .filter(project => {
+      const matchesStudent = (studentUserId && String(project.studentUserId || project.student_id || project.studentId || '') === studentUserId)
+        || (studentProfileId && String(project.studentProfileId || project.student_profile_id || '') === studentProfileId);
+      if (!matchesStudent) return false;
+      if (!serviceId) return true;
+      const projectServiceId = String(project.studentServiceId || project.student_service_id || project.serviceId || project.service_id || '').trim();
+      return !projectServiceId || projectServiceId === serviceId;
+    })
+    .flatMap(project => ensureArray(project.reviews).map(review => Object.assign({
+      projectId: project.id,
+      project_id: project.id,
+      studentServiceId: project.studentServiceId || project.serviceId || null,
+      serviceId: project.studentServiceId || project.serviceId || null
+    }, review)));
 }
 function openReviewListModal(title, reviews=[]){
   openModal(title, `
@@ -12484,8 +12527,8 @@ function renderStudentServiceManagerCard(service, index){
           <div style="font-weight:800">${esc(service.title || '')}</div>
           <div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div>
           <div class="small muted" style="margin-top:8px">$${esc(service.rate || 0)}/hr \u00B7 ${esc(service.availability || '')}</div>
-          <div class="small muted" style="margin-top:8px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
           ${renderStudentServiceMediaSections(service)}
+          <div class="small muted" style="margin-top:10px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
           <button class="btn btn-outline btn-sm" onclick="openStudentServiceForm(${index})">Edit</button>
@@ -13750,11 +13793,20 @@ function openDirectJobResume(applicationId=''){
     </div>
   `, '560px');
 }
+function directHireApplicationReviewSubmitted(app={}){
+  if (!app) return false;
+  if (app.review_submitted) return true;
+  const reviewerId = currentUser ? String(currentUser.id || '') : '';
+  return getProjects().some(project => {
+    if (String(project.applicationId || project.application_id || '') !== String(app.id || '')) return false;
+    return ensureArray(project.reviews).some(review => !reviewerId || String(review.reviewerId || review.reviewer_id || '') === reviewerId);
+  });
+}
 function openDirectHireReviewModal(applicationId=''){
   const app = getDirectJobApplications().find(item => String(item.id) === String(applicationId));
   if (!app) return toast('Application not found.');
   if (app.status !== 'hired') return toast('Review is available after candidate is hired.');
-  if (app.review_submitted) return toast('Review already submitted.');
+  if (directHireApplicationReviewSubmitted(app)) return toast('Review already submitted.');
   const job = getDirectJobById(app.job_id);
   openModal('Leave Candidate Review', `
     <div class="warning" style="margin-bottom:12px">Your review helps students build trust and future opportunities.</div>
@@ -13767,11 +13819,12 @@ function openDirectHireReviewModal(applicationId=''){
     </div>
   `, '640px');
 }
-function submitDirectHireReview(applicationId=''){
+async function submitDirectHireReview(applicationId=''){
   const apps = getDirectJobApplications();
   const app = apps.find(item => String(item.id) === String(applicationId));
   if (!app) return toast('Application not found.');
   if (app.review_submitted) return toast('Review already submitted.');
+  if (requireBackendWriteSession('submit this review')) return;
   const rating = Number((document.getElementById('directHireReviewRating') || {}).value || 0);
   const comment = String((document.getElementById('directHireReviewComment') || {}).value || '').trim();
   if (!rating) return toast('Please choose a rating from 1 to 5.');
@@ -13783,22 +13836,48 @@ function submitDirectHireReview(applicationId=''){
   if (!student) return toast('Student profile not found.');
   student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
   const targetService = (student.services || [])[0] || null;
+  let backendReview = null;
+  if (backendAuthEnabled() && getBackendAccessToken() && isBackendUuid(app.id)) {
+    try {
+      const reviewPayload = { rating, comment };
+      if (targetService && isBackendUuid(targetService.id)) reviewPayload.service_id = targetService.id;
+      backendReview = await backendAuthRequest(`/applications/${encodeURIComponent(app.id)}/review`, {
+        method: 'POST',
+        body: JSON.stringify(reviewPayload)
+      });
+    } catch (error) {
+      console.warn('Backend direct-hire review save failed', error);
+      toast(error.message || 'Backend review save failed. Please try again so this review is saved permanently.');
+      return;
+    }
+  } else {
+    toast('Please sign in again before submitting this review so it is saved permanently.');
+    return;
+  }
   const review = {
-    id: uid('review'),
-    reviewerId: currentUser.id,
-    reviewerName: currentUser.publicName || currentUser.name,
-    rating,
-    comment,
-    projectId: null,
-    createdAt: new Date().toISOString(),
-    studentServiceId: targetService ? targetService.id : null,
+    id: backendReview?.id || uid('review'),
+    reviewerId: backendReview?.reviewerId || backendReview?.reviewer_id || currentUser.id,
+    reviewerName: backendReview?.reviewerName || backendReview?.reviewer_name || currentUser.publicName || currentUser.name,
+    rating: Number(backendReview?.rating || rating),
+    comment: backendReview?.comment ?? comment,
+    projectId: backendReview?.projectId || backendReview?.project_id || null,
+    createdAt: backendReview?.createdAt || backendReview?.created_at || new Date().toISOString(),
+    studentServiceId: backendReview?.serviceId || backendReview?.service_id || (targetService ? targetService.id : null),
+    serviceId: backendReview?.serviceId || backendReview?.service_id || (targetService ? targetService.id : null),
+    applicationId: backendReview?.applicationId || backendReview?.application_id || app.id,
     source: 'direct_hire'
   };
   if (targetService) {
     targetService.reviews = targetService.reviews || [];
+    targetService.reviews = targetService.reviews.filter(existing => String(existing.applicationId || existing.application_id || existing.projectId || existing.project_id || '') !== String(app.id) && String(existing.projectId || existing.project_id || '') !== String(review.projectId || ''));
     targetService.reviews.unshift(review);
+    targetService.review_count = targetService.reviews.length;
+    targetService.reviewCount = targetService.reviews.length;
+    targetService.average_rating = Number((targetService.reviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / Math.max(targetService.reviews.length, 1)).toFixed(2));
+    targetService.averageRating = targetService.average_rating;
   } else {
     student.reviews = student.reviews || [];
+    student.reviews = student.reviews.filter(existing => String(existing.applicationId || existing.application_id || existing.projectId || existing.project_id || '') !== String(app.id) && String(existing.projectId || existing.project_id || '') !== String(review.projectId || ''));
     student.reviews.unshift(review);
   }
   saveStudents(students);
@@ -13808,6 +13887,7 @@ function submitDirectHireReview(applicationId=''){
   app.updated_at = new Date().toISOString();
   saveDirectJobApplications(apps);
   pushNotif(app.student_id, `${currentUser.publicName || currentUser.name} left you a ${rating}/5 review.`, { type:'dashboard', section:'profile' });
+  await refreshBackendDashboardData();
   closeModal();
   toast('Review submitted.');
   renderDashboard();
@@ -13987,8 +14067,8 @@ function renderEmployerMyJobs(el){
                   <button class="btn btn-outline btn-sm" onclick="updateDirectJobApplicationStatus('${esc(app.id)}','reviewing')">Reviewing</button>
                   <button class="btn btn-outline btn-sm" onclick="updateDirectJobApplicationStatus('${esc(app.id)}','shortlisted')">Shortlist</button>
                   <button class="btn btn-blue btn-sm" onclick="updateDirectJobApplicationStatus('${esc(app.id)}','hired')">Hire</button>
-                  ${app.status === 'hired' && !app.review_submitted ? `<button class="btn btn-green btn-sm" onclick="openDirectHireReviewModal('${esc(app.id)}')">Leave Review</button>` : ''}
-                  ${app.status === 'hired' && app.review_submitted ? `<button class="btn btn-outline btn-sm" disabled>Review Submitted</button>` : ''}
+                  ${app.status === 'hired' && !directHireApplicationReviewSubmitted(app) ? `<button class="btn btn-green btn-sm" onclick="openDirectHireReviewModal('${esc(app.id)}')">Leave Review</button>` : ''}
+                  ${app.status === 'hired' && directHireApplicationReviewSubmitted(app) ? `<button class="btn btn-outline btn-sm" disabled>Review Submitted</button>` : ''}
                   <button class="btn btn-danger btn-sm" onclick="updateDirectJobApplicationStatus('${esc(app.id)}','rejected')">Reject</button>
                 </div>
               </div>
@@ -14815,6 +14895,8 @@ async function submitReview(projectId){
     createdAt: backendReview?.createdAt || backendReview?.created_at || new Date().toISOString(),
     studentServiceId: backendReview?.serviceId || backendReview?.service_id || p.studentServiceId || null
   };
+  p.reviews = ensureArray(p.reviews).filter(existing => String(existing.projectId || existing.project_id || '') !== String(projectId) || String(existing.reviewerId || existing.reviewer_id || '') !== String(review.reviewerId || ''));
+  p.reviews.unshift(review);
   student.services = getRenderableStudentServices(student).map((service, index) => normalizeStudentServiceRecord(student, service, index));
   const services = student.services || [];
   const targetService = services.find(service => service.id === p.studentServiceId) || services[0] || null;
