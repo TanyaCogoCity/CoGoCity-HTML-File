@@ -17578,19 +17578,19 @@ function renderTransactionsResults(){
   const visibleTransactionCount = rows.length + (isEmployer ? employerSubscriptionRows.length : 0);
   const visibleTotalPaid = totalPaid + (isEmployer ? employerSubscriptionSpend : 0);
   const roleSummary = isAdmin
-    ? `<div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">CoGo Fees</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div><div class="small muted" style="margin-top:4px">Employer $${money(totalEmployerFees)} + Student $${money(totalStudentFees)}</div></div>`
+    ? `<div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">CoGo Fee Total</div><div class="money" style="font-size:1.2rem">$${money(totalPlatformFees)}</div><div class="small muted" style="margin-top:4px">Both sides: employer $${money(totalEmployerFees)} + student $${money(totalStudentFees)}</div></div>`
     : isEmployer
       ? `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Paid</div><div class="money" style="font-size:1.2rem">$${money(visibleTotalPaid)}</div></div>`
       : `<div class="card" style="padding:14px;margin-bottom:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Earned</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div></div>`;
   summaryWrap.innerHTML = isAdmin ? `
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:10px">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:10px">
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${rows.length}</div></div>
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Total Work</div><div class="money" style="font-size:1.2rem">$${money(totalWork)}</div></div>
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Employer Paid</div><div class="money" style="font-size:1.2rem">$${money(totalPaid)}</div><div class="small muted" style="margin-top:4px">Work + employer fee</div></div>
-      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Payout to Students</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div><div class="small muted" style="margin-top:4px">Work - student fee</div></div>
       ${roleSummary}
+      <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Payout to Students</div><div class="money" style="font-size:1.2rem">$${money(totalPayout)}</div><div class="small muted" style="margin-top:4px">Work - student fee</div></div>
     </div>
-    <div class="small muted" style="margin-bottom:14px">Admin accounting: Employer Paid = Work Total + employer platform fee. Payout to Students = Work Total - student platform fee. CoGo Fees = employer fee + student fee.</div>
+    <div class="small muted" style="margin-bottom:14px">Admin accounting: Employer Paid = Work Total + employer platform fee. Payout to Students = Work Total - student platform fee. CoGo Fee Total = employer fee + student fee.</div>
   ` : `
     <div class="grid" style="grid-template-columns:repeat(${canUseDirectHireSubscriptions ? 3 : 2},1fr);gap:12px;margin-bottom:14px">
       <div class="card" style="padding:14px;background:#F9FAFB;border:1px solid var(--border)"><div class="small muted">Transactions</div><div style="font-weight:800;font-size:1.2rem">${visibleTransactionCount}</div></div>
