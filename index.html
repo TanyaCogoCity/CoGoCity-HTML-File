@@ -1739,7 +1739,18 @@ function renderStripeOnboardingCard(){
     </div>
   `);
   if (!blocks.length) return '';
-  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">Payment setup is enabled for this staging environment. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.</div>${blocks.join('')}</div>`;
+  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">Payment setup is enabled for this staging environment. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.</div>${blocks.join('')}${renderUnder18StudentSafetyNotice()}</div>`;
+}
+function renderUnder18StudentSafetyNotice(){
+  if (!currentUser || currentUser.role !== 'student') return '';
+  const profile = currentStudentProfile();
+  const age = getStudentAge(profile || {});
+  if (age === '' || Number(age) >= 18) return '';
+  return `
+    <div class="warning" style="margin-top:12px;line-height:1.5">
+      If you are under 18, please make sure your parent or guardian is aware of any job you accept through CoGo City. Share the employer's contact information, the job location, and the time you plan to be there. Your safety comes first&mdash;always keep your parent or guardian informed.
+    </div>
+  `;
 }
 async function openPayerStripeSetupModal(){
   if (!stripeOnboardingEnabled()) return toast('Secure payment setup is available on staging after sign-in.');
