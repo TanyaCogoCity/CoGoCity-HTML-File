@@ -509,6 +509,24 @@
     .transaction-table-scroll::-webkit-scrollbar-track{background:#E5E7EB;border-radius:999px}
     .transaction-table-scroll::-webkit-scrollbar-thumb{background:#6B7280;border-radius:999px;border:3px solid #E5E7EB}
     .transaction-table-scroll::-webkit-scrollbar-thumb:hover{background:#4B5563}
+    .transaction-scrollbar-proxy{
+      display:block;
+      max-width:100%;
+      overflow-x:scroll;
+      overflow-y:hidden;
+      height:22px;
+      margin-top:8px;
+      border:1px solid #D1D5DB;
+      border-radius:999px;
+      background:#F3F4F6;
+      scrollbar-width:auto;
+      scrollbar-color:#4B5563 #E5E7EB;
+      -webkit-overflow-scrolling:touch;
+    }
+    .transaction-scrollbar-proxy::-webkit-scrollbar{height:18px}
+    .transaction-scrollbar-proxy::-webkit-scrollbar-track{background:#E5E7EB;border-radius:999px}
+    .transaction-scrollbar-proxy::-webkit-scrollbar-thumb{background:#4B5563;border-radius:999px;border:3px solid #E5E7EB}
+    .transaction-scrollbar-proxy::-webkit-scrollbar-thumb:hover{background:#374151}
     @media (max-width: 900px){
       nav{gap:12px;padding:0 14px}
       .nav-links{gap:12px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -17380,6 +17398,25 @@ function renderTransactionTableControls(key='', allRows=[], label='Rows'){
     </div>
   `;
 }
+function syncTransactionTableScroll(key='', source='table'){
+  const tableWrap = document.getElementById(`transaction-table-${key}`);
+  const proxy = document.getElementById(`transaction-scrollbar-${key}`);
+  if (!tableWrap || !proxy) return;
+  if (source === 'proxy') tableWrap.scrollLeft = proxy.scrollLeft;
+  else proxy.scrollLeft = tableWrap.scrollLeft;
+}
+function renderTransactionScrollableTable(key='', tableHtml='', tableWrapStyle='', innerWidth=1200){
+  const safeKey = esc(key || 'table');
+  const width = Math.max(600, Number(innerWidth || 1200) || 1200);
+  return `
+    <div id="transaction-table-${safeKey}" class="transaction-table-scroll" style="${tableWrapStyle}" onscroll="syncTransactionTableScroll('${safeKey}', 'table')">
+      ${tableHtml}
+    </div>
+    <div id="transaction-scrollbar-${safeKey}" class="transaction-scrollbar-proxy" aria-label="Scroll transaction table sideways" onscroll="syncTransactionTableScroll('${safeKey}', 'proxy')">
+      <div style="width:${width}px;height:1px"></div>
+    </div>
+  `;
+}
 function toCsvCell(value){
   const text = String(value === null || value === undefined ? '' : value);
   return `"${text.replace(/"/g, '""')}"`;
@@ -17768,6 +17805,7 @@ function renderTransactionsResults(){
   const mainTableStyle = isAdmin
     ? 'width:max-content;min-width:1980px;border-collapse:collapse;font-size:.92rem;table-layout:auto'
     : 'width:max-content;min-width:1180px;border-collapse:collapse;font-size:.92rem;table-layout:auto';
+  const mainTableMinWidth = isAdmin ? 1980 : 1180;
   const mainTableColGroup = isAdmin ? `
         <colgroup>
           <col style="width:120px">
@@ -17798,13 +17836,13 @@ function renderTransactionsResults(){
       `;
   resultsWrap.innerHTML = rows.length ? `
     ${renderTransactionTableControls('main', rows, 'Transactions')}
-    <div class="transaction-table-scroll" style="${tableWrapStyle}">
+    ${renderTransactionScrollableTable('main', `
       <table style="${mainTableStyle}">
         ${mainTableColGroup}
         <thead>${tableHead}</thead>
         <tbody>${displayTableRows}</tbody>
       </table>
-    </div>
+    `, tableWrapStyle, mainTableMinWidth)}
   ` : `<div class="muted">No completed job-payment transactions yet.</div>`;
 }
 function isPaidDirectJobPosting(job={}){
@@ -17922,6 +17960,7 @@ function renderSubscriptionTransactionsResults(){
   const subscriptionTableStyle = isAdmin
     ? 'width:max-content;min-width:1640px;border-collapse:collapse;font-size:.92rem;table-layout:auto'
     : 'width:max-content;min-width:980px;border-collapse:collapse;font-size:.92rem;table-layout:auto';
+  const subscriptionTableMinWidth = isAdmin ? 1640 : 980;
   wrap.innerHTML = `
     <div class="card form-card" style="margin-top:16px">
       <div class="section-title" style="margin:0 0 10px">${isAdmin ? 'Employer Subscription Transactions' : 'Subscription Transactions'}</div>
@@ -17932,7 +17971,7 @@ function renderSubscriptionTransactionsResults(){
       </div>
       ${rows.length ? `
         ${renderTransactionTableControls('subscription', rows, 'Subscriptions')}
-        <div class="transaction-table-scroll" style="${tableWrapStyle}">
+        ${renderTransactionScrollableTable('subscription', `
           <table style="${subscriptionTableStyle}">
             <thead>
               <tr style="text-align:left;border-bottom:1px solid var(--border)">
@@ -17968,7 +18007,7 @@ function renderSubscriptionTransactionsResults(){
               `).join('')}
             </tbody>
           </table>
-        </div>
+        `, tableWrapStyle, subscriptionTableMinWidth)}
       ` : `<div class="muted">No subscription transactions yet.</div>`}
     </div>
   `;
@@ -18151,6 +18190,13 @@ function renderWorkshopTransactionsResults(){
     acc.commission += Number(row.commission || 0);
     return acc;
   }, { participants:0, total:0, commission:0 }) : null;
+  const workshopTableWrapStyle = getTransactionTableState('workshop').expanded
+    ? 'overflow-x:scroll;overflow-y:visible;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)'
+    : 'overflow-x:scroll;overflow-y:auto;max-height:280px;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)';
+  const workshopTableMinWidth = isAdmin ? 1500 : 860;
+  const workshopTableStyle = isAdmin
+    ? 'width:max-content;min-width:1500px;border-collapse:collapse;font-size:.92rem;table-layout:auto'
+    : 'width:max-content;min-width:860px;border-collapse:collapse;font-size:.92rem;table-layout:auto';
   wrap.innerHTML = `
     <div class="card form-card" style="margin-top:16px">
       <div class="section-title" style="margin:0 0 10px">Workshops & Classes Transactions</div>
@@ -18163,9 +18209,9 @@ function renderWorkshopTransactionsResults(){
       ` : ''}
       ${rows.length ? `
         ${renderTransactionTableControls('workshop', rows, 'Workshop Transactions')}
-        <div class="transaction-table-scroll" style="${getTransactionTableState('workshop').expanded ? 'overflow-x:scroll;overflow-y:visible;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)' : 'overflow-x:scroll;overflow-y:auto;max-height:280px;max-width:100%;padding-bottom:14px;border-bottom:1px solid var(--border)'}">
-          <table style="${isAdmin ? 'width:max-content;min-width:1500px;border-collapse:collapse;font-size:.92rem;table-layout:auto' : 'width:max-content;min-width:860px;border-collapse:collapse;font-size:.92rem;table-layout:auto'}"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table>
-        </div>
+        ${renderTransactionScrollableTable('workshop', `
+          <table style="${workshopTableStyle}"><thead>${headerHtml}</thead><tbody>${bodyHtml}</tbody></table>
+        `, workshopTableWrapStyle, workshopTableMinWidth)}
       ` : `<div class="muted">No workshop transactions yet.</div>`}
     </div>
   `;
