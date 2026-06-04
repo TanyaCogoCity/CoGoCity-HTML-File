@@ -750,6 +750,7 @@ let adminBackendUsersLoading = false;
 let adminBackendUsersError = '';
 let adminBlogQuery = '';
 let adminBlogDraft = null;
+let adminImagesVisibleCount = 24;
 let adminUserEditDraft = null;
 let adminModalImageLibraryTarget = null;
 let studentProfileTab = 'all';
@@ -11069,6 +11070,46 @@ function getImageUsageDetails(imageId=''){
   });
   return deduped;
 }
+function getImageUsageIdSet(){
+  const usedIds = new Set();
+  const addIfImageId = value => {
+    const clean = String(value || '').trim();
+    if (isImageRecordId(clean)) usedIds.add(clean);
+  };
+  getUsers().forEach(user => {
+    addIfImageId(user.photo);
+    addIfImageId(user.profile_image_id);
+    if (user.businessProfile) {
+      addIfImageId(user.businessProfile.logo);
+      addIfImageId(user.businessProfile.image_id);
+    }
+  });
+  getStudents().forEach(student => {
+    addIfImageId(student.photo);
+    addIfImageId(student.profile_image_id);
+    ensureArray(student.profileImages).forEach(addIfImageId);
+    ensureArray(student.services).forEach(service => {
+      ensureArray(service && (service.images || service.entity_images)).forEach(addIfImageId);
+    });
+  });
+  getBlogPosts().forEach(post => {
+    addIfImageId(post.image_id);
+    addIfImageId(post.featuredImage);
+    addIfImageId(post.featured_image);
+    if (post.media_type === 'image') addIfImageId(post.media_url);
+    addIfImageId(post.articleMediaImage);
+    ensureArray(post.entity_images || post.images).forEach(addIfImageId);
+  });
+  return usedIds;
+}
+function renderAdminImageGridPreview(image={}){
+  const source = String(image.thumbnail_url || image.url || '').trim();
+  if (/^data:image\//i.test(source) && source.length > 120000) {
+    return '<div class="small muted" style="height:160px;display:flex;align-items:center;justify-content:center;text-align:center;border:1px solid var(--border);border-radius:14px;padding:12px">Large embedded image<br>Open View to inspect</div>';
+  }
+  return renderManagedImage(image.id, image.alt || 'Library image', 'width:100%;height:160px;object-fit:cover;border-radius:14px;border:1px solid var(--border)', 'thumb')
+    || '<div class="small muted" style="height:160px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:14px">Image preview unavailable</div>';
+}
 function removeImageReferences(imageId=''){
   const users = getUsers();
   let usersChanged = false;
@@ -17517,36 +17558,40 @@ function renderAdminImagesSection(el){
   ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true });
   const imageSyncState = backendGenericSyncState.images || {};
   const images = getImages().sort((a,b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const visibleCount = Math.min(Math.max(24, Number(adminImagesVisibleCount || 24) || 24), images.length || 24);
+  const visibleImages = images.slice(0, visibleCount);
+  let usedImageIds = new Set();
+  try {
+    usedImageIds = getImageUsageIdSet();
+  } catch (error) {
+    console.warn('Could not build image usage summary', error);
+  }
   el.innerHTML = `
     <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
       <div>
         <div class="section-title" style="margin:0">Images</div>
         <div class="small muted">All uploaded and imported images are centralized here for reuse across profiles, services, and blog articles.</div>
       </div>
-      <div class="small muted">${images.length} image${images.length === 1 ? '' : 's'}</div>
+      <div class="small muted">${images.length} image${images.length === 1 ? '' : 's'}${images.length ? ` · showing ${visibleImages.length}` : ''}</div>
     </div>
     ${imageSyncState.loading && !images.length ? `<div class="notice" style="margin-bottom:14px">Loading images from staging...</div>` : ''}
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">
-      ${images.length ? images.map(image => {
-        let usage = [];
-        try {
-          usage = getImageUsageDetails(image.id);
-        } catch (error) {
-          console.warn('Could not read image usage details', error);
-        }
-        const preview = renderManagedImage(image.id, image.alt || 'Library image', 'width:100%;height:160px;object-fit:cover;border-radius:14px;border:1px solid var(--border)', 'thumb') || '<div class="small muted" style="height:160px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:14px">Image preview unavailable</div>';
+      ${images.length ? visibleImages.map(image => {
+        const inUse = usedImageIds.has(String(image.id || ''));
+        const preview = renderAdminImageGridPreview(image);
         return `
         <div class="card form-card">
           <div style="margin-bottom:12px">${preview}</div>
-          ${usage.length ? `<div class="small muted" style="margin-bottom:12px">In use, cannot delete</div>` : ''}
+          ${inUse ? `<div class="small muted" style="margin-bottom:12px">In use, cannot delete</div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" type="button" onclick="viewImageFromLibrary('${esc(image.id)}')">View</button>
             <button class="btn btn-outline btn-sm" type="button" onclick="copyImageUrl('${esc(image.id)}')">Copy URL</button>
-            <button class="btn btn-danger btn-sm" type="button" ${usage.length ? 'disabled' : ''} onclick="deleteImageFromLibrary('${esc(image.id)}')">Delete</button>
+            <button class="btn btn-danger btn-sm" type="button" ${inUse ? 'disabled' : ''} onclick="deleteImageFromLibrary('${esc(image.id)}')">Delete</button>
           </div>
         </div>
       `}).join('') : `<div class="card form-card muted">No images in the library yet.</div>`}
     </div>
+    ${images.length > visibleImages.length ? `<div style="margin-top:16px"><button class="btn btn-outline" type="button" onclick="adminImagesVisibleCount += 24; renderDashboard()">Show more images</button></div>` : ''}
   `;
 }
 
