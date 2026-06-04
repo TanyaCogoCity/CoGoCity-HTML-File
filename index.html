@@ -16294,13 +16294,28 @@ function runAdminUserAction(){
   if (adminPendingUserAction === 'toggle_status') return toggleAdminUserStatus(user.id);
   if (adminPendingUserAction === 'delete') return openAdminDeleteUserModal(user.id);
 }
-function sendAdminPasswordReset(userId){
-  const user = getUserById(userId);
+async function sendAdminPasswordReset(userId){
+  const user = getSelectedAdminUser()
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || getUserById(userId);
   if (!user) return toast('User not found.');
-  logAdminAction('password_reset_sent', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
-  adminPendingUserAction = '';
-  syncAdminUsersToolbar();
-  toast(`Password reset email queued for ${user.email || user.name}.`);
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!email) return toast('This user does not have an email address.');
+  if (user.status === 'suspended') return toast('This user is suspended. Reactivate the account before sending a password reset.');
+  if (!backendAuthEnabled()) return toast('Password reset email is available only when backend auth is enabled.');
+  try {
+    await backendAuthRequest('/auth/password-reset/request', {
+      method:'POST',
+      body: JSON.stringify({ email }),
+      retryOnAuthFailure:false
+    });
+    logAdminAction('password_reset_sent', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+    adminPendingUserAction = '';
+    syncAdminUsersToolbar();
+    toast(`Password reset email sent to ${email}.`);
+  } catch (error) {
+    toast(userFacingBackendError(error, 'Could not send the password reset email.'));
+  }
 }
 function openAdminDeleteUserModal(userId){
   const user = getSelectedAdminUser()
