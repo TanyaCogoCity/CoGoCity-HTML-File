@@ -16231,11 +16231,34 @@ function openAdminDeleteUserModal(userId){
     </div>
   `, '560px');
 }
-function permanentlyDeleteAdminUser(userId){
+async function permanentlyDeleteAdminUser(userId){
   const users = getUsers();
-  const user = users.find(item => item.id === userId);
+  const user = getSelectedAdminUser()
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || users.find(item => String(item.id) === String(userId));
   if (!user) return toast('User not found.');
   if (user.id === currentUser.id) return toast('You cannot delete your own admin account.');
+  if (backendAuthEnabled() && adminBackendUsersLoaded && user.backendAuth) {
+    try {
+      await backendAuthRequest(`/auth/admin/users/${encodeURIComponent(user.id)}`, { method:'DELETE' });
+      adminBackendUsers = adminBackendUsers.filter(item => String(item.id) !== String(user.id));
+      saveUsers(users.filter(item => String(item.id) !== String(user.id)));
+      saveStudents(getStudents().filter(profile => String(profile.userId) !== String(user.id)));
+      adminSelectedUserId = '';
+      adminPendingUserAction = '';
+      closeModal();
+      logAdminAction('user_deleted', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+      toast('User deleted from the staging database.');
+      loadBackendAdminUsers({ rerender:false });
+      renderDashboard();
+      return;
+    } catch (error) {
+      return toast(userFacingBackendError(error, 'Could not delete this user from the staging database.'));
+    }
+  }
+  if (backendAuthEnabled()) {
+    return toast('This user is not loaded from the staging database, so local-only delete is blocked. Refresh Users and try again.');
+  }
   const relatedPostIds = getPosts().filter(post => post.authorId === user.id).map(post => post.id);
   saveUsers(users.filter(item => item.id !== userId));
   saveStudents(getStudents().filter(profile => profile.userId !== userId));
