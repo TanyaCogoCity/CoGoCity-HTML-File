@@ -94,6 +94,7 @@ function serialize(row) {
 
 function serializeImageSummary(row) {
   const record = serialize(row);
+  if (String(record.source || '').toLowerCase() === 'advertising') return record;
   const url = String(record.url || '');
   const thumb = String(record.thumbnail_url || record.thumb_url || '');
   const hasEmbeddedImage = /^data:image\//i.test(url) || /^data:image\//i.test(thumb);

@@ -1123,7 +1123,17 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
         });
         records.forEach(image => {
           const id = String((image || {}).id || (image || {}).record_id || '').trim();
-          if (id) mergedById.set(id, image);
+          if (!id) return;
+          const existing = mergedById.get(id);
+          if (existing && existing.url && image && image.embedded_image_omitted) {
+            mergedById.set(id, Object.assign({}, image, {
+              url: existing.url,
+              thumbnail_url: existing.thumbnail_url || existing.url,
+              embedded_image_omitted: false
+            }));
+          } else {
+            mergedById.set(id, image);
+          }
         });
         ls(storageKey, Array.from(mergedById.values()));
       } else {
@@ -2379,7 +2389,7 @@ function syncAdImagesBeforeSettings(slots=[]){
   });
   if (!referencedIds.size) return Promise.resolve({ ok:true, skipped:true });
   const images = getImages();
-  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
   if (missing.length) return Promise.resolve({ ok:false, error:`Missing uploaded image record: ${missing[0]}` });
   return saveImages(images);
 }
@@ -17476,6 +17486,10 @@ function renderAdminBlogManager(el){
 }
 
 function renderAdAdminImagePreview(value='', label='Ad image'){
+  const rawImage = isImageRecordId(value) ? getImageById(value) : null;
+  if (rawImage && rawImage.embedded_image_omitted) {
+    return `<div class="small muted" style="display:flex;align-items:center;justify-content:center;width:100%;min-height:110px;text-align:center">Large saved image<br>${esc(label)}</div>`;
+  }
   const image = getImageView(value, 'full');
   return image && image.url ? `<img src="${esc(image.url)}" alt="${esc(label)}">` : `<div class="small muted">No image selected yet.</div>`;
 }
@@ -17505,13 +17519,19 @@ function renderAdminAdvertisingSection(el){
             <div class="field"><label>Desktop Banner Image <span class="small muted">(300×250)</span></label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','desktop',this)"></div>
             <input id="ad_desktop_${esc(slot.id)}" type="hidden" value="${esc(slot.desktop_image)}">
             <div id="ad_desktop_preview_${esc(slot.id)}" class="cogo-ad-admin-preview">${renderAdAdminImagePreview(slot.desktop_image, `${slot.label} desktop`)}</div>
-            <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="clearAdminAdImage('${esc(slot.id)}','desktop')">Remove Desktop Image</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button class="btn btn-outline btn-sm" type="button" onclick="openAdminAdImageLibrary('${esc(slot.id)}','desktop')">Select from Library</button>
+              <button class="btn btn-outline btn-sm" type="button" onclick="clearAdminAdImage('${esc(slot.id)}','desktop')">Remove Desktop Image</button>
+            </div>
           </div>
           <div>
             <div class="field"><label>Mobile Banner Image <span class="small muted">(320×120)</span></label><input type="file" accept="image/*" onchange="handleAdminAdImageUpload('${esc(slot.id)}','mobile',this)"></div>
             <input id="ad_mobile_${esc(slot.id)}" type="hidden" value="${esc(slot.mobile_image)}">
             <div id="ad_mobile_preview_${esc(slot.id)}" class="cogo-ad-admin-preview">${renderAdAdminImagePreview(slot.mobile_image, `${slot.label} mobile`)}</div>
-            <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="clearAdminAdImage('${esc(slot.id)}','mobile')">Remove Mobile Image</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+              <button class="btn btn-outline btn-sm" type="button" onclick="openAdminAdImageLibrary('${esc(slot.id)}','mobile')">Select from Library</button>
+              <button class="btn btn-outline btn-sm" type="button" onclick="clearAdminAdImage('${esc(slot.id)}','mobile')">Remove Mobile Image</button>
+            </div>
           </div>
         </div>
       </div>
@@ -17525,6 +17545,19 @@ function renderAdminAdvertisingSection(el){
 function setAdminAdPreview(slotId='', kind='', value=''){
   const preview = document.getElementById(`ad_${kind}_preview_${slotId}`);
   if (preview) preview.innerHTML = renderAdAdminImagePreview(value, `${slotId} ${kind}`);
+}
+function openAdminAdImageLibrary(slotId='', kind='desktop'){
+  window.__adminAdImageLibraryTarget = { slotId, kind };
+  openAdminImageLibrary('selectAdminAdImageFromLibrary');
+}
+function selectAdminAdImageFromLibrary(imageId=''){
+  const target = window.__adminAdImageLibraryTarget || {};
+  if (!target.slotId || !target.kind) return toast('Advertising image target is unavailable.');
+  const field = document.getElementById(`ad_${target.kind}_${target.slotId}`);
+  if (field) field.value = imageId || '';
+  setAdminAdPreview(target.slotId, target.kind, imageId || '');
+  closeModal();
+  toast('Ad image selected. Remember to save advertising settings.');
 }
 function handleAdminAdImageUpload(slotId='', kind='', input){
   const file = input && input.files && input.files[0];
