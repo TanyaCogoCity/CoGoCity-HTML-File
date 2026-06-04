@@ -1136,6 +1136,7 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
           }
         });
         ls(storageKey, Array.from(mergedById.values()));
+        setTimeout(() => refreshAdvertisingImagesFromStore(), 0);
       } else {
         ls(storageKey, records);
       }
@@ -4097,11 +4098,13 @@ function renderAdvertisingStrip(slots=getActiveAdvertisingSlots()){
           const href = advertisingUrlIsAllowed(slot.landing_url) ? slot.landing_url : '#';
           const target = /^https?:\/\//i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : '';
           const label = slot.cta_text || 'Learn more';
+          const desktopImageId = isImageRecordId(slot.desktop_image) ? slot.desktop_image : '';
+          const mobileImageId = isImageRecordId(slot.mobile_image) ? slot.mobile_image : '';
           return `
             <a class="cogo-ad-card" href="${esc(href)}"${target} onclick="${href === '#' ? 'return false;' : ''}">
               <picture>
-                ${mobile && mobile.url ? `<source media="(max-width: 640px)" srcset="${esc(mobile.url)}">` : ''}
-                <img src="${esc((desktop && desktop.url) || '')}" alt="${esc(slot.label || 'Advertisement')}" loading="lazy">
+                ${mobile && mobile.url ? `<source media="(max-width: 640px)" srcset="${esc(mobile.url)}" data-cogo-ad-source-id="${esc(mobileImageId || desktopImageId)}">` : `<source media="(max-width: 640px)" data-cogo-ad-source-id="${esc(mobileImageId || desktopImageId)}">`}
+                <img src="${esc((desktop && desktop.url) || '')}" data-cogo-ad-img-id="${esc(desktopImageId || mobileImageId)}" data-cogo-ad-fallback-id="${esc(mobileImageId || desktopImageId)}" alt="${esc(slot.label || 'Advertisement')}" loading="lazy">
               </picture>
               <div class="cogo-ad-overlay"><span class="cogo-ad-cta">${esc(label)}</span></div>
             </a>
@@ -4110,6 +4113,17 @@ function renderAdvertisingStrip(slots=getActiveAdvertisingSlots()){
       </div>
     </div>
   `;
+}
+function refreshAdvertisingImagesFromStore(root=document){
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  root.querySelectorAll('source[data-cogo-ad-source-id]').forEach(source => {
+    const image = getImageView(source.getAttribute('data-cogo-ad-source-id') || '', 'full');
+    if (image && image.url && source.getAttribute('srcset') !== image.url) source.setAttribute('srcset', image.url);
+  });
+  root.querySelectorAll('img[data-cogo-ad-img-id]').forEach(img => {
+    const image = getImageView(img.getAttribute('data-cogo-ad-img-id') || '', 'full') || getImageView(img.getAttribute('data-cogo-ad-fallback-id') || '', 'full');
+    if (image && image.url && img.getAttribute('src') !== image.url) img.setAttribute('src', image.url);
+  });
 }
 
 function getSiteSettings(){
@@ -8072,6 +8086,7 @@ function renderHome(){
       </div>
     </div>
   `;
+  setTimeout(() => refreshAdvertisingImagesFromStore(document.getElementById('app')), 0);
   markHomepageServicesShown(filteredServiceCards.slice(0, getBrowseStudentVisibleCount()));
 }
 function formatBlogDate(value){
