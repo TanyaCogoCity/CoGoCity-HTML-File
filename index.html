@@ -1745,10 +1745,13 @@ function renderUnder18StudentSafetyNotice(){
   if (!currentUser || currentUser.role !== 'student') return '';
   const profile = currentStudentProfile();
   const age = getStudentAge(profile || {});
-  if (age === '' || Number(age) >= 18) return '';
+  if (age === '') return '';
+  const message = Number(age) < 18
+    ? "If you are under 18, please make sure your parent or guardian is aware of any job you accept through CoGo City. Share the employer's contact information, the job location, and the time you plan to be there. Your safety comes first&mdash;always keep your parent or guardian informed."
+    : "We recommend informing a trusted friend or family member about any job or project you accept. Share the employer's contact information, the job location, and the time you plan to be there for your safety.";
   return `
     <div class="warning" style="margin-top:12px;line-height:1.5">
-      If you are under 18, please make sure your parent or guardian is aware of any job you accept through CoGo City. Share the employer's contact information, the job location, and the time you plan to be there. Your safety comes first&mdash;always keep your parent or guardian informed.
+      ${message}
     </div>
   `;
 }
