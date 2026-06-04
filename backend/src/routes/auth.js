@@ -190,6 +190,20 @@ const adminUserUpdateSchema = z.object({
   paymentMethodRequired: z.boolean().optional(),
 });
 
+const adminUserCreateSchema = z.object({
+  first_name: z.string().trim().min(1).optional(),
+  firstName: z.string().trim().min(1).optional(),
+  last_name: z.string().trim().min(1).optional(),
+  lastName: z.string().trim().min(1).optional(),
+  display_name: z.string().trim().optional(),
+  displayName: z.string().trim().optional(),
+  name: z.string().trim().optional(),
+  email: z.string().email(),
+  phone: z.string().trim().optional().nullable(),
+  password: z.string().min(8),
+  role: z.enum(['student', 'employer', 'neighbor', 'admin']).default('student'),
+});
+
 function serializeAdminUser(user) {
   const studentProfile = user.studentProfiles?.[0] || null;
   return {
@@ -502,6 +516,54 @@ router.get('/admin/users', requireAuth, requireRoles(['admin']), async (_req, re
     return ok(res, users.map(serializeAdminUser));
   } catch (error) {
     return fail(res, 500, 'Unable to load users', error.message);
+  }
+});
+
+router.post('/admin/users', requireAuth, requireRoles(['admin']), async (req, res) => {
+  try {
+    const payload = adminUserCreateSchema.parse(req.body || {});
+    const email = payload.email.toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing && !existing.deletedAt) return fail(res, 409, 'That email is already in use.');
+
+    const nameParts = String(payload.name || '').split(/\s+/).filter(Boolean);
+    const firstName = payload.firstName ?? payload.first_name ?? nameParts[0] ?? 'User';
+    const lastName = payload.lastName ?? payload.last_name ?? nameParts.slice(1).join(' ') ?? '';
+    const displayName = payload.displayName ?? payload.display_name ?? [firstName, lastName].filter(Boolean).join(' ').trim();
+    const passwordHash = await hashPassword(payload.password);
+
+    const createdUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          firstName,
+          lastName,
+          displayName,
+          email,
+          phone: payload.phone || null,
+          role: payload.role,
+          city: null,
+          passwordHash,
+        },
+      });
+      await tx.userProfile.create({
+        data: {
+          userId: user.id,
+          type: payload.role === 'employer' ? 'business' : (payload.role === 'neighbor' ? 'neighbor' : null),
+          metadata: {},
+        },
+      });
+      return tx.user.findUnique({
+        where: { id: user.id },
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } }, take: 1 } },
+      });
+    });
+
+    await writeAuditLog({ userId: req.user.id, action: 'admin.user.create', entityType: 'user', entityId: createdUser.id, payload: { role: createdUser.role, email: createdUser.email } });
+    return created(res, serializeAdminUser(createdUser));
+  } catch (error) {
+    if (error?.code === 'P2002') return fail(res, 409, 'That email is already in use.');
+    const message = error?.name === 'ZodError' ? 'Please check the new user fields and try again.' : 'Unable to create user';
+    return fail(res, 400, message, error.message);
   }
 });
 

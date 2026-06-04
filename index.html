@@ -16071,14 +16071,44 @@ function openCreateAdminUserModal(){
     </div>
   `, '620px');
 }
-function createAdminUser(){
+async function createAdminUser(){
   const users = getUsers();
   const name = (document.getElementById('adminCreateUserName').value || '').trim();
   const email = (document.getElementById('adminCreateUserEmail').value || '').trim().toLowerCase();
   const roleValue = document.getElementById('adminCreateUserRole').value || 'student';
   const password = (document.getElementById('adminCreateUserPassword').value || '').trim() || 'welcome123';
   if (toastRequiredFields({ Name:name, Email:email })) return;
+  if (password.length < 8) return toast('Temporary password must be at least 8 characters.');
   if (users.some(user => user.email.toLowerCase() === email)) return toast('That email is already in use.');
+  if (backendAuthEnabled() && adminBackendUsersLoaded) {
+    if (adminBackendUsers.some(user => String(user.email || '').toLowerCase() === email)) return toast('That email is already in use.');
+    const nameParts = splitFullName(name);
+    try {
+      const createdBackendUser = await backendAuthRequest('/auth/admin/users', {
+        method:'POST',
+        body: JSON.stringify({
+          firstName: nameParts[0] || name,
+          lastName: nameParts.slice(1).join(' '),
+          displayName: name,
+          email,
+          password,
+          role: roleValue
+        })
+      });
+      const mappedBackendUser = mapBackendUser(createdBackendUser);
+      adminBackendUsers.unshift(mappedBackendUser);
+      saveUsers(getUsers().concat(mappedBackendUser));
+      logAdminAction('user_created', { targetUserId: mappedBackendUser.id, targetUserName: mappedBackendUser.name, targetRole: getUserRoleLabel(mappedBackendUser) });
+      closeModal();
+      toast(`User created in staging database. Temporary password: ${password}`);
+      loadBackendAdminUsers({ rerender:false });
+      renderDashboard();
+      return;
+    } catch (error) {
+      return toast(userFacingBackendError(error, 'Could not create this user in the staging database.'));
+    }
+  }
+  if (backendAuthEnabled()) return toast('Admin users are still loading from staging. Please wait a moment and try again.');
   const user = applyAdminRoleValue(normalizeUserRecord({
     id: uid('u'),
     name,
