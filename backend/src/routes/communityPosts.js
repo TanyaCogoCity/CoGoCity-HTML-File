@@ -43,6 +43,10 @@ function countableApplicationStatus(value = '') {
   return ['pending', 'applied', 'offer_sent', 'offer_pending'].includes(String(value || '').toLowerCase());
 }
 
+function isUuid(value = '') {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
 async function applicationCountsForPosts(postIds = []) {
   const ids = [...new Set(postIds.filter(Boolean))];
   if (!ids.length) return new Map();
@@ -66,7 +70,7 @@ router.get('/community-posts', async (_req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 250,
     });
-    const authorIds = [...new Set(rows.map((row) => row.authorId).filter(Boolean))];
+    const authorIds = [...new Set(rows.map((row) => row.authorId).filter(isUuid))];
     const activeAuthors = authorIds.length
       ? await prisma.user.findMany({
           where: { id: { in: authorIds }, deletedAt: null, status: 'active' },
