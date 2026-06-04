@@ -800,6 +800,7 @@ const BACKEND_AUTH = {
   baseUrl: '/api',
   timeoutMs: 10000
 };
+const BACKEND_SIGNUP_TIMEOUT_MS = 45000;
 const GOOGLE_MAPS_API_KEY = (typeof window !== 'undefined' && (window.COGO_GOOGLE_MAPS_API_KEY || localStorage.getItem('cogo_google_maps_api_key'))) || '';
 const GOOGLE_ADDRESS_ENABLED = !!GOOGLE_MAPS_API_KEY;
 let googleMapsPlacesLoading = false;
@@ -1314,10 +1315,13 @@ async function refreshBackendAccessToken(){
 }
 async function publicBackendRequest(path, options={}){
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), BACKEND_AUTH.timeoutMs || 10000);
+  const timeoutMs = Number(options.timeoutMs || BACKEND_AUTH.timeoutMs || 10000);
+  const requestOptions = Object.assign({}, options);
+  delete requestOptions.timeoutMs;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const headers = Object.assign({ 'content-type':'application/json' }, options.headers || {});
-    const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
+    const headers = Object.assign({ 'content-type':'application/json' }, requestOptions.headers || {});
+    const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, requestOptions, { headers, signal: controller.signal }));
     const text = await response.text();
     let payload = null;
     try { payload = text ? JSON.parse(text) : null; } catch (error) {}
@@ -1337,14 +1341,17 @@ async function publicBackendRequest(path, options={}){
   }
 }
 async function backendAuthRequest(path, options={}){
+  const timeoutMs = Number(options.timeoutMs || BACKEND_AUTH.timeoutMs || 10000);
+  const requestOptions = Object.assign({}, options);
+  delete requestOptions.timeoutMs;
   const attemptRequest = async (accessToken='') => {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), BACKEND_AUTH.timeoutMs || 10000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const headers = Object.assign({ 'content-type':'application/json' }, options.headers || {});
+      const headers = Object.assign({ 'content-type':'application/json' }, requestOptions.headers || {});
       const token = accessToken || localStorage.getItem('cogo_backend_access_token');
       if (token && !headers.Authorization) headers.Authorization = `Bearer ${token}`;
-      const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, options, { headers, signal: controller.signal }));
+      const response = await fetch(`${BACKEND_AUTH.baseUrl}${path}`, Object.assign({}, requestOptions, { headers, signal: controller.signal }));
       const text = await response.text();
       let payload = null;
       try { payload = text ? JSON.parse(text) : null; } catch (error) {}
@@ -4766,6 +4773,7 @@ function userFacingBackendError(error, fallback='Something went wrong. Please ch
   const message = String((error && error.message) || '').trim();
   if (!message) return fallback;
   if (/Invalid register payload/i.test(message)) return 'Please check the signup form. Make sure first name, last name, email, phone, address, and password are complete.';
+  if (/aborted|abort|signal/i.test(message) || error?.name === 'AbortError') return 'The signup request took longer than expected. Please try again. If the account was already created, sign in with your email and password.';
   return message;
 }
 function detectContactInfo(text=''){
@@ -6726,6 +6734,7 @@ async function publishStudentSignupProfile(){
     try {
       const data = await backendAuthRequest('/auth/register', {
         method:'POST',
+        timeoutMs: BACKEND_SIGNUP_TIMEOUT_MS,
         body: JSON.stringify({
           firstName: firstNameValue,
           lastName: lastNameValue,
@@ -7407,6 +7416,7 @@ async function publishEmployerSignupProfile(){
     try {
       const data = await backendAuthRequest('/auth/register', {
         method:'POST',
+        timeoutMs: BACKEND_SIGNUP_TIMEOUT_MS,
         body: JSON.stringify({
           firstName: d.firstName,
           lastName: d.lastName,
