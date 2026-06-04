@@ -527,6 +527,32 @@
     .transaction-scrollbar-proxy::-webkit-scrollbar-track{background:#E5E7EB;border-radius:999px}
     .transaction-scrollbar-proxy::-webkit-scrollbar-thumb{background:#4B5563;border-radius:999px;border:3px solid #E5E7EB}
     .transaction-scrollbar-proxy::-webkit-scrollbar-thumb:hover{background:#374151}
+    .transaction-horizontal-controls{
+      display:grid;
+      grid-template-columns:auto minmax(160px,1fr) auto;
+      gap:8px;
+      align-items:center;
+      margin-top:8px;
+      padding:8px;
+      border:1px solid #D1D5DB;
+      border-radius:12px;
+      background:#F9FAFB;
+    }
+    .transaction-horizontal-controls button{
+      min-width:42px;
+      height:34px;
+      border:1px solid #CBD5E1;
+      background:#fff;
+      border-radius:8px;
+      font-weight:900;
+      cursor:pointer;
+    }
+    .transaction-horizontal-controls button:hover{background:#F3F4F6}
+    .transaction-horizontal-range{
+      width:100%;
+      accent-color:#111827;
+      cursor:pointer;
+    }
     @media (max-width: 900px){
       nav{gap:12px;padding:0 14px}
       .nav-links{gap:12px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -17401,19 +17427,52 @@ function renderTransactionTableControls(key='', allRows=[], label='Rows'){
 function syncTransactionTableScroll(key='', source='table'){
   const tableWrap = document.getElementById(`transaction-table-${key}`);
   const proxy = document.getElementById(`transaction-scrollbar-${key}`);
+  const range = document.getElementById(`transaction-range-${key}`);
   if (!tableWrap || !proxy) return;
   if (source === 'proxy') tableWrap.scrollLeft = proxy.scrollLeft;
+  else if (source === 'range' && range) tableWrap.scrollLeft = Number(range.value || 0);
   else proxy.scrollLeft = tableWrap.scrollLeft;
+  proxy.scrollLeft = tableWrap.scrollLeft;
+  if (range) range.value = String(tableWrap.scrollLeft);
+}
+function updateTransactionHorizontalControls(key=''){
+  const tableWrap = document.getElementById(`transaction-table-${key}`);
+  const proxy = document.getElementById(`transaction-scrollbar-${key}`);
+  const spacer = document.getElementById(`transaction-scrollbar-spacer-${key}`);
+  const range = document.getElementById(`transaction-range-${key}`);
+  if (!tableWrap || !proxy || !spacer) return;
+  const scrollWidth = Math.max(tableWrap.scrollWidth, tableWrap.clientWidth + 1);
+  const maxScroll = Math.max(0, scrollWidth - tableWrap.clientWidth);
+  spacer.style.width = `${scrollWidth}px`;
+  proxy.scrollLeft = tableWrap.scrollLeft;
+  if (range) {
+    range.max = String(maxScroll);
+    range.value = String(tableWrap.scrollLeft);
+    range.disabled = maxScroll <= 0;
+  }
+}
+function scrollTransactionTable(key='', direction=1){
+  const tableWrap = document.getElementById(`transaction-table-${key}`);
+  if (!tableWrap) return;
+  const distance = Math.max(180, Math.round(tableWrap.clientWidth * 0.75));
+  tableWrap.scrollBy({ left: Number(direction || 1) * distance, behavior:'smooth' });
+  window.setTimeout(() => syncTransactionTableScroll(key, 'table'), 260);
 }
 function renderTransactionScrollableTable(key='', tableHtml='', tableWrapStyle='', innerWidth=1200){
   const safeKey = esc(key || 'table');
   const width = Math.max(600, Number(innerWidth || 1200) || 1200);
+  window.setTimeout(() => updateTransactionHorizontalControls(key || 'table'), 0);
   return `
     <div id="transaction-table-${safeKey}" class="transaction-table-scroll" style="${tableWrapStyle}" onscroll="syncTransactionTableScroll('${safeKey}', 'table')">
       ${tableHtml}
     </div>
+    <div class="transaction-horizontal-controls" aria-label="Move transaction table left or right">
+      <button type="button" aria-label="Scroll table left" onclick="scrollTransactionTable('${safeKey}', -1)">←</button>
+      <input id="transaction-range-${safeKey}" class="transaction-horizontal-range" type="range" min="0" max="0" value="0" oninput="syncTransactionTableScroll('${safeKey}', 'range')" aria-label="Scroll transaction table left to right">
+      <button type="button" aria-label="Scroll table right" onclick="scrollTransactionTable('${safeKey}', 1)">→</button>
+    </div>
     <div id="transaction-scrollbar-${safeKey}" class="transaction-scrollbar-proxy" aria-label="Scroll transaction table sideways" onscroll="syncTransactionTableScroll('${safeKey}', 'proxy')">
-      <div style="width:${width}px;height:1px"></div>
+      <div id="transaction-scrollbar-spacer-${safeKey}" style="width:${width}px;height:1px"></div>
     </div>
   `;
 }
