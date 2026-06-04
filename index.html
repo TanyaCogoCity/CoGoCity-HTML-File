@@ -3887,12 +3887,13 @@ function saveNotifications(id, data){
 }
 function syncNotificationEmail(userId, item){
   if (backendAuthEnabled() && getBackendAccessToken() && isBackendUuid(userId)) {
-    backendAuthRequest('/notifications/sync', {
+    return backendAuthRequest('/notifications/sync', {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, items: [item] }),
       retryOnAuthFailure: false
     }).catch(error => console.warn('Backend notification email sync failed', error));
   }
+  return Promise.resolve(null);
 }
 function getPaymentLogs(){
   ensureBackendArraySettingLoaded('payment_logs', 'cogo_payment_logs');
@@ -5109,7 +5110,7 @@ function pushNotif(userId, title, action=''){
   const item = { id: uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() };
   items.unshift(item);
   saveNotifications(userId, items.slice(0, 50));
-  syncNotificationEmail(userId, item);
+  return { item, syncPromise: syncNotificationEmail(userId, item) };
 }
 function currentUserRoleLabel(){
   if (!currentUser) return '';
@@ -12176,7 +12177,20 @@ async function sendDirectOffer(studentId, serviceId=''){
   });
   if (!await persistApplicationsPermanently(apps, 'Backend booking offer failed. Please try again so the offer is saved for everyone.')) return;
   trackCogoEvent('booking_submitted', { source: 'student_service', value: rate * hours, currency: 'USD' });
-  pushNotif(s.userId, `You received an offer from ${currentUser.name}: "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
+  const notification = pushNotif(s.userId, `You received an offer from ${currentUser.name}: "${title}"`, {
+    type:'dashboard',
+    section:'jobs_bookings',
+    studentJobsTab:'jobs',
+    applicationId: apps[apps.length - 1]?.id || '',
+    dedupeKey: `direct_offer:${apps[apps.length - 1]?.id || title}:${s.userId}`
+  });
+  if (backendAuthEnabled() && notification?.syncPromise) {
+    const syncResult = await notification.syncPromise;
+    if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
+      toast('Offer saved, but Daniel notification was not confirmed. Please contact CoGo City support.');
+      return;
+    }
+  }
   closeModal();
   toast('Offer sent to student.');
 }
@@ -14639,7 +14653,20 @@ async function confirmSendOffer(appId){
   if (!await persistApplicationsPermanently(apps, 'Backend offer send failed. Please try again so the offer is saved for everyone.')) return;
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(a.postId, apps);
-  pushNotif(a.studentUserId, `You have an offer for "${title}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'jobs' });
+  const notification = pushNotif(a.studentUserId, `You have an offer for "${title}"`, {
+    type:'dashboard',
+    section:'jobs_bookings',
+    studentJobsTab:'jobs',
+    applicationId: a.id,
+    dedupeKey: `community_offer:${a.id}:${a.studentUserId}`
+  });
+  if (backendAuthEnabled() && notification?.syncPromise) {
+    const syncResult = await notification.syncPromise;
+    if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
+      toast('Offer saved, but student notification was not confirmed. Please contact CoGo City support.');
+      return;
+    }
+  }
   closeModal();
   toast('Offer sent.');
   renderDashboard();
