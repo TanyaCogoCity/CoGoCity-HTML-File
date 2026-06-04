@@ -17231,7 +17231,8 @@ async function persistAdminBlogPost(mode='draft'){
   syncAdminBlogDraftFromForm();
   adminBlogDraft.videoUrl = (document.getElementById('blog-video-url') || { value:'' }).value.trim();
   if (toastRequiredFields({ 'Article title':adminBlogDraft.title.trim() })) return;
-  const posts = getBlogPosts();
+  const previousPosts = getBlogPosts();
+  const posts = previousPosts.map(post => Object.assign({}, post));
   const existingPost = posts.find(post => String(post.id) === String(adminBlogDraft.id));
   adminBlogDraft.slug = ensureUniqueBlogSlug(adminBlogDraft.slug || adminBlogDraft.title, adminBlogDraft.id);
   if (!adminBlogDraft.excerpt.trim()) adminBlogDraft.excerpt = stripHtmlTags(adminBlogDraft.content || '').slice(0, 240);
@@ -17255,14 +17256,16 @@ async function persistAdminBlogPost(mode='draft'){
   else posts.unshift(normalizeBlogPostRecord(adminBlogDraft));
   const syncResult = await saveBlogPosts(posts);
   const statusLabel = getBlogPostStatusLabel(adminBlogDraft);
-  closeModal();
-  adminBlogDraft = null;
   if (syncResult && syncResult.ok) {
+    closeModal();
+    adminBlogDraft = null;
     toast(mode === 'publish' ? (statusLabel === 'Published' ? 'Article published to staging.' : 'Article scheduled and published to staging. It will publish on the selected date.') : 'Draft saved to staging.');
   } else if (syncResult && syncResult.reason === 'missing_backend_token') {
-    toast('Blog article saved in this browser only. Please sign in with the backend admin account to publish it to staging.');
+    ls('cogo_blog_posts', previousPosts);
+    toast('Blog article was not saved. Please sign in with the backend admin account so it can be saved to staging.');
   } else {
-    toast(`Blog article saved locally, but backend publish did not complete${syncResult && syncResult.error ? `: ${syncResult.error}` : '.'}`);
+    ls('cogo_blog_posts', previousPosts);
+    toast(`Blog article was not saved because staging did not confirm it${syncResult && syncResult.error ? `: ${syncResult.error}` : '.'}`);
   }
   dashSection = 'blog_manager';
   try {
@@ -17293,10 +17296,16 @@ async function deleteAdminBlogPost(postId){
   const post = getBlogPosts().find(item => String(item.id) === String(postId));
   if (!post) return toast('Article not found.');
   if (!confirm(`Delete "${stripHtmlTags(post.title)}"?`)) return;
-  const result = await saveBlogPosts(getBlogPosts().filter(item => String(item.id) !== String(postId)));
+  const previousPosts = getBlogPosts();
+  const result = await saveBlogPosts(previousPosts.filter(item => String(item.id) !== String(postId)));
   if (result && result.ok) toast('Blog article deleted from staging.');
-  else if (result && result.reason === 'missing_backend_token') toast('Blog article deleted in this browser only. Please sign in with the backend admin account to publish this change to staging.');
-  else toast(`Blog article deleted locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
+  else if (result && result.reason === 'missing_backend_token') {
+    ls('cogo_blog_posts', previousPosts);
+    toast('Blog article was not deleted. Please sign in with the backend admin account so staging can confirm the change.');
+  } else {
+    ls('cogo_blog_posts', previousPosts);
+    toast(`Blog article was not deleted because staging did not confirm it${result && result.error ? `: ${result.error}` : '.'}`);
+  }
   renderDashboard();
 }
 function handleAdminBlogSearchInput(value=''){
