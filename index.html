@@ -1669,7 +1669,7 @@ function userPaymentSetupReady(user=currentUser){
   return payerPaymentSetupReady(user);
 }
 function studentPayoutSetupReady(user=currentUser){
-  if (!user || !['student','employer','neighbor'].includes(user.role)) return true;
+  if (!user || user.role !== 'student') return true;
   const connect = userStripeOnboarding(user).connect || {};
   return Boolean(user.stripeConnectReady || connect.ready);
 }
@@ -1714,7 +1714,7 @@ function renderStripeOnboardingCard(){
   if (!stripeOnboardingEnabled()) return '';
   const status = userStripeOnboarding();
   const isPayer = ['employer','neighbor'].includes(currentUser.role);
-  const isPayout = ['student','employer','neighbor','admin'].includes(currentUser.role);
+  const isPayout = currentUser.role === 'student';
   const payer = status.payer || {};
   const connect = status.connect || {};
   const blocks = [];
@@ -1746,7 +1746,10 @@ function renderStripeOnboardingCard(){
     </div>
   `);
   if (!blocks.length) return '';
-  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">Payment setup is enabled for this staging environment. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.</div>${blocks.join('')}${renderUnder18StudentSafetyNotice()}</div>`;
+  const setupCopy = isPayout
+    ? 'Payout setup is enabled for this staging environment. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.'
+    : 'Payment setup is enabled for this staging environment. Card details are handled securely by Stripe, not stored in CoGo City.';
+  return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">${setupCopy}</div>${blocks.join('')}${renderUnder18StudentSafetyNotice()}</div>`;
 }
 function renderUnder18StudentSafetyNotice(){
   if (!currentUser || currentUser.role !== 'student') return '';
