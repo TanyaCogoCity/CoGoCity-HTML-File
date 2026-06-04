@@ -2682,7 +2682,7 @@ function ensureBackendBlogPostsLoaded(options={}){
 function saveBlogPosts(posts){
   const payload = ensureArray(posts).map(normalizeBlogPostRecord);
   ls('cogo_blog_posts', payload);
-  syncEntityToBackend('blog_posts', payload, { replace:true });
+  return syncEntityToBackend('blog_posts', payload, { replace:true });
 }
 function getBlogPostStatus(post){
   const publishDate = post && post.date ? new Date(post.date).getTime() : Date.now();
@@ -3883,7 +3883,7 @@ function getPaymentSettings(){
 function savePaymentSettings(v){
   const normalized = Object.assign(getPaymentSettings(), v || {}, { id:'payment_settings' });
   ls('cogo_payment_settings', normalized);
-  syncEntityToBackend('payment_settings', [normalized], { replace:true });
+  return syncEntityToBackend('payment_settings', [normalized], { replace:true });
 }
 function getLocalPaymentReferenceId(prefix){
   return `${prefix}_${uid('payref')}`;
@@ -3981,7 +3981,7 @@ function saveDirectJobPackages(items){
     active: item.active !== false
   }));
   ls('cogo_direct_job_packages', payload);
-  syncEntityToBackend('direct_job_packages', payload, { replace:true });
+  return syncEntityToBackend('direct_job_packages', payload, { replace:true });
 }
 
 function defaultAdvertisingSlots(){
@@ -15865,15 +15865,17 @@ function renderAdminPanel(el){
     </div>
   `;
 }
-function saveAdminPaymentSettings(){
+async function saveAdminPaymentSettings(){
   const studentCommissionPct = Number(document.getElementById('adminStudentCommissionPct').value || 0);
   const employerCommissionPct = Number(document.getElementById('adminEmployerCommissionPct').value || 0);
   const workshopCommissionPct = WORKSHOPS_ENABLED
     ? Number((document.getElementById('adminWorkshopCommissionPct') || {}).value || 0)
     : Number(getPaymentSettings().workshopCommissionPct || DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT);
   if (studentCommissionPct < 0 || employerCommissionPct < 0 || workshopCommissionPct < 0) return toast('Platform support fee percentages must be 0 or higher.');
-  savePaymentSettings({ studentCommissionPct, employerCommissionPct, workshopCommissionPct });
-  toast('Payment settings updated.');
+  const result = await savePaymentSettings({ studentCommissionPct, employerCommissionPct, workshopCommissionPct });
+  if (result && result.ok) toast('Payment settings published to staging.');
+  else if (result && result.reason === 'missing_backend_token') toast('Payment settings saved in this browser only. Please sign in with the backend admin account to publish them to staging.');
+  else toast(`Payment settings updated locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
   renderDashboard();
 }
 function renderAdminContentManager(el){
@@ -15941,7 +15943,7 @@ function renderAdminContentManager(el){
     <button class="btn btn-blue" onclick="saveAdminContentManager()">Save Content Settings</button>
   `;
 }
-function saveAdminContentManager(){
+async function saveAdminContentManager(){
   const current = getSiteSettings();
   const next = Object.assign({}, current, {
     nav_labels: {
@@ -15990,9 +15992,11 @@ function saveAdminContentManager(){
     footer_important_links: parseLinksTextarea((document.getElementById('cmFooterImportantLinks') || {}).value || '')
   });
   if (!next.footer_main_links.length || !next.footer_important_links.length) return toast('Please keep at least one link in each footer section.');
-  saveSiteSettings(next);
+  const result = await saveSiteSettings(next);
   applySiteSettings();
-  toast('Site content settings updated.');
+  if (result && result.ok) toast('Site content settings published to staging.');
+  else if (result && result.reason === 'missing_backend_token') toast('Site content saved in this browser only. Please sign in with the backend admin account to publish it to staging.');
+  else toast(`Site content updated locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
   renderDashboard();
 }
 function addAdminDirectJobPackageRow(){
@@ -16008,7 +16012,7 @@ function addAdminDirectJobPackageRow(){
   saveDirectJobPackages(packages);
   renderDashboard();
 }
-function saveAdminDirectJobPackages(){
+async function saveAdminDirectJobPackages(){
   const packages = getDirectJobPackages();
   const updated = packages.map(pkg => ({
     id: pkg.id,
@@ -16021,8 +16025,10 @@ function saveAdminDirectJobPackages(){
   if (updated.some(pkg => !pkg.label || !pkg.key)) return toast('Each package needs a label and key.');
   const uniqueKeys = new Set(updated.map(pkg => pkg.key));
   if (uniqueKeys.size !== updated.length) return toast('Package keys must be unique.');
-  saveDirectJobPackages(updated);
-  toast('Listing packages and fees updated.');
+  const result = await saveDirectJobPackages(updated);
+  if (result && result.ok) toast('Listing packages and fees published to staging.');
+  else if (result && result.reason === 'missing_backend_token') toast('Listing packages saved in this browser only. Please sign in with the backend admin account to publish them to staging.');
+  else toast(`Listing packages updated locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
   renderDashboard();
 }
 function getAdminRoleValueForUser(user){
@@ -17220,7 +17226,7 @@ function previewAdminBlogVideoLink(value){
   const el = document.getElementById('admin-blog-video-preview');
   if (el) el.innerHTML = renderVideoPreviewHtml(videoState.media_url || '', 'Article video');
 }
-function persistAdminBlogPost(mode='draft'){
+async function persistAdminBlogPost(mode='draft'){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
   adminBlogDraft.videoUrl = (document.getElementById('blog-video-url') || { value:'' }).value.trim();
@@ -17247,11 +17253,17 @@ function persistAdminBlogPost(mode='draft'){
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
   if (index >= 0) posts[index] = normalizeBlogPostRecord(adminBlogDraft);
   else posts.unshift(normalizeBlogPostRecord(adminBlogDraft));
-  saveBlogPosts(posts);
+  const syncResult = await saveBlogPosts(posts);
   const statusLabel = getBlogPostStatusLabel(adminBlogDraft);
   closeModal();
   adminBlogDraft = null;
-  toast(mode === 'publish' ? (statusLabel === 'Published' ? 'Article published.' : 'Article scheduled. It will publish on the selected date.') : 'Draft saved.');
+  if (syncResult && syncResult.ok) {
+    toast(mode === 'publish' ? (statusLabel === 'Published' ? 'Article published to staging.' : 'Article scheduled and published to staging. It will publish on the selected date.') : 'Draft saved to staging.');
+  } else if (syncResult && syncResult.reason === 'missing_backend_token') {
+    toast('Blog article saved in this browser only. Please sign in with the backend admin account to publish it to staging.');
+  } else {
+    toast(`Blog article saved locally, but backend publish did not complete${syncResult && syncResult.error ? `: ${syncResult.error}` : '.'}`);
+  }
   dashSection = 'blog_manager';
   try {
     renderDashboard();
@@ -17261,28 +17273,30 @@ function persistAdminBlogPost(mode='draft'){
     renderPage();
   }
 }
-function saveAdminBlogPost(){
+async function saveAdminBlogPost(){
   try {
-    persistAdminBlogPost('draft');
+    await persistAdminBlogPost('draft');
   } catch (error) {
     console.error('Save Article failed', error);
     toast(`Save failed: ${(error && error.message) || 'Unknown error'}`);
   }
 }
-function publishAdminBlogPost(){
+async function publishAdminBlogPost(){
   try {
-    persistAdminBlogPost('publish');
+    await persistAdminBlogPost('publish');
   } catch (error) {
     console.error('Publish Article failed', error);
     toast(`Publish failed: ${(error && error.message) || 'Unknown error'}`);
   }
 }
-function deleteAdminBlogPost(postId){
+async function deleteAdminBlogPost(postId){
   const post = getBlogPosts().find(item => String(item.id) === String(postId));
   if (!post) return toast('Article not found.');
   if (!confirm(`Delete "${stripHtmlTags(post.title)}"?`)) return;
-  saveBlogPosts(getBlogPosts().filter(item => String(item.id) !== String(postId)));
-  toast('Blog article deleted.');
+  const result = await saveBlogPosts(getBlogPosts().filter(item => String(item.id) !== String(postId)));
+  if (result && result.ok) toast('Blog article deleted from staging.');
+  else if (result && result.reason === 'missing_backend_token') toast('Blog article deleted in this browser only. Please sign in with the backend admin account to publish this change to staging.');
+  else toast(`Blog article deleted locally, but backend publish did not complete${result && result.error ? `: ${result.error}` : '.'}`);
   renderDashboard();
 }
 function handleAdminBlogSearchInput(value=''){
