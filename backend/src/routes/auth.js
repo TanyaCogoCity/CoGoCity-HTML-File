@@ -357,7 +357,10 @@ router.post('/login', async (req, res) => {
       where: { email: payload.email.toLowerCase() },
       include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
     });
-    if (!user || user.deletedAt || user.status !== 'active') return fail(res, 401, 'Invalid credentials');
+    if (!user || user.deletedAt) return fail(res, 401, 'Invalid credentials');
+    if (user.status !== 'active') {
+      return fail(res, 403, 'This account has been suspended. Please contact support@cogocity.com for help.');
+    }
 
     const valid = await comparePassword(payload.password, user.passwordHash);
     if (!valid) return fail(res, 401, 'Invalid credentials');
