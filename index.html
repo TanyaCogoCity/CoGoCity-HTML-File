@@ -11194,7 +11194,8 @@ async function deleteImageFromLibrary(imageId=''){
       return;
     }
     ls('cogo_images', previousImages.filter(image => String(image.id) !== String(imageId)));
-    toast('Image deleted from staging library.');
+    const deleteData = syncResult.data?.data || syncResult.data || {};
+    toast(deleteData.already_missing ? 'Image was already removed from staging library.' : 'Image deleted from staging library.');
   } catch (error) {
     ls('cogo_images', previousImages);
     toast(`Image was not deleted because staging did not confirm it: ${(error && error.message) || 'Unknown error'}`);

@@ -414,18 +414,19 @@ router.delete('/:entity/:recordId', requireAuth, async (req, res) => {
   if (ADMIN_WRITE_ENTITIES.has(entity) && req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
 
   try {
-    await prisma.syncRecord.update({
-      where: { entity_recordId: { entity, recordId: String(req.params.recordId) } },
+    const recordId = String(req.params.recordId);
+    const result = await prisma.syncRecord.updateMany({
+      where: { entity, recordId },
       data: { deletedAt: new Date() },
     });
     await writeAuditLog({
       userId: req.user.id,
       action: `sync.${entity}.delete`,
       entityType: 'sync_record',
-      entityId: String(req.params.recordId),
-      payload: null,
+      entityId: recordId,
+      payload: { matched_count: result.count },
     });
-    return ok(res, { entity, record_id: String(req.params.recordId) });
+    return ok(res, { entity, record_id: recordId, deleted: result.count > 0, already_missing: result.count === 0 });
   } catch (error) {
     return fail(res, 404, 'Could not delete synced record', error.message);
   }
