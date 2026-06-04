@@ -384,11 +384,23 @@ router.post('/login', async (req, res) => {
     const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
     const payload = schema.parse(req.body || {});
 
-    const user = await prisma.user.findUnique({
-      where: { email: payload.email.toLowerCase() },
+    const email = normalizeEmail(payload.email);
+    const emailHash = reactivationEmailHash(email);
+    const directUser = await prisma.user.findUnique({
+      where: { email },
       include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
     });
-    if (!user || user.deletedAt) return fail(res, 401, 'Invalid credentials');
+    const deletedByHash = !directUser && emailHash
+      ? await prisma.user.findFirst({
+        where: { reactivationEmailHash: emailHash, deletedAt: { not: null } },
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+      })
+      : null;
+    const user = directUser || deletedByHash;
+    if (!user) return fail(res, 401, 'Invalid credentials');
+    if (user.deletedAt) {
+      return fail(res, 403, 'This account has been deleted. Click Forgot Password to reset your password and access your account.');
+    }
     if (user.status !== 'active') {
       return fail(res, 403, 'This account has been suspended. Please contact support@cogocity.com for help.');
     }
