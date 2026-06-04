@@ -2395,6 +2395,35 @@ async function syncReferencedImagesBeforeCommunityPosts(posts=[]){
   if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
   return { ok:true };
 }
+async function syncReferencedImagesBeforeBlogPosts(posts=[]){
+  const referencedIds = new Set();
+  ensureArray(posts).forEach(post => {
+    if (!post) return;
+    [
+      post.featured_image,
+      post.featuredImage,
+      post.image_id,
+      post.media_type === 'image' ? post.media_url : '',
+      post.articleMediaImage,
+    ].forEach(imageId => {
+      const cleanId = String(imageId || '').trim();
+      if (isImageRecordId(cleanId)) referencedIds.add(cleanId);
+    });
+    ensureArray(post.entity_images || post.images).forEach(imageId => {
+      const cleanId = String(imageId || '').trim();
+      if (isImageRecordId(cleanId)) referencedIds.add(cleanId);
+    });
+  });
+  if (!referencedIds.size || !backendAuthEnabled()) return { ok:true, skipped:true };
+  const images = getImages();
+  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
+  const referencedImages = images.filter(image => referencedIds.has(String(image.id)));
+  const result = await syncEntityToBackend('images', referencedImages, { replace:false });
+  if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
+  if (result && result.ok === false) return result;
+  return { ok:true };
+}
 function getImageById(imageId=''){
   return getImages().find(image => String(image.id) === String(imageId)) || null;
 }
@@ -17254,6 +17283,18 @@ async function persistAdminBlogPost(mode='draft'){
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
   if (index >= 0) posts[index] = normalizeBlogPostRecord(adminBlogDraft);
   else posts.unshift(normalizeBlogPostRecord(adminBlogDraft));
+  const imageSyncResult = await syncReferencedImagesBeforeBlogPosts(posts);
+  if (imageSyncResult && imageSyncResult.ok === false) {
+    ls('cogo_blog_posts', previousPosts);
+    if (imageSyncResult.reason === 'missing_backend_token') {
+      toast('Blog article was not saved. Please sign in with the backend admin account so images and the article can be saved to staging.');
+    } else {
+      toast(`Blog article was not saved because staging did not confirm its images${imageSyncResult.error ? `: ${imageSyncResult.error}` : '.'}`);
+    }
+    dashSection = 'blog_manager';
+    renderDashboard();
+    return;
+  }
   const syncResult = await saveBlogPosts(posts);
   const statusLabel = getBlogPostStatusLabel(adminBlogDraft);
   if (syncResult && syncResult.ok) {
