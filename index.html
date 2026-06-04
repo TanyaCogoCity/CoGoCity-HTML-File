@@ -1706,7 +1706,7 @@ function requireEmployerPaymentSetup(actionLabel='interact with students'){
 function renderStripeOnboardingCard(){
   if (!stripeOnboardingEnabled()) return '';
   const status = userStripeOnboarding();
-  const isPayer = ['student','employer','neighbor'].includes(currentUser.role);
+  const isPayer = ['employer','neighbor'].includes(currentUser.role);
   const isPayout = ['student','employer','neighbor','admin'].includes(currentUser.role);
   const payer = status.payer || {};
   const connect = status.connect || {};
