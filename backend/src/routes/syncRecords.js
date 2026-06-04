@@ -8,6 +8,8 @@ const { writeAuditLog } = require('../lib/audit');
 const config = require('../config');
 const { stripeConnectReady } = require('../lib/onboardingGate');
 const { notifyAdminWorkshopListed } = require('../lib/adminEmails');
+const { createNotification } = require('../lib/notifications');
+const { notificationType } = require('../lib/compat');
 
 const router = express.Router();
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
@@ -80,6 +82,78 @@ function normalizeRecord(record = {}, entity = '') {
   const payload = { ...record, id };
   payload.updatedAt = payload.updatedAt || payload.updated_at || new Date().toISOString();
   return { id, payload };
+}
+
+function isOfferStatus(value = '') {
+  return ['offer_sent', 'offer_pending'].includes(String(value || '').trim().toLowerCase());
+}
+
+function syncedApplicationStudentId(payload = {}) {
+  return String(payload.studentUserId || payload.student_user_id || payload.studentId || payload.student_id || '').trim();
+}
+
+function syncedApplicationEmployerId(payload = {}) {
+  return String(payload.employerId || payload.employer_id || '').trim();
+}
+
+async function createSyncedApplicationOfferNotifications(normalized = [], req) {
+  if (!Array.isArray(normalized) || !normalized.length) return 0;
+  let created = 0;
+  for (const record of normalized) {
+    const payload = record.payload || {};
+    const studentId = syncedApplicationStudentId(payload);
+    const employerId = syncedApplicationEmployerId(payload);
+    if (!studentId || !isOfferStatus(payload.status)) continue;
+    if (req.user.role !== 'admin' && employerId && employerId !== req.user.id) continue;
+    if (req.user.role !== 'admin' && !employerId) continue;
+
+    const receiptId = `${studentId}:${record.id}:offer_sent`;
+    const existing = await prisma.syncRecord.findUnique({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+    });
+    if (existing && !existing.deletedAt) continue;
+
+    const employerName = String(payload.employerName || payload.employer_name || req.user.displayName || 'A CoGo City user').trim();
+    const jobTitle = String(payload.jobTitle || payload.job_title || payload.studentServiceTitle || payload.student_service_title || 'a job').trim();
+    const notification = await createNotification({
+      data: {
+        userId: studentId,
+        type: notificationType('application'),
+        title: `You received an offer from ${employerName}`,
+        body: `${employerName} sent you an offer for "${jobTitle}". Open your dashboard to review it.`,
+        link: `/dashboard?section=jobs_bookings&studentJobsTab=jobs&application=${encodeURIComponent(record.id)}`,
+      },
+    });
+
+    await prisma.syncRecord.upsert({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+      create: {
+        entity: 'notification_email_receipts',
+        recordId: receiptId,
+        payload: {
+          user_id: studentId,
+          frontend_notification_id: record.id,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+      update: {
+        deletedAt: null,
+        payload: {
+          user_id: studentId,
+          frontend_notification_id: record.id,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+    });
+    created += 1;
+  }
+  return created;
 }
 
 function serialize(row) {
@@ -393,16 +467,19 @@ router.post('/:entity', requireAuth, async (req, res) => {
     const applicationCountUpdates = entity === 'applications'
       ? await refreshCommunityPostApplicationCounts(normalized.map((record) => record.payload?.postId || record.payload?.post_id))
       : 0;
+    const applicationNotificationUpdates = entity === 'applications'
+      ? await createSyncedApplicationOfferNotifications(normalized, req)
+      : 0;
 
     await writeAuditLog({
       userId: req.user.id,
       action: `sync.${entity}`,
       entityType: 'sync_record',
       entityId: entity,
-      payload: { count: normalized.length, mirrored_count: mirrored.length, application_count_updates: applicationCountUpdates },
+      payload: { count: normalized.length, mirrored_count: mirrored.length, application_count_updates: applicationCountUpdates, application_notification_updates: applicationNotificationUpdates },
     });
 
-    return ok(res, { entity, count: normalized.length, mirrored, application_count_updates: applicationCountUpdates });
+    return ok(res, { entity, count: normalized.length, mirrored, application_count_updates: applicationCountUpdates, application_notification_updates: applicationNotificationUpdates });
   } catch (error) {
     return fail(res, 400, 'Could not sync records', error.message);
   }

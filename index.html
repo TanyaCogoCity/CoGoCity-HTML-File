@@ -5110,7 +5110,8 @@ function pushNotif(userId, title, action=''){
   const item = { id: uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() };
   items.unshift(item);
   saveNotifications(userId, items.slice(0, 50));
-  return { item, syncPromise: syncNotificationEmail(userId, item) };
+  const canSyncDirectly = currentUser && (currentUser.role === 'admin' || String(currentUser.id) === String(userId));
+  return { item, syncPromise: canSyncDirectly ? syncNotificationEmail(userId, item) : Promise.resolve(null) };
 }
 function currentUserRoleLabel(){
   if (!currentUser) return '';
@@ -12184,7 +12185,7 @@ async function sendDirectOffer(studentId, serviceId=''){
     applicationId: apps[apps.length - 1]?.id || '',
     dedupeKey: `direct_offer:${apps[apps.length - 1]?.id || title}:${s.userId}`
   });
-  if (backendAuthEnabled() && notification?.syncPromise) {
+  if (backendAuthEnabled() && notification?.syncPromise && (currentUser.role === 'admin' || String(currentUser.id) === String(s.userId))) {
     const syncResult = await notification.syncPromise;
     if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
       toast('Offer saved, but Daniel notification was not confirmed. Please contact CoGo City support.');
@@ -14660,7 +14661,7 @@ async function confirmSendOffer(appId){
     applicationId: a.id,
     dedupeKey: `community_offer:${a.id}:${a.studentUserId}`
   });
-  if (backendAuthEnabled() && notification?.syncPromise) {
+  if (backendAuthEnabled() && notification?.syncPromise && (currentUser.role === 'admin' || String(currentUser.id) === String(a.studentUserId))) {
     const syncResult = await notification.syncPromise;
     if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
       toast('Offer saved, but student notification was not confirmed. Please contact CoGo City support.');
