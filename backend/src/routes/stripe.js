@@ -448,6 +448,72 @@ function failPayoutSafety(res, validation) {
   return fail(res, validation.status || 409, validation.message || 'Student payout setup is not ready', validation.requirements || validation);
 }
 
+async function createPaymentIssueNotification({ userId, title, body, link, type = 'payment' }) {
+  if (!userId || !title || !body) return null;
+  const safeLink = link || '/dashboard?section=transactions';
+  const existing = await prisma.notification.findFirst({
+    where: {
+      userId,
+      title,
+      body,
+      link: safeLink,
+      isRead: false,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (existing) return existing;
+  return createNotification({
+    data: {
+      userId,
+      type: notificationType(type),
+      title,
+      body,
+      link: safeLink,
+    },
+  });
+}
+
+async function notifyProjectPaymentIssue(project, message = '') {
+  if (!project?.employerId) return null;
+  const title = 'Project payment needs attention';
+  const projectTitle = project.job?.title || 'your project';
+  const body = message || `Payment for ${projectTitle} did not go through. Please check or update your card, then try again.`;
+  return createPaymentIssueNotification({
+    userId: project.employerId,
+    title,
+    body,
+    link: `/dashboard?section=jobs_bookings&project=${project.id}`,
+    type: 'payment',
+  });
+}
+
+async function notifyProjectPayoutSetupIssue(project, validation = {}) {
+  if (!project?.studentId) return null;
+  const projectTitle = project.job?.title || 'your project';
+  return createPaymentIssueNotification({
+    userId: project.studentId,
+    title: 'Stripe payout setup needs attention',
+    body: `Payment for ${projectTitle} cannot be collected or released until your Stripe Connect payout setup is complete. Please finish payout setup in My Profile.`,
+    link: '/dashboard?section=profile',
+    type: 'payout',
+  }).catch(async (error) => {
+    await writeAuditLog({ userId: project.studentId, action: 'notification.project_payout_issue.failed', entityType: 'project', entityId: project.id, payload: { error: error.message, validation } });
+    return null;
+  });
+}
+
+async function notifyWorkshopHostPayoutSetupIssue(workshop, hostId) {
+  const userId = hostId || workshop?.createdBy;
+  if (!userId || !workshop?.id) return null;
+  return createPaymentIssueNotification({
+    userId,
+    title: 'Complete payout setup for paid workshop registrations',
+    body: `${workshop.title || 'Your paid workshop'} cannot accept paid registrations until Stripe Connect payout setup is complete. Please finish payout setup in My Profile.`,
+    link: '/dashboard?section=profile',
+    type: 'workshop',
+  });
+}
+
 async function markTransactionFromIntent(paymentIntent) {
   const tx = await prisma.transaction.findFirst({ where: { stripePaymentIntentId: paymentIntent.id } });
   if (!tx) return null;
@@ -873,6 +939,15 @@ async function completeWorkshopCheckoutSession(session) {
       });
     }
   }
+  if (paymentStatus === 'failed' && enrollment.paymentStatus !== 'failed') {
+    await createPaymentIssueNotification({
+      userId: updated.userId,
+      title: 'Workshop payment did not go through',
+      body: `Registration for ${updated.workshop.title} was not completed because Stripe did not complete the payment. Please check or update your card, then try again.`,
+      link: `/workshops?id=${updated.workshop.id}`,
+      type: 'payment',
+    });
+  }
 
   return updated;
 }
@@ -918,6 +993,15 @@ async function completeJobCheckoutSession(session) {
         body: `${job.title} is now active on CoGo City.`,
         link: `/dashboard?section=my_jobs&job=${job.id}`,
       },
+    });
+  }
+  if (paymentStatus === 'failed' && existing.paymentStatus !== 'failed') {
+    await createPaymentIssueNotification({
+      userId: job.createdBy,
+      title: 'Job listing payment did not go through',
+      body: `${job.title} was not activated because Stripe did not complete the payment. Please check or update your card, then try again.`,
+      link: `/dashboard?section=my_jobs&job=${job.id}`,
+      type: 'payment',
     });
   }
 
@@ -1160,7 +1244,10 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
   if (loaded.error) return fail(res, loaded.error[0], loaded.error[1]);
   const { project, tx } = loaded;
   const payoutValidation = await validateProjectPayoutSafetyWithAutoHeal({ project, transaction: tx });
-  if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
+  if (!payoutValidation.ok) {
+    await notifyProjectPayoutSetupIssue(project, payoutValidation);
+    return failPayoutSafety(res, payoutValidation);
+  }
 
   try {
     const existingIntent = tx.stripePaymentIntentId ? await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId) : null;
@@ -1207,6 +1294,7 @@ router.post('/create-payment-intent', requireAuth, async (req, res) => {
       project_id: project.id,
     });
   } catch (error) {
+    await notifyProjectPaymentIssue(project, `Payment for ${project.job?.title || 'your project'} did not go through. Please check or update your card, then try again.`);
     return fail(res, 400, 'Failed to create payment intent', error.message);
   }
 });
@@ -1243,6 +1331,7 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
     try {
       host = host.stripeAccountId ? await syncConnectAccount(host) : host;
     } catch (error) {
+      await notifyWorkshopHostPayoutSetupIssue(workshop, workshop.createdBy);
       return fail(res, 402, 'Workshop provider must refresh Stripe Connect payout setup before paid registrations can be accepted.', {
         payout_setup_required: true,
         payout_setup_ready: false,
@@ -1251,6 +1340,7 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
       });
     }
     if (!stripeConnectReady(host)) {
+      await notifyWorkshopHostPayoutSetupIssue(workshop, host.id || workshop.createdBy);
       return fail(res, 402, 'Workshop provider must complete Stripe Connect payout setup before paid registrations can be accepted.', {
         payout_setup_required: true,
         payout_setup_ready: false,
@@ -1353,6 +1443,13 @@ router.post('/create-workshop-checkout-session', requireAuth, async (req, res) =
     await writeAuditLog({ userId: req.user.id, action: 'workshop.checkout.create', entityType: 'workshop_enrollment', entityId: enrollment.id, payload: { checkoutSessionId: session.id } });
     return ok(res, serializeCheckoutSession(session, { workshop_id: workshop.id, enrollment_id: enrollment.id }));
   } catch (error) {
+    await createPaymentIssueNotification({
+      userId: req.user.id,
+      title: 'Workshop payment setup needs attention',
+      body: `Checkout for ${workshop.title || 'this workshop'} could not be started. Please check or update your card, then try again.`,
+      link: `/workshops?id=${workshop.id}`,
+      type: 'payment',
+    });
     return fail(res, 400, 'Failed to create workshop checkout session', error.message);
   }
 });
@@ -1680,7 +1777,10 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
   const { project, tx } = loaded;
   if (!tx.stripePaymentIntentId) return fail(res, 409, 'Project payment has not been funded with Stripe');
   const payoutValidation = await validateProjectPayoutSafetyWithAutoHeal({ project, transaction: tx });
-  if (!payoutValidation.ok) return failPayoutSafety(res, payoutValidation);
+  if (!payoutValidation.ok) {
+    await notifyProjectPayoutSetupIssue(project, payoutValidation);
+    return failPayoutSafety(res, payoutValidation);
+  }
 
   try {
     const paymentIntent = await stripe.paymentIntents.retrieve(tx.stripePaymentIntentId);
@@ -1710,7 +1810,10 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
     if (finalAmounts.amountTotalCents > capturableCents) {
       const paymentMethodId = project.employer?.stripeDefaultPaymentMethodId || activePaymentIntent.payment_method;
       const customerId = project.employer?.stripeCustomerId || (typeof activePaymentIntent.customer === 'string' ? activePaymentIntent.customer : activePaymentIntent.customer?.id);
-      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than the amount held in escrow and no saved payment method is available for the final total');
+      if (!paymentMethodId) {
+        await notifyProjectPaymentIssue(project, `Final payment for ${project.job?.title || 'your project'} needs attention because no saved payment method is available for the final total. Please update your card, then try again.`);
+        return fail(res, 409, 'Final invoice is higher than the amount held in escrow and no saved payment method is available for the final total');
+      }
 
       replacementIntent = await stripe.paymentIntents.create(
         {
@@ -1742,7 +1845,10 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
         },
         { idempotencyKey: `project:${project.id}:tx:${tx.id}:final-reauthorization:${finalAmounts.amountTotalCents}:v1:connect` }
       );
-      if (replacementIntent.status !== 'succeeded') return fail(res, 402, `Final invoice charge did not complete (${replacementIntent.status})`);
+      if (replacementIntent.status !== 'succeeded') {
+        await notifyProjectPaymentIssue(project, `Final payment for ${project.job?.title || 'your project'} did not go through. Please check or update your card, then try again.`);
+        return fail(res, 402, `Final invoice charge did not complete (${replacementIntent.status})`);
+      }
 
       try {
         await stripe.paymentIntents.cancel(activePaymentIntent.id, { cancellation_reason: 'abandoned' });
@@ -1756,7 +1862,10 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
       applicationFeeToCaptureCents = finalAmounts.platformFeeCents;
     }
 
-    if (amountToCapture < finalAmounts.amountTotalCents && !replacementIntent) return fail(res, 409, 'Final invoice exceeds the authorized Stripe amount and could not be reauthorized');
+    if (amountToCapture < finalAmounts.amountTotalCents && !replacementIntent) {
+      await notifyProjectPaymentIssue(project, `Final payment for ${project.job?.title || 'your project'} could not be reauthorized. Please check or update your card, then try again.`);
+      return fail(res, 409, 'Final invoice exceeds the authorized Stripe amount and could not be reauthorized');
+    }
     const captured = replacementIntent || await stripe.paymentIntents.capture(activePaymentIntent.id, { amount_to_capture: amountToCapture, application_fee_amount: applicationFeeToCaptureCents });
     const synced = await syncTransactionStripeReporting(tx.id, captured.id, replacementIntent ? { payoutStatus: 'reauthorized' } : {});
 
@@ -1776,6 +1885,7 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
 
     return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, project_id: project.id, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
   } catch (error) {
+    await notifyProjectPaymentIssue(project, `Payment for ${project.job?.title || 'your project'} did not go through. Please check or update your card, then try again.`);
     return fail(res, 400, 'Failed to capture payment intent', error.message);
   }
 });
@@ -1801,7 +1911,16 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
   try {
     const student = await prisma.user.findUnique({ where: { id: studentUserId } });
     const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
-    if (!requirements.payout_ready) return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
+    if (!requirements.payout_ready) {
+      await createPaymentIssueNotification({
+        userId: studentUserId,
+        title: 'Stripe payout setup needs attention',
+        body: `Payment for ${jobTitle} cannot be collected or released until your Stripe Connect payout setup is complete. Please finish payout setup in My Profile.`,
+        link: '/dashboard?section=profile',
+        type: 'payout',
+      });
+      return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
+    }
 
     const marketplace = marketplacePaymentIntentData({
       tx: { amountTotal, studentPayout, platformFee: platformFeeTotal },
@@ -1871,6 +1990,13 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
       stripe_status: paymentIntent.status,
     });
   } catch (error) {
+    await createPaymentIssueNotification({
+      userId: req.user.id,
+      title: 'Project payment did not go through',
+      body: `Payment for ${jobTitle} did not go through. Please check or update your card, then try again.`,
+      link: '/dashboard?section=transactions',
+      type: 'payment',
+    });
     return fail(res, 400, 'Failed to create Stripe project payment intent', error.message);
   }
 });
@@ -1889,7 +2015,16 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
     if (studentUserId) {
       const student = await prisma.user.findUnique({ where: { id: studentUserId } });
       const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
-      if (!requirements.payout_ready) return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
+      if (!requirements.payout_ready) {
+        await createPaymentIssueNotification({
+          userId: studentUserId,
+          title: 'Stripe payout setup needs attention',
+          body: `Payment for ${paymentIntent.metadata?.job_title || 'your project'} cannot be released until your Stripe Connect payout setup is complete. Please finish payout setup in My Profile.`,
+          link: '/dashboard?section=profile',
+          type: 'payout',
+        });
+        return fail(res, 409, 'Student payout setup must be completed in Stripe before paid project funds can be collected or released.', requirements);
+      }
     }
     if (paymentIntent.status === 'succeeded') {
       await updateManualProjectTransactionForIntent(paymentIntent, {
@@ -1925,7 +2060,16 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       const paymentMethodId = typeof activePaymentIntent.payment_method === 'string' ? activePaymentIntent.payment_method : activePaymentIntent.payment_method?.id;
       const customerId = typeof activePaymentIntent.customer === 'string' ? activePaymentIntent.customer : activePaymentIntent.customer?.id;
       if (!destination) return fail(res, 409, 'Final invoice is higher than escrow, but the original Stripe payment is missing student payout destination data');
-      if (!paymentMethodId) return fail(res, 409, 'Final invoice is higher than escrow and no saved payment method is available for the final total');
+      if (!paymentMethodId) {
+        await createPaymentIssueNotification({
+          userId: req.user.id,
+          title: 'Project payment needs attention',
+          body: `Final payment for ${activePaymentIntent.metadata?.job_title || 'your project'} needs attention because no saved payment method is available for the final total. Please update your card, then try again.`,
+          link: '/dashboard?section=transactions',
+          type: 'payment',
+        });
+        return fail(res, 409, 'Final invoice is higher than escrow and no saved payment method is available for the final total');
+      }
 
       replacementIntent = await stripe.paymentIntents.create(
         {
@@ -1957,7 +2101,16 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
         },
         { idempotencyKey: `manual-project:${activePaymentIntent.id}:final-reauthorization:${finalAmounts.amountTotalCents}:v1:connect` }
       );
-      if (replacementIntent.status !== 'succeeded') return fail(res, 402, `Final invoice charge did not complete (${replacementIntent.status})`);
+      if (replacementIntent.status !== 'succeeded') {
+        await createPaymentIssueNotification({
+          userId: req.user.id,
+          title: 'Project payment did not go through',
+          body: `Final payment for ${activePaymentIntent.metadata?.job_title || 'your project'} did not go through. Please check or update your card, then try again.`,
+          link: '/dashboard?section=transactions',
+          type: 'payment',
+        });
+        return fail(res, 402, `Final invoice charge did not complete (${replacementIntent.status})`);
+      }
 
       try {
         await stripe.paymentIntents.cancel(activePaymentIntent.id, { cancellation_reason: 'abandoned' });
@@ -1972,7 +2125,16 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
       applicationFeeToCaptureCents = finalAmounts.platformFeeCents;
     }
 
-    if (amountToCapture < finalAmounts.amountTotalCents && !replacementIntent) return fail(res, 409, 'Final invoice exceeds the authorized Stripe amount and could not be reauthorized');
+    if (amountToCapture < finalAmounts.amountTotalCents && !replacementIntent) {
+      await createPaymentIssueNotification({
+        userId: req.user.id,
+        title: 'Project payment needs attention',
+        body: `Final payment for ${activePaymentIntent.metadata?.job_title || 'your project'} could not be reauthorized. Please check or update your card, then try again.`,
+        link: '/dashboard?section=transactions',
+        type: 'payment',
+      });
+      return fail(res, 409, 'Final invoice exceeds the authorized Stripe amount and could not be reauthorized');
+    }
     const captured = replacementIntent || await stripe.paymentIntents.capture(activePaymentIntent.id, {
       amount_to_capture: amountToCapture,
       application_fee_amount: applicationFeeToCaptureCents,
@@ -2024,6 +2186,13 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
     await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.capture', entityType: 'stripe_payment_intent', entityId: captured.id, payload: { amount: captured.amount_received, amountCaptured: fromCents(amountToCapture), finalAmount: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, replacementPaymentIntentId: replacementIntent?.id || null } });
     return ok(res, { payment_intent_id: captured.id, replacement_payment_intent_id: replacementIntent?.id || null, replacement_status: replacementIntent ? 'paid' : 'none', status: 'paid', stripe_status: captured.status, amount_captured: fromCents(amountToCapture), final_amount_total: finalAmounts.amountTotal });
   } catch (error) {
+    await createPaymentIssueNotification({
+      userId: req.user.id,
+      title: 'Project payment did not go through',
+      body: 'Project payment did not go through. Please check or update your card, then try again.',
+      link: '/dashboard?section=transactions',
+      type: 'payment',
+    });
     return fail(res, 400, 'Failed to capture Stripe project payment', error.message);
   }
 });
@@ -2048,7 +2217,16 @@ router.post('/manual-project-transfer', requireAuth, async (req, res) => {
 
     const student = await prisma.user.findUnique({ where: { id: studentUserId } });
     const requirements = await payoutSafetyRequirementsWithAutoHeal(student || { id: studentUserId });
-    if (!requirements.payout_ready) return fail(res, 409, 'Student Stripe payout account is not ready', requirements);
+    if (!requirements.payout_ready) {
+      await createPaymentIssueNotification({
+        userId: studentUserId,
+        title: 'Stripe payout setup needs attention',
+        body: 'Your project payout cannot be transferred until your Stripe Connect payout setup is complete. Please finish payout setup in My Profile.',
+        link: '/dashboard?section=profile',
+        type: 'payout',
+      });
+      return fail(res, 409, 'Student Stripe payout account is not ready', requirements);
+    }
     const latestCharge = typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id;
     const transfer = await stripe.transfers.create(
       {
