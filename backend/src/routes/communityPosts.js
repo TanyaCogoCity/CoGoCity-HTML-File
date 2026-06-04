@@ -66,11 +66,20 @@ router.get('/community-posts', async (_req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 250,
     });
-    const counts = await applicationCountsForPosts(rows.map((row) => row.id));
+    const authorIds = [...new Set(rows.map((row) => row.authorId).filter(Boolean))];
+    const activeAuthors = authorIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: authorIds }, deletedAt: null, status: 'active' },
+          select: { id: true },
+        })
+      : [];
+    const activeAuthorIds = new Set(activeAuthors.map((user) => user.id));
+    const visibleRows = rows.filter((row) => !row.authorId || activeAuthorIds.has(row.authorId));
+    const counts = await applicationCountsForPosts(visibleRows.map((row) => row.id));
     res.json({
       ok: true,
       data: {
-        posts: rows.map((row) => {
+        posts: visibleRows.map((row) => {
           const post = serializeCommunityPost(row);
           if (post.isJob) post.application_count = counts.get(row.id) || 0;
           return post;
