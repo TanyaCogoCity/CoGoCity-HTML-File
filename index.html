@@ -16164,15 +16164,41 @@ function saveAdminUserRole(userId){
   toast('User role updated.');
   renderDashboard();
 }
-function toggleAdminUserStatus(userId){
+async function toggleAdminUserStatus(userId){
   const users = getUsers();
-  const user = users.find(item => item.id === userId);
+  const user = getSelectedAdminUser()
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || users.find(item => String(item.id) === String(userId));
   if (!user) return toast('User not found.');
-  if (user.id === currentUser.id) return toast('You cannot suspend your own admin account.');
-  user.status = user.status === 'suspended' ? 'active' : 'suspended';
+  if (String(user.id) === String(currentUser.id)) return toast('You cannot suspend your own admin account.');
+  const nextStatus = user.status === 'suspended' ? 'active' : 'suspended';
+  if (backendAuthEnabled() && adminBackendUsersLoaded && user.backendAuth) {
+    try {
+      const updatedBackendUser = await backendAuthRequest(`/auth/admin/users/${encodeURIComponent(user.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify({ status: nextStatus })
+      });
+      const mappedBackendUser = mapBackendUser(updatedBackendUser, user);
+      adminBackendUsers = adminBackendUsers.map(item => String(item.id) === String(user.id) ? mappedBackendUser : item);
+      saveUsers(users.map(item => String(item.id) === String(user.id) ? Object.assign({}, item, mappedBackendUser) : item));
+      logAdminAction(nextStatus === 'suspended' ? 'user_suspended' : 'user_reactivated', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(mappedBackendUser) });
+      toast(nextStatus === 'suspended' ? 'User suspended.' : 'User reactivated.');
+      adminPendingUserAction = '';
+      loadBackendAdminUsers({ rerender:false });
+      renderDashboard();
+      return;
+    } catch (error) {
+      return toast(userFacingBackendError(error, 'Could not update this user in the staging database.'));
+    }
+  }
+  if (backendAuthEnabled()) {
+    return toast('This user is not loaded from the staging database. Refresh Users and try again.');
+  }
+  user.status = nextStatus;
   saveUsers(users);
-  logAdminAction(user.status === 'suspended' ? 'user_suspended' : 'user_reactivated', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
-  toast(user.status === 'suspended' ? 'User suspended.' : 'User reactivated.');
+  logAdminAction(nextStatus === 'suspended' ? 'user_suspended' : 'user_reactivated', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast(nextStatus === 'suspended' ? 'User suspended.' : 'User reactivated.');
+  adminPendingUserAction = '';
   renderDashboard();
 }
 function deleteAdminUser(userId){
@@ -16277,9 +16303,11 @@ function sendAdminPasswordReset(userId){
   toast(`Password reset email queued for ${user.email || user.name}.`);
 }
 function openAdminDeleteUserModal(userId){
-  const user = getUserById(userId);
+  const user = getSelectedAdminUser()
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || getUserById(userId);
   if (!user) return toast('User not found.');
-  if (user.id === currentUser.id) return toast('You cannot delete your own admin account.');
+  if (String(user.id) === String(currentUser.id)) return toast('You cannot delete your own admin account.');
   openModal('Delete User', `
     <div class="warning" style="margin-bottom:14px">Are you sure you want to permanently delete this user?</div>
     <div class="small muted" style="margin-bottom:18px">This action is irreversible and removes the user account from the database.</div>
@@ -16735,7 +16763,7 @@ function renderAdminUsersResults(){
   const wrap = document.getElementById('admin-users-results');
   if (!wrap) return;
   const users = getFilteredAdminUsers();
-  if (adminSelectedUserId && !users.some(user => user.id === adminSelectedUserId)) {
+  if (adminSelectedUserId && !users.some(user => String(user.id) === String(adminSelectedUserId))) {
     adminSelectedUserId = '';
     adminPendingUserAction = '';
   }
@@ -16759,8 +16787,8 @@ function renderAdminUsersResults(){
           ${users.map(user => {
             const nameParts = splitAdminUserName(user);
             return `
-              <tr onclick="selectAdminUser('${esc(user.id)}')" style="cursor:pointer;background:${adminSelectedUserId === user.id ? '#E0F2FE' : 'transparent'}">
-                <td style="padding:12px;border-bottom:1px solid var(--border)"><input type="radio" name="adminUserSelection" ${adminSelectedUserId === user.id ? 'checked' : ''} onclick="event.stopPropagation();selectAdminUser('${esc(user.id)}')"></td>
+              <tr onclick="selectAdminUser('${esc(user.id)}')" style="cursor:pointer;background:${String(adminSelectedUserId) === String(user.id) ? '#E0F2FE' : 'transparent'}">
+                <td style="padding:12px;border-bottom:1px solid var(--border)"><input type="radio" name="adminUserSelection" ${String(adminSelectedUserId) === String(user.id) ? 'checked' : ''} onclick="event.stopPropagation();selectAdminUser('${esc(user.id)}')"></td>
                 <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:700">${esc(nameParts.firstName || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(nameParts.lastName || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '\u2014')}</td>
