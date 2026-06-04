@@ -18669,84 +18669,58 @@ function renderSettings(el){
         <button class="btn btn-danger" onclick="deleteCurrentProfile()">Delete Profile</button>
       </div>
       <div class="warning" style="margin-bottom:14px">If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.</div>
-      ${currentUser.role === 'employer' ? (canViewBillingDetails() ? `
+      ${isEmployerAccount(currentUser) ? (canViewBillingDetails() ? `
         <div class="small muted" style="margin-bottom:8px">Payment Method</div>
         <div class="field"><input value="${paymentMethod ? esc(paymentMethod.brand + ' \u2022\u2022\u2022\u2022 ' + paymentMethod.last4) : 'No payment method on file'}" readonly></div>
-        <button class="btn btn-outline" onclick="openPaymentMethodModal()">Update Payment Method</button>
+        <button class="btn btn-outline" onclick="openPayerStripeSetupModal()">Update Payment Method</button>
       ` : `<div class="warning">Billing details are hidden while Admin is viewing as this user.</div>`) : ''}
     </div>
   `;
 }
 async function changePassword(){
-  const users = getUsers();
-  const user = users.find(x => x.id === currentUser.id);
-  if (!user) return;
   const currentPassword = document.getElementById('currentPassword').value || '';
   const newPassword = document.getElementById('newPassword').value || '';
   const confirmNewPassword = document.getElementById('confirmNewPassword').value || '';
   if (toastRequiredFields({ 'Current password':currentPassword, 'New password':newPassword, 'Confirm new password':confirmNewPassword }, 'Change password')) return;
   if (newPassword.length < 8) return toast('New password must be at least 8 characters.');
   if (newPassword !== confirmNewPassword) return toast('Confirm new password must match New password.');
-  if (backendAuthEnabled() && getBackendAccessToken()) {
-    try {
-      await backendAuthRequest('/auth/password', {
-        method:'PATCH',
-        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
-      });
-      toast('Password updated. Please use your new password next time you sign in.');
-      renderSettings(document.getElementById('dash-main'));
-      return;
-    } catch (error) {
-      toast(error.message || 'Password update failed.');
-      return;
-    }
+  if (!backendAuthEnabled() || !getBackendAccessToken()) {
+    return toast('Please sign in again before changing your password so it can be saved to the database.');
   }
-  if (currentPassword !== user.password) return toast('Current password is incorrect.');
-  user.password = newPassword;
-  saveUsers(users);
-  setCurrentUser(user);
-  toast('Password updated.');
-  renderSettings(document.getElementById('dash-main'));
+  try {
+    await backendAuthRequest('/auth/password', {
+      method:'PATCH',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+    });
+    toast('Password updated. Please use your new password next time you sign in.');
+    renderSettings(document.getElementById('dash-main'));
+    return;
+  } catch (error) {
+    toast(error.message || 'Password update failed.');
+    return;
+  }
 }
 async function deleteCurrentProfile(){
   if (!confirm('If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.')) return;
-  const users = getUsers();
-  const user = users.find(x => x.id === currentUser.id);
-  if (!user) return;
   const deletedUserId = currentUser.id;
-  if (backendAuthEnabled() && getBackendAccessToken()) {
-    try {
-      await backendAuthRequest('/auth/me', { method:'DELETE' });
-      saveUsers(users.filter(item => String(item.id) !== String(deletedUserId)));
-      saveStudents(getStudents().filter(profile => String(profile.userId) !== String(deletedUserId)));
-      ls('cogo_posts', getPosts().filter(post => String(post.authorId) !== String(deletedUserId)).map(normalizePostRecord));
-      backendCommunityPostsLoaded = false;
-      clearBackendAuthSession();
-      signOut();
-      toast('Profile deleted from public view.');
-      location.hash = '#/';
-      renderPage();
-      return;
-    } catch (error) {
-      return toast(error.message || 'Could not delete your profile from the database.');
-    }
+  if (!backendAuthEnabled() || !getBackendAccessToken()) {
+    return toast('Please sign in again before deleting your profile so it can be removed from the database.');
   }
-  user.archived = true;
-  user.archivedAt = new Date().toISOString();
-  saveUsers(users);
-  if (currentUser.role === 'student') {
-    const students = getStudents();
-    students.filter(s => s.userId === currentUser.id).forEach(s => {
-      s.status = 'archived';
-      s.archivedAt = new Date().toISOString();
-      s.archivedServices = (s.services || []).map(service => Object.assign({}, service));
-      s.services = [];
-    });
-    saveStudents(students);
+  try {
+    await backendAuthRequest('/auth/me', { method:'DELETE' });
+    saveUsers(getUsers().filter(item => String(item.id) !== String(deletedUserId)));
+    saveStudents(getStudents().filter(profile => String(profile.userId) !== String(deletedUserId)));
+    ls('cogo_posts', getPosts().filter(post => String(post.authorId) !== String(deletedUserId)).map(normalizePostRecord));
+    backendCommunityPostsLoaded = false;
+    clearBackendAuthSession();
+    signOut();
+    toast('Profile deleted from public view.');
+    location.hash = '#/';
+    renderPage();
+    return;
+  } catch (error) {
+    return toast(error.message || 'Could not delete your profile from the database.');
   }
-  ls('cogo_posts', getPosts().filter(post => String(post.authorId) !== String(deletedUserId)).map(normalizePostRecord));
-  signOut();
-  toast('Profile deleted from public view.');
 }
 function startWorkshopPayoutProcessor(){
   if (!WORKSHOPS_ENABLED) return;
