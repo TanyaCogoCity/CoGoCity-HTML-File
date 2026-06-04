@@ -92,6 +92,21 @@ function serialize(row) {
   };
 }
 
+function serializeImageSummary(row) {
+  const record = serialize(row);
+  const url = String(record.url || '');
+  const thumb = String(record.thumbnail_url || record.thumb_url || '');
+  const hasEmbeddedImage = /^data:image\//i.test(url) || /^data:image\//i.test(thumb);
+  const isLargeEmbeddedImage = hasEmbeddedImage && Math.max(url.length, thumb.length) > 20000;
+  if (isLargeEmbeddedImage) {
+    record.url = '';
+    record.thumbnail_url = '';
+    record.embedded_image_omitted = true;
+    record.embedded_image_size = Math.max(url.length, thumb.length);
+  }
+  return record;
+}
+
 function stripeSearchValue(value = '') {
   return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
@@ -326,7 +341,10 @@ router.get('/:entity', requireReadAccess, async (req, res) => {
       orderBy: { updatedAt: 'desc' },
       take: Math.min(Number(req.query.limit || 500) || 500, 1000),
     });
-    const records = entity === 'workshops' ? await serializeWorkshopRows(rows) : rows.map(serialize);
+    const lightweightImages = entity === 'images' && ['1', 'true', 'yes'].includes(String(req.query.summary || req.query.light || '').toLowerCase());
+    const records = entity === 'workshops'
+      ? await serializeWorkshopRows(rows)
+      : rows.map(lightweightImages ? serializeImageSummary : serialize);
     return ok(res, { entity, records });
   } catch (error) {
     return fail(res, 500, 'Could not load synced records', error.message);

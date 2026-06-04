@@ -1064,9 +1064,12 @@ async function loadBackendSyncedRecords(entityKey='', options={}){
   const isPublicEntity = BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey);
   if (!isPublicEntity && (!currentUser || !getBackendAccessToken())) return [];
   try {
+    const readEndpoint = entityKey === 'images'
+      ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}summary=true&limit=300`
+      : endpoint;
     const result = isPublicEntity
-      ? await backendRequest(endpoint, { method:'GET', auth:false })
-      : { ok:true, data:{ records: await backendAuthRequest(endpoint, { method:'GET' }) } };
+      ? await backendRequest(readEndpoint, { method:'GET', auth:false })
+      : { ok:true, data:{ records: await backendAuthRequest(readEndpoint, { method:'GET' }) } };
     if (!result || !result.ok) return [];
     return ensureArray(result.data?.data?.records || result.data?.records || result.data);
   } catch (error) {
@@ -2356,14 +2359,15 @@ function getImages(){
     const next = normalizeImageRecord(image);
     if (JSON.stringify(next) !== JSON.stringify(image)) changed = true;
     return next;
-  }).filter(image => image.url);
+  }).filter(image => image.url || image.embedded_image_omitted);
   if (changed) ls('cogo_images', normalized);
   return normalized;
 }
 function saveImages(images){
-  const payload = ensureArray(images).map(normalizeImageRecord).filter(image => image.url);
+  const payload = ensureArray(images).map(normalizeImageRecord).filter(image => image.url || image.embedded_image_omitted);
+  const syncPayload = payload.filter(image => image.url && !image.embedded_image_omitted);
   ls('cogo_images', payload);
-  return syncEntityToBackend('images', payload, { replace:true });
+  return syncEntityToBackend('images', syncPayload, { replace:false });
 }
 function syncAdImagesBeforeSettings(slots=[]){
   const referencedIds = new Set();
@@ -11103,6 +11107,9 @@ function getImageUsageIdSet(){
   return usedIds;
 }
 function renderAdminImageGridPreview(image={}){
+  if (image.embedded_image_omitted) {
+    return '<div class="small muted" style="height:160px;display:flex;align-items:center;justify-content:center;text-align:center;border:1px solid var(--border);border-radius:14px;padding:12px">Large embedded image<br>Open View to inspect</div>';
+  }
   const source = String(image.thumbnail_url || image.url || '').trim();
   if (/^data:image\//i.test(source) && source.length > 120000) {
     return '<div class="small muted" style="height:160px;display:flex;align-items:center;justify-content:center;text-align:center;border:1px solid var(--border);border-radius:14px;padding:12px">Large embedded image<br>Open View to inspect</div>';
@@ -11172,27 +11179,37 @@ function removeImageReferences(imageId=''){
   });
   if (postsChanged) saveBlogPosts(posts);
 }
-function deleteImageFromLibrary(imageId=''){
+async function deleteImageFromLibrary(imageId=''){
   if (!imageId) return;
   if (getImageUsageDetails(imageId).length) return toast('This image is in use and cannot be deleted');
   const previousImages = getImages();
-  removeImageReferences(imageId);
-  const result = saveImages(previousImages.filter(image => String(image.id) !== String(imageId)));
-  Promise.resolve(result).then(syncResult => {
-    if (syncResult && syncResult.ok) {
-      toast('Image deleted from staging library.');
-    } else {
-      ls('cogo_images', previousImages);
+  if (!getBackendAccessToken()) return toast('Image was not deleted. Please sign in with the backend admin account so staging can confirm it.');
+  try {
+    const endpoint = `${BACKEND_SYNC_ENDPOINTS.images}/${encodeURIComponent(imageId)}`;
+    const syncResult = backendAuthEnabled()
+      ? { ok:true, data: await backendAuthRequest(endpoint, { method:'DELETE' }) }
+      : await backendRequest(endpoint, { method:'DELETE' });
+    if (!syncResult || !syncResult.ok) {
       toast(`Image was not deleted because staging did not confirm it${syncResult && syncResult.error ? `: ${syncResult.error}` : '.'}`);
+      return;
     }
-    if (dashSection === 'images') renderDashboard();
-  }).catch(error => {
+    ls('cogo_images', previousImages.filter(image => String(image.id) !== String(imageId)));
+    toast('Image deleted from staging library.');
+  } catch (error) {
     ls('cogo_images', previousImages);
     toast(`Image was not deleted because staging did not confirm it: ${(error && error.message) || 'Unknown error'}`);
+  } finally {
     if (dashSection === 'images') renderDashboard();
-  });
+  }
 }
 function viewImageFromLibrary(imageId=''){
+  const rawImage = getImageById(imageId);
+  if (rawImage && rawImage.embedded_image_omitted) {
+    return openModal('Image Preview', `
+      <div class="notice">This image is stored in staging as a very large embedded file, so the admin grid does not load the full file into the browser.</div>
+      <div class="small muted" style="margin-top:12px">Image ID: ${esc(imageId)}</div>
+    `, '640px');
+  }
   const image = getImageView(imageId, 'full');
   if (!image) return toast('Image not found.');
   const usage = getImageUsageDetails(imageId);
