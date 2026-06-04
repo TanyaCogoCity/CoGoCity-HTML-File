@@ -666,6 +666,10 @@ router.delete('/admin/users/:id', requireAuth, requireRoles(['admin']), async (r
         where: { createdBy: user.id, deletedAt: null },
         data: { deletedAt: now, status: 'closed' },
       });
+      await tx.communityPost.updateMany({
+        where: { authorId: user.id, deletedAt: null },
+        data: { deletedAt: now },
+      });
       await tx.application.updateMany({
         where: { studentId: user.id, deletedAt: null },
         data: { deletedAt: now, status: 'withdrawn' },
@@ -728,6 +732,10 @@ router.delete('/me', requireAuth, async (req, res) => {
       await tx.job.updateMany({
         where: { createdBy: user.id, deletedAt: null },
         data: { deletedAt: now, status: 'closed' },
+      });
+      await tx.communityPost.updateMany({
+        where: { authorId: user.id, deletedAt: null },
+        data: { deletedAt: now },
       });
       await tx.application.updateMany({
         where: { studentId: user.id, deletedAt: null },

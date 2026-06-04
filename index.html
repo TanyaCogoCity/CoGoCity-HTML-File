@@ -2858,11 +2858,11 @@ async function loadBackendCommunityPosts(options={}){
     const data = getBackendAccessToken()
       ? await backendAuthRequest('/community-posts', { method:'GET' })
       : await publicBackendRequest('/community-posts', { method:'GET' });
-    const merged = mergeCommunityPosts(getPosts(), data.posts || []);
-    if (JSON.stringify(merged) !== JSON.stringify(getPosts())) ls('cogo_posts', merged);
+    const backendPosts = ensureArray(data.posts || []).map(normalizePostRecord);
+    ls('cogo_posts', backendPosts);
     backendCommunityPostsLoaded = true;
     if (options.rerender && getRoute().startsWith('#/community')) renderCommunity();
-    return merged;
+    return backendPosts;
   } catch (error) {
     console.warn('Could not load community posts from backend', error);
     return getPosts();
@@ -11299,10 +11299,13 @@ function isCommunityFeedJobOpen(post){
   return post.status === 'open' || post.status === 'pending';
 }
 function renderCommunity(){
-  if (backendAuthEnabled() && getBackendAccessToken() && !backendCommunityPostsLoaded && !backendCommunityPostsLoading) {
+  const useBackendCommunityPosts = backendAuthEnabled();
+  if (useBackendCommunityPosts && !backendCommunityPostsLoaded && !backendCommunityPostsLoading) {
     loadBackendCommunityPosts({ rerender:true });
   }
-  const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const posts = useBackendCommunityPosts && !backendCommunityPostsLoaded
+    ? []
+    : syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const communityActionLabel = currentUser && isEmployerAccount(currentUser) ? '+ Post or Create a Job' : '+ Post';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -18438,11 +18441,29 @@ async function changePassword(){
   toast('Password updated.');
   renderSettings(document.getElementById('dash-main'));
 }
-function deleteCurrentProfile(){
+async function deleteCurrentProfile(){
   if (!confirm('If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.')) return;
   const users = getUsers();
   const user = users.find(x => x.id === currentUser.id);
   if (!user) return;
+  const deletedUserId = currentUser.id;
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    try {
+      await backendAuthRequest('/auth/me', { method:'DELETE' });
+      saveUsers(users.filter(item => String(item.id) !== String(deletedUserId)));
+      saveStudents(getStudents().filter(profile => String(profile.userId) !== String(deletedUserId)));
+      ls('cogo_posts', getPosts().filter(post => String(post.authorId) !== String(deletedUserId)).map(normalizePostRecord));
+      backendCommunityPostsLoaded = false;
+      clearBackendAuthSession();
+      signOut();
+      toast('Profile deleted from public view.');
+      location.hash = '#/';
+      renderPage();
+      return;
+    } catch (error) {
+      return toast(error.message || 'Could not delete your profile from the database.');
+    }
+  }
   user.archived = true;
   user.archivedAt = new Date().toISOString();
   saveUsers(users);
@@ -18456,6 +18477,7 @@ function deleteCurrentProfile(){
     });
     saveStudents(students);
   }
+  ls('cogo_posts', getPosts().filter(post => String(post.authorId) !== String(deletedUserId)).map(normalizePostRecord));
   signOut();
   toast('Profile deleted from public view.');
 }
