@@ -30,7 +30,7 @@ function userName(user = {}) {
 }
 
 function userProfileLink(userId = '') {
-  return buildAppLink(`/dashboard?section=users&user=${encodeURIComponent(userId)}`);
+  return buildAppLink(`/#/profile/${encodeURIComponent(userId)}`);
 }
 
 function linkHtml(label, href) {
@@ -102,7 +102,7 @@ async function notifyAdminNewUser(user) {
       ['Email', escapeHtml(user.email || '')],
     ],
     ctaLabel: 'View User',
-    ctaLink: `/dashboard?section=users&user=${encodeURIComponent(user.id)}`,
+    ctaLink: `/#/profile/${encodeURIComponent(user.id)}`,
   });
 }
 

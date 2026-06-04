@@ -2221,7 +2221,7 @@ async function refreshBackendBrowseStudents(options={}){
     backendBrowseStudentsLoaded = true;
     backendBrowseStudentsError = '';
     try { sessionStorage.removeItem('cogo_homepage_order_v1'); } catch (error) {}
-    if (options.rerender && getRoute() === '#/') renderPage();
+    if (options.rerender && (getRoute() === '#/' || getRoute().startsWith('#/profile/'))) renderPage();
   } catch (error) {
     backendBrowseStudentsError = error.message || 'Could not load backend student profiles.';
     console.warn('Backend student profile load failed', error);
@@ -15248,6 +15248,28 @@ function renderPublicStudentProfilePage(student){
 function renderPublicProfilePage(){
   const userId = getRouteEntityId('profile');
   const user = getUserById(userId);
+  if (!user && backendAuthEnabled() && getBackendAccessToken()) {
+    if (currentUser && currentUser.role === 'admin' && !adminBackendUsersLoaded && !adminBackendUsersLoading) {
+      loadBackendAdminUsers({ rerender:true });
+      document.getElementById('app').innerHTML = `
+        ${renderUserIdentityBanner()}
+        <div class="container" style="padding-top:28px;padding-bottom:42px">
+          <div class="card form-card"><div class="section-title">Loading Profile</div><div class="small muted">Loading this user from the database...</div></div>
+        </div>
+      `;
+      return;
+    }
+    if (!backendBrowseStudentsLoaded && !backendBrowseStudentsLoading) {
+      refreshBackendBrowseStudents({ rerender:true });
+      document.getElementById('app').innerHTML = `
+        ${renderUserIdentityBanner()}
+        <div class="container" style="padding-top:28px;padding-bottom:42px">
+          <div class="card form-card"><div class="section-title">Loading Profile</div><div class="small muted">Loading this user from the database...</div></div>
+        </div>
+      `;
+      return;
+    }
+  }
   if (!user) return renderPublicProfileNotFound();
   const student = getStudentByUserId(user.id);
   if (student) return renderPublicStudentProfilePage(student);
@@ -16148,6 +16170,7 @@ async function loadBackendAdminUsers(options={}){
     adminBackendUsersLoaded = true;
     if (!adminBackendUsers.some(user => user.id === adminSelectedUserId)) adminSelectedUserId = '';
     if (options.rerender !== false && getRoute() === '#/dashboard' && dashSection === 'users') renderDashboard();
+    else if (options.rerender !== false && getRoute().startsWith('#/profile/')) renderPage();
   } catch (error) {
     adminBackendUsersError = error.message || 'Could not load backend users.';
     console.warn('Backend admin users load failed', error);
