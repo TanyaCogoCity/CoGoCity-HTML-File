@@ -11368,13 +11368,12 @@ function renderCommunityVideoPreviewHtml(videoValue='', label='Post video'){
 }
 function renderPostComposerImagePreview(images=[], removeAction='removePostComposerImage'){
   const safe = ensureArray(images).filter(Boolean).slice(0, 1);
-  if (!safe.length) return `<div class="small muted">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>`;
+  if (!safe.length) return '';
   const action = removeAction ? `${removeAction}()` : '';
   return `
     <div style="max-width:540px;margin-bottom:14px">
       ${renderManagedImage(safe[0], 'Post image', 'width:100%;aspect-ratio:16/9;min-height:220px;max-height:340px;border-radius:16px;object-fit:cover;border:1px solid var(--border);background:#F9FAFB;display:block', 'full', 'loading="eager"')}
       <div style="margin-top:10px">${action ? `<button class="btn btn-outline btn-sm" type="button" onclick="${action}">Remove image</button>` : ''}</div>
-      <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
     </div>
   `;
 }
