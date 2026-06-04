@@ -118,6 +118,7 @@ model User {
   updatedAt                     DateTime   @updatedAt @map("updated_at")
   lastLogin                     DateTime?  @map("last_login")
   deletedAt                     DateTime?  @map("deleted_at")
+  reactivationEmailHash         String?    @map("reactivation_email_hash")
 
   profileImage             MediaAsset?               @relation("UserProfileImage", fields: [profileImageId], references: [id])
   userProfile              UserProfile?
@@ -140,6 +141,7 @@ model User {
   auditLogs                AuditLog[]
 
   @@map("users")
+  @@index([reactivationEmailHash])
 }
 
 model UserProfile {

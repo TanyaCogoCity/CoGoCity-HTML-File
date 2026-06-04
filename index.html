@@ -4834,6 +4834,8 @@ function userFacingBackendError(error, fallback='Something went wrong. Please ch
   const message = String((error && error.message) || '').trim();
   if (!message) return fallback;
   if (/Invalid register payload/i.test(message)) return 'Please check the signup form. Make sure first name, last name, email, phone, address, and password are complete.';
+  if (/deleted CoGo City account|reactivate your account/i.test(message)) return 'This email already exists from a deleted account. Please reset your password to reactivate your account.';
+  if (/account has been suspended/i.test(message)) return 'This account has been suspended. Please contact support@cogocity.com for help.';
   if (/aborted|abort|signal/i.test(message) || error?.name === 'AbortError') return 'The signup request took longer than expected. Please try again. If the account was already created, sign in with your email and password.';
   return message;
 }
@@ -6074,7 +6076,7 @@ function getDirectJobListingOptions(pkg){
 function openPasswordResetModal(){
   openModal('Reset Password', `
     <div class="card form-card">
-      <div class="small muted" style="margin-bottom:10px">Enter your account email and we’ll send a secure password reset link to that address.</div>
+      <div class="small muted" style="margin-bottom:10px">Enter your account email and we’ll send a secure password reset link to that address. If your account was deleted, resetting your password will reactivate it.</div>
       <div class="field"><label>Email</label><input id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openLoginModal('signin')">Back to Sign In</button>
@@ -6082,6 +6084,13 @@ function openPasswordResetModal(){
       </div>
     </div>
   `, '620px');
+}
+function openPasswordResetModalForEmail(email=''){
+  openPasswordResetModal();
+  setTimeout(() => {
+    const input = document.getElementById('resetEmail');
+    if (input) input.value = String(email || '').trim().toLowerCase();
+  }, 0);
 }
 async function submitPasswordResetRequest(){
   const email = String((document.getElementById('resetEmail') || {}).value || '').trim().toLowerCase();
@@ -6135,11 +6144,27 @@ async function submitPasswordResetConfirm(token=''){
   if (nextPassword.length < 8) return toast('New password must be at least 8 characters.');
   if (nextPassword !== confirmPassword) return toast('Confirm new password must match New password.');
   try {
-    await backendAuthRequest('/auth/password-reset/confirm', {
+    const data = await backendAuthRequest('/auth/password-reset/confirm', {
       method:'POST',
       body: JSON.stringify({ token, new_password:nextPassword }),
       retryOnAuthFailure:false
     });
+    if (data && data.user && data.access_token) {
+      saveBackendAuthSession(data);
+      const users = getUsers();
+      const existing = users.find(u => String(u.email || '').toLowerCase() === String(data.user.email || '').toLowerCase() || u.backendUserId === data.user.id || u.id === data.user.id);
+      const user = mapBackendUser(data.user, existing || { email:data.user.email });
+      user.lastLogin = new Date().toISOString();
+      const nextUsers = existing ? users.map(u => (u.id === existing.id ? user : u)) : users.concat(user);
+      saveUsers(nextUsers);
+      setCurrentUser(user);
+      closeModal();
+      dashSection = 'profile';
+      location.hash = '#/dashboard';
+      toast(data.reactivated ? 'Account reactivated. Please review your required information.' : 'Password updated. Welcome back.');
+      renderPage();
+      return;
+    }
     clearBackendAuthSession();
     toast('Password updated. Please sign in with your new password.');
     location.hash = '#/';
@@ -6779,7 +6804,7 @@ async function publishStudentSignupProfile(){
   const d = studentSignupDraft;
   if (!(d.services || []).length) return toast('Please add at least one service.');
   const users = getUsers();
-  if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
+  if (!backendAuthEnabled() && users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
   const students = getStudents();
   const firstNameValue = String(d.firstName || splitFullName(d.name)[0] || '').trim();
   const lastNameValue = String(d.lastName || splitFullName(d.name).slice(1).join(' ') || '').trim();
@@ -6842,7 +6867,9 @@ async function publishStudentSignupProfile(){
       saveBackendAuthSession(data);
       backendUser = data.user || null;
     } catch (error) {
-      toast(userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.'));
+      const message = userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.');
+      toast(message);
+      if (/reset your password to reactivate/i.test(message)) openPasswordResetModalForEmail(d.email);
       return;
     }
   }
@@ -7470,7 +7497,7 @@ async function publishEmployerSignupProfile(){
   if (!isSignupLegalAcknowledged('employerSignupLegalAck')) return toast('Please acknowledge the Privacy Policy, Disclaimer, and Safety & Legal Guidelines before signing up.');
   const d = employerSignupDraft;
   const users = getUsers();
-  if (users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
+  if (!backendAuthEnabled() && users.some(u => (u.email || '').toLowerCase() === (d.email || '').toLowerCase())) return toast('Email already registered. Please sign in.');
   let backendUser = null;
   const role = employerSignupMode === 'neighbor' ? 'neighbor' : 'employer';
   if (backendAuthEnabled()) {
@@ -7516,7 +7543,9 @@ async function publishEmployerSignupProfile(){
       saveBackendAuthSession(data);
       backendUser = data.user || null;
     } catch (error) {
-      toast(userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.'));
+      const message = userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.');
+      toast(message);
+      if (/reset your password to reactivate/i.test(message)) openPasswordResetModalForEmail(d.email);
       return;
     }
   }
@@ -12326,6 +12355,54 @@ function routeToMigrationOnboardingIfNeeded(){
   }
   return false;
 }
+function buildRequiredAccountChecklist(user=currentUser){
+  if (!user || user.role === 'admin') return [];
+  const items = [];
+  const profile = user.role === 'student' ? currentStudentProfile() : null;
+  const business = user.businessProfile || {};
+  if (needsMigrationOnboarding(user)) {
+    items.push({ label:'Profile review is required', action:'dashSection="profile";renderDashboard()', cta:'Review profile' });
+  }
+  if (!String(user.phone || profile?.phone || '').trim()) {
+    items.push({ label:'Phone is missing', action:'dashSection="profile";renderDashboard()', cta:'Update phone' });
+  }
+  if (!String(user.address || profile?.address || '').trim()) {
+    items.push({ label:'Address is missing', action:'dashSection="profile";renderDashboard()', cta:'Update address' });
+  }
+  if (user.role === 'student') {
+    if (needsRequiredPayoutSetup(user)) items.push({ label:'Payout setup is missing', action:'startStripeConnectOnboarding()', cta:'Set up payouts' });
+    const services = profile ? getRenderableStudentServices(profile) : [];
+    if (!services.length || !services.some(service => service.title && service.description && Number(service.rate || 0) > 0 && service.availability && service.location)) {
+      items.push({ label:'Student service details are missing', action:'dashSection="profile";renderDashboard()', cta:'Update service' });
+    }
+  }
+  if (isEmployerAccount(user)) {
+    if (needsRequiredPaymentMethod(user)) items.push({ label:'CC is missing', action:'openPayerStripeSetupModal()', cta:'Add card' });
+    if (user.role === 'employer') {
+      if (!String(business.name || user.company || '').trim()) items.push({ label:'Business name is missing', action:'dashSection="profile";renderDashboard()', cta:'Update business' });
+      if (!String(business.address || '').trim()) items.push({ label:'Business address is missing', action:'dashSection="profile";renderDashboard()', cta:'Update business' });
+    }
+  }
+  return items;
+}
+function renderRequiredAccountChecklist(user=currentUser){
+  const items = buildRequiredAccountChecklist(user);
+  if (!items.length) return '';
+  return `
+    <div class="card form-card" style="border:2px solid #fde68a;background:#fffbeb;margin-bottom:18px">
+      <div style="font-weight:900;font-size:1.1rem;margin-bottom:6px">Welcome back to CoGo City</div>
+      <div class="small muted" style="margin-bottom:12px">To continue using this platform, please make sure all required information is provided. Check the items below and update anything missing.</div>
+      <div style="display:grid;gap:8px">
+        ${items.map(item => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+            <div style="font-weight:800">${esc(item.label)}</div>
+            <button class="btn btn-outline btn-sm" onclick="${item.action}">${esc(item.cta || 'Update')}</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
 function currentStudentServiceReady(){
   const profile = currentStudentProfile();
   if (!profile) return false;
@@ -12420,6 +12497,7 @@ function renderMigrationOnboarding(el){
   const business = user.businessProfile || {};
   const profile = currentStudentProfile();
   el.innerHTML = `
+    ${renderRequiredAccountChecklist(user)}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">${esc(title)}</div>
       ${!isStudent && !isEmployer ? `<div style="background:#fff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;margin:0 0 12px;color:#334155;line-height:1.55">${esc(safetyTrustMessage)}</div>` : ''}
@@ -12596,6 +12674,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
 
 function renderPaymentMethodRequired(el){
   el.innerHTML = `
+    ${renderRequiredAccountChecklist()}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
       <div class="small muted">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
@@ -12605,6 +12684,7 @@ function renderPaymentMethodRequired(el){
 }
 function renderPayoutSetupRequired(el){
   el.innerHTML = `
+    ${renderRequiredAccountChecklist()}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Set up payouts</div>
       <div class="small muted">Before applying, messaging, or offering student services, please complete Stripe Connect so CoGo City can pay you. This is separate from adding a credit card for class registration.</div>

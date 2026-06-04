@@ -18,6 +18,7 @@ module.exports = {
 
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET || 'dev-access-secret',
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
+  deletedEmailHashSecret: process.env.DELETED_EMAIL_HASH_SECRET || process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret',
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || '15m',
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || '30d',
 

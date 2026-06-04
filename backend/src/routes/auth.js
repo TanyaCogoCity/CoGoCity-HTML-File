@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../lib/prisma');
+const config = require('../config');
 const { ok, created, fail } = require('../lib/http');
 const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
@@ -14,6 +15,7 @@ const { notifyAdminNewUser } = require('../lib/adminEmails');
 const router = express.Router();
 
 const US_ONLY_SIGNUP_MESSAGE = 'Thanks for your interest in CoGo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
+const DELETED_ACCOUNT_REACTIVATION_MESSAGE = 'This email is connected to a deleted CoGo City account. Please reset your password to reactivate your account.';
 const US_STATES = new Set([
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
   'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
@@ -35,6 +37,25 @@ function truthySignupConfirmation(value) {
   if (value === true || value === 1) return true;
   const normalized = String(value || '').trim().toLowerCase();
   return ['true', 'yes', 'y', '1', 'on'].includes(normalized);
+}
+
+function normalizeEmail(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function reactivationEmailHash(email = '') {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return '';
+  return crypto.createHmac('sha256', config.deletedEmailHashSecret).update(normalized).digest('hex');
+}
+
+function reactivationProfileMetadata(existing = {}, extras = {}) {
+  return {
+    ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),
+    ...extras,
+    migration_onboarding_required: true,
+    reactivated_account_review_required: true,
+  };
 }
 
 function getSignupUsConfirmation(payload = {}) {
@@ -259,7 +280,16 @@ router.post('/register', async (req, res) => {
     if (payload.role === 'admin') return fail(res, 403, 'Admin accounts cannot be created through public registration');
     const usOnlySignupProblem = validateUsOnlySignup(req.body || {}, payload);
     if (usOnlySignupProblem) return fail(res, 400, usOnlySignupProblem);
+    const emailHash = reactivationEmailHash(payload.email);
     const exists = await prisma.user.findUnique({ where: { email: payload.email } });
+    const deletedByHash = !exists && emailHash
+      ? await prisma.user.findFirst({ where: { reactivationEmailHash: emailHash, deletedAt: { not: null } } })
+      : null;
+    const reactivationCandidate = exists || deletedByHash;
+    if (reactivationCandidate?.deletedAt) return fail(res, 409, DELETED_ACCOUNT_REACTIVATION_MESSAGE);
+    if (reactivationCandidate?.status !== undefined && reactivationCandidate.status !== 'active') {
+      return fail(res, 403, 'This account has been suspended. Please contact support@cogocity.com for help.');
+    }
     if (exists) return fail(res, 409, 'Email already in use');
 
     const rawPayload = req.body || {};
@@ -279,6 +309,7 @@ router.post('/register', async (req, res) => {
           city: payload.city,
           dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
           passwordHash,
+          reactivationEmailHash: null,
         },
       });
 
@@ -394,11 +425,23 @@ router.post('/password-reset/request', async (req, res) => {
   try {
     const schema = z.object({ email: z.string().email() });
     const payload = schema.parse(req.body || {});
-    const email = payload.email.toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email } });
+    const email = normalizeEmail(payload.email);
+    const emailHash = reactivationEmailHash(email);
+    const directUser = await prisma.user.findUnique({ where: { email } });
+    const user = directUser || (emailHash
+      ? await prisma.user.findFirst({ where: { reactivationEmailHash: emailHash, deletedAt: { not: null } } })
+      : null);
 
     // Always return a generic success when the account does not exist to avoid account enumeration.
-    if (!user || user.deletedAt || user.status !== 'active') return ok(res, { requested: true });
+    if (!user) return ok(res, { requested: true });
+    if (!user.deletedAt && user.status !== 'active') return ok(res, { requested: true });
+
+    if (user.deletedAt && user.email !== email) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { email, reactivationEmailHash: emailHash || user.reactivationEmailHash || null },
+      });
+    }
 
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = hashToken(token);
@@ -408,8 +451,8 @@ router.post('/password-reset/request', async (req, res) => {
     const resetUrl = buildAppLink(`/#/reset-password?token=${encodeURIComponent(token)}`);
     const displayName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
     const emailResult = await sendEmail({
-      to: { email: user.email, name: displayName },
-      subject: 'Reset your CoGo City password',
+      to: { email, name: displayName },
+      subject: user.deletedAt ? 'Reactivate your CoGo City account' : 'Reset your CoGo City password',
       htmlContent: passwordResetEmailHtml({ displayName, resetUrl }),
       textContent: `Reset your CoGo City password\n\nOpen this link to choose a new password. It expires in 60 minutes:\n${resetUrl}\n\nIf you did not request this, ignore this email.`,
     });
@@ -427,19 +470,66 @@ router.post('/password-reset/confirm', async (req, res) => {
     const schema = z.object({ token: z.string().min(32), new_password: z.string().min(8) });
     const payload = schema.parse(req.body || {});
     const tokenHash = hashToken(payload.token);
-    const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash }, include: { user: true } });
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+      include: { user: { include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } } } },
+    });
     if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= new Date()) return fail(res, 400, 'This password reset link is invalid or expired');
-    if (!resetToken.user || resetToken.user.deletedAt || resetToken.user.status !== 'active') return fail(res, 400, 'This password reset link is invalid or expired');
+    if (!resetToken.user || (!resetToken.user.deletedAt && resetToken.user.status !== 'active')) return fail(res, 400, 'This password reset link is invalid or expired');
 
     const passwordHash = await hashPassword(payload.new_password);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: resetToken.userId }, data: { passwordHash } }),
-      prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
-      prisma.passwordResetToken.updateMany({ where: { userId: resetToken.userId, usedAt: null, id: { not: resetToken.id } }, data: { usedAt: new Date() } }),
-      prisma.refreshToken.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
-    ]);
-    await writeAuditLog({ userId: resetToken.userId, action: 'auth.password_reset_completed', entityType: 'user', entityId: resetToken.userId });
-    return ok(res, { updated: true });
+    const wasDeleted = Boolean(resetToken.user.deletedAt);
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: resetToken.userId },
+        data: {
+          passwordHash,
+          status: 'active',
+          deletedAt: null,
+          reactivationEmailHash: null,
+        },
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+      });
+      const existingMetadata = user.userProfile?.metadata || {};
+      if (wasDeleted) {
+        const metadata = reactivationProfileMetadata(existingMetadata, { reactivated_at: new Date().toISOString() });
+        if (user.userProfile) {
+          await tx.userProfile.update({ where: { userId: user.id }, data: { metadata } });
+        } else {
+          await tx.userProfile.create({
+            data: {
+              userId: user.id,
+              type: user.role === 'employer' ? 'business' : user.role,
+              metadata,
+            },
+          });
+        }
+      }
+      await tx.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } });
+      await tx.passwordResetToken.updateMany({ where: { userId: resetToken.userId, usedAt: null, id: { not: resetToken.id } }, data: { usedAt: new Date() } });
+      await tx.refreshToken.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      return tx.user.findUnique({
+        where: { id: resetToken.userId },
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+      });
+    });
+    await writeAuditLog({ userId: resetToken.userId, action: wasDeleted ? 'auth.user.reactivated' : 'auth.password_reset_completed', entityType: 'user', entityId: resetToken.userId });
+    const accessToken = signAccessToken(updatedUser);
+    const refreshToken = signRefreshToken(updatedUser);
+    await prisma.refreshToken.create({
+      data: {
+        userId: updatedUser.id,
+        tokenHash: hashToken(refreshToken),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+    return ok(res, {
+      updated: true,
+      reactivated: wasDeleted,
+      user: serializeUser(updatedUser),
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
   } catch (error) {
     return fail(res, 400, 'Invalid password reset confirmation', error.message);
   }
@@ -712,6 +802,7 @@ router.delete('/admin/users/:id', requireAuth, requireRoles(['admin']), async (r
 
     const now = new Date();
     const anonymizedEmail = `deleted+${user.id}@deleted.cogocity.local`;
+    const emailHash = reactivationEmailHash(user.email);
 
     await prisma.$transaction(async (tx) => {
       const profileIds = user.studentProfiles.map((profile) => profile.id);
@@ -755,6 +846,7 @@ router.delete('/admin/users/:id', requireAuth, requireRoles(['admin']), async (r
           profileImageId: null,
           status: 'suspended',
           deletedAt: now,
+          reactivationEmailHash: emailHash || null,
           stripeDefaultPaymentMethodId: null,
           stripePaymentSetupStatus: 'not_started',
         },
@@ -779,6 +871,7 @@ router.delete('/me', requireAuth, async (req, res) => {
 
     const now = new Date();
     const anonymizedEmail = `deleted+${user.id}@deleted.cogocity.local`;
+    const emailHash = reactivationEmailHash(user.email);
 
     await prisma.$transaction(async (tx) => {
       const profileIds = user.studentProfiles.map((profile) => profile.id);
@@ -822,6 +915,7 @@ router.delete('/me', requireAuth, async (req, res) => {
           profileImageId: null,
           status: 'suspended',
           deletedAt: now,
+          reactivationEmailHash: emailHash || null,
           stripeDefaultPaymentMethodId: null,
           stripePaymentSetupStatus: 'not_started',
         },
