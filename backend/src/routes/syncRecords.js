@@ -88,6 +88,10 @@ function isOfferStatus(value = '') {
   return ['offer_sent', 'offer_pending'].includes(String(value || '').trim().toLowerCase());
 }
 
+function isStudentApplicationStatus(value = '') {
+  return ['pending', 'applied'].includes(String(value || '').trim().toLowerCase());
+}
+
 function syncedApplicationStudentId(payload = {}) {
   return String(payload.studentUserId || payload.student_user_id || payload.studentId || payload.student_id || '').trim();
 }
@@ -143,6 +147,67 @@ async function createSyncedApplicationOfferNotifications(normalized = [], req) {
         deletedAt: null,
         payload: {
           user_id: studentId,
+          frontend_notification_id: record.id,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
+async function createSyncedCommunityApplicationNotifications(normalized = [], req) {
+  if (!Array.isArray(normalized) || !normalized.length) return 0;
+  let created = 0;
+  for (const record of normalized) {
+    const payload = record.payload || {};
+    const studentId = syncedApplicationStudentId(payload);
+    const employerId = syncedApplicationEmployerId(payload);
+    const source = String(payload.source || '').trim().toLowerCase();
+    if (!studentId || !employerId || !isStudentApplicationStatus(payload.status)) continue;
+    if (source && source !== 'community_feed') continue;
+    if (req.user.role !== 'admin' && studentId !== req.user.id) continue;
+
+    const receiptId = `${employerId}:${record.id}:student_application`;
+    const existing = await prisma.syncRecord.findUnique({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+    });
+    if (existing && !existing.deletedAt) continue;
+
+    const studentName = String(payload.studentName || payload.student_name || req.user.displayName || 'A student').trim();
+    const jobTitle = String(payload.jobTitle || payload.job_title || 'your job').trim();
+    const notification = await createNotification({
+      data: {
+        userId: employerId,
+        type: notificationType('application'),
+        title: `${studentName} applied to "${jobTitle}"`,
+        body: `${studentName} applied to "${jobTitle}". Open your dashboard to review the request.`,
+        link: `/dashboard?section=applicants_projects&employerTab=applicants&application=${encodeURIComponent(record.id)}`,
+      },
+    });
+
+    await prisma.syncRecord.upsert({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+      create: {
+        entity: 'notification_email_receipts',
+        recordId: receiptId,
+        payload: {
+          user_id: employerId,
+          frontend_notification_id: record.id,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+      update: {
+        deletedAt: null,
+        payload: {
+          user_id: employerId,
           frontend_notification_id: record.id,
           backend_notification_id: notification.id,
           title: notification.title,
@@ -470,16 +535,32 @@ router.post('/:entity', requireAuth, async (req, res) => {
     const applicationNotificationUpdates = entity === 'applications'
       ? await createSyncedApplicationOfferNotifications(normalized, req)
       : 0;
+    const communityApplicationNotificationUpdates = entity === 'applications'
+      ? await createSyncedCommunityApplicationNotifications(normalized, req)
+      : 0;
 
     await writeAuditLog({
       userId: req.user.id,
       action: `sync.${entity}`,
       entityType: 'sync_record',
       entityId: entity,
-      payload: { count: normalized.length, mirrored_count: mirrored.length, application_count_updates: applicationCountUpdates, application_notification_updates: applicationNotificationUpdates },
+      payload: {
+        count: normalized.length,
+        mirrored_count: mirrored.length,
+        application_count_updates: applicationCountUpdates,
+        application_notification_updates: applicationNotificationUpdates,
+        community_application_notification_updates: communityApplicationNotificationUpdates,
+      },
     });
 
-    return ok(res, { entity, count: normalized.length, mirrored, application_count_updates: applicationCountUpdates, application_notification_updates: applicationNotificationUpdates });
+    return ok(res, {
+      entity,
+      count: normalized.length,
+      mirrored,
+      application_count_updates: applicationCountUpdates,
+      application_notification_updates: applicationNotificationUpdates,
+      community_application_notification_updates: communityApplicationNotificationUpdates,
+    });
   } catch (error) {
     return fail(res, 400, 'Could not sync records', error.message);
   }
