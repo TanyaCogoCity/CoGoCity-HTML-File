@@ -4076,7 +4076,7 @@ function getSiteSettings(){
       { label:'Youth Labor Law in CA', href:'#/youth-labor-law-in-ca' },
       { label:'Disclaimer', href:'#/disclaimer' },
       { label:'Terms and Conditions', href:'#/terms-and-conditions' },
-      { label:'Privacy Policy', href:'https://cogocity.com/pages/privacy-policy/' },
+      { label:'Privacy Policy', href:'#/privacy-policy' },
       { label:'Contact us', href:'#contact-us' }
     ],
     about_page: {
@@ -4131,7 +4131,8 @@ function getSiteSettings(){
   const stagingLegalFooterLinks = {
     'youth labor law in ca': '#/youth-labor-law-in-ca',
     'disclaimer': '#/disclaimer',
-    'terms and conditions': '#/terms-and-conditions'
+    'terms and conditions': '#/terms-and-conditions',
+    'privacy policy': '#/privacy-policy'
   };
   merged.footer_important_links = ensureArray(merged.footer_important_links).map(link => {
     const labelKey = String(link && link.label || '').trim().toLowerCase();
@@ -5493,6 +5494,10 @@ const STAGING_LEGAL_PAGES = {
   'terms-and-conditions': {
     title: 'Terms and Conditions',
     body: "### Platform Role Disclaimer\n\nCoGo City is a technology platform that connects students, parents, neighbors, businesses, mentors, and other users for educational, entrepreneurial, volunteer, and work-related opportunities. CoGo City is not an employer, staffing agency, labor provider, contractor, broker, agent, or representative of any user of the platform.\n\nCoGo City does not supervise, direct, control, monitor, or guarantee the quality, legality, timing, safety, or suitability of any project, job, service, communication, or interaction between users.\n\nAll projects, services, employment opportunities, transactions, and interactions are solely between the participating users.\n\n### Independent Contractor & Employment Disclaimer\n\nUsers understand and agree that CoGo City does not employ students or other service providers listed on the platform.\n\nNothing contained in these Terms shall be construed to create any partnership, joint venture, employment, agency, or contractor relationship between CoGo City and any user.\n\nUsers are solely responsible for determining their own compliance with any applicable local, state, and federal laws, including laws relating to:\n\n- youth employment\n- independent contracting\n- permits\n- taxes\n- wages\n- workplace safety\n- insurance\n- work-hour restrictions\n- parental consent requirements\n\n### Parents & Minors\n\nIf you are under the age of 18, you may use the platform only with the involvement and consent of a parent or legal guardian.\n\nParents and guardians are solely responsible for supervising minors using the platform and evaluating the safety and appropriateness of any project, employer, neighbor, business, or interaction.\n\n### Assumption of Risk\n\nUsers understand that interactions arranged through the platform may involve online communications, in-person meetings, transportation, physical activity, tools, equipment, private residences, businesses, or other risks.\n\nBy using the platform, users voluntarily assume all risks associated with participation in projects, services, jobs, communications, and interactions arranged through the platform.\n\n### Release of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY SHALL NOT BE LIABLE FOR ANY INJURY, LOSS, DAMAGE, CLAIM, DISPUTE, PROPERTY DAMAGE, PERSONAL INJURY, DEATH, NEGLIGENCE, MISCONDUCT, HARASSMENT, ASSAULT, CRIMINAL ACTIVITY, OR OTHER INCIDENT ARISING OUT OF OR RELATING TO:\n\n- USER INTERACTIONS;\n- PROJECTS OR SERVICES;\n- EMPLOYMENT OPPORTUNITIES;\n- PAYMENTS;\n- IN-PERSON MEETINGS;\n- TRANSPORTATION;\n- COMMUNICATIONS;\n- OR USE OF THE PLATFORM.\n\nUSERS RELEASE AND HOLD HARMLESS COGO CITY, ITS OFFICERS, EMPLOYEES, CONTRACTORS, AFFILIATES, AND AGENTS FROM ANY CLAIMS, LIABILITIES, DAMAGES, OR LOSSES ARISING FROM USER ACTIVITIES OR INTERACTIONS.\n\n### Background Checks & Verification Disclaimer\n\nCoGo City may offer optional identity verification, ratings, reviews, or background checks. However, no screening or verification process can guarantee user safety or prevent all risks.\n\nCoGo City does not guarantee the identity, honesty, trustworthiness, qualifications, licensing, or conduct of any user.\n\n### Payments & Stripe Disclaimer\n\nPayments may be processed through third-party payment providers, including Stripe. CoGo City is not a bank, money transmitter, escrow company, or financial institution.\n\nProcessing times, payout timing, holds, refunds, disputes, chargebacks, and payment availability may be subject to third-party provider policies.\n\nCoGo City does not guarantee uninterrupted or error-free payment processing services.\n\n### User Conduct\n\nUsers agree not to:\n\n- engage in unlawful, unsafe, discriminatory, abusive, fraudulent, or harassing behavior;\n- request or perform illegal services;\n- misrepresent identity, qualifications, age, or experience;\n- circumvent platform payments or safety systems;\n- use the platform for dangerous or prohibited activities.\n\nCoGo City reserves the right to suspend or terminate accounts at any time for safety, legal, or policy concerns.\n\n### No Guarantee Disclaimer\n\nCoGo City does not guarantee:\n\n- that users will receive jobs, projects, or income;\n- that employers will find suitable candidates;\n- the quality or completion of services;\n- payment collection from users;\n- the availability of opportunities;\n- or uninterrupted platform access.\n\n### Dispute Resolution Between Users\n\nCoGo City is not responsible for resolving disputes between users. Users are encouraged to attempt to resolve disputes directly.\n\nCoGo City may, but is not obligated to, assist with dispute resolution at its sole discretion.\n\n### Limitation of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY’S TOTAL LIABILITY ARISING OUT OF OR RELATING TO THE PLATFORM SHALL NOT EXCEED THE GREATER OF:\n(A) THE TOTAL FEES PAID TO COGO CITY IN THE SIX (6) MONTHS PRECEDING THE CLAIM; OR\n(B) $100 USD.\n\n### Class Action Waiver\n\nUsers agree that any disputes shall be brought solely in an individual capacity and not as part of any class action or representative proceeding.\n\n### California Law\n\nThese Terms shall be governed by the laws of the State of California without regard to conflict of law principles."
+  },
+  'privacy-policy': {
+    title: 'Privacy Policy',
+    body: "### Privacy Policy\n\nCoGo City collects only the information needed to operate the platform, support user accounts, improve safety, process payments, and communicate with users.\n\n### Information We Collect\n\nWe may collect account details such as name, email, phone number, user role, profile information, address or service area, messages, listings, applications, projects, transactions, reviews, and support requests.\n\n### Payments\n\nPayments are processed by Stripe. CoGo City does not store full credit card numbers, bank account numbers, SSN/TIN details, or sensitive Stripe Connect onboarding information. Those details are handled by Stripe-hosted systems.\n\n### How We Use Information\n\nWe use information to create and manage accounts, show profiles and job opportunities, support messaging, process payments, send notifications, protect platform safety, respond to support requests, and maintain legal and business records.\n\n### Sharing Information\n\nWe may share information with service providers that help us operate CoGo City, including payment processors, hosting providers, email providers, analytics tools, and safety or compliance vendors. We may also share information when required by law or needed to protect users and the platform.\n\n### User Content\n\nProfile details, services, job posts, community posts, reviews, and other public-facing content may be visible to other users depending on how the platform feature works.\n\n### Data Security\n\nWe use reasonable technical and organizational safeguards to protect user information. No online service can guarantee perfect security, so users should keep passwords private and avoid sharing sensitive personal information through public areas of the platform.\n\n### Children and Teens\n\nCoGo City is designed for students and local community users. Minors should use the platform with parent or guardian involvement and consent.\n\n### Updates\n\nWe may update this Privacy Policy from time to time. Continued use of CoGo City means users accept the updated policy."
   }
 };
 
@@ -6133,9 +6138,9 @@ function renderSignupLegalAcknowledgement(id='signupLegalAck'){
       <input id="${esc(id)}" type="checkbox">
       <span>
         By signing up, you acknowledge that you have reviewed and agree to our
-        <a href="https://cogocity.com/pages/privacy-policy/" target="_blank" rel="noopener">Privacy Policy</a> and
-        <a href="https://cogocity.com/disclaimer/" target="_blank" rel="noopener">Disclaimer</a>, and that you understand the
-        <a href="https://staging.cogocity.com/#/faq-safety-legal" target="_blank" rel="noopener">Safety &amp; Legal Guidelines</a>.
+        <a href="#/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and
+        <a href="#/disclaimer" target="_blank" rel="noopener">Disclaimer</a>, and that you understand the
+        <a href="#/faq-safety-legal" target="_blank" rel="noopener">Safety &amp; Legal Guidelines</a>.
       </span>
     </label>
   `;
@@ -7779,6 +7784,7 @@ function renderPage(){
       if (route === '#/youth-labor-law-in-ca') return renderStagingLegalPage('youth-labor-law-in-ca');
       if (route === '#/disclaimer') return renderStagingLegalPage('disclaimer');
       if (route === '#/terms-and-conditions') return renderStagingLegalPage('terms-and-conditions');
+      if (route === '#/privacy-policy') return renderStagingLegalPage('privacy-policy');
     if (route.startsWith('#/profile/')) return renderPublicProfilePage();
     if (route.startsWith('#/business/')) return renderBusinessPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
