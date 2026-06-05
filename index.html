@@ -960,6 +960,7 @@ let backendJobsError = '';
 let backendApplicationsLoading = false;
 let backendApplicationsLoaded = false;
 let backendApplicationsError = '';
+let backendApplicationsLoadedAt = 0;
 let backendNotificationsLoading = false;
 let backendNotificationsLoaded = false;
 let backendNotificationsError = '';
@@ -973,9 +974,11 @@ let pendingDashboardThreadId = '';
 let backendProjectsLoading = false;
 let backendProjectsLoaded = false;
 let backendProjectsError = '';
+let backendProjectsLoadedAt = 0;
 let backendSyncedProjectsLoading = false;
 let backendSyncedProjectsLoaded = false;
 let backendSyncedProjectsError = '';
+let backendSyncedProjectsLoadedAt = 0;
 let backendMessageThreadsLoading = {};
 let backendMessageThreadsLoaded = {};
 let backendCurrentProfileLoading = false;
@@ -1145,6 +1148,7 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
       }
     }
     state.loaded = true;
+    state.loadedAt = Date.now();
     if (options.rerender) renderPage();
     return records;
   } finally {
@@ -1155,12 +1159,21 @@ function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}
   const state = backendGenericSyncState[entityKey] || {};
   if (BACKEND_MIGRATION.enabled && !state.loaded && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
 }
+function backendSyncArrayIsFresh(entityKey='', maxAgeMs=15000){
+  const state = backendGenericSyncState[entityKey] || {};
+  return !!(state.loaded && state.loadedAt && Date.now() - state.loadedAt < maxAgeMs);
+}
 function backendSyncArrayHydrating(entityKey=''){
   if (!BACKEND_MIGRATION.enabled || !currentUser || !getBackendAccessToken()) return false;
   const state = backendGenericSyncState[entityKey] || {};
   return !!(state.loading || !state.loaded);
 }
 function ensureBackendApplicationsLoaded(options={}){
+  const forceFresh = !!options.forceFresh;
+  if (forceFresh && BACKEND_MIGRATION.enabled && currentUser && getBackendAccessToken() && !backendSyncArrayIsFresh('applications') && !((backendGenericSyncState.applications || {}).loading)) {
+    loadBackendArraySetting('applications', 'cogo_applications', options);
+    return;
+  }
   ensureBackendArraySettingLoaded('applications', 'cogo_applications', options);
 }
 function ensureBackendPersistentStateLoaded(options={}){
@@ -3288,6 +3301,7 @@ async function refreshBackendSyncedProjects(options={}){
     const rows = await loadBackendSyncedRecords('projects');
     saveBackendSyncedProjects(rows);
     backendSyncedProjectsLoaded = true;
+    backendSyncedProjectsLoadedAt = Date.now();
     if (options.rerender && getRoute() === '#/dashboard') renderDashboard();
     return getBackendSyncedProjects();
   } catch (error) {
@@ -3309,6 +3323,7 @@ async function refreshBackendProjects(options={}){
     const mapped = ensureArray(rows).map(row => mapBackendProject(row));
     saveBackendProjects(mapped);
     backendProjectsLoaded = true;
+    backendProjectsLoadedAt = Date.now();
     await syncedPromise;
     if (options.rerender && getRoute() === '#/dashboard') renderDashboard();
     return getProjects();
@@ -3323,6 +3338,14 @@ async function refreshBackendProjects(options={}){
 }
 function ensureBackendProjectsLoaded(options={}){
   if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
+  const forceFresh = !!options.forceFresh;
+  const maxAgeMs = Number(options.maxAgeMs || 15000);
+  const projectsFresh = backendProjectsLoaded && backendProjectsLoadedAt && Date.now() - backendProjectsLoadedAt < maxAgeMs;
+  const syncedFresh = backendSyncedProjectsLoaded && backendSyncedProjectsLoadedAt && Date.now() - backendSyncedProjectsLoadedAt < maxAgeMs;
+  if ((forceFresh && (!projectsFresh || !syncedFresh)) && !backendProjectsLoading) {
+    refreshBackendProjects(options);
+    return;
+  }
   if (!backendProjectsLoaded && !backendProjectsLoading) {
     refreshBackendProjects(options);
     return;
@@ -3335,6 +3358,7 @@ function backendProjectsHydrating(){
 async function refreshBackendDashboardData(options={}){
   if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
   await Promise.all([
+    loadBackendArraySetting('applications', 'cogo_applications', { rerender:false }),
     refreshBackendProjects({ rerender:false }),
     refreshBackendTransactions({ rerender:false }),
     refreshBackendBrowseStudents({ rerender:false })
@@ -13464,8 +13488,8 @@ function renderStudentJobsBookings(el){
    `;
    return;
  }
- ensureBackendApplicationsLoaded({ rerender:true });
- ensureBackendProjectsLoaded({ rerender:true });
+ ensureBackendApplicationsLoaded({ rerender:true, forceFresh:true });
+ ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
@@ -14632,8 +14656,8 @@ function renderEmployerApplicantsBookings(el){
    `;
    return;
  }
- ensureBackendApplicationsLoaded({ rerender:true });
- ensureBackendProjectsLoaded({ rerender:true });
+ ensureBackendApplicationsLoaded({ rerender:true, forceFresh:true });
+ ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const allApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
