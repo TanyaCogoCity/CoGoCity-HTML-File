@@ -5456,8 +5456,10 @@ function renderProjectPaymentSection(project){
   if (isDirectHireProject(project)) {
     return `
       ${renderProjectPaymentStatus(project)}
-      <div class="small">Employer payroll and student wages are handled directly between the employer and student outside CoGo City.</div>
-      <div class="small">CoGo City only collects the paid job-listing fee for this direct-hire posting.</div>
+      <div class="warning" style="margin-top:8px">
+        <div class="small">Employer payroll and student wages are handled directly between the employer and student outside CoGo City.</div>
+        <div class="small">CoGo City only collects the paid job-listing fee for this direct-hire posting.</div>
+      </div>
     `;
   }
   if (currentUser.role === 'student') {
