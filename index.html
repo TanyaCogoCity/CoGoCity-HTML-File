@@ -960,6 +960,9 @@ let backendJobsError = '';
 let backendApplicationsLoading = false;
 let backendApplicationsLoaded = false;
 let backendApplicationsError = '';
+let backendNotificationsLoading = false;
+let backendNotificationsLoaded = false;
+let backendNotificationsError = '';
 let backendMessagesLoading = false;
 let backendMessagesLoaded = false;
 let backendMessagesError = '';
@@ -1152,6 +1155,14 @@ function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}
   const state = backendGenericSyncState[entityKey] || {};
   if (BACKEND_MIGRATION.enabled && !state.loaded && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
 }
+function backendSyncArrayHydrating(entityKey=''){
+  if (!BACKEND_MIGRATION.enabled || !currentUser || !getBackendAccessToken()) return false;
+  const state = backendGenericSyncState[entityKey] || {};
+  return !!(state.loading || !state.loaded);
+}
+function ensureBackendApplicationsLoaded(options={}){
+  ensureBackendArraySettingLoaded('applications', 'cogo_applications', options);
+}
 function ensureBackendPersistentStateLoaded(options={}){
   if (!BACKEND_MIGRATION.enabled) return;
   ensureBackendArraySettingLoaded('images', 'cogo_images', options);
@@ -1163,6 +1174,7 @@ function ensureBackendPersistentStateLoaded(options={}){
   ensureBackendArraySettingLoaded('direct_job_packages', 'cogo_direct_job_packages', options);
   if (!currentUser || !getBackendAccessToken()) return;
   ensureBackendArraySettingLoaded('workshop_registrations', 'cogo_workshop_registrations', options);
+  ensureBackendApplicationsLoaded(options);
   const route = typeof getRoute === 'function' ? getRoute() : '';
   const shouldLoadAdminSync = currentUser.role === 'admin' && route === '#/dashboard';
   if (!shouldLoadAdminSync) return;
@@ -1294,6 +1306,15 @@ function clearBackendAuthSession(){
   resetBackendSessionCaches();
 }
 function resetBackendSessionCaches(){
+  ['applications','workshop_registrations','bookings','payment_logs','admin_action_log','email_queue'].forEach(key => {
+    delete backendGenericSyncState[key];
+  });
+  backendMessagesLoaded = false;
+  backendMessagesLoading = false;
+  backendMessagesError = '';
+  backendNotificationsLoaded = false;
+  backendNotificationsLoading = false;
+  backendNotificationsError = '';
   backendTransactionsLoaded = false;
   backendTransactionsLoading = false;
   backendTransactionsError = '';
@@ -3615,7 +3636,7 @@ function saveStudentResume(userId, resume){
   if (currentUser && currentUser.id === userId) setCurrentUser(user);
 }
 function getApplications(){
-  ensureBackendArraySettingLoaded('applications', 'cogo_applications');
+  ensureBackendApplicationsLoaded();
   return ls('cogo_applications') || [];
 }
 function saveApplications(v){
@@ -3894,10 +3915,69 @@ async function persistMessagesPermanently(v, failureMessage='Backend message sav
   ls('cogo_messages', localOnly);
   return true;
 }
-function getNotifications(id){ return ls('cogo_notifs_' + id) || []; }
+function backendNotificationsStorageKey(id=''){ return `cogo_backend_notifs_${id}`; }
+function normalizeNotificationItem(item={}, source='local'){
+  const raw = item || {};
+  const id = String(raw.id || raw.notification_id || uid('n'));
+  const link = String(raw.link || '').trim();
+  const isRead = raw.read !== undefined ? !!raw.read : !!(raw.is_read || raw.isRead);
+  const notification = {
+    id,
+    title: String(raw.title || raw.body || 'Notification'),
+    body: String(raw.body || raw.message || ''),
+    action: raw.action || '',
+    link,
+    dedupeKey: raw.dedupeKey || raw.dedupe_key || undefined,
+    read: isRead,
+    createdAt: raw.createdAt || raw.created_at || raw.createdAtUtc || new Date().toISOString()
+  };
+  if (source === 'backend') notification.backendSource = true;
+  return notification;
+}
+function getNotifications(id){
+  const local = ensureArray(ls('cogo_notifs_' + id)).map(item => normalizeNotificationItem(item, 'local')).filter(item => !item.backendSource);
+  const backend = currentUser && String(id) === String(currentUser.id)
+    ? ensureArray(ls(backendNotificationsStorageKey(id))).map(item => normalizeNotificationItem(item, 'backend'))
+    : [];
+  const byKey = new Map();
+  [...backend, ...local].forEach(item => {
+    const key = item.dedupeKey || item.id || [item.title, item.link, item.createdAt].join('|');
+    if (!byKey.has(key)) byKey.set(key, item);
+  });
+  return Array.from(byKey.values()).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
 function saveNotifications(id, data){
-  const payload = ensureArray(data);
+  const payload = ensureArray(data).map(item => normalizeNotificationItem(item, 'local')).filter(item => !item.backendSource);
   ls('cogo_notifs_' + id, payload);
+}
+function saveBackendNotifications(id, data){
+  if (!id) return;
+  ls(backendNotificationsStorageKey(id), ensureArray(data).map(item => normalizeNotificationItem(item, 'backend')));
+}
+async function refreshBackendNotifications(options={}){
+  if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken() || backendNotificationsLoading) return;
+  backendNotificationsLoading = true;
+  try {
+    const rows = await backendAuthRequest('/notifications');
+    const list = ensureArray(rows.items || rows.notifications || rows.data || rows).map(item => normalizeNotificationItem(item, 'backend'));
+    saveBackendNotifications(currentUser.id, list);
+    backendNotificationsLoaded = true;
+    backendNotificationsError = '';
+    if (options.renderNav) renderNav();
+    if (options.rerender) renderDashboard();
+  } catch (error) {
+    backendNotificationsError = error.message || 'Could not load backend notifications.';
+    console.warn('Backend notifications load failed', error);
+  } finally {
+    backendNotificationsLoading = false;
+  }
+}
+function markBackendNotificationRead(notification={}){
+  if (!notification?.backendSource || !notification.id || !backendAuthEnabled() || !getBackendAccessToken()) return Promise.resolve(null);
+  return backendAuthRequest(`/notifications/${encodeURIComponent(notification.id)}/read`, {
+    method:'PATCH',
+    retryOnAuthFailure:false
+  }).catch(error => console.warn('Backend notification read update failed', error));
 }
 function syncNotificationEmail(userId, item){
   if (backendAuthEnabled() && getBackendAccessToken() && isBackendUuid(userId)) {
@@ -5806,6 +5886,7 @@ function renderNav(){
   }
 
   if (backendAuthEnabled() && getBackendAccessToken() && !backendMessagesLoaded && !backendMessagesLoading) refreshBackendMessages({ renderNav:true });
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendNotificationsLoaded && !backendNotificationsLoading) refreshBackendNotifications({ renderNav:true });
   const unreadMsgs = getUnreadMessageCountForUser(currentUser.id);
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
   const settings = getSiteSettings();
@@ -5918,8 +5999,11 @@ function dedupeVisibleNotifications(items=[]){
     return true;
   });
 }
-function openNotifications(){
+async function openNotifications(){
   if (currentUser && currentUser.role === 'employer') ensureDirectJobExpiryNotificationsForUser(currentUser.id);
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendNotificationsLoaded && !backendNotificationsLoading) {
+    await refreshBackendNotifications({ renderNav:true });
+  }
   const allItems = getNotifications(currentUser.id);
   const items = dedupeVisibleNotifications(allItems.filter(n => !n.action || n.action.type !== 'thread'));
   const html = items.length ? items.map(n => `
@@ -5934,8 +6018,12 @@ function openNotifications(){
     </div>
   `).join('') : `<div class="muted">No notifications yet.</div>`;
   openModal('Notifications', html, '620px');
-  allItems.forEach(n => n.read = true);
+  allItems.forEach(n => {
+    if (!n.read) markBackendNotificationRead(n);
+    n.read = true;
+  });
   saveNotifications(currentUser.id, allItems);
+  saveBackendNotifications(currentUser.id, allItems.filter(n => n.backendSource));
   renderNav();
 }
 function runNotifAction(id){
@@ -5943,7 +6031,10 @@ function runNotifAction(id){
   const item = items.find(n => n.id === id);
   if (!item) return;
   item.viewedAt = new Date().toISOString();
+  if (!item.read) markBackendNotificationRead(item);
+  item.read = true;
   saveNotifications(currentUser.id, items);
+  saveBackendNotifications(currentUser.id, items.filter(n => n.backendSource));
   closeModal();
   const action = item.action || {};
   if (action.type === 'dashboard') {
@@ -13373,6 +13464,7 @@ function renderStudentJobsBookings(el){
    `;
    return;
  }
+ ensureBackendApplicationsLoaded({ rerender:true });
  ensureBackendProjectsLoaded({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
@@ -13398,7 +13490,9 @@ function renderStudentJobsBookings(el){
 
   if (studentJobsTab === 'all' || studentJobsTab === 'jobs'){
     html += `<div style="font-weight:800;margin-bottom:10px">Contract Applications / Offers</div>`;
-    html += apps.length ? apps.map(a => renderStudentAppCard(a)).join('') : `<div class="card form-card muted">No applications or offers yet.</div>`;
+    html += backendSyncArrayHydrating('applications')
+      ? `<div class="card form-card muted">Loading applications and offers from the database...</div>`
+      : (apps.length ? apps.map(a => renderStudentAppCard(a)).join('') : `<div class="card form-card muted">No applications or offers yet.</div>`);
     html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Direct Hire Job Applications</div>`;
     html += directApps.length ? directApps.map(app => renderStudentDirectJobApplicationCard(app)).join('') : `<div class="card form-card muted">No direct-hire job applications yet.</div>`;
   }
@@ -14538,6 +14632,7 @@ function renderEmployerApplicantsBookings(el){
    `;
    return;
  }
+ ensureBackendApplicationsLoaded({ rerender:true });
  ensureBackendProjectsLoaded({ rerender:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const allApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
@@ -14560,7 +14655,9 @@ function renderEmployerApplicantsBookings(el){
   let html = '';
   if (employerTab === 'all' || employerTab === 'applicants'){
     html += `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers</div>`;
-    html += myApplications.length ? myApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No applicants or offers yet.</div>`;
+    html += backendSyncArrayHydrating('applications')
+      ? `<div class="card form-card muted">Loading applicants and offers from the database...</div>`
+      : (myApplications.length ? myApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No applicants or offers yet.</div>`);
     html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Declined</div>`;
     html += declinedApplications.length ? declinedApplications.map(a => renderEmployerAppCard(a)).join('') : `<div class="card form-card muted">No declined applicants yet.</div>`;
   }
