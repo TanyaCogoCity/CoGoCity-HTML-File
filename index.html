@@ -12324,6 +12324,7 @@ function migrationOnboardingComplete(user=currentUser){
 }
 function needsMigrationOnboarding(user=currentUser){
   if (!user) return false;
+  if (migrationOnboardingComplete(user)) return false;
   const req = user.onboarding_requirements || {};
   if (req.profile_review_required) return true;
   return !!(isMigrationOnboardingTestUser(user) && !migrationOnboardingComplete(user));
@@ -12360,6 +12361,18 @@ function markMigrationOnboardingComplete(user=currentUser){
   const store = migrationOnboardingStore();
   store[email] = new Date().toISOString();
   saveMigrationOnboardingStore(store);
+  if (user && user.onboarding_requirements) {
+    user.onboarding_requirements = Object.assign({}, user.onboarding_requirements, {
+      profile_review_required: false,
+      profile_review_completed_at: user.onboarding_requirements.profile_review_completed_at || store[email]
+    });
+  }
+  if (currentUser && String(currentUser.id) === String(user?.id) && currentUser.onboarding_requirements) {
+    currentUser.onboarding_requirements = Object.assign({}, currentUser.onboarding_requirements, {
+      profile_review_required: false,
+      profile_review_completed_at: currentUser.onboarding_requirements.profile_review_completed_at || store[email]
+    });
+  }
 }
 function routeToMigrationOnboardingIfNeeded(){
   if (!needsMigrationOnboarding() && !needsRequiredPaymentMethod() && !needsRequiredPayoutSetup()) return false;
