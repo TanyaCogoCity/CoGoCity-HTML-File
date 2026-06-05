@@ -14983,7 +14983,9 @@ async function startProject(appId, expectedStatus=''){
   if (!await persistProjectsPermanently(projects, 'Backend project save failed. Please try again so this project is saved correctly.')) return;
   await refreshBackendDashboardData();
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
-  pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  if (!backendAuthEnabled() || currentUser.role === 'admin' || String(currentUser.id) === String(a.studentUserId)) {
+    pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  }
   sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${platformSupportFeeLabel(estimatedBreakdown.employerCommissionPct)}: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
   sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
 
@@ -15066,7 +15068,9 @@ async function activateProject(projectId){
   if (!await persistProjectsPermanently(projects, 'Backend project start failed. Please try again so this project is saved correctly.')) return;
   await refreshBackendDashboardData();
 
-  pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  if (!backendAuthEnabled() || currentUser.role === 'admin' || String(currentUser.id) === String(p.studentUserId)) {
+    pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  }
   trackCogoEvent('project_started', { source: 'existing_project', value: Number(p.escrowAmount || p.estimatedEmployerTotal || 0), currency: 'USD' });
   employerTab = 'projects';
   toast('Project started successfully');

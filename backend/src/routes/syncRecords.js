@@ -100,6 +100,18 @@ function syncedApplicationEmployerId(payload = {}) {
   return String(payload.employerId || payload.employer_id || '').trim();
 }
 
+function syncedProjectStudentId(payload = {}) {
+  return String(payload.studentUserId || payload.student_user_id || payload.studentId || payload.student_id || '').trim();
+}
+
+function syncedProjectEmployerId(payload = {}) {
+  return String(payload.employerId || payload.employer_id || payload.userId || payload.user_id || '').trim();
+}
+
+function isStartedProjectStatus(value = '') {
+  return ['in_progress', 'project_started', 'funded'].includes(String(value || '').trim().toLowerCase());
+}
+
 async function createSyncedApplicationOfferNotifications(normalized = [], req) {
   if (!Array.isArray(normalized) || !normalized.length) return 0;
   let created = 0;
@@ -126,6 +138,70 @@ async function createSyncedApplicationOfferNotifications(normalized = [], req) {
         title: `You have an offer for "${jobTitle}"`,
         body: `${employerName} sent you an offer for "${jobTitle}". Open your dashboard to review it.`,
         link: `/dashboard?section=jobs_bookings&studentJobsTab=jobs&application=${encodeURIComponent(record.id)}`,
+      },
+    });
+
+    await prisma.syncRecord.upsert({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+      create: {
+        entity: 'notification_email_receipts',
+        recordId: receiptId,
+        payload: {
+          user_id: studentId,
+          frontend_notification_id: record.id,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+      update: {
+        deletedAt: null,
+        payload: {
+          user_id: studentId,
+          frontend_notification_id: record.id,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
+async function createSyncedProjectStartedNotifications(normalized = [], req) {
+  if (!Array.isArray(normalized) || !normalized.length) return 0;
+  let created = 0;
+  for (const record of normalized) {
+    const payload = record.payload || {};
+    const studentId = syncedProjectStudentId(payload);
+    const employerId = syncedProjectEmployerId(payload);
+    if (!studentId || !employerId || !isStartedProjectStatus(payload.status)) continue;
+    if (req.user.role !== 'admin' && employerId !== req.user.id) continue;
+
+    const receiptId = `${studentId}:${record.id}:project_started`;
+    const existing = await prisma.syncRecord.findUnique({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+    });
+    if (existing && !existing.deletedAt) continue;
+
+    const jobTitle = String(payload.jobTitle || payload.job_title || 'your project').trim();
+    const workTotal = Number(payload.estimatedTotal || payload.agreedPrice || payload.finalSubtotal || payload.workTotal || 0) || 0;
+    const studentPayout = Number(payload.estimatedStudentPayout || payload.studentPayout || payload.finalStudentPayout || 0) || 0;
+    const feePct = Number(payload.studentCommissionPct || 0) || 0;
+    const payoutText = studentPayout
+      ? ` Your estimated payout${feePct ? ` after the ${feePct}% platform support fee` : ''} is $${studentPayout.toFixed(2)}.`
+      : '';
+    const notification = await createNotification({
+      data: {
+        userId: studentId,
+        type: notificationType('project'),
+        title: `Project started for "${jobTitle}"`,
+        body: `Project started for "${jobTitle}".${workTotal ? ` Work total: $${workTotal.toFixed(2)}.` : ''}${payoutText}`,
+        link: `/dashboard?section=jobs_bookings&studentJobsTab=projects&project=${encodeURIComponent(record.id)}`,
       },
     });
 
@@ -538,6 +614,9 @@ router.post('/:entity', requireAuth, async (req, res) => {
     const communityApplicationNotificationUpdates = entity === 'applications'
       ? await createSyncedCommunityApplicationNotifications(normalized, req)
       : 0;
+    const projectNotificationUpdates = entity === 'projects'
+      ? await createSyncedProjectStartedNotifications(normalized, req)
+      : 0;
 
     await writeAuditLog({
       userId: req.user.id,
@@ -550,6 +629,7 @@ router.post('/:entity', requireAuth, async (req, res) => {
         application_count_updates: applicationCountUpdates,
         application_notification_updates: applicationNotificationUpdates,
         community_application_notification_updates: communityApplicationNotificationUpdates,
+        project_notification_updates: projectNotificationUpdates,
       },
     });
 
@@ -560,6 +640,7 @@ router.post('/:entity', requireAuth, async (req, res) => {
       application_count_updates: applicationCountUpdates,
       application_notification_updates: applicationNotificationUpdates,
       community_application_notification_updates: communityApplicationNotificationUpdates,
+      project_notification_updates: projectNotificationUpdates,
     });
   } catch (error) {
     return fail(res, 400, 'Could not sync records', error.message);
