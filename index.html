@@ -1072,7 +1072,7 @@ async function loadBackendSyncedRecords(entityKey='', options={}){
       : endpoint;
     const result = isPublicEntity
       ? await backendRequest(readEndpoint, { method:'GET', auth:false })
-      : { ok:true, data:{ records: await backendAuthRequest(readEndpoint, { method:'GET' }) } };
+      : { ok:true, data: await backendAuthRequest(readEndpoint, { method:'GET' }) };
     if (!result || !result.ok) return [];
     return ensureArray(result.data?.data?.records || result.data?.records || result.data);
   } catch (error) {
