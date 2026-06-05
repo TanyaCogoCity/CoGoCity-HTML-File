@@ -43,7 +43,11 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/sync', requireAuth, async (req, res) => {
   const userId = String(req.body?.user_id || req.body?.userId || '').trim();
   if (!userId) return fail(res, 400, 'user_id is required');
-  if (req.user.role !== 'admin' && userId !== req.user.id) return fail(res, 403, 'Forbidden');
+  const recipient = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null, status: 'active' },
+    select: { id: true },
+  });
+  if (!recipient) return fail(res, 404, 'Notification recipient not found');
 
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   let createdCount = 0;
