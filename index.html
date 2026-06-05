@@ -6022,7 +6022,8 @@ function notificationOpenButtonClass(notification){
 function notificationActionLabel(notification={}){
   const action = notification.action || {};
   const text = `${notification.title || ''} ${notification.body || ''} ${notification.link || ''}`.toLowerCase();
-  if ((action.section === 'my_jobs' && action.employerMyJobsTab === 'applications') || (text.includes('applied') && (text.includes('resume') || text.includes('application')))) return 'See Resumes';
+  if (action.section === 'my_jobs' && action.employerMyJobsTab === 'applications') return 'See Resumes';
+  if (text.includes('resume') && (text.includes('direct hire') || text.includes('my_jobs'))) return 'See Resumes';
   return 'Open CoGoCity';
 }
 function dedupeVisibleNotifications(items=[]){
@@ -6035,7 +6036,11 @@ function dedupeVisibleNotifications(items=[]){
       return true;
     }
     const action = item.action || {};
-    const fallbackKey = [item.title || '', item.link || '', action.section || '', action.employerTab || '', action.studentJobsTab || ''].join('|');
+    const normalizedTitle = String(item.title || '').trim().toLowerCase();
+    const isCommunityApplicationNotice = normalizedTitle.includes(' applied to "') && !(normalizedTitle.includes('resume') || String(item.link || '').includes('my_jobs'));
+    const fallbackKey = isCommunityApplicationNotice
+      ? `community_application:${normalizedTitle}`
+      : [item.title || '', item.link || '', action.section || '', action.employerTab || '', action.studentJobsTab || ''].join('|');
     const created = item.createdAt ? new Date(item.createdAt).getTime() : 0;
     const prior = seen.get(fallbackKey);
     if (prior && created && Math.abs(created - prior) < 30 * 60 * 1000) return false;
@@ -12223,21 +12228,10 @@ async function submitApplication(postId){
   });
   if (!await persistApplicationsPermanently(apps, 'Backend application failed. Please try again so the application is saved for everyone.')) return;
   trackCogoEvent('application_submitted', { source: 'community_feed' });
-  await sendInboxMessage(
-    p.authorId,
-    p.authorName,
-    `New application for "${p.jobTitle}": ${msg}`,
-    null,
-    currentUser,
-    {
-      postId: postId,
-      applicationId,
-      thread_id: `application:${applicationId}`,
-      thread_label: `Job Application: ${p.jobTitle}`
-    }
-  );
   syncCommunityJobApplicationCounts(apps);
-  pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
+  if (!backendAuthEnabled() || !getBackendAccessToken()) {
+    pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
+  }
   closeModal();
   toast('Application submitted. Check Dashboard \u2192 Jobs & Bookings.');
   renderCommunity();
