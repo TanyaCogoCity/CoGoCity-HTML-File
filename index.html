@@ -5970,7 +5970,7 @@ function renderNav(){
         ? `
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
-          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">Hourly Projects</button>
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">My Community Gigs</button>
           ${WORKSHOPS_ENABLED ? `<button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('workshops')">Workshops & Classes</button>` : ''}
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('messages')">My Messages</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('transactions')">My Transactions</button>
@@ -5979,9 +5979,9 @@ function renderNav(){
         `
         : `
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
-          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('my_jobs', { employerMyJobsTab:'all' })">My Jobs</button>
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('my_jobs', { employerMyJobsTab:'all' })">My Direct Hire</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
-          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">Hourly Projects</button>
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">My Community Gigs</button>
           ${WORKSHOPS_ENABLED ? `<button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('workshops')">Workshops & Classes</button>` : ''}
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('messages')">My Messages</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('transactions')">My Transactions</button>
@@ -12410,9 +12410,9 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='profile'?'active':''}" onclick="dashSection='profile';renderDashboard();return false;">\u{1F464} My Profile</a>
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">\u2699\uFE0F Settings</a>
         ` : `
-          ${!isNeighborAccount(currentUser) ? `<a href="#" class="${dashSection==='my_jobs'?'active':''}" onclick="dashSection='my_jobs';renderDashboard();return false;">\u{1F4BC} My Jobs</a>` : ''}
+          ${!isNeighborAccount(currentUser) ? `<a href="#" class="${dashSection==='my_jobs'?'active':''}" onclick="dashSection='my_jobs';renderDashboard();return false;">\u{1F4BC} My Direct Hire</a>` : ''}
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">\u{1F4E2} My Posts</a>
-          <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">\u{1F4CB} Hourly Projects</a>
+          <a href="#" class="${dashSection==='applicants_projects'?'active':''}" onclick="dashSection='applicants_projects';renderDashboard();return false;">\u{1F4CB} My Community Gigs</a>
           ${WORKSHOPS_ENABLED ? `<a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">\u{1F9D1}\u200D\u{1F3EB} Workshops & Classes</a>` : ''}
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">\u{1F4AC} My Messages</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">\u{1F4B3} My Transactions</a>
@@ -14477,7 +14477,7 @@ function renderEmployerMyJobs(el){
   `;
   if (isNeighborAccount(currentUser)) {
     el.innerHTML = `
-      <div class="section-title">My Jobs</div>
+      <div class="section-title">My Direct Hire</div>
       <div class="card form-card">
         <div class="warning">Direct-hire job postings are available only to Employer business profiles with company information.</div>
         <div class="small muted" style="margin-top:10px">Neighbor accounts can post jobs in Community Gigs and hire students on a contract basis.</div>
@@ -14491,7 +14491,7 @@ function renderEmployerMyJobs(el){
   }
   if (!getEmployerCompanyName(currentUser)) {
     el.innerHTML = `
-      <div class="section-title">My Jobs</div>
+      <div class="section-title">My Direct Hire</div>
       ${employerMyJobsGuidance}
       <div class="card form-card">
         <div class="warning">Complete your company information in My Profile before posting direct-hire jobs.</div>
@@ -14517,7 +14517,7 @@ function renderEmployerMyJobs(el){
   const companyName = getEmployerCompanyName(currentUser);
   const searchPlaceholder = employerMyJobsTab === 'applications' ? 'Search resumes' : employerMyJobsTab === 'manage' ? 'Search jobs' : 'Search jobs or applicants';
   el.innerHTML = `
-    <div class="section-title">My Jobs</div>
+    <div class="section-title">My Direct Hire</div>
     ${employerMyJobsGuidance}
     <div class="subtabs">
       <button class="pill ${employerMyJobsTab==='all'?'active':''}" onclick="employerMyJobsTab='all';renderDashboard()">All</button>
@@ -14671,8 +14671,8 @@ function shouldDisableDeclineApplicant(application){
 function renderEmployerApplicantsBookings(el){
  if (backendDataSessionMissing()) {
    el.innerHTML = `
-    <div class="section-title">Hourly Projects</div>
-    ${renderBackendDataSessionNotice('hourly projects')}
+    <div class="section-title">My Community Gigs</div>
+    ${renderBackendDataSessionNotice('community gigs')}
    `;
    return;
  }
@@ -14687,7 +14687,7 @@ function renderEmployerApplicantsBookings(el){
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
   el.innerHTML = `
-    <div class="section-title">Hourly Projects</div>
+    <div class="section-title">My Community Gigs</div>
     <div class="subtabs">
       <button class="pill ${employerTab==='all'?'active':''}" onclick="employerTab='all';renderDashboard()">All</button>
       <button class="pill ${employerTab==='applicants'?'active':''}" onclick="employerTab='applicants';renderDashboard()">Applicants</button>
