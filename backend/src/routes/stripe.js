@@ -1008,6 +1008,114 @@ async function completeJobCheckoutSession(session) {
   return job;
 }
 
+async function completeJobExtensionCheckoutSession(session) {
+  const jobId = session.metadata?.job_id || session.client_reference_id;
+  if (!jobId) return null;
+  const paymentStatus = paymentStatusForCheckoutSession(session);
+  const paymentIntent = await getCheckoutPaymentIntent(session);
+  const existing = await prisma.job.findUnique({ where: { id: jobId }, include: { creator: true } });
+  if (!existing) return null;
+
+  if (paymentStatus !== 'paid') {
+    if (paymentStatus === 'failed') {
+      await createPaymentIssueNotification({
+        userId: existing.createdBy,
+        title: 'Job listing extension payment did not go through',
+        body: `${existing.title} was not extended because Stripe did not complete the payment. Please check or update your card, then try again.`,
+        link: `/dashboard?section=my_jobs&job=${existing.id}`,
+        type: 'payment',
+      });
+    }
+    return existing;
+  }
+
+  const extensionMonths = Math.max(1, Number(session.metadata?.extension_months || 1) || 1);
+  const extensionDays = Math.max(1, Number(session.metadata?.extension_days || 30) || 30);
+  const listingFee = Number(session.metadata?.listing_fee || 0) || 0;
+  const employerPlatformFee = Number(session.metadata?.employer_platform_fee || 0) || 0;
+  const totalAmount = Number(session.metadata?.total_amount || listingFee) || listingFee;
+  const currentExpiry = existing.expiresAt && new Date(existing.expiresAt).getTime() > Date.now()
+    ? new Date(existing.expiresAt)
+    : new Date();
+  const nextExpiry = new Date(currentExpiry.getTime() + extensionDays * 24 * 60 * 60 * 1000);
+  const chargeId = checkoutChargeId(paymentIntent);
+  const recordId = `job_extension:${session.id}`;
+  const existingRecord = await prisma.syncRecord.findUnique({
+    where: { entity_recordId: { entity: 'transactions', recordId } },
+  });
+  if (existingRecord && !existingRecord.deletedAt) return existing;
+  const paidAt = existingRecord?.payload?.date_paid || new Date().toISOString();
+
+  const job = await prisma.job.update({
+    where: { id: existing.id },
+    data: {
+      expiresAt: nextExpiry,
+      listingMonths: Number(existing.listingMonths || 1) + extensionMonths,
+      listingDurationDays: Number(existing.listingDurationDays || 30) + extensionDays,
+      status: 'open',
+    },
+    include: { creator: true },
+  });
+
+  const extensionTransactionPayload = {
+    id: recordId,
+    transaction_id: recordId,
+    payment_type: 'direct_job_listing',
+    transaction_kind: 'direct_job_listing_extension',
+    job_id: job.id,
+    direct_job_id: job.id,
+    employer_id: job.createdBy,
+    payer_id: job.createdBy,
+    employerName: job.creator?.displayName || 'Employer / Neighbor',
+    job_title: `Job Posting Extension: ${job.title}`,
+    status: 'paid',
+    created_at: paidAt,
+    date_charged: paidAt,
+    date_paid: paidAt,
+    total_amount: totalAmount,
+    amount_total: totalAmount,
+    listing_fee: listingFee,
+    employer_platform_fee: employerPlatformFee,
+    platform_fee_total: employerPlatformFee,
+    platform_fee: 0,
+    payout_amount: 0,
+    posting_package: session.metadata?.posting_package || job.postingPackage || 'basic',
+    listing_months: extensionMonths,
+    extension_days: extensionDays,
+    expiration_date: nextExpiry.toISOString(),
+    stripe_checkout_session_id: session.id || '',
+    stripe_payment_intent_id: paymentIntent?.id || (typeof session.payment_intent === 'string' ? session.payment_intent : ''),
+    stripe_charge_id: chargeId || '',
+    stripe_payment_status: paymentIntent?.status || session.payment_status || '',
+  };
+  await prisma.syncRecord.upsert({
+    where: { entity_recordId: { entity: 'transactions', recordId } },
+    create: {
+      entity: 'transactions',
+      recordId,
+      payload: extensionTransactionPayload,
+    },
+    update: {
+      deletedAt: null,
+      payload: extensionTransactionPayload,
+    },
+  });
+
+  if (!existingRecord || existingRecord.deletedAt) {
+    await createNotification({
+      data: {
+        userId: job.createdBy,
+        type: notificationType('payment'),
+        title: 'Job listing extension payment received',
+        body: `${job.title} was extended through ${nextExpiry.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`,
+        link: `/dashboard?section=transactions&job=${job.id}`,
+      },
+    });
+  }
+
+  return job;
+}
+
 // Keep the webhook route before JSON parsing. app.js mounts this router before the global JSON parser
 // so Stripe signatures are verified against the exact raw request body.
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -1043,6 +1151,8 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         await completeWorkshopCheckoutSession(session);
       } else if (checkoutType === 'job_listing') {
         await completeJobCheckoutSession(session);
+      } else if (checkoutType === 'job_listing_extension') {
+        await completeJobExtensionCheckoutSession(session);
       } else if (session.payment_intent) {
         const paymentIntent = await retrievePaymentIntentForSync(session.payment_intent);
         const txId = session.metadata?.transaction_id || paymentIntent.metadata?.transaction_id;
@@ -1058,12 +1168,14 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       const session = event.data.object;
       if (session.metadata?.type === 'workshop') await completeWorkshopCheckoutSession(session);
       if (session.metadata?.type === 'job_listing') await completeJobCheckoutSession(session);
+      if (session.metadata?.type === 'job_listing_extension') await completeJobExtensionCheckoutSession(session);
     }
 
     if (event.type === 'checkout.session.expired' || event.type === 'checkout.session.async_payment_failed') {
       const session = event.data.object;
       if (session.metadata?.type === 'workshop') await completeWorkshopCheckoutSession(session);
       if (session.metadata?.type === 'job_listing') await completeJobCheckoutSession(session);
+      if (session.metadata?.type === 'job_listing_extension') await completeJobExtensionCheckoutSession(session);
     }
 
     if (['transfer.created', 'transfer.updated', 'transfer.paid', 'transfer.failed', 'transfer.reversed'].includes(event.type)) {
@@ -1684,6 +1796,96 @@ router.post('/create-job-checkout-session', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/create-job-extension-checkout-session', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/admin can extend direct job listings.');
+
+  const jobId = String(req.body?.job_id || req.body?.jobId || '').trim();
+  const extensionMonths = Math.max(1, Math.min(4, Number(req.body?.months || req.body?.extension_months || 1) || 1));
+  if (!jobId) return fail(res, 400, 'job_id is required');
+
+  const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
+  if (!job) return fail(res, 404, 'Job not found');
+  if (req.user.role !== 'admin' && job.createdBy !== req.user.id) return fail(res, 403, 'Only the job owner can extend this listing');
+  if (!['paid', 'captured', 'succeeded', 'complete', 'completed'].includes(String(job.paymentStatus || '').toLowerCase())) {
+    return fail(res, 409, 'Only paid listings can be extended');
+  }
+
+  const pkg = await getDirectJobPackage(prisma, job.postingPackage || 'basic');
+  const feePerMonth = Math.max(0, Number(pkg.fee || job.postingFee || 0) || 0);
+  const extensionDays = Math.max(1, Number(pkg.duration_days || 30) || 30) * extensionMonths;
+  const placementFees = calculateJobPlacementFees(feePerMonth * extensionMonths);
+  const amount = placementFees.employerTotal;
+  if (amount <= 0) {
+    const currentExpiry = job.expiresAt && new Date(job.expiresAt).getTime() > Date.now() ? new Date(job.expiresAt) : new Date();
+    const nextExpiry = new Date(currentExpiry.getTime() + extensionDays * 24 * 60 * 60 * 1000);
+    const updated = await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        expiresAt: nextExpiry,
+        listingMonths: Number(job.listingMonths || 1) + extensionMonths,
+        listingDurationDays: Number(job.listingDurationDays || 30) + extensionDays,
+        status: 'open',
+      },
+    });
+    return ok(res, { job_id: updated.id, status: 'paid', free: true, extension_months: extensionMonths, extension_days: extensionDays });
+  }
+
+  const origin = stripeOrigin(req);
+  try {
+    const customerId = await ensureStripeCustomer(req.user);
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        success_url: `${origin}/?stripe_job_extension=${job.id}&stripe_status=success&stripe_session={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/?stripe_job_extension=${job.id}&stripe_status=cancel`,
+        client_reference_id: job.id,
+        customer: customerId,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'usd',
+              unit_amount: toCents(placementFees.listingFee),
+              product_data: { name: `CoGo City job listing extension: ${job.title}`, description: `${extensionDays}-day Direct Hire listing extension` },
+            },
+          },
+        ],
+        payment_intent_data: {
+          metadata: {
+            type: 'job_listing_extension',
+            job_id: job.id,
+            user_id: req.user.id,
+            posting_package: job.postingPackage || 'basic',
+            listing_fee: placementFees.listingFee,
+            employer_platform_fee: placementFees.employerPlatformFee,
+            total_amount: placementFees.employerTotal,
+            extension_months: extensionMonths,
+            extension_days: extensionDays,
+            previous_expires_at: job.expiresAt ? job.expiresAt.toISOString() : '',
+          },
+        },
+        metadata: {
+          type: 'job_listing_extension',
+          job_id: job.id,
+          user_id: req.user.id,
+          posting_package: job.postingPackage || 'basic',
+          listing_fee: placementFees.listingFee,
+          employer_platform_fee: placementFees.employerPlatformFee,
+          total_amount: placementFees.employerTotal,
+          extension_months: extensionMonths,
+          extension_days: extensionDays,
+          previous_expires_at: job.expiresAt ? job.expiresAt.toISOString() : '',
+        },
+      },
+    );
+    await writeAuditLog({ userId: req.user.id, action: 'job.extension.checkout.create', entityType: 'job', entityId: job.id, payload: { checkoutSessionId: session.id, amount, extensionMonths, extensionDays } });
+    return ok(res, serializeCheckoutSession(session, { job_id: job.id, amount, listing_fee: placementFees.listingFee, employer_platform_fee: placementFees.employerPlatformFee, extension_months: extensionMonths, extension_days: extensionDays }));
+  } catch (error) {
+    return fail(res, 400, 'Failed to create job extension checkout session', error.message);
+  }
+});
+
 router.post('/verify-job-checkout-session', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
   const jobId = String(req.body?.job_id || req.body?.jobId || '').trim();
@@ -1703,7 +1905,9 @@ router.post('/verify-job-checkout-session', requireAuth, async (req, res) => {
     const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent', 'payment_intent.latest_charge'] });
     const sessionJobId = session.metadata?.job_id || session.client_reference_id;
     if (sessionJobId && sessionJobId !== job.id) return fail(res, 409, 'Checkout session does not match this job');
-    const updated = await completeJobCheckoutSession(session);
+    const updated = session.metadata?.type === 'job_listing_extension'
+      ? await completeJobExtensionCheckoutSession(session)
+      : await completeJobCheckoutSession(session);
     await writeAuditLog({ userId: req.user.id, action: 'job.checkout.verify', entityType: 'job', entityId: job.id, payload: { checkoutSessionId: session.id, status: session.status, paymentStatus: session.payment_status } });
     return ok(res, Object.assign(serializeJob(updated || job), serializeCheckoutSession(session, { job_id: job.id })));
   } catch (error) {

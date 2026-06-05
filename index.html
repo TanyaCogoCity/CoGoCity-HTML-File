@@ -1492,6 +1492,13 @@ async function createBackendJobCheckoutSession(jobId){
     body: JSON.stringify({ job_id: jobId })
   });
 }
+async function createBackendJobExtensionCheckoutSession(jobId, months=1){
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !jobId) return null;
+  return backendAuthRequest('/stripe/create-job-extension-checkout-session', {
+    method:'POST',
+    body: JSON.stringify({ job_id: jobId, months })
+  });
+}
 async function verifyBackendJobCheckoutSession(jobId, checkoutSessionId=''){
   if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || (!jobId && !checkoutSessionId)) return null;
   return backendAuthRequest('/stripe/verify-job-checkout-session', {
@@ -1953,7 +1960,30 @@ function handleStripeReturnParams(){
     changed = true;
 
   }
-  if (query.get('stripe_status') === 'success' && query.has('stripe_job')) {
+  if (query.get('stripe_status') === 'success' && query.has('stripe_job_extension')) {
+    const jobId = query.get('stripe_job_extension') || '';
+    const sessionId = query.get('stripe_session') || '';
+    verifyBackendJobCheckoutSession(jobId, sessionId).then(async job => {
+      if (job) {
+        upsertBackendDirectJob(job);
+        await refreshBackendTransactions({ rerender:false });
+        toast('Stripe payment verified. Job listing was extended.');
+        renderPage();
+      }
+    }).catch(error => {
+      console.error('Job extension checkout verification failed', error);
+      toast(error.message || 'Could not verify Stripe extension payment yet. Please refresh in a moment.');
+    });
+    query.delete('stripe_job_extension');
+    query.delete('stripe_session');
+    query.delete('stripe_status');
+    changed = true;
+  } else if (query.has('stripe_status') && query.has('stripe_job_extension')) {
+    query.delete('stripe_job_extension');
+    query.delete('stripe_session');
+    query.delete('stripe_status');
+    changed = true;
+  } else if (query.get('stripe_status') === 'success' && query.has('stripe_job')) {
     const jobId = query.get('stripe_job') || '';
     const sessionId = query.get('stripe_session') || '';
     verifyBackendJobCheckoutSession(jobId, sessionId).then(job => {
@@ -3583,10 +3613,10 @@ function extendDirectJobByMonth(jobId=''){
         </select>
       </div>
       <div class="field">
-        <label>Charge for extension (simulated)</label>
+        <label>Charge for extension</label>
         <input id="directJobExtendFeePreview" readonly>
       </div>
-      <div class="small muted">Each month uses your package rate. New expiration date updates immediately after payment.</div>
+      <div class="small muted">Each month uses your package rate. You will be sent to secure Stripe checkout, and the expiration date updates only after payment is confirmed.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px">
         <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
         <button class="btn btn-blue" onclick="confirmDirectJobExtension('${esc(job.id)}')">Pay & Extend</button>
@@ -3609,38 +3639,27 @@ async function confirmDirectJobExtension(jobId=''){
   const job = jobs.find(item => String(item.id) === String(jobId) && String(item.employer_id) === String(currentUser.id));
   if (!job) return toast('Job not found.');
   if (requireBackendWriteSession('extend this job')) return;
-  const pkg = getDirectJobPackageByKey(job.posting_package || 'basic');
-  const feePerMonth = Number(pkg.fee || job.posting_fee || 0) || 0;
-  const baseDays = Math.max(1, Number(pkg.duration_days || job.listing_duration_days || 30) || 30);
   const months = Math.max(1, Number((document.getElementById('directJobExtendMonths') || {}).value || 1) || 1);
-  const extensionDays = baseDays * months;
-  const extensionFee = feePerMonth * months;
-  const currentExpiry = new Date(getDirectJobEffectiveCloseDate(job) || new Date());
-  if (Number.isNaN(currentExpiry.getTime())) return toast('Could not extend this job.');
-  const nextExpiry = new Date(currentExpiry.getTime() + extensionDays * 24 * 60 * 60 * 1000);
-  job.expires_at = nextExpiry.toISOString();
-  job.subscription_total = Number(job.subscription_total || job.posting_fee || 0) + extensionFee;
-  job.listing_months = Number(job.listing_months || 1) + months;
-  job.listing_duration_days = Number(job.listing_duration_days || baseDays) + extensionDays;
-  job.status = 'active';
-  job.updated_at = new Date().toISOString();
-  if (canPersistDirectJobToBackend(job)) {
-    try {
-      const savedJob = await backendAuthRequest(`/jobs/${encodeURIComponent(job.id)}`, {
-        method:'PATCH',
-        body: JSON.stringify(toBackendDirectJobPayload(job))
-      });
-      Object.assign(job, mapBackendDirectJob(savedJob));
-      upsertBackendDirectJob(job);
-    } catch (error) {
-      console.warn('Backend job extend failed', error);
-      toast(error.message || 'Backend job update failed. Please try again so this extension is saved permanently.');
+  if (!STRIPE_ENABLED || !backendAuthEnabled() || !getBackendAccessToken() || !isBackendUuid(job.id)) {
+    toast('Secure Stripe checkout is required to extend Direct Hire listings.');
+    return;
+  }
+  try {
+    const checkoutSession = await createBackendJobExtensionCheckoutSession(job.id, months);
+    if (checkoutSession && checkoutSession.free) {
+      await refreshBackendDirectJobs({ rerender:false });
+      await refreshBackendTransactions({ rerender:false });
+      closeModal();
+      toast('Listing extended.');
+      renderPage();
       return;
     }
+    if (redirectToStripeCheckoutSession(checkoutSession)) return;
+    toast('Could not open Stripe checkout for this extension. Please try again.');
+  } catch (error) {
+    console.warn('Backend job extension checkout failed', error);
+    toast(error.message || 'Could not start Stripe checkout for this extension. Please try again.');
   }
-  if (!await persistDirectJobsPermanently(jobs, 'Backend job extension failed. Please try again so this extension is saved permanently.')) return;
-  closeModal();
-  toast(`Listing extended. New expiration: ${formatDirectJobCloseMessageDate(job.expires_at)}. Charge added: $${money(extensionFee)}.`);
 }
 function getStudentResume(user){
   if (!user || !user.resume) return null;
@@ -18633,7 +18652,7 @@ function getSubscriptionTransactionRows(){
       return {
         employerId,
         employerName: tx.employerName || tx.employer_name || getUserById(employerId)?.publicName || getUserById(employerId)?.name || 'Employer / Neighbor',
-        jobName: String(tx.job_title || tx.jobTitle || 'Direct Hire Job').replace(/^Job Posting:\s*/i, ''),
+        jobName: String(tx.job_title || tx.jobTitle || 'Direct Hire Job').replace(/^Job Posting(?: Extension)?:\s*/i, ''),
         dateStarted: tx.date_charged || tx.date_paid || tx.created_at || '',
         expirationDate: tx.expiration_date || tx.expires_at || '',
         total: Number(tx.total_amount || tx.amount_total || tx.listing_fee || 0),
