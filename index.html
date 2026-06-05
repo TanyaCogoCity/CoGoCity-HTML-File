@@ -5232,6 +5232,25 @@ function getNotificationFallbackLink(notification={}){
   if (action.type === 'dashboard') return dashboardLinkForAction(action);
   return '/dashboard?section=notifications';
 }
+function resolveBackendNotificationUserId(userId){
+  const raw = String(userId || '').trim();
+  if (!raw) return '';
+  if (isBackendUuid(raw)) return raw;
+  const records = [
+    currentUser,
+    getUserById(raw),
+    ...getUsers(),
+    ...adminBackendUsers,
+    ...getBackendBrowseUsers()
+  ].filter(Boolean);
+  const match = records.find(user =>
+    String(user.id || '') === raw
+    || String(user.backendUserId || '') === raw
+    || String(user.user_id || '') === raw
+  );
+  const backendId = String(match?.backendUserId || match?.user_id || match?.id || '').trim();
+  return isBackendUuid(backendId) ? backendId : '';
+}
 function pushNotif(userId, title, action=''){
   const items = getNotifications(userId);
   const link = action && action.type === 'dashboard'
@@ -5242,8 +5261,9 @@ function pushNotif(userId, title, action=''){
   const item = { id: uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() };
   items.unshift(item);
   saveNotifications(userId, items.slice(0, 50));
-  const canSyncDirectly = currentUser && backendAuthEnabled() && getBackendAccessToken() && isBackendUuid(userId);
-  return { item, syncPromise: canSyncDirectly ? syncNotificationEmail(userId, item) : Promise.resolve(null) };
+  const backendUserId = resolveBackendNotificationUserId(userId);
+  const canSyncDirectly = currentUser && backendAuthEnabled() && getBackendAccessToken() && backendUserId;
+  return { item, syncPromise: canSyncDirectly ? syncNotificationEmail(backendUserId, item) : Promise.resolve(null) };
 }
 function currentUserRoleLabel(){
   if (!currentUser) return '';
