@@ -5960,7 +5960,8 @@ function renderNav(){
     ? `
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
-      <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('jobs_bookings', { studentJobsTab:'jobs' })">Jobs & Bookings</button>
+      <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('jobs_bookings', { studentJobsTab:'jobs' })">My Community Gigs</button>
+      <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('direct_hire')">My Direct Hire</button>
       ${WORKSHOPS_ENABLED ? `<button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('workshops')">Workshops & Classes</button>` : ''}
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('messages')">My Messages</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('transactions')">My Transactions</button>
@@ -8878,7 +8879,7 @@ async function submitDirectJobApplication(jobId=''){
   pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications', jobId:job.id });
   directJobApplyDraft = null;
   closeModal();
-  toast('Application submitted.');
+  toast('Application submitted. Check Dashboard \u2192 My Direct Hire.');
   renderPage();
 }
 function openDirectJobThread(studentId='', jobId=''){
@@ -12192,12 +12193,12 @@ function applyToPost(postId){
   if (!isCommunityFeedJobOpen(p)) return toast('This job is no longer accepting applications.');
   const apps = getApplications();
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
-    return toast("You\u2019ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
+    return toast("You\u2019ve already applied to this gig. You can check the status in your Dashboard under My Community Gigs.");
   }
   if (!currentStudentProfile()) return goToAddProfile();
   trackCogoEvent('apply_button_click', { source: 'community_feed' });
   openModal('Apply to Job', `
-    <div class="warning" style="margin-bottom:14px">Your application will appear in your dashboard under Jobs & Bookings.</div>
+    <div class="warning" style="margin-bottom:14px">Your application will appear in your dashboard under My Community Gigs.</div>
     <div class="field">
       <label>Your message</label>
       <textarea id="applyMessage" placeholder="Tell the employer why you are a good fit..."></textarea>
@@ -12216,7 +12217,7 @@ async function submitApplication(postId){
   if (!p || !student) return toast('Student profile required.');
   const apps = getApplications();
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
-    return toast("You\u2019ve already applied to this job. You can check the status in your Dashboard under Jobs & Bookings.");
+    return toast("You\u2019ve already applied to this gig. You can check the status in your Dashboard under My Community Gigs.");
   }
   const applicationId = uid('app');
   apps.push({
@@ -12246,7 +12247,7 @@ async function submitApplication(postId){
     pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   }
   closeModal();
-  toast('Application submitted. Check Dashboard \u2192 Jobs & Bookings.');
+  toast('Application submitted. Check Dashboard \u2192 My Community Gigs.');
   renderCommunity();
 }
 
@@ -12382,7 +12383,7 @@ function renderDashboard(){
 
   if (!WORKSHOPS_ENABLED && dashSection === 'workshops') dashSection = currentUser.role === 'admin' ? 'admin' : 'profile';
   const adminDashboardSections = ['admin','users','blog_manager','images','advertising','messages','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
-  const studentDashboardSections = ['profile','jobs_bookings','messages','myposts','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
+  const studentDashboardSections = ['profile','jobs_bookings','direct_hire','messages','myposts','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
   const employerDashboardSections = ['profile','myposts','my_jobs','applicants_projects','messages','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
   if (currentUser.role === 'admin' && !adminDashboardSections.includes(dashSection)) {
     dashSection = 'admin';
@@ -12410,7 +12411,8 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='settings'?'active':''}" onclick="dashSection='settings';renderDashboard();return false;">\u2699\uFE0F Settings</a>
         ` : currentUser.role === 'student' ? `
           <a href="#" class="${dashSection==='myposts'?'active':''}" onclick="dashSection='myposts';renderDashboard();return false;">\u{1F4E2} My Posts</a>
-          <a href="#" class="${dashSection==='jobs_bookings'?'active':''}" onclick="dashSection='jobs_bookings';renderDashboard();return false;">\u{1F4CB} Jobs & Bookings</a>
+          <a href="#" class="${dashSection==='jobs_bookings'?'active':''}" onclick="dashSection='jobs_bookings';renderDashboard();return false;">\u{1F4CB} My Community Gigs</a>
+          <a href="#" class="${dashSection==='direct_hire'?'active':''}" onclick="dashSection='direct_hire';renderDashboard();return false;">\u{1F4BC} My Direct Hire</a>
           ${WORKSHOPS_ENABLED ? `<a href="#" class="${dashSection==='workshops'?'active':''}" onclick="dashSection='workshops';renderDashboard();return false;">\u{1F9D1}\u200D\u{1F3EB} Workshops & Classes</a>` : ''}
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">\u{1F4AC} My Messages</a>
           <a href="#" class="${dashSection==='transactions'?'active':''}" onclick="dashSection='transactions';renderDashboard();return false;">\u{1F4B3} My Transactions</a>
@@ -12458,6 +12460,7 @@ function renderDashboard(){
   } else if (currentUser.role === 'student'){
     if (dashSection === 'profile') return renderStudentProfile(el);
     if (dashSection === 'jobs_bookings') return renderStudentJobsBookings(el);
+    if (dashSection === 'direct_hire') return renderStudentDirectHire(el);
     if (dashSection === 'messages') return renderMessages(el);
     if (dashSection === 'myposts') return renderMyPosts(el);
     if (WORKSHOPS_ENABLED && dashSection === 'workshops') return renderWorkshopsDashboardSection(el);
@@ -13507,10 +13510,9 @@ function deleteStudentProfile(profileId){
 }
 
 function renderStudentJobsBookings(el){
- if (backendAuthEnabled() && !backendApplicationsLoaded && !backendApplicationsLoading) refreshBackendDirectJobApplications({ rerender:true });
  if (backendDataSessionMissing()) {
    el.innerHTML = `
-    <div class="section-title">Jobs & Bookings</div>
+    <div class="section-title">My Community Gigs</div>
     ${renderBackendDataSessionNotice('projects and bookings')}
    `;
    return;
@@ -13520,17 +13522,14 @@ function renderStudentJobsBookings(el){
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
  const apps = getApplications().filter(a => a.studentUserId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
- const directApps = getDirectJobApplications()
-   .filter(a => String(a.student_id) === String(currentUser.id))
-   .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   const projects = getProjects().filter(p => p.studentUserId === currentUser.id)
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
   el.innerHTML = `
-    <div class="section-title">Jobs & Bookings</div>
+    <div class="section-title">My Community Gigs</div>
     <div class="subtabs">
       <button class="pill ${studentJobsTab==='all'?'active':''}" onclick="studentJobsTab='all';renderDashboard()">All</button>
-      <button class="pill ${studentJobsTab==='jobs'?'active':''}" onclick="studentJobsTab='jobs';renderDashboard()">Jobs</button>
+      <button class="pill ${studentJobsTab==='jobs'?'active':''}" onclick="studentJobsTab='jobs';renderDashboard()">Applications & Offers</button>
       <button class="pill ${studentJobsTab==='projects'?'active':''}" onclick="studentJobsTab='projects';renderDashboard()">Projects</button>
     </div>
     <div id="student-jobs-body"></div>
@@ -13544,8 +13543,6 @@ function renderStudentJobsBookings(el){
     html += backendSyncArrayHydrating('applications')
       ? `<div class="card form-card muted">Loading applications and offers from the database...</div>`
       : (apps.length ? apps.map(a => renderStudentAppCard(a)).join('') : `<div class="card form-card muted">No applications or offers yet.</div>`);
-    html += `<div style="height:12px"></div><div style="font-weight:800;margin-bottom:10px">Direct Hire Job Applications</div>`;
-    html += directApps.length ? directApps.map(app => renderStudentDirectJobApplicationCard(app)).join('') : `<div class="card form-card muted">No direct-hire job applications yet.</div>`;
   }
 
   if (studentJobsTab === 'all' || studentJobsTab === 'projects'){
@@ -13556,6 +13553,28 @@ function renderStudentJobsBookings(el){
   }
 
   body.innerHTML = html;
+}
+function renderStudentDirectHire(el){
+ if (backendAuthEnabled() && !backendApplicationsLoaded && !backendApplicationsLoading) refreshBackendDirectJobApplications({ rerender:true });
+ if (backendDataSessionMissing()) {
+   el.innerHTML = `
+    <div class="section-title">My Direct Hire</div>
+    ${renderBackendDataSessionNotice('direct hire applications')}
+   `;
+   return;
+ }
+ const directApps = getDirectJobApplications()
+   .filter(a => String(a.student_id) === String(currentUser.id))
+   .sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+ el.innerHTML = `
+   <div class="section-title">My Direct Hire</div>
+   <div class="warning" style="margin-bottom:14px">
+     Direct Hire jobs are employment opportunities with the employer. If you are hired, the employer pays you directly through their payroll system. CoGo City does not collect or release student wages for Direct Hire jobs.
+   </div>
+   ${backendApplicationsLoading && !backendApplicationsLoaded
+     ? `<div class="card form-card muted">Loading direct hire applications from the database...</div>`
+     : (directApps.length ? directApps.map(app => renderStudentDirectJobApplicationCard(app)).join('') : `<div class="card form-card muted">No direct hire applications yet.</div>`)}
+ `;
 }
 function renderStudentDirectJobApplicationCard(app){
   const job = getDirectJobById(app.job_id);
@@ -13572,6 +13591,9 @@ function renderStudentDirectJobApplicationCard(app){
           </div>
           <div class="muted small">Applied: ${esc(formatDirectJobCreatedDate(app.created_at))} \u00B7 Employer: ${renderBusinessNameLink(app.employer_id, company, true)}</div>
           <div class="small muted" style="margin-top:6px">Status: ${esc(status)}</div>
+          <div class="warning" style="margin-top:10px">
+            If you are hired for this Direct Hire role, you will be hired and paid directly by the employer through the employer's payroll system, not through CoGo City payments.
+          </div>
           ${app.message ? `<div class="small" style="margin-top:8px;line-height:1.6">${esc(app.message)}</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
@@ -14338,7 +14360,7 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   }
   saveDirectJobApplications(items);
   if (['shortlisted','hired','rejected','reviewing'].includes(status)) {
-    pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'messages' });
+    pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'direct_hire', applicationId: app.id, jobId: job.id });
     if (!backendAuthEnabled() || !app.backendSource) {
       sendInboxMessage(app.student_id, app.student_name || 'Student', `Direct Hire update for "${job.job_title}": your application is ${String(status).replaceAll('_', ' ')}.`, null, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
         thread_id: `direct_job:${job.id}`,

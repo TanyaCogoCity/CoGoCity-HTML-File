@@ -214,7 +214,7 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
     withdrawn: 'Application withdrawn',
   };
   const dashboardLink = isOwner
-    ? `/dashboard?section=jobs_bookings&job=${app.jobId}`
+    ? `/dashboard?section=direct_hire&job=${app.jobId}`
     : `/dashboard?section=my_jobs&job=${app.jobId}`;
   await createNotification({
     data: {
