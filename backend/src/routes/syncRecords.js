@@ -123,7 +123,7 @@ async function createSyncedApplicationOfferNotifications(normalized = [], req) {
       data: {
         userId: studentId,
         type: notificationType('application'),
-        title: `You received an offer from ${employerName}`,
+        title: `You have an offer for "${jobTitle}"`,
         body: `${employerName} sent you an offer for "${jobTitle}". Open your dashboard to review it.`,
         link: `/dashboard?section=jobs_bookings&studentJobsTab=jobs&application=${encodeURIComponent(record.id)}`,
       },
