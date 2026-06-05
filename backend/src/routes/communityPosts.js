@@ -150,7 +150,7 @@ router.post('/sync/posts', requireAuth, async (req, res) => {
       .map((post) => notifyAdminHourlyJobCreated({
         lister: req.user,
         title: post.jobTitle || post.content || 'Community job opportunity',
-        source: 'Community feed',
+        source: 'Community Gigs',
         amount: Number(post.rate || 0) * Number(post.hoursNeeded || 0),
         link: `/community/post/${post.id}`,
       })));

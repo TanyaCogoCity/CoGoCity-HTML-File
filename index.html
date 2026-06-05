@@ -680,8 +680,8 @@
     <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Open navigation menu" aria-controls="nav-links" aria-expanded="false" onclick="toggleMobileNav()">☰</button>
     <div class="nav-links" id="nav-links">
       <a href="#/" id="nav-home" onclick="closeMobileNav()">Browse Students</a>
-      <a href="#/community" id="nav-community" onclick="closeMobileNav()">Community</a>
-      <a href="#/jobs" id="nav-jobs" onclick="closeMobileNav()">Jobs</a>
+      <a href="#/community" id="nav-community" onclick="closeMobileNav()">Community Gigs</a>
+      <a href="#/jobs" id="nav-jobs" onclick="closeMobileNav()">Direct Hire</a>
       <a href="#/workshops" id="nav-workshops" onclick="closeMobileNav()" hidden>Workshop & Classes</a>
       <a href="#/blog" id="nav-blog" onclick="closeMobileNav()">Blog</a>
     </div>
@@ -4138,8 +4138,8 @@ function getSiteSettings(){
   const defaults = {
     nav_labels: {
       home: 'Browse Students',
-      community: 'Community',
-      jobs: 'Jobs',
+      community: 'Community Gigs',
+      jobs: 'Direct Hire',
       workshops: 'Workshop & Classes',
       blog: 'Blog'
     },
@@ -4153,8 +4153,8 @@ function getSiteSettings(){
     footer_about_text: 'Our platform empowers teens and young adults to achieve financial independence by building job experience and entrepreneurial skills in the safe and protective environment of their local communities.',
     footer_main_links: [
       { label:'Browse Students', href:'#/' },
-      { label:'Community', href:'#/community' },
-      { label:'Jobs', href:'#/jobs' },
+      { label:'Community Gigs', href:'#/community' },
+      { label:'Direct Hire', href:'#/jobs' },
       { label:'Workshop & Classes', href:'#/workshops' },
       { label:'Blog', href:'#/blog' },
       { label:'Dashboard', href:'#/dashboard' }
@@ -4180,13 +4180,13 @@ function getSiteSettings(){
         image_url: 'assets/home-hero-students.png'
       },
       community: {
-        title: 'CoGo Community',
-        body: 'Share updates, post opportunities, and connect with your local CoGo City community.',
+        title: 'Community Gigs',
+        body: 'Find local gigs, odd jobs, projects, and opportunities posted by the community.',
         image_url: ''
       },
       jobs: {
-        title: 'Find Jobs Near You',
-        body: 'Indeed-style direct hire jobs from local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.',
+        title: 'Direct Hire',
+        body: 'Apply directly to jobs posted by employers and businesses.',
         image_url: ''
       },
       workshops: {
@@ -4202,14 +4202,28 @@ function getSiteSettings(){
   const saved = ls('cogo_site_settings') || {};
   const merged = Object.assign({}, defaults, saved);
   merged.nav_labels = Object.assign({}, defaults.nav_labels, saved.nav_labels || {});
+  if (merged.nav_labels.community === 'Community') merged.nav_labels.community = 'Community Gigs';
+  if (merged.nav_labels.jobs === 'Jobs') merged.nav_labels.jobs = 'Direct Hire';
   merged.nav_primary_buttons = Object.assign({}, defaults.nav_primary_buttons, saved.nav_primary_buttons || {});
   merged.about_page = Object.assign({}, defaults.about_page, saved.about_page || {});
   merged.page_blocks = Object.assign({}, defaults.page_blocks, saved.page_blocks || {});
   Object.keys(defaults.page_blocks).forEach(key => {
     merged.page_blocks[key] = Object.assign({}, defaults.page_blocks[key], ((saved.page_blocks || {})[key] || {}));
   });
+  if (!merged.page_blocks.community.title || ['Community Feed', 'CoGo Community'].includes(merged.page_blocks.community.title)) merged.page_blocks.community.title = 'Community Gigs';
+  if (!merged.page_blocks.community.body || merged.page_blocks.community.body === 'Share updates, post opportunities, and connect with your local CoGo City community.') {
+    merged.page_blocks.community.body = 'Find local gigs, odd jobs, projects, and opportunities posted by the community.';
+  }
+  if (!merged.page_blocks.jobs.title || merged.page_blocks.jobs.title === 'Find Jobs Near You') merged.page_blocks.jobs.title = 'Direct Hire';
+  if (!merged.page_blocks.jobs.body || String(merged.page_blocks.jobs.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.') || merged.page_blocks.jobs.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs') {
+    merged.page_blocks.jobs.body = 'Apply directly to jobs posted by employers and businesses.';
+  }
+  merged.footer_main_links = visibleSiteLinks(ensureArray(saved.footer_main_links).length ? ensureArray(saved.footer_main_links) : defaults.footer_main_links).map(link => {
+    if (link.href === '#/community' && link.label === 'Community') return Object.assign({}, link, { label:'Community Gigs' });
+    if (link.href === '#/jobs' && link.label === 'Jobs') return Object.assign({}, link, { label:'Direct Hire' });
+    return link;
+  });
   merged.advertising = normalizeAdvertisingSettings(saved.advertising || defaults.advertising);
-  merged.footer_main_links = ensureArray(saved.footer_main_links).length ? ensureArray(saved.footer_main_links) : defaults.footer_main_links;
   merged.footer_important_links = ensureArray(saved.footer_important_links).length ? ensureArray(saved.footer_important_links) : defaults.footer_important_links;
   if (!merged.footer_important_links.some(link => String(link.href || '') === '#/faq-safety-legal')) {
     const aboutIndex = merged.footer_important_links.findIndex(link => String(link.href || '') === '#/about-us' || String(link.label || '').toLowerCase() === 'about us');
@@ -5514,8 +5528,8 @@ function applySiteSettings(){
   const settings = getSiteSettings();
   const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
   setText('nav-home', settings.nav_labels.home || 'Browse Students');
-  setText('nav-community', settings.nav_labels.community || 'Community');
-  setText('nav-jobs', settings.nav_labels.jobs || 'Jobs');
+  setText('nav-community', settings.nav_labels.community || 'Community Gigs');
+  setText('nav-jobs', settings.nav_labels.jobs || 'Direct Hire');
   setText('nav-workshops', settings.nav_labels.workshops || 'Workshop & Classes');
   setText('nav-blog', settings.nav_labels.blog || 'Blog');
   const navWorkshops = document.getElementById('nav-workshops');
@@ -5543,9 +5557,11 @@ function renderPageContentBlock(pageKey='', fallback={}){
     body: '',
     image_url: ''
   }, fallback || {}, pageBlocks[pageKey] || {});
-  if (pageKey === 'community' && (!block.title || block.title === 'Community Feed')) block.title = 'CoGo Community';
-  if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.'))) {
-    block.body = 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs';
+  if (pageKey === 'community' && (!block.title || ['Community Feed', 'CoGo Community'].includes(block.title))) block.title = 'Community Gigs';
+  if (pageKey === 'community' && (!block.body || block.body === 'Share updates, post opportunities, and connect with your local CoGo City community.')) block.body = 'Find local gigs, odd jobs, projects, and opportunities posted by the community.';
+  if (pageKey === 'jobs' && (!block.title || block.title === 'Find Jobs Near You')) block.title = 'Direct Hire';
+  if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.') || block.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs')) {
+    block.body = 'Apply directly to jobs posted by employers and businesses.';
   }
   const heroClass = ['community', 'jobs', 'workshops'].includes(pageKey) ? 'hero community-hero' : 'hero';
   const imageHtml = block.image_url
@@ -5692,7 +5708,7 @@ function renderAdminContactWidget(){
   const userName = currentUser.publicName || currentUser.name || 'User';
   widget.innerHTML = `
     <button class="admin-contact-toggle" type="button" onclick="toggleAdminContactWidget()">
-      <span>Text Admin</span>
+      <span>Message Admin</span>
       <span style="font-size:.8rem;font-weight:800">${adminContactExpanded ? 'Close' : 'Need help?'}</span>
     </button>
     ${adminContactExpanded ? `
@@ -8091,7 +8107,7 @@ function renderHome(){
           ${homeBlock.body ? `<p>${esc(homeBlock.body)}</p>` : ''}
           <div class="home-hero-actions">
             ${!currentUser ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>` : ''}
-            <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Feed</button>
+            <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Gigs</button>
           </div>
         </div>
       </div>
@@ -8516,8 +8532,8 @@ function renderJobsPage(){
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('jobs', {
-      title:'Find Jobs Near You',
-      body:'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs'
+      title:'Direct Hire',
+      body:'Apply directly to jobs posted by employers and businesses.'
     })}
     <div class="container">
       <div class="card form-card" style="margin-bottom:16px">
@@ -11485,8 +11501,8 @@ function renderCommunity(){
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('community', {
-      title:'CoGo Community',
-      body:'Share updates, post opportunities, and connect with your local CoGo City community.'
+      title:'Community Gigs',
+      body:'Find local gigs, odd jobs, projects, and opportunities posted by the community.'
     })}
     <div class="container feed-wrap">
       <div class="split" style="margin-bottom:18px">
@@ -13956,7 +13972,7 @@ async function saveDirectJobEdit(jobId=''){
 async function saveEmployerDirectHireJob(){
   if (!currentUser || currentUser.role !== 'employer') return toast('Only employer accounts can post direct-hire jobs.');
   if (requireBackendWriteSession('post this direct-hire job')) return;
-  if (isNeighborAccount(currentUser)) return toast('Neighbor accounts cannot post direct-hire jobs. Use Community Feed for contract hiring.');
+  if (isNeighborAccount(currentUser)) return toast('Neighbor accounts cannot post direct-hire jobs. Use Community Gigs for contract hiring.');
   if (!getEmployerCompanyName(currentUser)) return toast('Complete company information before posting a direct-hire job.');
   const title = String((document.getElementById('directJobTitle') || {}).value || '').trim();
   const jobType = String((document.getElementById('directJobType') || {}).value || 'full_time');
@@ -14310,7 +14326,7 @@ function renderEmployerMyJobs(el){
   const employerMyJobsGuidance = `
     <div class="warning" style="margin:0 0 14px;line-height:1.55">
       <strong>Post a Job</strong> if you plan to hire and pay the student directly as your employee. We will charge a monthly job posting fee and help you find qualified candidates.<br>
-      <strong>Use the Community Feed</strong> if you're looking for part-time help and would like CoGo City to handle payments through the platform.
+      <strong>Use Community Gigs</strong> if you're looking for part-time help and would like CoGo City to handle payments through the platform.
     </div>
   `;
   if (isNeighborAccount(currentUser)) {
@@ -14318,10 +14334,10 @@ function renderEmployerMyJobs(el){
       <div class="section-title">My Jobs</div>
       <div class="card form-card">
         <div class="warning">Direct-hire job postings are available only to Employer business profiles with company information.</div>
-        <div class="small muted" style="margin-top:10px">Neighbor accounts can post jobs in Community Feed and hire students on a contract basis.</div>
+        <div class="small muted" style="margin-top:10px">Neighbor accounts can post jobs in Community Gigs and hire students on a contract basis.</div>
         <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-blue" onclick="dashSection='myposts';renderDashboard()">Go to My Posts</button>
-          <button class="btn btn-outline" onclick="location.hash='#/community';renderPage()">Open Community Feed</button>
+          <button class="btn btn-outline" onclick="location.hash='#/community';renderPage()">Open Community Gigs</button>
         </div>
       </div>
     `;
@@ -14550,7 +14566,7 @@ function renderEmployerApplicantsBookings(el){
 }
 function renderEmployerAppCard(a){
   const student = getStudents().find(s => s.id === a.studentProfileId) || getStudents().find(s => s.userId === a.studentUserId);
-  const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community feed application';
+  const sourceLabel = a.source === 'direct_offer' ? 'Direct offer' : 'Community Gigs application';
   const job = getApplicationJobPost(a);
   const actions = [];
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openApplicationThread('${esc(a.id)}')">Message</button>`);
@@ -15486,7 +15502,7 @@ function renderPublicProfileNotFound(title='Profile not found'){
       <div class="card form-card">
         <div class="section-title">${esc(title)}</div>
         <div class="small muted" style="margin-bottom:14px">This public page is unavailable or the account no longer exists.</div>
-        <a class="btn btn-blue" href="#/community">Back to Community</a>
+        <a class="btn btn-blue" href="#/community">Back to Community Gigs</a>
       </div>
     </div>
   `;
@@ -16138,10 +16154,10 @@ function renderAdminContentManager(el){
       <div style="font-weight:800;margin-bottom:10px">Navigation Labels</div>
       <div class="row">
         <div class="field"><label>Home</label><input id="cmNavHome" value="${esc(s.nav_labels.home || '')}"></div>
-        <div class="field"><label>Community</label><input id="cmNavCommunity" value="${esc(s.nav_labels.community || '')}"></div>
+        <div class="field"><label>Community Gigs</label><input id="cmNavCommunity" value="${esc(s.nav_labels.community || '')}"></div>
       </div>
       <div class="row">
-        <div class="field"><label>Jobs</label><input id="cmNavJobs" value="${esc(s.nav_labels.jobs || '')}"></div>
+        <div class="field"><label>Direct Hire</label><input id="cmNavJobs" value="${esc(s.nav_labels.jobs || '')}"></div>
         ${WORKSHOPS_ENABLED ? `<div class="field"><label>Workshops</label><input id="cmNavWorkshops" value="${esc(s.nav_labels.workshops || '')}"></div>` : ''}
       </div>
       <div class="field"><label>Blog</label><input id="cmNavBlog" value="${esc(s.nav_labels.blog || '')}"></div>
@@ -16166,18 +16182,18 @@ function renderAdminContentManager(el){
     </div>
     <div class="card form-card" style="margin-bottom:16px">
       <div style="font-weight:800;margin-bottom:10px">Page Content Blocks</div>
-      <div class="small muted" style="margin-bottom:12px">Edit heading, supporting text, and optional image for Home, Community, and Jobs pages.</div>
+      <div class="small muted" style="margin-bottom:12px">Edit heading, supporting text, and optional image for Home, Community Gigs, and Direct Hire pages.</div>
       <div class="field"><label>Home Title</label><input id="cmHomeTitle" value="${esc(((s.page_blocks||{}).home||{}).title || '')}"></div>
       <div class="field"><label>Home Text</label><textarea id="cmHomeBody">${esc(((s.page_blocks||{}).home||{}).body || '')}</textarea></div>
       <div class="field"><label>Home Image URL (optional)</label><input id="cmHomeImage" value="${esc(((s.page_blocks||{}).home||{}).image_url || '')}" placeholder="https://..."></div>
       <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-      <div class="field"><label>Community Title</label><input id="cmCommunityTitle" value="${esc(((s.page_blocks||{}).community||{}).title || '')}"></div>
-      <div class="field"><label>Community Text</label><textarea id="cmCommunityBody">${esc(((s.page_blocks||{}).community||{}).body || '')}</textarea></div>
-      <div class="field"><label>Community Image URL (optional)</label><input id="cmCommunityImage" value="${esc(((s.page_blocks||{}).community||{}).image_url || '')}" placeholder="https://..."></div>
+      <div class="field"><label>Community Gigs Title</label><input id="cmCommunityTitle" value="${esc(((s.page_blocks||{}).community||{}).title || '')}"></div>
+      <div class="field"><label>Community Gigs Text</label><textarea id="cmCommunityBody">${esc(((s.page_blocks||{}).community||{}).body || '')}</textarea></div>
+      <div class="field"><label>Community Gigs Image URL (optional)</label><input id="cmCommunityImage" value="${esc(((s.page_blocks||{}).community||{}).image_url || '')}" placeholder="https://..."></div>
       <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-      <div class="field"><label>Jobs Title</label><input id="cmJobsTitle" value="${esc(((s.page_blocks||{}).jobs||{}).title || '')}"></div>
-      <div class="field"><label>Jobs Text</label><textarea id="cmJobsBody">${esc(((s.page_blocks||{}).jobs||{}).body || '')}</textarea></div>
-      <div class="field"><label>Jobs Image URL (optional)</label><input id="cmJobsImage" value="${esc(((s.page_blocks||{}).jobs||{}).image_url || '')}" placeholder="https://..."></div>
+      <div class="field"><label>Direct Hire Title</label><input id="cmJobsTitle" value="${esc(((s.page_blocks||{}).jobs||{}).title || '')}"></div>
+      <div class="field"><label>Direct Hire Text</label><textarea id="cmJobsBody">${esc(((s.page_blocks||{}).jobs||{}).body || '')}</textarea></div>
+      <div class="field"><label>Direct Hire Image URL (optional)</label><input id="cmJobsImage" value="${esc(((s.page_blocks||{}).jobs||{}).image_url || '')}" placeholder="https://..."></div>
       ${WORKSHOPS_ENABLED ? `
         <hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
         <div class="field"><label>Workshops Title</label><input id="cmWorkshopsTitle" value="${esc(((s.page_blocks||{}).workshops||{}).title || '')}"></div>
