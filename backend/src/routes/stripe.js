@@ -991,7 +991,7 @@ async function completeJobCheckoutSession(session) {
         type: notificationType('payment'),
         title: 'Job listing payment received',
         body: `${job.title} is now active on CoGo City.`,
-        link: `/dashboard?section=my_jobs&job=${job.id}`,
+        link: `/dashboard?section=transactions&job=${job.id}`,
       },
     });
   }
