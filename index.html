@@ -2410,12 +2410,20 @@ async function syncReferencedImagesBeforeCommunityPosts(posts=[]){
   });
   if (!referencedIds.size || !backendAuthEnabled()) return { ok:true, skipped:true };
   const images = getImages();
-  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
-  if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
   const referencedImages = images.filter(image => referencedIds.has(String(image.id)));
+  if (!referencedImages.length) return { ok:true, skipped:true };
   const result = await syncEntityToBackend('images', referencedImages, { replace:false });
   if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
   return { ok:true };
+}
+function optionalCommunityPostImages(imageIds=[]){
+  const images = getImages();
+  return ensureArray(imageIds).slice(0, 1).filter(imageId => {
+    const cleanId = String(imageId || '').trim();
+    if (!cleanId) return false;
+    if (!isImageRecordId(cleanId)) return true;
+    return images.some(image => String(image.id) === cleanId && image.url);
+  });
 }
 async function syncReferencedImagesBeforeBlogPosts(posts=[]){
   const referencedIds = new Set();
@@ -11737,7 +11745,7 @@ async function submitPost(){
     return openLoginModal();
   }
   const content = (document.getElementById('postContent').value || '').trim();
-  const postImages = parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]').slice(0, 1);
+  const postImages = optionalCommunityPostImages(parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]'));
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
   const isJob = isEmployerAccount(currentUser) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
   if (toastRequiredFields({ Post:content })) return;
@@ -11975,7 +11983,7 @@ async function savePostEdit(postId){
   const content = (document.getElementById('editPostContent').value || '').trim();
   if (!content || !blockTextCheck(content)) return;
   p.content = content;
-  const postImages = parseJsonArray((document.getElementById('editPostImagesValue') || {}).value || '[]').slice(0, 1);
+  const postImages = optionalCommunityPostImages(parseJsonArray((document.getElementById('editPostImagesValue') || {}).value || '[]'));
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('editPostVideoUrl') || {}).value || '').trim());
   p.entity_images = [...postImages];
   p.images = [...postImages];
@@ -13761,7 +13769,7 @@ function syncJobDescriptionFromPost(force=false){
 async function submitEmployerDashboardPost(){
   if (requireBackendWriteSession('save this post')) return;
   const content = (document.getElementById('empPostContent').value || '').trim();
-  const postImages = parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]').slice(0, 1);
+  const postImages = optionalCommunityPostImages(parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]'));
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('empPostVideoUrl') || {}).value || '').trim());
   const isJobToggle = document.getElementById('empIsJob');
   const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(isJobToggle && isJobToggle.checked);
