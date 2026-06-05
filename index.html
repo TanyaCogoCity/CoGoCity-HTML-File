@@ -14517,12 +14517,7 @@ function updateEmployerMyJobsSearch(value=''){
   }, 0);
 }
 function renderEmployerMyJobs(el){
-  const employerMyJobsGuidance = `
-    <div class="warning" style="margin:0 0 14px;line-height:1.55">
-      <strong>Post a Job</strong> if you plan to hire and pay the student directly as your employee. We will charge a monthly job posting fee and help you find qualified candidates.<br>
-      <strong>Use Community Gigs</strong> if you're looking for part-time help and would like CoGo City to handle payments through the platform.
-    </div>
-  `;
+  const employerMyJobsGuidance = renderEmployerWorkTypeGuidance();
   if (isNeighborAccount(currentUser)) {
     el.innerHTML = `
       <div class="section-title">My Direct Hire</div>
@@ -14688,10 +14683,18 @@ function renderEmployerMyJobs(el){
             </div>
           </div>
         `;
-      }).join('') : `<div class="card form-card muted">No applications yet.</div>`}
+      }).join('') : `<div class="card form-card muted">No direct hire applications yet.</div>`}
     ` : ''}
   `;
   updateEmployerDirectJobPackage();
+}
+function renderEmployerWorkTypeGuidance(){
+  return `
+    <div class="warning" style="margin:0 0 14px;line-height:1.55">
+      <strong>Post a Job</strong> if you plan to hire and pay the student directly as your employee. We will charge a monthly job posting fee and help you find qualified candidates.<br>
+      <strong>Use Community Gigs</strong> if you're looking for part-time help and would like CoGo City to handle payments through the platform.
+    </div>
+  `;
 }
 async function toggleJobStatus(postId){
   if (requireBackendWriteSession('update this job status')) return;
@@ -14720,6 +14723,7 @@ function renderEmployerApplicantsBookings(el){
  if (backendDataSessionMissing()) {
    el.innerHTML = `
     <div class="section-title">My Community Gigs</div>
+    ${renderEmployerWorkTypeGuidance()}
     ${renderBackendDataSessionNotice('community gigs')}
    `;
    return;
@@ -14736,6 +14740,7 @@ function renderEmployerApplicantsBookings(el){
 
   el.innerHTML = `
     <div class="section-title">My Community Gigs</div>
+    ${renderEmployerWorkTypeGuidance()}
     <div class="subtabs">
       <button class="pill ${employerTab==='all'?'active':''}" onclick="employerTab='all';renderDashboard()">All</button>
       <button class="pill ${employerTab==='applicants'?'active':''}" onclick="employerTab='applicants';renderDashboard()">Applicants</button>
