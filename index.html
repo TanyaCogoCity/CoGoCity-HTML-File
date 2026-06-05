@@ -5099,7 +5099,13 @@ function syncCurrentUserRecord(){
     toast('This profile is no longer active.');
     return false;
   }
-  currentUser = latest;
+  currentUser = Object.assign({}, latest, currentUser, {
+    phone: currentUser.phone || latest.phone || '',
+    address: currentUser.address || latest.address || '',
+    about: currentUser.about || latest.about || '',
+    email: (!String(currentUser.email || '').includes('@placeholder.cogocity.local') && currentUser.email) ? currentUser.email : (latest.email || currentUser.email || ''),
+    businessProfile: currentUser.businessProfile || latest.businessProfile || null
+  });
   ls('cogo_current_user', currentUser);
   if (currentUser.status === 'suspended' && !isAdminImpersonating()) {
     signOut();
@@ -12360,7 +12366,7 @@ function renderDashboard(){
   if (!currentUser) return openLoginModal();
   if (!syncCurrentUserRecord()) return;
   if (currentUser.role === 'employer') ensureDirectJobExpiryNotificationsForUser(currentUser.id);
-  if (currentUser.role === 'student' && backendAuthEnabled() && backendCurrentProfileLoadedFor !== currentUser.id) {
+  if (backendAuthEnabled() && getBackendAccessToken() && backendCurrentProfileLoadedFor !== currentUser.id) {
     refreshBackendCurrentProfile({ rerender:true });
   }
   if (stripeOnboardingEnabled() && !currentUser.stripe_onboarding) {
