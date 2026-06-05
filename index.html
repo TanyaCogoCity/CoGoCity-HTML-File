@@ -2269,11 +2269,17 @@ async function refreshBackendBrowseStudents(options={}){
   }
 }
 function mapBackendUser(apiUser={}, fallback={}){
-  const first = apiUser.first_name || apiUser.firstName || fallback.firstName || '';
-  const last = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
-  const display = apiUser.display_name || apiUser.displayName || fallback.name || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User';
   const profile = apiUser.profile || apiUser.userProfile || {};
   const metadata = profile.metadata || {};
+  const reviewRequired = Boolean(apiUser.onboarding_requirements?.profile_review_required || apiUser.onboardingRequirements?.profile_review_required);
+  const rawFirst = apiUser.first_name || apiUser.firstName || fallback.firstName || '';
+  const rawLast = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
+  const rawDisplay = apiUser.display_name || apiUser.displayName || fallback.name || '';
+  const deletedPlaceholder = /^(deleted\s+user|deleted)$/i.test(String(rawDisplay || '').trim())
+    || (/^deleted$/i.test(String(rawFirst || '').trim()) && /^user$/i.test(String(rawLast || '').trim()));
+  const first = deletedPlaceholder && reviewRequired ? '' : rawFirst;
+  const last = deletedPlaceholder && reviewRequired ? '' : rawLast;
+  const display = deletedPlaceholder && reviewRequired ? 'Review Profile' : (rawDisplay || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User');
   const role = apiUser.role || fallback.role || 'student';
   const isBusinessRole = role === 'employer' || profile.type === 'business';
   const businessProfile = isBusinessRole && (profile.businessName || profile.business_name || fallback.businessProfile) ? Object.assign({}, fallback.businessProfile || {}, {

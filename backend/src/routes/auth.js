@@ -238,11 +238,17 @@ function serializeAdminUser(user) {
 }
 
 function serializeUser(user, extras = {}) {
+  const reviewRequired = onboardingRequirementsForUser(user, extras.userProfile || user.userProfile || null).profile_review_required;
+  const deletedPlaceholder = /^deleted$/i.test(String(user.firstName || '').trim())
+    && /^user$/i.test(String(user.lastName || '').trim());
+  const firstName = deletedPlaceholder && reviewRequired ? '' : user.firstName;
+  const lastName = deletedPlaceholder && reviewRequired ? '' : user.lastName;
+  const displayName = deletedPlaceholder && reviewRequired ? 'Review Profile' : user.displayName;
   return {
     id: user.id,
-    first_name: user.firstName,
-    last_name: user.lastName,
-    display_name: user.displayName,
+    first_name: firstName,
+    last_name: lastName,
+    display_name: displayName,
     email: user.email,
     phone: user.phone,
     status: user.status,
