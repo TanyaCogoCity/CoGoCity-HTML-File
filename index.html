@@ -1149,10 +1149,10 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
     }
     state.loaded = true;
     state.loadedAt = Date.now();
-    if (options.rerender) renderPage();
     return records;
   } finally {
     state.loading = false;
+    if (options.rerender) setTimeout(() => renderPage(), 0);
   }
 }
 function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}){
