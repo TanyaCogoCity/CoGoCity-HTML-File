@@ -6109,6 +6109,11 @@ function runNotifAction(id){
     goDashboard();
     setTimeout(() => extendDirectJobByMonth(action.jobId || ''), 120);
   } else {
+    if (String(item.title || '').trim().toLowerCase() === 'job listing payment received') {
+      dashSection = 'transactions';
+      goDashboard();
+      return;
+    }
     const link = getNotificationFallbackLink(item);
     if (link.startsWith('/dashboard')) {
       const query = link.split('?')[1] || '';
