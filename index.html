@@ -12579,32 +12579,60 @@ function routeToMigrationOnboardingIfNeeded(){
   }
   return false;
 }
+function focusRequiredReviewField(fieldId='migFirstName'){
+  dashSection = 'profile';
+  renderDashboard();
+  setTimeout(() => {
+    const target = document.getElementById(fieldId) || document.querySelector('.form-card input, .form-card textarea, .form-card button');
+    if (!target) return;
+    target.scrollIntoView({ behavior:'smooth', block:'center' });
+    if (typeof target.focus === 'function') {
+      try { target.focus({ preventScroll:true }); } catch (_) { target.focus(); }
+    }
+    const originalOutline = target.style.outline;
+    const originalBoxShadow = target.style.boxShadow;
+    target.style.outline = '3px solid #ffd600';
+    target.style.boxShadow = '0 0 0 5px rgba(255,214,0,.22)';
+    setTimeout(() => {
+      target.style.outline = originalOutline;
+      target.style.boxShadow = originalBoxShadow;
+    }, 1800);
+  }, 80);
+}
+function openRequiredPaymentMethodFromChecklist(){
+  if (needsMigrationOnboarding()) {
+    toast('Please complete your profile review first. Then you can add your card.');
+    focusRequiredReviewField('migFirstName');
+    return;
+  }
+  openPayerStripeSetupModal();
+}
 function buildRequiredAccountChecklist(user=currentUser){
   if (!user || user.role === 'admin') return [];
   const items = [];
   const profile = user.role === 'student' ? currentStudentProfile() : null;
   const business = user.businessProfile || {};
   if (needsMigrationOnboarding(user)) {
-    items.push({ label:'Profile review is required', action:'dashSection="profile";renderDashboard()', cta:'Review profile' });
+    items.push({ label:'Profile review is required', action:"focusRequiredReviewField('migFirstName')", cta:'Review profile' });
   }
   if (!String(user.phone || profile?.phone || '').trim()) {
-    items.push({ label:'Phone is missing', action:'dashSection="profile";renderDashboard()', cta:'Update phone' });
+    items.push({ label:'Phone is missing', action:"focusRequiredReviewField('migPhone')", cta:'Update phone' });
   }
   if (!String(user.address || profile?.address || '').trim()) {
-    items.push({ label:'Address is missing', action:'dashSection="profile";renderDashboard()', cta:'Update address' });
+    items.push({ label:'Address is missing', action:"focusRequiredReviewField('migAddress')", cta:'Update address' });
   }
   if (user.role === 'student') {
     if (needsRequiredPayoutSetup(user)) items.push({ label:'Payout setup is missing', action:'startStripeConnectOnboarding()', cta:'Set up payouts' });
     const services = profile ? getRenderableStudentServices(profile) : [];
     if (!services.length || !services.some(service => service.title && service.description && Number(service.rate || 0) > 0 && service.availability && service.location)) {
-      items.push({ label:'Student service details are missing', action:'dashSection="profile";renderDashboard()', cta:'Update service' });
+      items.push({ label:'Student service details are missing', action:"focusRequiredReviewField('migServiceTitle')", cta:'Update service' });
     }
   }
   if (isEmployerAccount(user)) {
-    if (needsRequiredPaymentMethod(user)) items.push({ label:'CC is missing', action:'openPayerStripeSetupModal()', cta:'Add card' });
+    if (needsRequiredPaymentMethod(user)) items.push({ label:'CC is missing', action:'openRequiredPaymentMethodFromChecklist()', cta:'Add card' });
     if (user.role === 'employer') {
-      if (!String(business.name || user.company || '').trim()) items.push({ label:'Business name is missing', action:'dashSection="profile";renderDashboard()', cta:'Update business' });
-      if (!String(business.address || '').trim()) items.push({ label:'Business address is missing', action:'dashSection="profile";renderDashboard()', cta:'Update business' });
+      if (!String(business.name || user.company || '').trim()) items.push({ label:'Business name is missing', action:"focusRequiredReviewField('migBusinessName')", cta:'Update business' });
+      if (!String(business.address || '').trim()) items.push({ label:'Business address is missing', action:"focusRequiredReviewField('migBusinessAddress')", cta:'Update business' });
     }
   }
   return items;
