@@ -59,6 +59,52 @@ function reactivationProfileMetadata(existing = {}, extras = {}) {
   };
 }
 
+function userDisplayName(user = {}) {
+  return String(user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || '').trim();
+}
+
+function isDeletedPlaceholderName(name = '') {
+  return /^deleted\s+user$/i.test(String(name || '').trim());
+}
+
+function nameFromEmail(email = '') {
+  const local = String(email || '').split('@')[0] || '';
+  const first = local.split(/[._+\-\s]+/).find(Boolean) || '';
+  if (!first) return 'there';
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
+async function preserveDeletedUserIdentity(tx, user = {}) {
+  const originalName = userDisplayName(user);
+  const payload = {
+    user_id: user.id,
+    first_name: user.firstName || '',
+    last_name: user.lastName || '',
+    display_name: originalName,
+    email_hash: reactivationEmailHash(user.email),
+    role: user.role,
+    deleted_at: new Date().toISOString(),
+  };
+  await tx.syncRecord.upsert({
+    where: { entity_recordId: { entity: 'deleted_user_identity', recordId: user.id } },
+    create: { entity: 'deleted_user_identity', recordId: user.id, payload },
+    update: { payload, deletedAt: null },
+  });
+}
+
+async function passwordResetDisplayName(user = {}, email = '') {
+  const currentName = userDisplayName(user);
+  if (currentName && !isDeletedPlaceholderName(currentName) && !/@deleted\.cogocity\.local$/i.test(currentName)) return currentName;
+
+  const identity = user?.id
+    ? await prisma.syncRecord.findUnique({ where: { entity_recordId: { entity: 'deleted_user_identity', recordId: user.id } } })
+    : null;
+  const savedName = identity?.payload?.display_name || [identity?.payload?.first_name, identity?.payload?.last_name].filter(Boolean).join(' ');
+  if (savedName && !isDeletedPlaceholderName(savedName)) return savedName;
+
+  return nameFromEmail(email || user.email);
+}
+
 function getSignupUsConfirmation(payload = {}) {
   return payload.usOnlyConfirmed ?? payload.us_only_confirmed ?? payload.usaOnlyConfirmed ?? payload.usa_only_confirmed ?? payload.usConfirmation ?? payload.us_confirmation;
 }
@@ -470,7 +516,7 @@ router.post('/password-reset/request', async (req, res) => {
     const resetToken = await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
 
     const resetUrl = buildAppLink(`/#/reset-password?token=${encodeURIComponent(token)}`);
-    const displayName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+    const displayName = await passwordResetDisplayName(user, email);
     const subject = 'Reset your CoGo City password';
     const emailResult = await sendEmail({
       to: { email, name: displayName },
@@ -871,6 +917,7 @@ router.delete('/admin/users/:id', requireAuth, requireRoles(['admin']), async (r
       });
       await tx.refreshToken.deleteMany({ where: { userId: user.id } });
       await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      await preserveDeletedUserIdentity(tx, user);
       await tx.userProfile.deleteMany({ where: { userId: user.id } });
       await tx.user.update({
         where: { id: user.id },
@@ -940,6 +987,7 @@ router.delete('/me', requireAuth, async (req, res) => {
       });
       await tx.refreshToken.deleteMany({ where: { userId: user.id } });
       await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      await preserveDeletedUserIdentity(tx, user);
       await tx.userProfile.deleteMany({ where: { userId: user.id } });
       await tx.user.update({
         where: { id: user.id },
