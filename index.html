@@ -2551,6 +2551,21 @@ function buildUploadedImageFingerprint(file){
     String(file.type || '').trim().toLowerCase()
   ].join('|');
 }
+function isBrowserPreviewableImageFile(file){
+  if (!file) return false;
+  const type = String(file.type || '').trim().toLowerCase();
+  const name = String(file.name || '').trim().toLowerCase();
+  if (/^image\/(jpeg|jpg|png|webp|gif)$/.test(type)) return true;
+  return /\.(jpe?g|png|webp|gif)$/.test(name);
+}
+function validateSignupImageFile(file, label='image'){
+  if (!file) return false;
+  if (!isBrowserPreviewableImageFile(file)) {
+    toast(`Please upload a JPG, PNG, WebP, or GIF ${label}. HEIC photos need to be converted before upload.`);
+    return false;
+  }
+  return true;
+}
 function readFileAsDataUrl(file){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -6549,7 +6564,7 @@ function renderStudentSignupStepContent(){
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Upload a profile photo or choose an avatar.</div>
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
-      <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/*" onchange="handleStudentSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div></div>
+      <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleStudentSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div>${d.photo ? `<div class="small" style="margin-top:6px;color:var(--color-success);font-weight:700">Profile photo selected.</div>` : ''}</div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
       <div style="margin-bottom:14px">${renderEditableSingleImage(d.photo || '', 'Profile preview', 'removeStudentSignupPhoto()', 120, 'No photo uploaded yet.')}</div>
       <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
@@ -6592,7 +6607,7 @@ function renderStudentSignupStepContent(){
       <div style="font-weight:800;margin-bottom:10px">${studentSignupEditingServiceIndex === null ? 'Create Service' : 'Edit Service'}</div>
       <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
       <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
-      <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/*" onchange="handleStudentSignupServiceImagesUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
+      <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleStudentSignupServiceImagesUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderEditableSingleImage(((d.serviceForm || {}).images || [])[0] || '', 'Service image', 'removeStudentSignupServiceImage()', 120, 'No service image added yet.')}
       <div class="field"><label>Service Video Link or Upload (optional)</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
@@ -6747,6 +6762,10 @@ async function goStudentSignupStep(targetStep){
 function handleStudentSignupPhotoUpload(input){
   const file = input && input.files && input.files[0];
   if (!file) return;
+  if (!validateSignupImageFile(file, 'profile photo')) {
+    if (input) input.value = '';
+    return;
+  }
   prepareUploadedImageRecord(file, { source:'signup_profile', entity_type:'profile_signup' })
     .then(imageId => {
       studentSignupDraft.photo = imageId;
@@ -6829,6 +6848,11 @@ function handleStudentSignupServiceVideoUpload(input){
 }
 function handleStudentSignupServiceImagesUpload(input){
   syncStudentSignupServiceForm();
+  const file = input && input.files && input.files[0];
+  if (file && !validateSignupImageFile(file, 'service image')) {
+    if (input) input.value = '';
+    return;
+  }
   readImagesToDataUrls(input, (images) => {
     studentSignupDraft.serviceForm.images = replaceWithSingleImage(images[0] || '');
     if (input) input.value = '';
@@ -7481,7 +7505,7 @@ function renderEmployerSignupStepContent(){
         <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="Tanya" oninput="syncEmployerSignupPersonalDraft()"></div>
         <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip" oninput="syncEmployerSignupPersonalDraft()"></div>
       </div>
-      <div class="field"><label>Profile Photo</label><input type="file" accept="image/*" onchange="handleEmployerSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div></div>
+      <div class="field"><label>Profile Photo</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleEmployerSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div>${d.photo ? `<div class="small" style="margin-top:6px;color:var(--color-success);font-weight:700">Profile photo selected.</div>` : ''}</div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
       <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderEditableSingleImage(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
@@ -7497,7 +7521,7 @@ function renderEmployerSignupStepContent(){
   if (employerSignupMode === 'employer' && employerSignupStep === 2) return `
     <div class="card form-card">
       <div class="field"><label>Business Name</label><input id="employerBusinessName" value="${esc(d.businessName)}" placeholder="Business name" oninput="syncEmployerSignupBusinessDraft()"></div>
-      <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/*" onchange="handleEmployerSignupBusinessLogoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
+      <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleEmployerSignupBusinessLogoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupBusinessLogoFromLibrary')}</div>` : ''}
       <div style="margin-bottom:14px">${renderEditableSingleImage(d.businessLogo || '', 'Business logo', 'removeEmployerSignupBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business..." oninput="syncEmployerSignupBusinessDraft()">${esc(d.businessAbout)}</textarea></div>
@@ -7609,6 +7633,10 @@ function handleEmployerSignupPhotoUpload(input){
   syncEmployerSignupPersonalDraft();
   const file = input && input.files && input.files[0];
   if (!file) return;
+  if (!validateSignupImageFile(file, 'profile photo')) {
+    if (input) input.value = '';
+    return;
+  }
   prepareUploadedImageRecord(file, { source:'employer_profile', entity_type:'profile_signup' })
     .then(imageId => {
       employerSignupDraft.photo = imageId;
@@ -7648,6 +7676,10 @@ function handleEmployerSignupBusinessLogoUpload(input){
   syncEmployerSignupBusinessDraft();
   const file = input && input.files && input.files[0];
   if (!file) return;
+  if (!validateSignupImageFile(file, 'business logo')) {
+    if (input) input.value = '';
+    return;
+  }
   prepareUploadedImageRecord(file, { source:'business_logo', entity_type:'business_signup' })
     .then(imageId => {
       employerSignupDraft.businessLogo = imageId;
