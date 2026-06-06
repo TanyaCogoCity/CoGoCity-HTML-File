@@ -12461,12 +12461,15 @@ function renderDashboard(){
   if ((needsMigrationOnboarding() || needsRequiredPaymentMethod() || needsRequiredPayoutSetup()) && currentUser.role !== 'admin' && dashSection !== 'messages') {
     const sidebar = document.querySelector('.dashboard .sidebar');
     const payoutRequired = needsRequiredPayoutSetup();
-    if (sidebar) sidebar.innerHTML = `
-      <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
-        <div style="font-weight:800;margin-bottom:6px">${needsMigrationOnboarding() ? 'Profile review required' : (payoutRequired ? 'Payout setup required' : 'Payment method required')}</div>
-        <div class="small muted">${needsMigrationOnboarding() ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : (payoutRequired ? 'Please complete Stripe Connect before receiving payouts for services.' : 'Please add a credit card before posting jobs, messaging students, or taking hiring actions.')}</div>
-      </div>
-    `;
+    const profileReviewRequired = needsMigrationOnboarding();
+    if (sidebar) {
+      sidebar.innerHTML = profileReviewRequired || payoutRequired ? `
+        <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
+          <div style="font-weight:800;margin-bottom:6px">${profileReviewRequired ? 'Profile review required' : 'Payout setup required'}</div>
+          <div class="small muted">${profileReviewRequired ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : 'Please complete Stripe Connect before receiving payouts for services.'}</div>
+        </div>
+      ` : '';
+    }
     if (needsMigrationOnboarding()) return renderMigrationOnboarding(el);
     if (payoutRequired) return renderPayoutSetupRequired(el);
     return renderPaymentMethodRequired(el);
@@ -12932,7 +12935,7 @@ function renderPaymentMethodRequired(el){
     ${renderRequiredAccountChecklist(currentUser, { hidePaymentMethod:true })}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
-      <div class="small muted">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
+      <div class="warning" style="margin:0 0 14px">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
       ${renderStripeOnboardingCard()}
     </div>
   `;
