@@ -12610,7 +12610,7 @@ function openRequiredPaymentMethodFromChecklist(){
   }
   openPayerStripeSetupModal();
 }
-function buildRequiredAccountChecklist(user=currentUser){
+function buildRequiredAccountChecklist(user=currentUser, options={}){
   if (!user || user.role === 'admin') return [];
   const items = [];
   const profile = user.role === 'student' ? currentStudentProfile() : null;
@@ -12632,7 +12632,7 @@ function buildRequiredAccountChecklist(user=currentUser){
     }
   }
   if (isEmployerAccount(user)) {
-    if (needsRequiredPaymentMethod(user)) items.push({ label:'CC is missing', action:'openRequiredPaymentMethodFromChecklist()', cta:'Add card' });
+    if (!options.hidePaymentMethod && needsRequiredPaymentMethod(user)) items.push({ label:'CC is missing', action:'openRequiredPaymentMethodFromChecklist()', cta:'Add card' });
     if (user.role === 'employer') {
       if (!String(business.name || user.company || '').trim()) items.push({ label:'Business name is missing', action:"focusRequiredReviewField('migBusinessName')", cta:'Update business' });
       if (!String(business.address || '').trim()) items.push({ label:'Business address is missing', action:"focusRequiredReviewField('migBusinessAddress')", cta:'Update business' });
@@ -12640,8 +12640,8 @@ function buildRequiredAccountChecklist(user=currentUser){
   }
   return items;
 }
-function renderRequiredAccountChecklist(user=currentUser){
-  const items = buildRequiredAccountChecklist(user);
+function renderRequiredAccountChecklist(user=currentUser, options={}){
+  const items = buildRequiredAccountChecklist(user, options);
   if (!items.length) return '';
   return `
     <div class="card form-card" style="border:2px solid #fde68a;background:#fffbeb;margin-bottom:18px">
@@ -12929,7 +12929,7 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
 
 function renderPaymentMethodRequired(el){
   el.innerHTML = `
-    ${renderRequiredAccountChecklist()}
+    ${renderRequiredAccountChecklist(currentUser, { hidePaymentMethod:true })}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
       <div class="small muted">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
