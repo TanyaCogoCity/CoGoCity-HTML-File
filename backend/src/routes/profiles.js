@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { normalizeServicePayload, serializeReview, serializeService } = require('../lib/compat');
 const { userProfileMetadata } = require('../lib/onboardingGate');
+const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
 
 const router = express.Router();
 
@@ -111,6 +112,10 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
   });
 
   await writeAuditLog({ userId: req.user.id, action: 'user_profile.update', entityType: 'user_profile', entityId: updated.id, payload: req.body });
+  if (payload.migrationOnboardingCompleted || payload.migration_onboarding_completed) {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    await maybeSendOnboardingWelcomeEmail(user);
+  }
   return ok(res, updated);
 });
 
