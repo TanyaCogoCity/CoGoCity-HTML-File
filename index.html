@@ -8089,6 +8089,10 @@ function renderPage(){
     applySiteSettings();
     const route = getRoute();
     trackCogoPageView(route);
+    if (route.startsWith('#/reset-password')) {
+      renderNav();
+      return openPasswordResetConfirmModal(getPasswordResetTokenFromHash());
+    }
     if (currentUser && needsMigrationOnboarding() && route !== '#/dashboard') {
       dashSection = 'profile';
       if (typeof toast === 'function') toast('Please complete your profile review before using the rest of the site.');
@@ -8097,7 +8101,6 @@ function renderPage(){
       return;
     }
     renderNav();
-    if (route.startsWith('#/reset-password')) return openPasswordResetConfirmModal(getPasswordResetTokenFromHash());
     if (route === '#/faq-safety-legal' || route.startsWith('#/faq-safety-legal#')) return renderFaqSafetyLegalPage();
     if (route === '#/about-us') return renderAboutPage();
       if (route === '#/youth-labor-law-in-ca') return renderStagingLegalPage('youth-labor-law-in-ca');
