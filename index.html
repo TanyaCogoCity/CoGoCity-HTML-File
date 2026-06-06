@@ -8891,11 +8891,13 @@ async function submitDirectJobApplication(jobId=''){
   }
   if (!useSaved) saveStudentResume(currentUser.id, { fileName, dataUrl });
   trackCogoEvent('application_submitted', { source: 'direct_hire' });
-  sendInboxMessage(job.employer_id, getUserById(job.employer_id)?.name || 'Employer', `Direct Hire application for "${job.job_title}": ${message}`, null, currentUser, {
-    thread_id: `direct_job:${job.id}`,
-    thread_label: `Direct Hire Job: ${job.job_title}`
-  });
-  pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications', jobId:job.id });
+  if (!application.backendSource) {
+    sendInboxMessage(job.employer_id, getUserById(job.employer_id)?.name || 'Employer', `Direct Hire application for "${job.job_title}": ${message}`, null, currentUser, {
+      thread_id: `direct_job:${job.id}`,
+      thread_label: `Direct Hire Job: ${job.job_title}`
+    });
+    pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications', jobId:job.id });
+  }
   directJobApplyDraft = null;
   closeModal();
   toast('Application submitted. Check Dashboard \u2192 My Direct Hire.');
@@ -13661,15 +13663,17 @@ async function withdrawStudentDirectJobApplication(applicationId=''){
   const studentName = currentUser.publicName || currentUser.name || app.student_name || 'Student';
   const jobTitle = (job && job.job_title) || 'your job listing';
   const employerName = (getUserById(app.employer_id) || {}).name || 'Employer';
-  sendInboxMessage(
-    app.employer_id,
-    employerName,
-    `${studentName} withdrew their application for "${jobTitle}".`,
-    null,
-    { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' },
-    { thread_id: `direct_job:${app.job_id}`, thread_label: `Direct Hire Job: ${jobTitle}`, message_type:'system', system_category:'application' }
-  );
-  pushNotif(app.employer_id, `Student ${studentName} withdrew their application for "${jobTitle}".`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications' });
+  if (!app.backendSource) {
+    sendInboxMessage(
+      app.employer_id,
+      employerName,
+      `${studentName} withdrew their application for "${jobTitle}".`,
+      null,
+      { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' },
+      { thread_id: `direct_job:${app.job_id}`, thread_label: `Direct Hire Job: ${jobTitle}`, message_type:'system', system_category:'application' }
+    );
+    pushNotif(app.employer_id, `Student ${studentName} withdrew their application for "${jobTitle}".`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications' });
+  }
   toast('Application withdrawn.');
   renderDashboard();
 }
@@ -14378,16 +14382,14 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
     if (project && !app.project_id) app.project_id = project.id;
   }
   saveDirectJobApplications(items);
-  if (['shortlisted','hired','rejected','reviewing'].includes(status)) {
+  if (['shortlisted','hired','rejected','reviewing'].includes(status) && !app.backendSource) {
     pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'direct_hire', applicationId: app.id, jobId: job.id });
-    if (!backendAuthEnabled() || !app.backendSource) {
-      sendInboxMessage(app.student_id, app.student_name || 'Student', `Direct Hire update for "${job.job_title}": your application is ${String(status).replaceAll('_', ' ')}.`, null, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
-        thread_id: `direct_job:${job.id}`,
-        thread_label: `Direct Hire Job: ${job.job_title}`,
-        message_type: 'system',
-        system_category: 'application'
-      });
-    }
+    sendInboxMessage(app.student_id, app.student_name || 'Student', `Direct Hire update for "${job.job_title}": your application is ${String(status).replaceAll('_', ' ')}.`, null, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
+      thread_id: `direct_job:${job.id}`,
+      thread_label: `Direct Hire Job: ${job.job_title}`,
+      message_type: 'system',
+      system_category: 'application'
+    });
   }
   toast(status === 'hired' ? 'Candidate hired. No additional CoGo payment is required for direct-hire jobs.' : 'Application status updated.');
   renderDashboard();
@@ -14499,7 +14501,7 @@ async function submitDirectHireReview(applicationId=''){
   app.review_comment = comment;
   app.updated_at = new Date().toISOString();
   saveDirectJobApplications(apps);
-  pushNotif(app.student_id, `${currentUser.publicName || currentUser.name} left you a ${rating}/5 review.`, { type:'dashboard', section:'profile' });
+  if (!backendReview) pushNotif(app.student_id, `${currentUser.publicName || currentUser.name} left you a ${rating}/5 review.`, { type:'dashboard', section:'profile' });
   await refreshBackendDashboardData();
   closeModal();
   toast('Review submitted.');

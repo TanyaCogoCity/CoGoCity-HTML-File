@@ -57,7 +57,7 @@ router.post('/projects/:id/review', requireAuth, async (req, res) => {
         data: {
           userId: recipientId,
           type: notificationType('project'),
-          title: 'New review received',
+          title: `${req.user.displayName || 'A CoGoCity user'} left you a ${payload.rating}/5 review.`,
           body: `${req.user.displayName || 'A CoGoCity user'} left a review for ${project.job?.title || 'your project'}. Open your dashboard to view it.`,
           link: `/dashboard?section=${recipientId === project.studentId ? 'jobs_bookings' : 'applicants_projects'}&project=${project.id}`,
         },
@@ -156,7 +156,7 @@ router.post('/applications/:id/review', requireAuth, async (req, res) => {
       data: {
         userId: app.studentId,
         type: notificationType('project'),
-        title: 'New review received',
+        title: `${req.user.displayName || 'A CoGoCity user'} left you a ${payload.rating}/5 review.`,
         body: `${req.user.displayName || 'A CoGoCity user'} left a review for ${app.job.title || 'your work'}. Open your profile to view it.`,
         link: `/dashboard?section=profile`,
       },

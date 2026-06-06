@@ -205,13 +205,14 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
   });
 
   const notifyUserId = isOwner ? app.studentId : app.job.createdBy;
+  const studentName = app.student?.displayName || app.student?.userProfile?.firstName || 'Student';
   const statusLabels = {
     applied: 'Application submitted',
-    reviewing: 'Application is under review',
-    shortlisted: 'Offer sent',
-    hired: 'Offer accepted',
-    rejected: 'Application update',
-    withdrawn: 'Application withdrawn',
+    reviewing: `Your "${app.job.title}" application is under review.`,
+    shortlisted: `Your "${app.job.title}" application was shortlisted.`,
+    hired: `Your "${app.job.title}" application is now hired.`,
+    rejected: `Your "${app.job.title}" application was not selected.`,
+    withdrawn: `Student ${studentName} withdrew their application for "${app.job.title}".`,
   };
   const dashboardLink = isOwner
     ? `/dashboard?section=direct_hire&job=${app.jobId}`
@@ -275,12 +276,13 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
       },
     });
 
+    const applicantName = req.user.displayName || 'A student';
     await createNotification({
       data: {
         userId: job.createdBy,
         type: notificationType('application'),
-        title: 'New application received',
-        body: `${req.user.displayName} applied to ${job.title}. Open your dashboard to review the resume.`,
+        title: `${applicantName} applied to "${job.title}" with a resume.`,
+        body: `${applicantName} applied to ${job.title}. Open your dashboard to review the resume.`,
         link: `/dashboard?section=my_jobs&employerMyJobsTab=applications&job=${job.id}`,
       },
     });
