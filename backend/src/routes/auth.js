@@ -114,6 +114,7 @@ function passwordResetEmailHtml({ displayName, resetUrl }) {
   const safeName = String(displayName || 'there').replace(/[<>&"']/g, '');
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#18212f;max-width:600px;margin:0 auto;padding:24px">
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Reset your CoGo City password</div>
       <h2 style="margin:0 0 12px;color:#18212f">Reset your CoGo City password</h2>
       <p style="margin:0 0 16px">Hi ${safeName},</p>
       <p style="margin:0 0 20px">We received a request to reset your CoGo City password. Use the button below to choose a new password. This link expires in 60 minutes.</p>
@@ -466,16 +467,34 @@ router.post('/password-reset/request', async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-    await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+    const resetToken = await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
 
     const resetUrl = buildAppLink(`/#/reset-password?token=${encodeURIComponent(token)}`);
     const displayName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+    const subject = 'Reset your CoGo City password';
     const emailResult = await sendEmail({
       to: { email, name: displayName },
-      subject: user.deletedAt ? 'Reactivate your CoGo City account' : 'Reset your CoGo City password',
+      subject,
       htmlContent: passwordResetEmailHtml({ displayName, resetUrl }),
       textContent: `Reset your CoGo City password\n\nOpen this link to choose a new password. It expires in 60 minutes:\n${resetUrl}\n\nIf you did not request this, ignore this email.`,
     });
+
+    await prisma.syncRecord.create({
+      data: {
+        entity: 'password_reset_email',
+        recordId: resetToken.id,
+        payload: {
+          user_id: user.id,
+          email,
+          subject,
+          status: emailResult?.skipped ? 'skipped' : 'sent',
+          result: emailResult || null,
+          requested_at: new Date().toISOString(),
+          expires_at: expiresAt.toISOString(),
+          reactivation: Boolean(user.deletedAt),
+        },
+      },
+    }).catch((error) => console.error('password_reset_email_receipt_failed', error.message));
 
     if (emailResult?.skipped) return fail(res, 503, 'Password reset email is not configured');
     await writeAuditLog({ userId: user.id, action: 'auth.password_reset_requested', entityType: 'user', entityId: user.id });
