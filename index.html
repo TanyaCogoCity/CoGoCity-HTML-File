@@ -761,6 +761,8 @@ let workshopDraft = null;
 let activeModalDraftKey = null;
 let mediaCarouselState = {};
 let openPostCommentId = '';
+let communitySearchQuery = '';
+let communityPostTypeFilter = 'all';
 let workshopPayoutProcessorStarted = false;
 let connectivityHandlersAttached = false;
 let studentProfileImagesBuffer = [];
@@ -4327,7 +4329,7 @@ function getSiteSettings(){
       },
       community: {
         title: 'Community Gigs',
-        body: 'Find local gigs, odd jobs, projects, and opportunities posted by the community.',
+        body: 'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.',
         image_url: ''
       },
       jobs: {
@@ -4357,8 +4359,8 @@ function getSiteSettings(){
     merged.page_blocks[key] = Object.assign({}, defaults.page_blocks[key], ((saved.page_blocks || {})[key] || {}));
   });
   if (!merged.page_blocks.community.title || ['Community Feed', 'CoGo Community'].includes(merged.page_blocks.community.title)) merged.page_blocks.community.title = 'Community Gigs';
-  if (!merged.page_blocks.community.body || merged.page_blocks.community.body === 'Share updates, post opportunities, and connect with your local CoGo City community.') {
-    merged.page_blocks.community.body = 'Find local gigs, odd jobs, projects, and opportunities posted by the community.';
+  if (!merged.page_blocks.community.body || ['Share updates, post opportunities, and connect with your local CoGo City community.', 'Find local gigs, odd jobs, projects, and opportunities posted by the community.'].includes(merged.page_blocks.community.body)) {
+    merged.page_blocks.community.body = 'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.';
   }
   if (!merged.page_blocks.jobs.title || merged.page_blocks.jobs.title === 'Find Jobs Near You') merged.page_blocks.jobs.title = 'Direct Hire';
   if (!merged.page_blocks.jobs.body || String(merged.page_blocks.jobs.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.') || merged.page_blocks.jobs.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs') {
@@ -5732,7 +5734,7 @@ function renderPageContentBlock(pageKey='', fallback={}){
     image_url: ''
   }, fallback || {}, pageBlocks[pageKey] || {});
   if (pageKey === 'community' && (!block.title || ['Community Feed', 'CoGo Community'].includes(block.title))) block.title = 'Community Gigs';
-  if (pageKey === 'community' && (!block.body || block.body === 'Share updates, post opportunities, and connect with your local CoGo City community.')) block.body = 'Find local gigs, odd jobs, projects, and opportunities posted by the community.';
+  if (pageKey === 'community' && (!block.body || ['Share updates, post opportunities, and connect with your local CoGo City community.', 'Find local gigs, odd jobs, projects, and opportunities posted by the community.'].includes(block.body))) block.body = 'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.';
   if (pageKey === 'jobs' && (!block.title || block.title === 'Find Jobs Near You')) block.title = 'Direct Hire';
   if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.') || block.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs')) {
     block.body = 'Apply directly to jobs posted by employers and businesses.';
@@ -11707,6 +11709,40 @@ function getCommunityFeedStatusLabel(post){
 function isCommunityFeedJobOpen(post){
   return post.status === 'open' || post.status === 'pending';
 }
+function getCommunityPostSearchText(post={}){
+  return [
+    post.authorName,
+    post.content,
+    post.jobTitle,
+    post.description,
+    post.location,
+    post.rate,
+    post.hoursNeeded,
+    post.isJob ? 'job jobs gig gigs opportunity opportunities' : 'post update service services showcase work'
+  ].map(value => String(value || '').toLowerCase()).join(' ');
+}
+function getFilteredCommunityPosts(posts=[]){
+  const query = String(communitySearchQuery || '').trim().toLowerCase();
+  return posts.filter(post => {
+    if (communityPostTypeFilter === 'jobs' && !post.isJob) return false;
+    if (!query) return true;
+    return query.split(/\s+/).every(term => getCommunityPostSearchText(post).includes(term));
+  });
+}
+function updateCommunityFilters(){
+  const searchEl = document.getElementById('communitySearchInput');
+  const typeEl = document.getElementById('communityTypeFilter');
+  communitySearchQuery = searchEl ? searchEl.value : '';
+  communityPostTypeFilter = typeEl ? typeEl.value : 'all';
+  const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const filteredPosts = getFilteredCommunityPosts(posts);
+  const countEl = document.getElementById('communityFilterCount');
+  const listEl = document.getElementById('communityPostList');
+  if (countEl) countEl.textContent = `${filteredPosts.length} of ${posts.length} post${posts.length === 1 ? '' : 's'}`;
+  if (listEl) listEl.innerHTML = filteredPosts.length
+    ? filteredPosts.map(renderPost).join('')
+    : `<div class="card"><div class="muted">No Community Gigs match your search yet.</div></div>`;
+}
 function renderCommunity(){
   const useBackendCommunityPosts = backendAuthEnabled();
   if (useBackendCommunityPosts && !backendCommunityPostsLoaded && !backendCommunityPostsLoading) {
@@ -11715,20 +11751,37 @@ function renderCommunity(){
   const posts = useBackendCommunityPosts && !backendCommunityPostsLoaded
     ? []
     : syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const filteredPosts = getFilteredCommunityPosts(posts);
   const communityActionLabel = currentUser && isEmployerAccount(currentUser) ? '+ Post or Create a Job' : '+ Post';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('community', {
       title:'Community Gigs',
-      body:'Find local gigs, odd jobs, projects, and opportunities posted by the community.'
+      body:'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.'
     })}
     <div class="container feed-wrap">
       <div class="split" style="margin-bottom:18px">
         <div class="section-title" style="margin:0">Latest Posts</div>
         ${currentUser ? `<button class="btn btn-blue btn-sm" onclick="togglePostComposer()">${esc(communityActionLabel)}</button>` : `<button class="btn btn-outline btn-sm" onclick="openLoginModal()">Sign In to Post</button>`}
       </div>
+      <div class="card" style="padding:14px;margin-bottom:16px">
+        <div class="row" style="align-items:end">
+          <div class="field" style="margin-bottom:0">
+            <label>Search Community Gigs</label>
+            <input id="communitySearchInput" value="${esc(communitySearchQuery)}" placeholder="Search by keyword, job title, location, or poster" oninput="updateCommunityFilters()">
+          </div>
+          <div class="field" style="margin-bottom:0;max-width:220px">
+            <label>Show</label>
+            <select id="communityTypeFilter" onchange="updateCommunityFilters()">
+              <option value="all" ${communityPostTypeFilter === 'all' ? 'selected' : ''}>All posts</option>
+              <option value="jobs" ${communityPostTypeFilter === 'jobs' ? 'selected' : ''}>Jobs only</option>
+            </select>
+          </div>
+        </div>
+        <div id="communityFilterCount" class="small muted" style="margin-top:8px">${filteredPosts.length} of ${posts.length} post${posts.length === 1 ? '' : 's'}</div>
+      </div>
       <div id="post-composer-wrap"></div>
-      ${posts.map(renderPost).join('')}
+      <div id="communityPostList">${filteredPosts.length ? filteredPosts.map(renderPost).join('') : `<div class="card"><div class="muted">No Community Gigs match your search yet.</div></div>`}</div>
     </div>
   `;
   scrollToSharedCommunityPost();
