@@ -277,6 +277,24 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
     });
 
     const applicantName = req.user.displayName || 'A student';
+    const conversation = await ensureConversationBetweenUsers({
+      userAId: req.user.id,
+      userBId: job.createdBy,
+      label: `Direct Hire Job: ${job.title}`,
+    });
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: req.user.id,
+        messageText: `Direct Hire application for "${job.title}": ${payload.message}`,
+        messageType: 'user',
+      },
+    });
+    await prisma.conversationParticipant.update({
+      where: { conversationId_userId: { conversationId: conversation.id, userId: req.user.id } },
+      data: { lastReadAt: new Date() },
+    });
+
     await createNotification({
       data: {
         userId: job.createdBy,
