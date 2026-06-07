@@ -8296,6 +8296,7 @@ function renderPage(){
       return renderDashboard();
     }
     if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
+    if (route === '#/students') return renderHome();
     const result = renderHome();
     renderRecoveryAttempted = false;
     return result;
@@ -8433,7 +8434,7 @@ function updateBrowseStudentFilter(key='', value=''){
 }
 
 window.addEventListener('resize', () => {
-  if (typeof getRoute === 'function' && getRoute() === '#/') refreshBrowseStudentResults(false);
+  if (typeof getRoute === 'function' && (getRoute() === '#/' || getRoute() === '#/students')) refreshBrowseStudentResults(false);
 });
 
 function clearBrowseStudentFilters(){
@@ -8452,8 +8453,8 @@ function renderHome(){
   const filteredServiceCards = filterBrowseStudentCards(serviceCards);
   const publicBlogPosts = getPublicBlogPosts();
   const homeBlock = Object.assign({
-    title:'Find Skilled Local Students for Real Work',
-    body:'Hire motivated students for social media, office support, event help, tutoring, and more.'
+    title:'Browse Students',
+    body:'Find local student services for social media, office support, event help, tutoring, and more.'
   }, (getSiteSettings().page_blocks || {}).home || {});
   const advertisingSlots = getActiveAdvertisingSlots();
   const advertisingHtml = renderAdvertisingStrip(advertisingSlots);
