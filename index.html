@@ -1193,7 +1193,7 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
           const id = String((image || {}).id || (image || {}).record_id || '').trim();
           if (!id) return;
           const existing = mergedById.get(id);
-          if (existing && existing.url && image && image.embedded_image_omitted) {
+          if (existing && existing.url && image && image.embedded_image_omitted && !isInlineImageDataSource(existing.url)) {
             mergedById.set(id, Object.assign({}, image, {
               url: existing.url,
               thumbnail_url: existing.thumbnail_url || existing.url,
@@ -1203,7 +1203,7 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
             mergedById.set(id, image);
           }
         });
-        ls(storageKey, Array.from(mergedById.values()));
+        ls(storageKey, Array.from(mergedById.values()).map(compactImageRecordForLocalCache));
         setTimeout(() => refreshAdvertisingImagesFromStore(), 0);
       } else {
         ls(storageKey, records);
@@ -1229,6 +1229,17 @@ function backendSyncArrayHydrating(entityKey=''){
   if (!BACKEND_MIGRATION.enabled || !currentUser || !getBackendAccessToken()) return false;
   const state = backendGenericSyncState[entityKey] || {};
   return !!(state.loading || !state.loaded);
+}
+function isInlineImageDataSource(value=''){
+  return /^data:image\//i.test(String(value || '').trim());
+}
+function compactImageRecordForLocalCache(image={}){
+  const next = Object.assign({}, image || {});
+  if (next.embedded_image_omitted) {
+    if (isInlineImageDataSource(next.url)) next.url = '';
+    if (isInlineImageDataSource(next.thumbnail_url)) next.thumbnail_url = next.url || '';
+  }
+  return next;
 }
 function ensureBackendApplicationsLoaded(options={}){
   const forceFresh = !!options.forceFresh;
