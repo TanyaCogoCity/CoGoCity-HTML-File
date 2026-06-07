@@ -105,6 +105,25 @@ async function passwordResetDisplayName(user = {}, email = '') {
   return nameFromEmail(email || user.email);
 }
 
+async function deletedUserIdentityPayload(tx, userId = '') {
+  if (!userId) return null;
+  const identity = await tx.syncRecord.findUnique({
+    where: { entity_recordId: { entity: 'deleted_user_identity', recordId: userId } },
+  });
+  return identity?.payload && typeof identity.payload === 'object' ? identity.payload : null;
+}
+
+function restoredDeletedUserNameData(identity = {}) {
+  const firstName = String(identity.first_name || '').trim();
+  const lastName = String(identity.last_name || '').trim();
+  const displayName = String(identity.display_name || [firstName, lastName].filter(Boolean).join(' ')).trim();
+  const data = {};
+  if (firstName && !/^deleted$/i.test(firstName)) data.firstName = firstName;
+  if (lastName && !/^user$/i.test(lastName)) data.lastName = lastName;
+  if (displayName && !isDeletedPlaceholderName(displayName)) data.displayName = displayName;
+  return data;
+}
+
 function getSignupUsConfirmation(payload = {}) {
   return payload.usOnlyConfirmed ?? payload.us_only_confirmed ?? payload.usaOnlyConfirmed ?? payload.usa_only_confirmed ?? payload.usConfirmation ?? payload.us_confirmation;
 }
@@ -565,9 +584,13 @@ router.post('/password-reset/confirm', async (req, res) => {
     const passwordHash = await hashPassword(payload.new_password);
     const wasDeleted = Boolean(resetToken.user.deletedAt);
     const updatedUser = await prisma.$transaction(async (tx) => {
+      const restoredNameData = wasDeleted
+        ? restoredDeletedUserNameData(await deletedUserIdentityPayload(tx, resetToken.userId))
+        : {};
       const user = await tx.user.update({
         where: { id: resetToken.userId },
         data: {
+          ...restoredNameData,
           passwordHash,
           status: 'active',
           deletedAt: null,
