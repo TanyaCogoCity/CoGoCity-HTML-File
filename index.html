@@ -952,8 +952,11 @@ const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
   'notifications',
   'transactions',
 ]);
+const BACKEND_PENDING_SYNC_STORAGE_KEY = 'cogo_pending_backend_syncs';
+const BACKEND_SYNC_RETRY_DELAY_MS = 5000;
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
+let backendSyncRetryTimer = null;
 let backendBrowseStudentsLoading = false;
 let backendBrowseStudentsLoaded = false;
 let backendBrowseStudentsError = '';
@@ -1038,7 +1041,11 @@ function syncEntityToBackend(entityKey, records, options={}){
   if (!BACKEND_MIGRATION.enabled || !endpoint) return Promise.resolve({ ok:false, skipped:true, reason:'sync_disabled' });
   if (BACKEND_DEDICATED_ROUTE_ENTITIES.has(entityKey)) return Promise.resolve({ ok:false, skipped:true, reason:'dedicated_backend_route' });
   if (BACKEND_ADMIN_WRITE_SYNC_ENTITIES.has(entityKey) && (!currentUser || currentUser.role !== 'admin')) return Promise.resolve({ ok:false, skipped:true, reason:'admin_write_required' });
-  if (!getBackendAccessToken()) return Promise.resolve({ ok:false, skipped:true, reason:'missing_backend_token' });
+  if (!getBackendAccessToken()) {
+    if (!options.skipQueue) queuePendingBackendSync(entityKey, records, options, 'missing_backend_token');
+    return Promise.resolve({ ok:false, skipped:true, reason:'missing_backend_token' });
+  }
+  const syncStartedAt = new Date().toISOString();
   backendSyncInFlight += 1;
   const payload = JSON.stringify({
     entity: entityKey,
@@ -1051,19 +1058,71 @@ function syncEntityToBackend(entityKey, records, options={}){
     : backendRequest(endpoint, { method:'POST', body: payload });
   return requestPromise.then(result => {
     if (!result || !result.ok) backendLastSyncError = (result && (result.error || result.status)) ? String(result.error || result.status) : 'sync_failed';
+    if ((!result || !result.ok) && !options.skipQueue) queuePendingBackendSync(entityKey, records, options, backendLastSyncError);
+    if (result && result.ok) removePendingBackendSync(entityKey, syncStartedAt);
     return result;
   }).catch(error => {
     backendLastSyncError = String((error && error.message) || 'sync_failed');
+    if (!options.skipQueue) queuePendingBackendSync(entityKey, records, options, backendLastSyncError);
     return { ok:false, error:backendLastSyncError };
   }).finally(() => {
     backendSyncInFlight = Math.max(0, backendSyncInFlight - 1);
   });
 }
+function getPendingBackendSyncs(){
+  return ls(BACKEND_PENDING_SYNC_STORAGE_KEY) || {};
+}
+function savePendingBackendSyncs(pending){
+  ls(BACKEND_PENDING_SYNC_STORAGE_KEY, pending && typeof pending === 'object' ? pending : {});
+}
+function removePendingBackendSync(entityKey='', syncedAt=''){
+  const key = String(entityKey || '').trim();
+  if (!key) return;
+  const pending = getPendingBackendSyncs();
+  if (!Object.prototype.hasOwnProperty.call(pending, key)) return;
+  if (syncedAt && pending[key]?.updatedAt && String(pending[key].updatedAt) > String(syncedAt)) return;
+  delete pending[key];
+  savePendingBackendSyncs(pending);
+}
+function queuePendingBackendSync(entityKey='', records=[], options={}, reason='sync_failed'){
+  const key = String(entityKey || '').trim();
+  if (!key || !BACKEND_SYNC_ENDPOINTS[key] || BACKEND_DEDICATED_ROUTE_ENTITIES.has(key)) return;
+  if (BACKEND_ADMIN_WRITE_SYNC_ENTITIES.has(key) && (!currentUser || currentUser.role !== 'admin')) return;
+  const pending = getPendingBackendSyncs();
+  pending[key] = {
+    entityKey: key,
+    records: ensureArray(records),
+    options: { replace: !!options.replace },
+    reason: String(reason || 'sync_failed'),
+    updatedAt: new Date().toISOString()
+  };
+  savePendingBackendSyncs(pending);
+  schedulePendingBackendSyncFlush();
+}
+function schedulePendingBackendSyncFlush(delayMs=BACKEND_SYNC_RETRY_DELAY_MS){
+  if (!BACKEND_MIGRATION.enabled || backendSyncRetryTimer) return;
+  backendSyncRetryTimer = window.setTimeout(() => {
+    backendSyncRetryTimer = null;
+    flushPendingBackendSyncs();
+  }, Math.max(0, Number(delayMs || 0)));
+}
+async function flushPendingBackendSyncs(){
+  if (!BACKEND_MIGRATION.enabled || !getBackendAccessToken()) return;
+  const pending = getPendingBackendSyncs();
+  const entries = Object.values(pending);
+  for (const item of entries) {
+    if (!item || !item.entityKey) continue;
+    const result = await syncEntityToBackend(item.entityKey, ensureArray(item.records), Object.assign({}, item.options || {}, { skipQueue:true }));
+    if (result && result.ok) removePendingBackendSync(item.entityKey);
+  }
+  if (Object.keys(getPendingBackendSyncs()).length) schedulePendingBackendSyncFlush(15000);
+}
 window.CoGoBackend.getSyncState = function(){
   return {
     enabled: !!BACKEND_MIGRATION.enabled,
     in_flight: backendSyncInFlight,
-    last_error: backendLastSyncError || ''
+    last_error: backendLastSyncError || '',
+    pending: Object.keys(getPendingBackendSyncs()).length
   };
 };
 async function loadBackendSyncedRecords(entityKey='', options={}){
@@ -1314,6 +1373,7 @@ function saveBackendAuthSession(authData={}){
     localStorage.setItem('cogo_backend_access_token', authData.access_token);
   }
   if (authData.refresh_token) localStorage.setItem('cogo_backend_refresh_token', authData.refresh_token);
+  flushPendingBackendSyncs();
 }
 function clearBackendAuthSession(){
   setBackendAccessToken('');
@@ -8956,6 +9016,7 @@ async function submitDirectJobApplication(jobId=''){
   const job = getDirectJobById(jobId);
   if (!job || !currentUser) return;
   if (requireBackendWriteSession('apply for this job')) return;
+  if (backendAuthEnabled() && !job.backendSource) return toast('Please refresh jobs from the database before applying so this application is visible to the employer.');
   const message = String((document.getElementById('directJobApplicationMessage') || {}).value || '').trim();
   if (toastRequiredFields({ 'Message for the employer':message })) return;
   if (!blockTextCheck(message)) return;
@@ -10374,21 +10435,23 @@ function openWorkshopBroadcastModal(workshopId=''){
     </div>
   `, '680px');
 }
-function sendWorkshopBroadcast(workshopId=''){
+async function sendWorkshopBroadcast(workshopId=''){
   const workshop = getWorkshopById(workshopId);
   if (!workshop) return;
   const content = ((document.getElementById('workshopBroadcastMessage') || {}).value || '').trim();
   if (toastRequiredFields({ Message:content })) return;
   if (!blockTextCheck(content)) return;
   const recipients = getWorkshopRegistrationsFor(workshop.id).filter(item => item.status !== 'refunded');
-  recipients.forEach(item => {
+  const results = [];
+  for (const item of recipients) {
     const user = getUserById(item.user_id);
-    if (user) sendInboxMessage(user.id, user.name, `[Workshop: ${workshop.title}] ${content}`, null, currentUser, {
+    if (user) results.push(await sendInboxMessage(user.id, user.name, `[Workshop: ${workshop.title}] ${content}`, null, currentUser, {
       workshop_id: workshop.id,
       thread_id: `workshop:${workshop.id}`,
       thread_label: `Workshop: ${workshop.title}`
-    });
-  });
+    }));
+  }
+  if (results.some(result => result === false)) return toast('Some messages were not saved to the backend. Please try again.');
   toast('Broadcast sent.');
   openWorkshopManageModal(workshop.id);
 }
@@ -10407,17 +10470,18 @@ function openWorkshopMessageParticipant(workshopId='', userId=''){
     </div>
   `, '620px');
 }
-function sendWorkshopParticipantMessage(workshopId='', userId=''){
+async function sendWorkshopParticipantMessage(workshopId='', userId=''){
   const workshop = getWorkshopById(workshopId);
   const user = getUserById(userId);
   const content = ((document.getElementById('workshopParticipantMessage') || {}).value || '').trim();
   if (!workshop || !user || !content) return toast('Please write a message.');
   if (!blockTextCheck(content)) return;
-  sendInboxMessage(user.id, user.name, `[Workshop: ${workshop.title}] ${content}`, null, currentUser, {
+  const saved = await sendInboxMessage(user.id, user.name, `[Workshop: ${workshop.title}] ${content}`, null, currentUser, {
     workshop_id: workshop.id,
     thread_id: `workshop:${workshop.id}`,
     thread_label: `Workshop: ${workshop.title}`
   });
+  if (!saved) return;
   toast('Message sent.');
   openWorkshopManageModal(workshop.id);
 }
@@ -12384,6 +12448,7 @@ function handleEditPostVideoUpload(input){
   });
 }
 async function savePostEdit(postId){
+  if (requireBackendWriteSession('edit this post')) return;
   const posts = getPosts();
   const p = posts.find(x => x.id === postId);
   if (!p) return;
@@ -12424,6 +12489,7 @@ async function savePostEdit(postId){
 }
 async function deletePost(postId){
   if (!confirm('Delete this post?')) return;
+  if (requireBackendWriteSession('delete this post')) return;
   const posts = getPosts();
   const post = posts.find(p => p.id === postId);
   if (!post) return toast('Post not found.');
@@ -13905,6 +13971,7 @@ async function withdrawStudentDirectJobApplication(applicationId=''){
   const app = apps.find(item => String(item.id) === String(applicationId) && String(item.student_id) === String(currentUser.id));
   if (!app) return toast('Application not found.');
   if (requireBackendWriteSession('withdraw this application')) return;
+  if (backendAuthEnabled() && !app.backendSource) return toast('Please refresh your applications from the database before changing this application.');
   if (['withdrawn','hired','rejected'].includes(String(app.status || ''))) return toast('This application can no longer be withdrawn.');
   const job = getDirectJobById(app.job_id);
   app.status = 'withdrawn';
@@ -14623,6 +14690,7 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   const app = items.find(item => String(item.id) === String(applicationId));
   if (!app) return;
   if (requireBackendWriteSession('update this application')) return;
+  if (backendAuthEnabled() && !app.backendSource) return toast('Please refresh applications from the database before changing this application.');
   const job = getDirectJobById(app.job_id);
   if (!job || String(job.employer_id) !== String(currentUser.id)) return;
   app.status = status;
@@ -19369,13 +19437,17 @@ function attachConnectivityHandlers(){
   if (connectivityHandlersAttached) return;
   connectivityHandlersAttached = true;
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshVisibleCommunityFeed({ rerender:true });
+    if (document.visibilityState === 'visible') {
+      flushPendingBackendSyncs();
+      refreshVisibleCommunityFeed({ rerender:true });
+    }
   });
   window.addEventListener('offline', () => {
     toast('You are offline. Drafts stay saved locally until connection returns.');
   });
   window.addEventListener('online', () => {
     toast('Connection restored.');
+    flushPendingBackendSyncs();
     refreshVisibleCommunityFeed({ rerender:true });
   });
 }
@@ -19384,6 +19456,7 @@ function initializePrototype(){
   try {
     seedData();
     loadCurrentUser();
+    flushPendingBackendSyncs();
     handleStripeReturnParams();
     startWorkshopPayoutProcessor();
     attachConnectivityHandlers();
