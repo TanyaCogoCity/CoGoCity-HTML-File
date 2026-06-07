@@ -799,6 +799,49 @@ router.patch('/admin/users/onboarding-requirements', requireAuth, requireRoles([
   }
 });
 
+router.get('/admin/password-reset-audit', requireAuth, requireRoles(['admin']), async (req, res) => {
+  try {
+    const email = normalizeEmail(req.query.email || '');
+    if (!email) return fail(res, 400, 'email is required');
+    const emailHash = reactivationEmailHash(email);
+    const directUser = await prisma.user.findUnique({ where: { email } });
+    const deletedUser = emailHash
+      ? await prisma.user.findFirst({ where: { reactivationEmailHash: emailHash, deletedAt: { not: null } } })
+      : null;
+    const user = directUser || deletedUser;
+    const recentRows = await prisma.syncRecord.findMany({
+      where: { entity: 'password_reset_email', deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const recentResetEmails = recentRows
+      .filter((row) => normalizeEmail(row.payload?.email || '') === email)
+      .slice(0, 10)
+      .map((row) => ({
+        id: row.recordId,
+        status: row.payload?.status || '',
+        requested_at: row.payload?.requested_at || row.createdAt,
+        expires_at: row.payload?.expires_at || '',
+        reactivation: Boolean(row.payload?.reactivation),
+        provider_message_id: row.payload?.result?.messageId || '',
+        skipped_reason: row.payload?.result?.reason || '',
+      }));
+
+    return ok(res, {
+      email,
+      account_found: Boolean(user),
+      deleted: Boolean(user?.deletedAt),
+      status: user?.status || '',
+      user_id: user?.id || '',
+      anonymized_email: user?.deletedAt ? user.email : '',
+      reactivation_hash_present: Boolean(user?.reactivationEmailHash),
+      recent_reset_emails: recentResetEmails,
+    });
+  } catch (error) {
+    return fail(res, 500, 'Unable to audit password reset email', error.message);
+  }
+});
+
 router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
   try {
     const targetId = String(req.params.id || '').trim();
