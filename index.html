@@ -16327,8 +16327,7 @@ async function sendInboxMessage(toId, toName, content, projectId=null, fromUser=
   if (canUseBackend) {
     try {
       const payload = {
-        recipient_id: isBackendConversationId(threadId) ? undefined : toId,
-        thread_id: isBackendConversationId(threadId) ? threadId : undefined,
+        recipient_id: toId,
         message: content,
         project_id: projectId || undefined,
         thread_label: meta.thread_label || undefined
