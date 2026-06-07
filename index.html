@@ -819,6 +819,7 @@ let cogoAnalyticsSearchTimer = null;
 let cogoAnalyticsLastPage = '';
 let backendCommunityPostsLoaded = false;
 let backendCommunityPostsLoading = false;
+let backendCommunityPostsLoadedAt = 0;
 function getCogoAnalyticsEnvironment(){
   return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
 }
@@ -1327,6 +1328,9 @@ function resetBackendSessionCaches(){
   backendMessagesLoaded = false;
   backendMessagesLoading = false;
   backendMessagesError = '';
+  backendCommunityPostsLoaded = false;
+  backendCommunityPostsLoading = false;
+  backendCommunityPostsLoadedAt = 0;
   backendNotificationsLoaded = false;
   backendNotificationsLoading = false;
   backendNotificationsError = '';
@@ -3011,6 +3015,7 @@ async function loadBackendCommunityPosts(options={}){
     const backendPosts = ensureArray(data.posts || []).map(normalizePostRecord);
     ls('cogo_posts', backendPosts);
     backendCommunityPostsLoaded = true;
+    backendCommunityPostsLoadedAt = Date.now();
     if (options.rerender && getRoute().startsWith('#/community')) renderCommunity();
     return backendPosts;
   } catch (error) {
@@ -3019,6 +3024,16 @@ async function loadBackendCommunityPosts(options={}){
   } finally {
     backendCommunityPostsLoading = false;
   }
+}
+function backendCommunityPostsNeedRefresh(maxAgeMs=30000){
+  if (!backendAuthEnabled()) return false;
+  if (!backendCommunityPostsLoaded || !backendCommunityPostsLoadedAt) return true;
+  return Date.now() - backendCommunityPostsLoadedAt > maxAgeMs;
+}
+function refreshVisibleCommunityFeed(options={}){
+  if (!backendAuthEnabled() || !getRoute().startsWith('#/community')) return;
+  if (backendCommunityPostsLoading) return;
+  loadBackendCommunityPosts({ rerender: options.rerender !== false });
 }
 function syncCommunityPostsToBackend(posts=[]){
   if (!backendAuthEnabled() || !getBackendAccessToken()) return Promise.resolve(null);
@@ -11860,7 +11875,7 @@ function updateCommunityFilters(){
 }
 function renderCommunity(){
   const useBackendCommunityPosts = backendAuthEnabled();
-  if (useBackendCommunityPosts && !backendCommunityPostsLoaded && !backendCommunityPostsLoading) {
+  if (useBackendCommunityPosts && backendCommunityPostsNeedRefresh() && !backendCommunityPostsLoading) {
     loadBackendCommunityPosts({ rerender:true });
   }
   const posts = useBackendCommunityPosts && !backendCommunityPostsLoaded
@@ -19353,11 +19368,15 @@ function startWorkshopPayoutProcessor(){
 function attachConnectivityHandlers(){
   if (connectivityHandlersAttached) return;
   connectivityHandlersAttached = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshVisibleCommunityFeed({ rerender:true });
+  });
   window.addEventListener('offline', () => {
     toast('You are offline. Drafts stay saved locally until connection returns.');
   });
   window.addEventListener('online', () => {
     toast('Connection restored.');
+    refreshVisibleCommunityFeed({ rerender:true });
   });
 }
 
