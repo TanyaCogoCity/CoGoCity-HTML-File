@@ -6428,6 +6428,7 @@ function createDefaultStudentSignupDraft(){
     school:'',
     city:'',
     photo:'',
+    photoFileName:'',
     avatar:'',
     about:'',
     experience:'',
@@ -6583,9 +6584,9 @@ function renderStudentSignupStepContent(){
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Upload a profile photo or choose an avatar.</div>
       <div class="small muted" style="margin-bottom:14px">Note: Using a real photo can help you stand out and make your profile feel more personal and trustworthy to others.</div>
-      <div class="field"><label>Upload one profile photo</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleStudentSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div>${d.photo ? `<div class="small" style="margin-top:6px;color:var(--color-success);font-weight:700">Profile photo selected.</div>` : ''}</div>
+      ${renderSignupPhotoUploadControl('studentSignupProfilePhotoInput', 'handleStudentSignupPhotoUpload', d.photo || '', { label:'Upload one profile photo', selectedName:d.photoFileName || '' })}
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectStudentSignupPhotoFromLibrary')}</div>` : ''}
-      <div style="margin-bottom:14px">${renderEditableSingleImage(d.photo || '', 'Profile preview', 'removeStudentSignupPhoto()', 120, 'No photo uploaded yet.')}</div>
+      <div style="margin-bottom:14px">${renderSignupSelectedImagePreview(d.photo || '', 'Profile preview', 'removeStudentSignupPhoto()', 120, 'No photo uploaded yet.', d.photoFileName || '')}</div>
       <div class="field"><label>Or choose an avatar</label>${renderStudentAvatarOptions(d.avatar || '')}</div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
         ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
@@ -6788,6 +6789,7 @@ function handleStudentSignupPhotoUpload(input){
   prepareUploadedImageRecord(file, { source:'signup_profile', entity_type:'profile_signup' })
     .then(imageId => {
       studentSignupDraft.photo = imageId;
+      studentSignupDraft.photoFileName = file.name || '';
       studentSignupDraft.profileImages = replaceWithSingleImage(imageId);
       if (input) input.value = '';
       renderStudentSignupModal();
@@ -6800,12 +6802,14 @@ function handleStudentSignupPhotoUpload(input){
 function selectStudentSignupPhotoFromLibrary(imageId){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupDraft.photo = imageId;
+  studentSignupDraft.photoFileName = getSignupImageDisplayName(imageId);
   studentSignupDraft.profileImages = replaceWithSingleImage(imageId);
   renderStudentSignupModal();
 }
 function removeStudentSignupPhoto(){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupDraft.photo = '';
+  studentSignupDraft.photoFileName = '';
   studentSignupDraft.profileImages = [];
   renderStudentSignupModal();
 }
@@ -7398,6 +7402,7 @@ function createDefaultEmployerSignupDraft(mode='neighbor'){
     firstName:'',
     lastName:'',
     photo:'',
+    photoFileName:'',
     video_url:'',
     video_type:'',
     video_id:'',
@@ -7524,10 +7529,10 @@ function renderEmployerSignupStepContent(){
         <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="Tanya" oninput="syncEmployerSignupPersonalDraft()"></div>
         <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip" oninput="syncEmployerSignupPersonalDraft()"></div>
       </div>
-      <div class="field"><label>Profile Photo</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleEmployerSignupPhotoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div>${d.photo ? `<div class="small" style="margin-top:6px;color:var(--color-success);font-weight:700">Profile photo selected.</div>` : ''}</div>
+      ${renderSignupPhotoUploadControl('employerSignupProfilePhotoInput', 'handleEmployerSignupPhotoUpload', d.photo || '', { label:'Profile Photo', selectedName:d.photoFileName || '' })}
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
-      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderEditableSingleImage(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
+      <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderSignupSelectedImagePreview(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.', d.photoFileName || '') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label>Profile Video Link or Upload (optional)</label><input id="employerSignupProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmployerSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
       <div class="field"><label>Upload Profile Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmployerSignupProfileVideoUpload(this)"></div>
@@ -7659,6 +7664,7 @@ function handleEmployerSignupPhotoUpload(input){
   prepareUploadedImageRecord(file, { source:'employer_profile', entity_type:'profile_signup' })
     .then(imageId => {
       employerSignupDraft.photo = imageId;
+      employerSignupDraft.photoFileName = file.name || '';
       if (input) input.value = '';
       renderEmployerSignupModal();
     })
@@ -7670,11 +7676,13 @@ function handleEmployerSignupPhotoUpload(input){
 function selectEmployerSignupPhotoFromLibrary(imageId){
   syncEmployerSignupPersonalDraft();
   employerSignupDraft.photo = imageId || '';
+  employerSignupDraft.photoFileName = getSignupImageDisplayName(imageId);
   renderEmployerSignupModal();
 }
 function removeEmployerSignupPhoto(){
   syncEmployerSignupPersonalDraft();
   employerSignupDraft.photo = '';
+  employerSignupDraft.photoFileName = '';
   renderEmployerSignupModal();
 }
 function previewEmployerSignupProfileVideo(value){
@@ -10597,6 +10605,50 @@ function renderEditableSingleImage(imageId='', alt='Image', removeAction='', siz
   return `
     <div style="display:inline-flex;flex-direction:column;gap:8px;margin-bottom:14px">
       ${renderManagedImage(cleanId, alt, `width:${size}px;height:${size}px;border-radius:14px;object-fit:cover;border:1px solid var(--border)`, 'thumb', 'loading="eager"')}
+      ${safeAction ? `<button class="btn btn-outline btn-sm" type="button" onclick="${safeAction}">Remove image</button>` : ''}
+    </div>
+  `;
+}
+function getSignupImageDisplayName(imageId='', fallbackName=''){
+  const image = getImageView(imageId, 'thumb') || getImageById(imageId);
+  return String((image && image.original_name) || fallbackName || '').trim();
+}
+function renderSignupPhotoUploadControl(inputId='', handlerName='', imageId='', options={}){
+  const safeInputId = String(inputId || 'signupPhotoInput').replace(/[^\w-]/g, '');
+  const safeHandlerName = String(handlerName || '').replace(/[^\w$]/g, '');
+  const cleanId = String(imageId || '').trim();
+  const label = String(options.label || 'Profile Photo');
+  const selectedName = getSignupImageDisplayName(cleanId, options.selectedName || '');
+  const statusText = cleanId
+    ? `Selected${selectedName ? `: ${selectedName}` : ''}`
+    : 'No photo selected yet.';
+  return `
+    <div class="field">
+      <label>${esc(label)}</label>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <input id="${esc(safeInputId)}" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="${safeHandlerName}(this)" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
+        <button class="btn btn-outline btn-sm" type="button" onclick="document.getElementById('${esc(safeInputId)}')?.click()">Choose Photo</button>
+        <span class="small ${cleanId ? '' : 'muted'}">${esc(statusText)}</span>
+      </div>
+      <div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_IMAGE_HELP)}</div>
+      ${cleanId ? `<div class="small" style="margin-top:6px;color:var(--color-success);font-weight:700">Profile photo selected.</div>` : ''}
+    </div>
+  `;
+}
+function renderSignupSelectedImagePreview(imageId='', alt='Image', removeAction='', size=120, emptyLabel='No image uploaded yet.', fallbackName=''){
+  const cleanId = String(imageId || '').trim();
+  if (!cleanId) return `<div class="small muted" style="margin-bottom:14px">${esc(emptyLabel)}</div>`;
+  const safeAction = String(removeAction || '').replace(/"/g, '&quot;');
+  const imageHtml = renderManagedImage(cleanId, alt, `width:${size}px;height:${size}px;border-radius:14px;object-fit:cover;border:1px solid var(--border)`, 'thumb', 'loading="eager"');
+  const selectedName = getSignupImageDisplayName(cleanId, fallbackName);
+  const fallbackHtml = `
+    <div style="width:${size}px;min-height:${size}px;border-radius:14px;border:1px solid var(--border);background:#F8FAFC;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;color:var(--muted);font-size:.85rem;line-height:1.25">
+      Photo selected${selectedName ? `<br>${esc(selectedName)}` : ''}<br>Preview will appear after save.
+    </div>
+  `;
+  return `
+    <div style="display:inline-flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      ${imageHtml || fallbackHtml}
       ${safeAction ? `<button class="btn btn-outline btn-sm" type="button" onclick="${safeAction}">Remove image</button>` : ''}
     </div>
   `;
