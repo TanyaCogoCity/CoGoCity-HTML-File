@@ -16219,7 +16219,7 @@ function renderThreadView(userId){
   const threadId = tokenParts[1] || getDirectThreadId(currentUser.id, partnerId);
   if (backendAuthEnabled() && isBackendConversationId(threadId) && !backendMessageThreadsLoaded[threadId] && !backendMessageThreadsLoading[threadId]) refreshBackendThreadMessages(threadId, { rerender:true });
   const isCogoPartner = String(partnerId) === 'system_cogo';
-  const isSystemThread = threadId.startsWith('system:');
+  const isSystemThread = threadId.startsWith('system:') || isCogoPartner;
   const isUnifiedCogoSystemThread = isCogoPartner && threadId === 'system:cogo';
   const isUnifiedUserThread = isUnifiedUserThreadId(threadId);
   if (backendAuthEnabled() && isUnifiedUserThread) {
