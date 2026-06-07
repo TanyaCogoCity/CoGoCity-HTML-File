@@ -3034,6 +3034,22 @@ function deleteCommunityPostFromBackend(postId){
   if (!backendAuthEnabled() || !getBackendAccessToken() || !postId) return Promise.resolve(null);
   return backendAuthRequest(`/community-posts/${encodeURIComponent(postId)}`, { method:'DELETE' });
 }
+async function saveCommunityPostInteraction(postId, payload={}){
+  if (!backendAuthEnabled() || !getBackendAccessToken()) return null;
+  return backendAuthRequest(`/community-posts/${encodeURIComponent(postId)}/interactions`, {
+    method:'POST',
+    body: JSON.stringify(payload)
+  });
+}
+function replaceLocalCommunityPost(updatedPost){
+  if (!updatedPost || !updatedPost.id) return;
+  const normalizedPost = normalizePostRecord(updatedPost);
+  const posts = getPosts();
+  const nextPosts = posts.some(post => String(post.id) === String(normalizedPost.id))
+    ? posts.map(post => String(post.id) === String(normalizedPost.id) ? normalizedPost : post)
+    : [normalizedPost, ...posts];
+  ls('cogo_posts', nextPosts.map(normalizePostRecord));
+}
 function savePosts(v){
   const payload = ensureArray(v).map(normalizePostRecord);
   ls('cogo_posts', payload);
@@ -12129,23 +12145,28 @@ async function addPostComment(postId){
   const content = String((input || {}).value || '').trim();
   if (toastRequiredFields({ Comment:content })) return;
   if (!blockTextCheck(content)) return;
-  const posts = getPosts();
-  const post = posts.find(item => item.id === postId);
-  if (!post) return;
-  post.comments = ensureArray(post.comments);
-  post.comments.push(normalizeCommunityComment({
+  const comment = normalizeCommunityComment({
     id: uid('pc'),
     userId: currentUser.id,
     userName: currentUser.publicName || currentUser.name,
     content,
     createdAt: new Date().toISOString()
-  }));
+  });
   try {
-    if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+    if (backendAuthEnabled()) {
+      const saved = await saveCommunityPostInteraction(postId, { action:'comment', comment });
+      replaceLocalCommunityPost(saved.post);
+    } else {
+      const posts = getPosts();
+      const post = posts.find(item => item.id === postId);
+      if (!post) return;
+      post.comments = ensureArray(post.comments);
+      post.comments.push(comment);
+      ls('cogo_posts', posts.map(normalizePostRecord));
+    }
   } catch (error) {
     return toast('Backend comment save failed. Please try again so this comment is saved for everyone.');
   }
-  ls('cogo_posts', posts.map(normalizePostRecord));
   renderCommunity();
 }
 async function sharePost(postId){
@@ -12164,13 +12185,17 @@ async function sharePost(postId){
     copyShareLink();
     return;
   }
-  post.shares = Number(post.shares || 0) + 1;
   try {
-    if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+    if (backendAuthEnabled()) {
+      const saved = await saveCommunityPostInteraction(postId, { action:'share' });
+      replaceLocalCommunityPost(saved.post);
+    } else {
+      post.shares = Number(post.shares || 0) + 1;
+      ls('cogo_posts', posts.map(normalizePostRecord));
+    }
   } catch (error) {
     return toast('Backend share update failed. Please try again so this update is saved for everyone.');
   }
-  ls('cogo_posts', posts.map(normalizePostRecord));
   copyShareLink();
   renderCommunity();
 }
@@ -12182,13 +12207,18 @@ async function toggleLike(postId){
   if (!p) return;
   p.likes = p.likes || [];
   const idx = p.likes.indexOf(currentUser.id);
-  if (idx >= 0) p.likes.splice(idx, 1); else p.likes.push(currentUser.id);
+  const action = idx >= 0 ? 'unlike' : 'like';
   try {
-    if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
+    if (backendAuthEnabled()) {
+      const saved = await saveCommunityPostInteraction(postId, { action });
+      replaceLocalCommunityPost(saved.post);
+    } else {
+      if (idx >= 0) p.likes.splice(idx, 1); else p.likes.push(currentUser.id);
+      ls('cogo_posts', posts.map(normalizePostRecord));
+    }
   } catch (error) {
     return toast('Backend like update failed. Please try again so this update is saved for everyone.');
   }
-  ls('cogo_posts', posts.map(normalizePostRecord));
   renderCommunity();
 }
 function editPost(postId){

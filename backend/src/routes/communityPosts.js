@@ -29,6 +29,27 @@ function normalizePostRecord(record = {}) {
   return payload;
 }
 
+function displayNameForUser(user = {}) {
+  const direct = String(user.displayName || '').trim();
+  if (direct) return direct;
+  const first = String(user.firstName || '').trim();
+  const last = String(user.lastName || '').trim();
+  if (first && last) return `${first} ${last.slice(0, 1).toUpperCase()}.`;
+  return first || String(user.email || 'User').split('@')[0] || 'User';
+}
+
+function normalizeCommentRecord(comment = {}, fallbackUser = {}) {
+  const content = String(comment.content || '').trim();
+  if (!content) return null;
+  return {
+    id: String(comment.id || `pc_${Date.now()}`),
+    userId: String(comment.userId || fallbackUser.id || '').trim(),
+    userName: String(comment.userName || displayNameForUser(fallbackUser)),
+    content,
+    createdAt: comment.createdAt ? new Date(comment.createdAt).toISOString() : new Date().toISOString(),
+  };
+}
+
 function serializeCommunityPost(row) {
   return {
     ...(row.payload || {}),
@@ -92,6 +113,50 @@ router.get('/community-posts', async (_req, res) => {
     });
   } catch (error) {
     return fail(res, 500, 'Could not load community posts', error.message);
+  }
+});
+
+router.post('/community-posts/:id/interactions', requireAuth, async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    if (!id) return fail(res, 400, 'Post id is required');
+    if (!['like', 'unlike', 'comment', 'share'].includes(action)) {
+      return fail(res, 400, 'Interaction action is required');
+    }
+
+    const row = await prisma.communityPost.findFirst({ where: { id, deletedAt: null } });
+    if (!row) return fail(res, 404, 'Community post not found');
+
+    const payload = normalizePostRecord({ ...(row.payload || {}), id: row.id, authorId: row.authorId });
+    const currentUserId = String(req.user.id || '').trim();
+
+    if (action === 'like') {
+      payload.likes = [...new Set([...payload.likes, currentUserId].filter(Boolean))];
+    }
+    if (action === 'unlike') {
+      payload.likes = payload.likes.filter((likedId) => likedId !== currentUserId);
+    }
+    if (action === 'share') {
+      payload.shares = Number(payload.shares || 0) + 1;
+    }
+    if (action === 'comment') {
+      const comment = normalizeCommentRecord(req.body?.comment || {}, req.user);
+      if (!comment) return fail(res, 400, 'Comment is required');
+      const byId = new Map(payload.comments.map((item) => [String(item.id), item]));
+      byId.set(String(comment.id), comment);
+      payload.comments = Array.from(byId.values());
+    }
+
+    payload.updatedAt = new Date().toISOString();
+    const updated = await prisma.communityPost.update({
+      where: { id: row.id },
+      data: { payload },
+    });
+
+    return ok(res, { post: serializeCommunityPost(updated) });
+  } catch (error) {
+    return fail(res, 400, 'Could not save community post interaction', error.message);
   }
 });
 
