@@ -3473,6 +3473,7 @@ function getProjectSnapshotForDisplay(project={}){
   });
   const displayTitle = getProjectDisplayTitle(project);
   if (displayTitle && isGenericStudentBookingTitle(snapshot.title || project.jobTitle || '')) snapshot.title = displayTitle;
+  if (displayTitle && String(project.jobTitle || project.job_title || '').trim()) snapshot.title = displayTitle;
   return snapshot;
 }
 function renderProjectContractHtml(project={}){
@@ -15126,7 +15127,7 @@ async function startProject(appId, expectedStatus=''){
     }
   }
   const projectSnapshot = {
-    title: a.studentServiceTitle || a.jobTitle,
+    title: a.jobTitle || a.studentServiceTitle,
     description: a.message,
     rate: a.rate,
     location: a.location,
