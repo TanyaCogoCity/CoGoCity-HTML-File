@@ -6511,6 +6511,21 @@ function renderUsOnlyConfirmation(id='signupUsOnlyAck'){
 function isUsOnlyConfirmed(id='signupUsOnlyAck'){
   return !!document.getElementById(id)?.checked;
 }
+function getScopedSignupElement(scopeSelector, id){
+  const root = document.querySelector(scopeSelector);
+  if (root) {
+    const selector = window.CSS && typeof CSS.escape === 'function' ? `#${CSS.escape(id)}` : `#${id}`;
+    const scoped = root.querySelector(selector);
+    if (scoped) return scoped;
+  }
+  return document.getElementById(id);
+}
+function getStudentSignupElement(id){
+  return getScopedSignupElement('[data-student-signup-root="true"]', id);
+}
+function getEmployerSignupElement(id){
+  return getScopedSignupElement('[data-employer-signup-root="true"]', id);
+}
 function usOnlyBlockMessage(){
   return 'Thanks for your interest in CoGo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
 }
@@ -6539,30 +6554,32 @@ function renderStudentSignupModal(){
   };
   const footer = renderStudentSignupFooter();
   openModal('Student Signup', `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="pill" onclick="openLoginModal('signin')">Sign In</button>
-      <button class="pill active">Join as Student</button>
-      <button class="pill" onclick="openLoginModal('employer')">Join as Employer</button>
-      <button class="pill" onclick="openLoginModal('neighbor')">Join as Neighbor</button>
-    </div>
-    <div class="card form-card" style="margin-bottom:16px">
-      <div class="split" style="align-items:flex-start">
-        <div>
-          <div class="small muted">Step ${studentSignupStep} of 7</div>
-          <div style="font-weight:800;font-size:1.1rem">${esc(stepTitles[studentSignupStep])}</div>
-        </div>
-        <div style="min-width:180px;text-align:right">
-          <div class="small muted">Profile strength</div>
-          <div style="font-weight:800">${strength}% complete</div>
-          <div style="height:8px;background:#E5E7EB;border-radius:999px;margin-top:8px;overflow:hidden">
-            <div style="height:100%;width:${strength}%;background:linear-gradient(90deg,var(--blue),var(--green))"></div>
+    <div data-student-signup-root="true">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        <button class="pill" onclick="openLoginModal('signin')">Sign In</button>
+        <button class="pill active">Join as Student</button>
+        <button class="pill" onclick="openLoginModal('employer')">Join as Employer</button>
+        <button class="pill" onclick="openLoginModal('neighbor')">Join as Neighbor</button>
+      </div>
+      <div class="card form-card" style="margin-bottom:16px">
+        <div class="split" style="align-items:flex-start">
+          <div>
+            <div class="small muted">Step ${studentSignupStep} of 7</div>
+            <div style="font-weight:800;font-size:1.1rem">${esc(stepTitles[studentSignupStep])}</div>
+          </div>
+          <div style="min-width:180px;text-align:right">
+            <div class="small muted">Profile strength</div>
+            <div style="font-weight:800">${strength}% complete</div>
+            <div style="height:8px;background:#E5E7EB;border-radius:999px;margin-top:8px;overflow:hidden">
+              <div style="height:100%;width:${strength}%;background:linear-gradient(90deg,var(--blue),var(--green))"></div>
+            </div>
           </div>
         </div>
+        ${suggestions.length ? `<div class="warning" style="margin-top:12px">${suggestions.map(s => `\u2022 ${esc(s)}`).join('<br>')}</div>` : ''}
       </div>
-      ${suggestions.length ? `<div class="warning" style="margin-top:12px">${suggestions.map(s => `\u2022 ${esc(s)}`).join('<br>')}</div>` : ''}
+      ${renderStudentSignupStepContent()}
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px">${footer}</div>
     </div>
-    ${renderStudentSignupStepContent()}
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px">${footer}</div>
   `, '900px');
   setTimeout(initGoogleAddressFields, 0);
 }
@@ -6692,12 +6709,12 @@ function renderStudentSignupFooter(){
 async function saveStudentSignupStep(step){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   if (step === 1){
-    const firstNameValue = (document.getElementById('studentFlowFirstName').value || '').trim();
-    const lastNameValue = (document.getElementById('studentFlowLastName').value || '').trim();
+    const firstNameValue = (getStudentSignupElement('studentFlowFirstName')?.value || '').trim();
+    const lastNameValue = (getStudentSignupElement('studentFlowLastName')?.value || '').trim();
     const name = [firstNameValue, lastNameValue].filter(Boolean).join(' ').trim();
-    const email = (document.getElementById('studentFlowEmail').value || '').trim().toLowerCase();
-    const birthDate = normalizeBirthDateInput(document.getElementById('studentFlowBirthday').value || '');
-    const school = (document.getElementById('studentFlowSchool').value || '').trim();
+    const email = (getStudentSignupElement('studentFlowEmail')?.value || '').trim().toLowerCase();
+    const birthDate = normalizeBirthDateInput(getStudentSignupElement('studentFlowBirthday')?.value || '');
+    const school = (getStudentSignupElement('studentFlowSchool')?.value || '').trim();
     const age = calculateAgeFromBirthday(birthDate);
     if (toastRequiredFields({ 'First name':firstNameValue, 'Last name':lastNameValue, Email:email, Birthday:birthDate, School:school }, 'Student profile')) return false;
     if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.'), false;
@@ -6708,14 +6725,14 @@ async function saveStudentSignupStep(step){
     return true;
   }
   if (step === 2){
-    const videoEl = document.getElementById('studentFlowProfileVideoLink');
+    const videoEl = getStudentSignupElement('studentFlowProfileVideoLink');
     if (videoEl) applyVideoState(studentSignupDraft, (videoEl.value || '').trim());
     if (!(studentSignupDraft.photo || studentSignupDraft.avatar)) return toast('Please upload a photo or choose an avatar.'), false;
     return true;
   }
   if (step === 3){
-    const about = (document.getElementById('studentFlowAbout').value || '').trim();
-    const experience = (document.getElementById('studentFlowExperience').value || '').trim();
+    const about = (getStudentSignupElement('studentFlowAbout')?.value || '').trim();
+    const experience = (getStudentSignupElement('studentFlowExperience')?.value || '').trim();
     if (toastRequiredFields({ 'About me':about, Experience:experience }, 'Student profile')) return false;
     Object.assign(studentSignupDraft, { about, experience });
     return true;
@@ -6749,9 +6766,9 @@ async function saveStudentSignupStep(step){
     return true;
   }
   if (step === 5){
-    const email = (document.getElementById('studentFlowEmail').value || '').trim().toLowerCase();
-    let phone = (document.getElementById('studentFlowPhone').value || '').trim();
-    const address = (document.getElementById('studentFlowAddress').value || '').trim();
+    const email = (getStudentSignupElement('studentFlowEmail')?.value || '').trim().toLowerCase();
+    let phone = (getStudentSignupElement('studentFlowPhone')?.value || '').trim();
+    const address = (getStudentSignupElement('studentFlowAddress')?.value || '').trim();
     if (toastRequiredFields({ Email:email, Phone:phone, 'Home Address':address }, 'Contact details')) return false;
     if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.'), false;
     if (!isValidUsPhoneNumber(phone)) return toast('Please enter a valid 10-digit U.S. phone number.'), false;
@@ -6760,14 +6777,14 @@ async function saveStudentSignupStep(step){
     if (!addressCheck.ok) return toast(addressCheck.message), false;
     if (addressCheck.warning) toast(addressCheck.warning);
     const finalAddress = addressCheck.formattedAddress || address;
-    const addressEl = document.getElementById('studentFlowAddress');
+    const addressEl = getStudentSignupElement('studentFlowAddress');
     if (addressEl) addressEl.value = finalAddress;
     Object.assign(studentSignupDraft, { email, phone, phoneVerified:false, address:finalAddress, city:extractCity(finalAddress) });
     return true;
   }
   if (step === 7){
-    const password = document.getElementById('studentFlowPassword').value || '';
-    const confirmPassword = document.getElementById('studentFlowConfirmPassword').value || '';
+    const password = getStudentSignupElement('studentFlowPassword')?.value || '';
+    const confirmPassword = getStudentSignupElement('studentFlowConfirmPassword')?.value || '';
     if (!password || password.length < 8) return toast('Please create a password with at least 8 characters.'), false;
     if (password !== confirmPassword) return toast('Passwords do not match.'), false;
     Object.assign(studentSignupDraft, { password, confirmPassword });
@@ -6826,7 +6843,7 @@ function previewStudentSignupProfileVideo(value){
 }
 function handleStudentSignupProfileVideoUpload(input){
   readCommunityVideoFile(input, (dataUrl) => {
-    const field = document.getElementById('studentFlowProfileVideoLink');
+    const field = getStudentSignupElement('studentFlowProfileVideoLink');
     if (field) field.value = dataUrl;
     previewStudentSignupProfileVideo(dataUrl);
   });
@@ -6848,12 +6865,12 @@ function addStudentSignupProfileImageFromLibrary(imageId){
 function syncStudentSignupServiceForm(){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location:'', availability:'' };
-  const titleEl = document.getElementById('studentFlowServiceTitle');
-  const descriptionEl = document.getElementById('studentFlowServiceDescription');
-  const videoEl = document.getElementById('studentFlowServiceVideoLink');
-  const rateEl = document.getElementById('studentFlowServiceRate');
-  const locationEl = document.getElementById('studentFlowServiceLocation');
-  const availabilityEl = document.getElementById('studentFlowServiceAvailability');
+  const titleEl = getStudentSignupElement('studentFlowServiceTitle');
+  const descriptionEl = getStudentSignupElement('studentFlowServiceDescription');
+  const videoEl = getStudentSignupElement('studentFlowServiceVideoLink');
+  const rateEl = getStudentSignupElement('studentFlowServiceRate');
+  const locationEl = getStudentSignupElement('studentFlowServiceLocation');
+  const availabilityEl = getStudentSignupElement('studentFlowServiceAvailability');
   if (titleEl) studentSignupDraft.serviceForm.title = (titleEl.value || '').trim();
   if (descriptionEl) studentSignupDraft.serviceForm.description = (descriptionEl.value || '').trim();
   if (videoEl) applyVideoState(studentSignupDraft.serviceForm, (videoEl.value || '').trim());
@@ -6870,7 +6887,7 @@ function previewStudentSignupServiceVideo(value){
 function handleStudentSignupServiceVideoUpload(input){
   syncStudentSignupServiceForm();
   readCommunityVideoFile(input, (dataUrl) => {
-    const field = document.getElementById('studentFlowServiceVideoLink');
+    const field = getStudentSignupElement('studentFlowServiceVideoLink');
     if (field) field.value = dataUrl;
     previewStudentSignupServiceVideo(dataUrl);
   });
@@ -7451,13 +7468,13 @@ function renderEmployerAvatarPicker(){
 }
 function syncEmployerSignupPersonalDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
-  const firstNameEl = document.getElementById('employerSignupFirstName');
-  const lastNameEl = document.getElementById('employerSignupLastName');
-  const aboutEl = document.getElementById('employerSignupAbout');
-  const videoEl = document.getElementById('employerSignupProfileVideoLink');
-  const emailEl = document.getElementById('employerSignupEmail');
-  const phoneEl = document.getElementById('employerSignupPhone');
-  const addressEl = document.getElementById('employerSignupAddress');
+  const firstNameEl = getEmployerSignupElement('employerSignupFirstName');
+  const lastNameEl = getEmployerSignupElement('employerSignupLastName');
+  const aboutEl = getEmployerSignupElement('employerSignupAbout');
+  const videoEl = getEmployerSignupElement('employerSignupProfileVideoLink');
+  const emailEl = getEmployerSignupElement('employerSignupEmail');
+  const phoneEl = getEmployerSignupElement('employerSignupPhone');
+  const addressEl = getEmployerSignupElement('employerSignupAddress');
   if (firstNameEl) employerSignupDraft.firstName = (firstNameEl.value || '').trim();
   if (lastNameEl) employerSignupDraft.lastName = (lastNameEl.value || '').trim();
   if (aboutEl) employerSignupDraft.about = (aboutEl.value || '').trim();
@@ -7476,11 +7493,11 @@ function syncEmployerSignupPersonalDraft(){
 }
 function syncEmployerSignupBusinessDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
-  const nameEl = document.getElementById('employerBusinessName');
-  const aboutEl = document.getElementById('employerBusinessAbout');
-  const videoEl = document.getElementById('employerBusinessVideoLink');
-  const phoneEl = document.getElementById('employerBusinessPhone');
-  const addressEl = document.getElementById('employerBusinessAddress');
+  const nameEl = getEmployerSignupElement('employerBusinessName');
+  const aboutEl = getEmployerSignupElement('employerBusinessAbout');
+  const videoEl = getEmployerSignupElement('employerBusinessVideoLink');
+  const phoneEl = getEmployerSignupElement('employerBusinessPhone');
+  const addressEl = getEmployerSignupElement('employerBusinessAddress');
   if (nameEl) employerSignupDraft.businessName = (nameEl.value || '').trim();
   if (aboutEl) employerSignupDraft.businessAbout = (aboutEl.value || '').trim();
   if (videoEl) {
@@ -7497,8 +7514,8 @@ function syncEmployerSignupBusinessDraft(){
 }
 function syncEmployerSignupPasswordDraft(){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
-  const passwordEl = document.getElementById('employerSignupPassword');
-  const confirmPasswordEl = document.getElementById('employerSignupConfirmPassword');
+  const passwordEl = getEmployerSignupElement('employerSignupPassword');
+  const confirmPasswordEl = getEmployerSignupElement('employerSignupConfirmPassword');
   if (passwordEl) employerSignupDraft.password = passwordEl.value || '';
   if (confirmPasswordEl) employerSignupDraft.confirmPassword = confirmPasswordEl.value || '';
 }
@@ -7513,17 +7530,19 @@ function renderEmployerSignupModal(){
   const label = employerSignupMode === 'employer' ? 'Employer' : 'Neighbor';
   const footer = renderEmployerSignupFooter();
   openModal(`Join CoGo City as ${label}`, `
-    <div class="card" style="padding:14px 16px;background:#F9FAFB;border:1px solid var(--border);margin-bottom:16px">
-      <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap">
-        <div>
-          <div class="small muted">Step ${employerSignupStep} of ${employerSignupTotalSteps()}</div>
-          <div style="font-weight:800;font-size:1.05rem">${employerSignupStepTitle()}</div>
+    <div data-employer-signup-root="true">
+      <div class="card" style="padding:14px 16px;background:#F9FAFB;border:1px solid var(--border);margin-bottom:16px">
+        <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <div class="small muted">Step ${employerSignupStep} of ${employerSignupTotalSteps()}</div>
+            <div style="font-weight:800;font-size:1.05rem">${employerSignupStepTitle()}</div>
+          </div>
+          <div class="small muted">${employerSignupMode === 'employer' ? 'Verification email is skipped in the current test environment and you will go straight to your profile.' : 'Skip email verification in test mode and redirect straight to the profile page.'}</div>
         </div>
-        <div class="small muted">${employerSignupMode === 'employer' ? 'Verification email is skipped in the current test environment and you will go straight to your profile.' : 'Skip email verification in test mode and redirect straight to the profile page.'}</div>
       </div>
+      ${renderEmployerSignupStepContent()}
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px">${footer}</div>
     </div>
-    ${renderEmployerSignupStepContent()}
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px">${footer}</div>
   `, '820px');
   setTimeout(initGoogleAddressFields, 0);
 }
@@ -7706,7 +7725,7 @@ function previewEmployerSignupProfileVideo(value){
 function handleEmployerSignupProfileVideoUpload(input){
   syncEmployerSignupPersonalDraft();
   readCommunityVideoFile(input, (dataUrl) => {
-    const field = document.getElementById('employerSignupProfileVideoLink');
+    const field = getEmployerSignupElement('employerSignupProfileVideoLink');
     if (field) field.value = dataUrl;
     previewEmployerSignupProfileVideo(dataUrl);
   });
@@ -7752,7 +7771,7 @@ function previewEmployerSignupBusinessVideo(value){
 function handleEmployerSignupBusinessVideoUpload(input){
   syncEmployerSignupBusinessDraft();
   readCommunityVideoFile(input, (dataUrl) => {
-    const field = document.getElementById('employerBusinessVideoLink');
+    const field = getEmployerSignupElement('employerBusinessVideoLink');
     if (field) field.value = dataUrl;
     previewEmployerSignupBusinessVideo(dataUrl);
   });
