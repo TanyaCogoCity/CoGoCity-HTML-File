@@ -1273,6 +1273,57 @@ function ensureBackendPersistentStateLoaded(options={}){
 
 // ---------- Storage ----------
 const transientStorageFallback = {};
+function isStorageQuotaError(error){
+  const name = String((error && error.name) || '');
+  const message = String((error && error.message) || '').toLowerCase();
+  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' || message.includes('quota');
+}
+function clearStorageQuotaCaches(){
+  const removableExact = new Set([
+    'cogo_images',
+    'cogo_posts',
+    'cogo_blog_posts',
+    'cogo_workshops',
+    'cogo_workshop_registrations',
+    'cogo_transactions',
+    'cogo_projects',
+    'cogo_backend_browse_users',
+    'cogo_backend_browse_students',
+    'cogo_backend_direct_jobs',
+    'cogo_backend_direct_job_applications',
+    'cogo_backend_transactions',
+    'cogo_backend_projects',
+    'cogo_backend_synced_projects',
+    'cogo_backend_messages',
+    'cogo_draft_post',
+    'cogo_modal_drafts'
+  ]);
+  Object.keys(localStorage)
+    .filter(key => removableExact.has(key) || key.startsWith('cogo_backend_notifs_') || key.startsWith('cogo_notifs_'))
+    .forEach(key => {
+      try { localStorage.removeItem(key); } catch (error) {}
+      delete transientStorageFallback[key];
+    });
+}
+function safeLocalStorageSet(key, value){
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    if (isStorageQuotaError(error)) {
+      clearStorageQuotaCaches();
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch (retryError) {
+        console.warn('Storage write still failed after cache cleanup:', key, retryError);
+        return false;
+      }
+    }
+    console.warn('Storage write failed:', key, error);
+    return false;
+  }
+}
 function ls(key, value){
   if (value === undefined) {
     if (Object.prototype.hasOwnProperty.call(transientStorageFallback, key)) return transientStorageFallback[key];
@@ -1281,8 +1332,10 @@ function ls(key, value){
     }
   }
   try {
-    localStorage.setItem(key, JSON.stringify(value));
-    if (Object.prototype.hasOwnProperty.call(transientStorageFallback, key)) delete transientStorageFallback[key];
+    const serialized = JSON.stringify(value);
+    const stored = safeLocalStorageSet(key, serialized);
+    if (stored && Object.prototype.hasOwnProperty.call(transientStorageFallback, key)) delete transientStorageFallback[key];
+    if (!stored) transientStorageFallback[key] = value;
   } catch (error) {
     transientStorageFallback[key] = value;
     console.warn('Storage write failed. Falling back to in-memory cache for key:', key, error);
@@ -1380,9 +1433,9 @@ function saveBackendAuthSession(authData={}){
   resetBackendSessionCaches();
   if (authData.access_token) {
     setBackendAccessToken(authData.access_token);
-    localStorage.setItem('cogo_backend_access_token', authData.access_token);
+    safeLocalStorageSet('cogo_backend_access_token', authData.access_token);
   }
-  if (authData.refresh_token) localStorage.setItem('cogo_backend_refresh_token', authData.refresh_token);
+  if (authData.refresh_token) safeLocalStorageSet('cogo_backend_refresh_token', authData.refresh_token);
   flushPendingBackendSyncs();
 }
 function clearBackendAuthSession(){
@@ -2234,7 +2287,7 @@ function cacheBackendAuthUser(apiUser){
 }
 async function refreshBackendCurrentProfile(options={}){
   if (!backendAuthEnabled() || !currentUser || backendCurrentProfileLoading) return null;
-  const token = localStorage.getItem('cogo_backend_access_token');
+  const token = getBackendAccessToken();
   if (!token) return null;
   backendCurrentProfileLoading = true;
   try {
