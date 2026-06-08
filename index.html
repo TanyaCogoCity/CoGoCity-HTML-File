@@ -3869,8 +3869,8 @@ function mergeBackendProjects(localProjects=[]){
     merged.push(project);
   };
   backendProjects.forEach(addProject);
-  ensureArray(localProjects).forEach(addProject);
   syncedProjects.forEach(addProject);
+  ensureArray(localProjects).forEach(addProject);
   return merged;
 }
 function getProjects(){ return mergeBackendProjects(ls('cogo_projects') || []); }
@@ -14215,6 +14215,16 @@ async function submitFinalInvoice(projectId){
   if (!p) return;
   const actualHours = Number(document.getElementById('finalHours').value || 0);
   if (toastRequiredFields({ 'Actual hours':actualHours })) return;
+  const backendProjectId = getProjectBackendUuid(p);
+  if (backendAuthEnabled() && !getBackendAccessToken()) {
+    toast('Please refresh and sign in again before completing this project so it is saved for everyone.');
+    return;
+  }
+  if (backendAuthEnabled() && p.backendSource && !backendProjectId) {
+    toast('Please refresh before completing this project so it is saved for everyone.');
+    return;
+  }
+  const originalProjectState = JSON.parse(JSON.stringify(p));
   const breakdown = calculateCommissionBreakdown(actualHours, projectBillingRate(p));
   const subtotal = breakdown.workTotal;
   const platformFee = breakdown.employerCommissionAmount;
@@ -14252,13 +14262,15 @@ async function submitFinalInvoice(projectId){
   p.status = 'awaiting_employer_approval';
   if (backendAuthEnabled() && p.backendSource && getBackendAccessToken()) {
     try {
-      const saved = await backendAuthRequest(`/projects/${encodeURIComponent(getProjectBackendId(p))}/complete`, {
+      const saved = await backendAuthRequest(`/projects/${encodeURIComponent(backendProjectId)}/complete`, {
         method: 'PATCH',
         body: JSON.stringify({ actual_hours: actualHours })
       });
       mergeBackendProjectUpdate(p, saved);
       upsertBackendProject(p);
     } catch (error) {
+      Object.keys(p).forEach(key => delete p[key]);
+      Object.assign(p, originalProjectState);
       console.warn('Backend project completion failed', error);
       toast(error.message || 'Backend project completion failed. Please try again so the final invoice is saved permanently.');
       return;
