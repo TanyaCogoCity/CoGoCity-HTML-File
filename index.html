@@ -4010,13 +4010,21 @@ function mapBackendMessage(row={}, context={}){
   const senderId = row.sender_id || row.senderId;
   const conversationId = row.conversation_id || row.conversationId || row.thread_id || context.conversation_id || context.thread_id || '';
   const partnerId = context.partner_id || (String(senderId) === String(currentUser?.id) ? context.to_id : context.from_id) || '';
-  const fromId = String(senderId || '').trim();
-  const toId = String(fromId) === String(currentUser?.id) ? String(partnerId || '') : String(currentUser?.id || '');
+  const rawFromId = String(senderId || '').trim();
   const partnerName = context.partner_name || 'User';
+  const messageType = row.message_type || row.messageType || 'user';
+  const systemMessageInUserThread = messageType === 'system'
+    && partnerId
+    && String(partnerId) !== 'system_cogo'
+    && String(partnerName || '').trim() !== 'CoGo Team'
+    && String(rawFromId) !== String(currentUser?.id || '')
+    && String(rawFromId) !== String(partnerId);
+  const fromId = systemMessageInUserThread ? String(partnerId) : rawFromId;
+  const toId = String(fromId) === String(currentUser?.id) ? String(partnerId || '') : String(currentUser?.id || '');
   return normalizeMessageRecord({
     id: row.id,
     fromId,
-    fromName: row.sender_name || (String(fromId) === String(currentUser?.id) ? (currentUser.publicName || currentUser.name) : partnerName),
+    fromName: systemMessageInUserThread ? partnerName : (row.sender_name || (String(fromId) === String(currentUser?.id) ? (currentUser.publicName || currentUser.name) : partnerName)),
     toId,
     toName: String(toId) === String(currentUser?.id) ? (currentUser.publicName || currentUser.name || 'Me') : partnerName,
     content: row.message_text || row.message || row.content || '',
@@ -4024,7 +4032,7 @@ function mapBackendMessage(row={}, context={}){
     thread_id: conversationId,
     conversation_id: conversationId,
     thread_label: context.thread_label || '',
-    message_type: row.message_type || row.messageType || 'user',
+    message_type: messageType,
     unread_count: context.unread_count ?? context.unreadCount ?? (context.unread ? 1 : 0),
     unreadCount: context.unreadCount ?? context.unread_count ?? (context.unread ? 1 : 0),
     createdAt: row.created_at || row.createdAt,
