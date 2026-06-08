@@ -146,6 +146,32 @@ function canReadManualTransaction(user, tx = {}) {
   return ids.payerId === user.id;
 }
 
+function isDirectHireJob(job = {}) {
+  if (!job) return false;
+  return Boolean(
+    job.postingPackage ||
+    job.postingFee != null ||
+    job.listingMonths != null ||
+    job.listingDurationDays != null ||
+    job.paymentStatus ||
+    job.companyName ||
+    job.jobType ||
+    job.workMode ||
+    job.compensationText
+  );
+}
+
+function isDirectHireManualPayload(payload = {}) {
+  const source = String(firstValue(payload.source, payload.project_source, payload.projectSource, payload.category, '') || '').trim().toLowerCase().replace(/-/g, '_');
+  const paymentStatus = String(firstValue(payload.payment_status, payload.paymentStatus, '') || '').trim().toLowerCase();
+  const payoutStatus = String(firstValue(payload.payout_status, payload.payoutStatus, '') || '').trim().toLowerCase();
+  const escrowProvider = String(firstValue(payload.escrowProvider, payload.escrow_provider, '') || '').trim().toLowerCase();
+  return ['direct_hire', 'direct_job', 'direct_job_application'].includes(source) ||
+    paymentStatus === 'outside_platform' ||
+    payoutStatus === 'outside_platform' ||
+    escrowProvider === 'direct_hire';
+}
+
 function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, projectMap = new Map(), applicationMap = new Map()) {
   const tx = row.payload || {};
   const projectPayload = projectMap.get(String(firstValue(tx.project_id, tx.projectId, '') || ''))
@@ -222,6 +248,7 @@ function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, 
     stripe_balance_transaction_id: firstValue(tx.stripe_balance_transaction_id, tx.stripeBalanceTransactionId, ''),
     transfer_status: firstValue(tx.transfer_status, tx.transferStatus, ''),
     payout_status: firstValue(tx.payout_status, tx.payoutStatus, ''),
+    direct_hire_project: isDirectHireManualPayload(tx) || isDirectHireManualPayload(projectPayload) || isDirectHireManualPayload(applicationPayload),
   };
 }
 
@@ -239,14 +266,38 @@ router.get('/', requireAuth, async (req, res) => {
     include: {
       payer: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } },
       payee: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true } },
-      project: { select: { id: true, jobId: true, status: true, hourlyRate: true, actualHours: true, estimatedHours: true, job: { select: { id: true, title: true } } } },
+      project: {
+        select: {
+          id: true,
+          jobId: true,
+          status: true,
+          hourlyRate: true,
+          actualHours: true,
+          estimatedHours: true,
+          job: {
+            select: {
+              id: true,
+              title: true,
+              companyName: true,
+              jobType: true,
+              workMode: true,
+              compensationText: true,
+              postingPackage: true,
+              postingFee: true,
+              listingMonths: true,
+              listingDurationDays: true,
+              paymentStatus: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
 
   const feeSettings = await getPlatformFeeSettings(prisma);
-  const projectTransactions = rows.map((tx) => {
+  const projectTransactions = rows.filter((tx) => !isDirectHireJob(tx.project?.job)).map((tx) => {
     const hours = Number(tx.project?.actualHours || tx.project?.estimatedHours || 0);
     const rate = Number(tx.project?.hourlyRate || 0);
     const workTotal = Number((hours * rate).toFixed(2)) || Math.max(0, Number(tx.amountTotal || 0) - (Number(tx.platformFee || 0) / 2));
@@ -470,6 +521,7 @@ router.get('/', requireAuth, async (req, res) => {
   const manualTransactions = visibleManualRows
     .map((row) => normalizeManualTransaction(row, userMap, feeSettings, manualProjectMap, manualApplicationMap))
     .filter((tx) => {
+      if (tx.direct_hire_project) return false;
       const stripeId = tx.stripe_payment_intent_id;
       const projectId = tx.project_id;
       if (stripeId && coreStripeIds.has(stripeId)) return false;

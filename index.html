@@ -4616,6 +4616,21 @@ function isWorkshopTransaction(tx){
   const type = String((tx && (tx.payment_type || tx.type)) || '').toLowerCase();
   return type.startsWith('workshop') || title.startsWith('workshop:') || title.startsWith('workshop refund:') || title.startsWith('workshop payout:');
 }
+function isDirectHireTransaction(tx={}){
+  const type = String(tx.payment_type || tx.type || '').toLowerCase();
+  if (type === 'direct_job_listing') return false;
+  const source = String(tx.source || tx.project_source || tx.category || '').toLowerCase().replace(/-/g, '_');
+  const paymentStatus = String(tx.payment_status || tx.paymentStatus || tx.status || '').toLowerCase();
+  const payoutStatus = String(tx.payout_status || tx.payoutStatus || '').toLowerCase();
+  const escrowProvider = String(tx.escrowProvider || tx.escrow_provider || '').toLowerCase();
+  const jobId = tx.direct_job_id || tx.job_id || tx.jobId || '';
+  return ['direct_hire','direct_job','direct_job_application'].includes(source) ||
+    paymentStatus === 'outside_platform' ||
+    payoutStatus === 'outside_platform' ||
+    escrowProvider === 'direct_hire' ||
+    String(tx.direct_hire_project || '').toLowerCase() === 'true' ||
+    !!(jobId && getDirectJobById(jobId));
+}
 
 // ---------- Seed ----------
 
@@ -5580,9 +5595,14 @@ function projectPaymentStatusText(project={}){
   return 'Outside platform / not funded yet';
 }
 function isDirectHireProject(project={}){
-  return project.escrowProvider === 'direct_hire' ||
-    project.payment_status === 'outside_platform' ||
-    project.payout_status === 'outside_platform';
+  const escrowProvider = String(project.escrowProvider || project.escrow_provider || '').toLowerCase();
+  const paymentStatus = String(project.payment_status || project.paymentStatus || '').toLowerCase();
+  const payoutStatus = String(project.payout_status || project.payoutStatus || '').toLowerCase();
+  const source = String(project.source || project.project_source || project.projectSource || '').toLowerCase().replace(/-/g, '_');
+  return escrowProvider === 'direct_hire' ||
+    paymentStatus === 'outside_platform' ||
+    payoutStatus === 'outside_platform' ||
+    ['direct_hire','direct_job','direct_job_application'].includes(source);
 }
 function renderProjectPaymentStatus(project={}){
   return `
@@ -18421,6 +18441,7 @@ function dedupeTransactionRows(rows=[]){
   return mergedRows;
 }
 function projectHasCompletedPayment(project={}){
+  if (isDirectHireProject(project)) return false;
   const status = String(project.status || '').toLowerCase();
   const paymentStatus = String(project.payment_status || project.paymentStatus || '').toLowerCase();
   const payoutStatus = String(project.payout_status || project.payoutStatus || '').toLowerCase();
@@ -18472,7 +18493,7 @@ function getProjectBackedTransactionRows(){
 }
 function getCurrentUserTransactions(){
   const all = dedupeTransactionRows(getTransactions().concat(getProjectBackedTransactionRows()));
-  const nonWorkshop = dedupeTransactionRows(all.filter(tx => !isWorkshopTransaction(tx) && String(tx.payment_type || '').toLowerCase() !== 'direct_job_listing'));
+  const nonWorkshop = dedupeTransactionRows(all.filter(tx => !isWorkshopTransaction(tx) && String(tx.payment_type || '').toLowerCase() !== 'direct_job_listing' && !isDirectHireTransaction(tx)));
   if (currentUser.role === 'admin') return nonWorkshop;
   if (currentUser.role === 'employer' || isNeighborAccount(currentUser)) return nonWorkshop.filter(tx => String(getTransactionEmployerId(tx)) === String(currentUser.id));
   return nonWorkshop.filter(tx => String(getTransactionStudentId(tx)) === String(currentUser.id));
