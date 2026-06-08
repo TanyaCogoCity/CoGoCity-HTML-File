@@ -64,7 +64,7 @@ function validateEntity(entity = '') {
 }
 
 const SINGLETON_ENTITIES = new Set(['payment_settings', 'site_settings', 'finance']);
-const ADMIN_WRITE_ENTITIES = new Set(['blog_posts', 'direct_job_packages', 'payment_settings', 'site_settings', 'images', 'finance', 'admin_action_log', 'email_queue']);
+const ADMIN_WRITE_ENTITIES = new Set(['blog_posts', 'direct_job_packages', 'payment_settings', 'site_settings', 'finance', 'admin_action_log', 'email_queue']);
 const DEDICATED_ROUTE_ENTITIES = new Set([
   'users',
   'students',
@@ -81,6 +81,44 @@ function normalizeRecord(record = {}, entity = '') {
   const payload = { ...record, id };
   payload.updatedAt = payload.updatedAt || payload.updated_at || new Date().toISOString();
   return { id, payload };
+}
+
+async function requireImageWriteAccess(req, res, normalized = []) {
+  if (req.user.role === 'admin') return true;
+  const userId = String(req.user.id || '').trim();
+  if (!userId) {
+    fail(res, 401, 'Authentication required');
+    return false;
+  }
+  const ids = normalized.map((record) => record.id).filter(Boolean);
+  const existingRows = ids.length
+    ? await prisma.syncRecord.findMany({
+        where: { entity: 'images', recordId: { in: ids }, deletedAt: null },
+        select: { recordId: true, payload: true },
+      })
+    : [];
+  const existingById = new Map(existingRows.map((row) => [row.recordId, row.payload || {}]));
+  for (const record of normalized) {
+    const payload = record.payload || {};
+    const ownerId = String(payload.owner_id || payload.ownerId || '').trim();
+    const existing = existingById.get(record.id) || null;
+    const existingOwnerId = String((existing && (existing.owner_id || existing.ownerId)) || '').trim();
+    if (existing && existingOwnerId && existingOwnerId !== userId) {
+      fail(res, 403, 'You can only update images you uploaded');
+      return false;
+    }
+    if (existing && !existingOwnerId && String(existing.source || '').toLowerCase() === 'advertising') {
+      fail(res, 403, 'Admin access required');
+      return false;
+    }
+    if (ownerId && ownerId !== userId) {
+      fail(res, 403, 'Image owner does not match the signed-in user');
+      return false;
+    }
+    record.payload.owner_id = ownerId || existingOwnerId || userId;
+    record.payload.ownerId = record.payload.owner_id;
+  }
+  return true;
 }
 
 function isOfferStatus(value = '') {
@@ -575,6 +613,10 @@ router.post('/:entity', requireAuth, async (req, res) => {
   try {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
     const normalized = records.map((record) => normalizeRecord(record, entity)).filter(Boolean).slice(0, 1000);
+    if (entity === 'images') {
+      const imageWriteAllowed = await requireImageWriteAccess(req, res, normalized);
+      if (!imageWriteAllowed) return null;
+    }
     if (entity === 'workshops') {
       const payoutReady = await requireSyncedWorkshopPayoutReady(req, res, normalized);
       if (!payoutReady) return null;
@@ -654,6 +696,15 @@ router.delete('/:entity/:recordId', requireAuth, async (req, res) => {
 
   try {
     const recordId = String(req.params.recordId);
+    if (entity === 'images' && req.user.role !== 'admin') {
+      const image = await prisma.syncRecord.findUnique({
+        where: { entity_recordId: { entity, recordId } },
+        select: { payload: true, deletedAt: true },
+      });
+      const ownerId = String((image && image.payload && (image.payload.owner_id || image.payload.ownerId)) || '').trim();
+      if (!image || image.deletedAt) return fail(res, 404, 'Image not found');
+      if (!ownerId || ownerId !== String(req.user.id || '').trim()) return fail(res, 403, 'You can only delete images you uploaded');
+    }
     const result = await prisma.syncRecord.updateMany({
       where: { entity, recordId },
       data: { deletedAt: new Date() },

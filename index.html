@@ -942,7 +942,7 @@ const BACKEND_SYNC_ENDPOINTS = {
   site_settings: '/sync/site-settings'
 };
 const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','images']);
-const BACKEND_ADMIN_WRITE_SYNC_ENTITIES = new Set(['blog_posts','direct_job_packages','payment_settings','site_settings','images','finance','admin_action_log','email_queue']);
+const BACKEND_ADMIN_WRITE_SYNC_ENTITIES = new Set(['blog_posts','direct_job_packages','payment_settings','site_settings','finance','admin_action_log','email_queue']);
 const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
   'users',
   'students',
@@ -1132,7 +1132,7 @@ async function loadBackendSyncedRecords(entityKey='', options={}){
   if (!isPublicEntity && (!currentUser || !getBackendAccessToken())) return [];
   try {
     const readEndpoint = entityKey === 'images'
-      ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}summary=true&limit=300`
+      ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}${options.full ? '' : 'summary=true&'}limit=300`
       : endpoint;
     const result = isPublicEntity
       ? await backendRequest(readEndpoint, { method:'GET', auth:false })
@@ -1177,10 +1177,12 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
   if (!BACKEND_MIGRATION.enabled) return [];
   const state = backendGenericSyncState[entityKey] || { loading:false, loaded:false };
   backendGenericSyncState[entityKey] = state;
+  const needsFullImages = entityKey === 'images' && options.full && !state.fullLoaded;
   if (state.loading) return ensureArray(ls(storageKey));
+  if (state.loaded && !options.force && !needsFullImages) return ensureArray(ls(storageKey));
   state.loading = true;
   try {
-    const records = await loadBackendSyncedRecords(entityKey);
+    const records = await loadBackendSyncedRecords(entityKey, options);
     if (records.length) {
       if (entityKey === 'images') {
         const mergedById = new Map();
@@ -1209,6 +1211,7 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
       }
     }
     state.loaded = true;
+    if (entityKey === 'images' && options.full) state.fullLoaded = true;
     state.loadedAt = Date.now();
     return records;
   } finally {
@@ -1218,7 +1221,8 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
 }
 function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}){
   const state = backendGenericSyncState[entityKey] || {};
-  if (BACKEND_MIGRATION.enabled && !state.loaded && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
+  const needsFullImages = entityKey === 'images' && options.full && !state.fullLoaded;
+  if (BACKEND_MIGRATION.enabled && (!state.loaded || options.force || needsFullImages) && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
 }
 function backendSyncArrayIsFresh(entityKey='', maxAgeMs=15000){
   const state = backendGenericSyncState[entityKey] || {};
@@ -2607,6 +2611,7 @@ async function syncReferencedImagesBeforeCommunityPosts(posts=[]){
   if (!referencedImages.length) return { ok:true, skipped:true };
   const result = await syncEntityToBackend('images', referencedImages, { replace:false });
   if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
+  if (!result || result.ok === false) return { ok:false, reason:(result && (result.reason || result.error || result.status)) || 'image_sync_failed' };
   return { ok:true };
 }
 function optionalCommunityPostImages(imageIds=[]){
@@ -12347,6 +12352,9 @@ function updateCommunityFilters(){
 }
 function renderCommunity(){
   const useBackendCommunityPosts = backendAuthEnabled();
+  if (useBackendCommunityPosts) {
+    ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true, full:true });
+  }
   if (useBackendCommunityPosts && backendCommunityPostsNeedRefresh() && !backendCommunityPostsLoading) {
     loadBackendCommunityPosts({ rerender:true });
   }
