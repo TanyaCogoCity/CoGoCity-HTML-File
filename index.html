@@ -16018,6 +16018,14 @@ async function submitReview(projectId){
   const comment = (commentEl.value || '').trim();
   let backendReview = null;
   const backendProjectUuid = getProjectBackendUuid(p);
+  const originalProjectState = JSON.parse(JSON.stringify(p));
+  const originalStudentState = JSON.parse(JSON.stringify(student));
+  const restoreReviewState = () => {
+    Object.keys(p).forEach(key => delete p[key]);
+    Object.assign(p, JSON.parse(JSON.stringify(originalProjectState)));
+    Object.keys(student).forEach(key => delete student[key]);
+    Object.assign(student, JSON.parse(JSON.stringify(originalStudentState)));
+  };
   if (backendAuthEnabled() && getBackendAccessToken() && backendProjectUuid) {
     try {
       const serviceId = String(p.studentServiceId || '').trim();
@@ -16032,6 +16040,9 @@ async function submitReview(projectId){
       toast(error.message || 'Backend review save failed. Please try again so this review is saved permanently.');
       return;
     }
+  } else if (backendAuthEnabled() && getBackendAccessToken() && (p.backendSyncedSource || !p.backendSource)) {
+    // Legacy Community Gig projects use synced project records instead of UUID
+    // project rows. Persist the review on that backend sync record below.
   } else {
     toast('Please refresh and sign in again before submitting this review so it is saved permanently.');
     return;
@@ -16067,8 +16078,11 @@ async function submitReview(projectId){
     student.reviews.unshift(review);
   }
   p.reviewSubmitted = true;
+  if (!await persistProjectsPermanently(projects, 'Backend review status update failed. Please try again so this review is saved permanently.')) {
+    restoreReviewState();
+    return;
+  }
   saveStudents(students);
-  if (!await persistProjectsPermanently(projects, 'Backend review status update failed. Please try again so this review is saved permanently.')) return;
   await refreshBackendDashboardData();
   try {
     sendSystemMessage(
