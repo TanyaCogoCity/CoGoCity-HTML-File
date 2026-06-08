@@ -8536,6 +8536,7 @@ function clearBrowseStudentFilters(){
 }
 function renderHome(){
   if (backendAuthEnabled() && !backendBrowseStudentsLoaded && !backendBrowseStudentsLoading) refreshBackendBrowseStudents({ rerender:true });
+  if (backendAuthEnabled() && currentUser && getBackendAccessToken()) ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
   ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true });
   ensureBackendBlogPostsLoaded({ rerender:true });
   const serviceCards = getHomepageOrderedServiceCards();
@@ -11911,6 +11912,7 @@ function renderProfileCard(card){
   `;
 }
 function openProfile(studentId){
+  if (backendAuthEnabled() && currentUser && getBackendAccessToken()) ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
   const s = getStudents().find(x => x.id === studentId);
   if (!s) return;
   trackCogoEvent('student_profile_view', { source: 'profile_modal' });
@@ -13497,6 +13499,7 @@ async function submitEmployerProfileEdit(isEmployer=false){
 }
 
 function renderStudentProfile(el){
+  if (backendAuthEnabled() && currentUser && getBackendAccessToken()) ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
   const profile = currentStudentProfile();
   if (!profile){
     el.innerHTML = `
@@ -16084,6 +16087,12 @@ async function submitReview(projectId){
   }
   saveStudents(students);
   await refreshBackendDashboardData();
+  const notification = pushNotif(p.studentUserId, `${currentUser.name} left you a ${rating}/5 review.`, {
+    type:'dashboard',
+    section:'profile',
+    dedupeKey:`project_review:${p.id}:${currentUser.id}`
+  });
+  if (notification?.syncPromise) await notification.syncPromise;
   try {
     sendSystemMessage(
       p.studentUserId,
