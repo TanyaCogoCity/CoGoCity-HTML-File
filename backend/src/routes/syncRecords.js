@@ -72,7 +72,6 @@ const DEDICATED_ROUTE_ENTITIES = new Set([
   'direct_job_applications',
   'messages',
   'notifications',
-  'transactions',
 ]);
 
 function normalizeRecord(record = {}, entity = '') {

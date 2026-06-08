@@ -950,7 +950,6 @@ const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
   'direct_job_applications',
   'messages',
   'notifications',
-  'transactions',
 ]);
 const BACKEND_PENDING_SYNC_STORAGE_KEY = 'cogo_pending_backend_syncs';
 const BACKEND_SYNC_RETRY_DELAY_MS = 5000;
@@ -4609,7 +4608,23 @@ function getTransactions(){
 function saveTransactions(v){
   const payload = ensureArray(v).map(normalizeTransactionRecord);
   ls('cogo_transactions', payload);
-  if (backendAuthEnabled() && getBackendAccessToken()) refreshBackendTransactions({ rerender:true });
+  const result = syncEntityToBackend('transactions', payload);
+  if (backendAuthEnabled() && getBackendAccessToken()) result.then(() => refreshBackendTransactions({ rerender:true })).catch(() => refreshBackendTransactions({ rerender:true }));
+  return result;
+}
+async function persistTransactionsPermanently(v, failureMessage='Backend transaction save failed. Please try again so this transaction is saved for everyone.'){
+  const payload = ensureArray(v).map(normalizeTransactionRecord);
+  if (backendAuthEnabled()) {
+    if (requireBackendWriteSession('save this transaction change')) return false;
+    const result = await syncEntityToBackend('transactions', payload);
+    if (!result || !result.ok) {
+      toast(failureMessage);
+      return false;
+    }
+    await refreshBackendTransactions({ rerender:true });
+  }
+  ls('cogo_transactions', payload);
+  return true;
 }
 function isWorkshopTransaction(tx){
   const title = String((tx && tx.job_title) || '').toLowerCase();
@@ -14771,9 +14786,32 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   if (backendAuthEnabled() && !app.backendSource) return toast('Please refresh applications from the database before changing this application.');
   const job = getDirectJobById(app.job_id);
   if (!job || String(job.employer_id) !== String(currentUser.id)) return;
-  app.status = status;
-  app.updated_at = new Date().toISOString();
-  if (backendAuthEnabled() && app.backendSource && getBackendAccessToken()) {
+  const originalAppState = JSON.parse(JSON.stringify(app));
+  const originalJobState = JSON.parse(JSON.stringify(job));
+  const restoreDirectJobStatusState = () => {
+    Object.keys(app).forEach(key => delete app[key]);
+    Object.assign(app, JSON.parse(JSON.stringify(originalAppState)));
+    Object.keys(job).forEach(key => delete job[key]);
+    Object.assign(job, JSON.parse(JSON.stringify(originalJobState)));
+  };
+  const updatesBackendApplication = backendAuthEnabled() && app.backendSource && getBackendAccessToken();
+  if (status === 'hired') {
+    const project = await ensureDirectHireProjectForApplication(app, job);
+    if (!project) {
+      restoreDirectJobStatusState();
+      return;
+    }
+    app.status = status;
+    app.updated_at = new Date().toISOString();
+    if (!app.project_id) app.project_id = project.id;
+    job.status = 'closed';
+    job.updated_at = new Date().toISOString();
+    if (job.backendSource) upsertBackendDirectJob(job);
+  } else {
+    app.status = status;
+    app.updated_at = new Date().toISOString();
+  }
+  if (status !== 'hired' && updatesBackendApplication) {
     try {
       const saved = await backendAuthRequest(`/jobs/applications/${encodeURIComponent(app.id)}`, {
         method: 'PATCH',
@@ -14781,17 +14819,11 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
       });
       Object.assign(app, upsertBackendDirectJobApplication(mapBackendDirectJobApplication(saved)));
     } catch (error) {
+      restoreDirectJobStatusState();
       console.warn('Backend application status failed', error);
       toast(error.message || 'Backend status update failed. Please try again so this change is saved permanently.');
       return;
     }
-  }
-  if (status === 'hired') {
-    const project = await ensureDirectHireProjectForApplication(app, job);
-    if (project && !app.project_id) app.project_id = project.id;
-    job.status = 'closed';
-    job.updated_at = new Date().toISOString();
-    if (job.backendSource) upsertBackendDirectJob(job);
   }
   saveDirectJobApplications(items);
   if (['shortlisted','hired','rejected','reviewing'].includes(status) && !app.backendSource) {
@@ -15613,14 +15645,17 @@ async function approveFinalInvoice(projectId, buttonEl=null){
     renderDashboard();
     return;
   }
+  const originalProjectState = JSON.parse(JSON.stringify(p));
+  const restoreProjectState = () => {
+    Object.keys(p).forEach(key => delete p[key]);
+    Object.assign(p, JSON.parse(JSON.stringify(originalProjectState)));
+  };
   p.approvalInProgress = true;
-  saveProjects(projects);
   const now = new Date().toISOString();
   const finalBreakdown = calculateCommissionBreakdown(projectFinalHours(p, true), projectBillingRate(p));
   let isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
   if (STRIPE_ENABLED && (!backendAuthEnabled() || !getBackendAccessToken())) {
-    delete p.approvalInProgress;
-    saveProjects(projects);
+    restoreProjectState();
     if (buttonEl) {
       buttonEl.disabled = false;
       buttonEl.textContent = 'Approve & Release Payment';
@@ -15638,11 +15673,9 @@ async function approveFinalInvoice(projectId, buttonEl=null){
         p.paymentProviderMode = 'stripe_manual_capture';
         p.escrowStatus = 'held';
         isLocalPaymentReference = false;
-        saveProjects(projects);
       }
     } catch (error) {
-      delete p.approvalInProgress;
-      saveProjects(projects);
+      restoreProjectState();
       if (buttonEl) {
         buttonEl.disabled = false;
         buttonEl.textContent = 'Approve & Release Payment';
@@ -15666,8 +15699,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
         p.stripe_adjustment_payment_intent_id = captured.adjustment_payment_intent_id || p.stripe_adjustment_payment_intent_id || '';
       }
     } catch (error) {
-      delete p.approvalInProgress;
-      saveProjects(projects);
+      restoreProjectState();
       if (buttonEl) {
         buttonEl.disabled = false;
         buttonEl.textContent = 'Approve & Release Payment';
@@ -15814,14 +15846,6 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   } else {
     transactions.unshift(completedTransaction);
   }
-  saveTransactions(transactions);
-
-  const posts = getPosts();
-  const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
-  if (post) {
-    post.status = 'completed';
-    if (!await persistCommunityPostsPermanently(posts, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.')) return;
-  }
 
   if (backendAuthEnabled() && p.backendSource && getBackendAccessToken()) {
     try {
@@ -15832,6 +15856,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
       mergeBackendProjectUpdate(p, saved);
       upsertBackendProject(p);
     } catch (error) {
+      restoreProjectState();
       console.warn('Backend project approval failed', error);
       toast(error.message || 'Backend project approval failed. Please try again so this payment release is saved permanently.');
       return;
@@ -15839,7 +15864,23 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   }
 
   delete p.approvalInProgress;
-  if (!await persistProjectsPermanently(projects, 'Backend project approval failed. Please try again so this payment release is saved permanently.')) return;
+  if (!await persistProjectsPermanently(projects, 'Backend project approval failed. Please try again so this payment release is saved permanently.')) {
+    restoreProjectState();
+    return;
+  }
+  const posts = getPosts();
+  const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
+  if (post) {
+    post.status = 'completed';
+    if (!await persistCommunityPostsPermanently(posts, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.')) {
+      restoreProjectState();
+      return;
+    }
+  }
+  if (!await persistTransactionsPermanently(transactions, 'Backend transaction save failed. Please try again so this payment release is saved for everyone.')) {
+    restoreProjectState();
+    return;
+  }
   await refreshBackendDashboardData();
   const completionDedupeKey = `project-payment-complete:${p.id}`;
   const finalStudentFeeLabel = platformSupportFeeLabel(p.studentCommissionPct ?? getPaymentSettings().studentCommissionPct);
