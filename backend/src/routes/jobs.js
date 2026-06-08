@@ -190,18 +190,29 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
   const nextStatus = normalizeApplicationStatus(body.status || existing.status);
   if (isStudent && !isAdmin && !['withdrawn', 'applied'].includes(nextStatus)) return fail(res, 403, 'Students can only withdraw or resubmit their own applications');
 
-  const app = await prisma.application.update({
-    where: { id: existing.id },
-    data: {
-      status: nextStatus,
-      message: body.message == null ? existing.message : String(body.message || ''),
-      resumeFileName: body.resume_file_name == null && body.resumeFileName == null ? existing.resumeFileName : String(body.resume_file_name || body.resumeFileName || ''),
-      resumeDataUrl: body.resume_data_url == null && body.resumeDataUrl == null ? existing.resumeDataUrl : String(body.resume_data_url || body.resumeDataUrl || ''),
-    },
-    include: {
-      student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
-      job: { include: { creator: { include: { userProfile: true } } } },
-    },
+  const app = await prisma.$transaction(async (tx) => {
+    const updated = await tx.application.update({
+      where: { id: existing.id },
+      data: {
+        status: nextStatus,
+        message: body.message == null ? existing.message : String(body.message || ''),
+        resumeFileName: body.resume_file_name == null && body.resumeFileName == null ? existing.resumeFileName : String(body.resume_file_name || body.resumeFileName || ''),
+        resumeDataUrl: body.resume_data_url == null && body.resumeDataUrl == null ? existing.resumeDataUrl : String(body.resume_data_url || body.resumeDataUrl || ''),
+      },
+      include: {
+        student: { include: { userProfile: true, studentProfiles: { include: { services: true }, where: { deletedAt: null }, take: 1 } } },
+        job: { include: { creator: { include: { userProfile: true } } } },
+      },
+    });
+    if (nextStatus === 'hired') {
+      const closedJob = await tx.job.update({
+        where: { id: updated.jobId },
+        data: { status: 'closed' },
+        include: { creator: { include: { userProfile: true } } },
+      });
+      updated.job = closedJob;
+    }
+    return updated;
   });
 
   const notifyUserId = isOwner ? app.studentId : app.job.createdBy;

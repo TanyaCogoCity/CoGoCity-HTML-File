@@ -104,7 +104,7 @@ router.post('/start', requireAuth, async (req, res) => {
     }
 
     await prisma.application.update({ where: { id: app.id }, data: { status: 'hired' } });
-    await prisma.job.update({ where: { id: app.jobId }, data: { status: 'pending' } });
+    await prisma.job.update({ where: { id: app.jobId }, data: { status: directHireProject ? 'closed' : 'pending' } });
 
     const existingTx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
     if (!directHireProject && !existingTx) {
