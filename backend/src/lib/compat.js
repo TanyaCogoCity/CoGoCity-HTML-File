@@ -279,6 +279,7 @@ function normalizeProjectStartPayload(payload = {}) {
   return {
     applicationId: payload.application_id || payload.applicationId,
     projectId: payload.project_id || payload.projectId || null,
+    source: payload.source || payload.project_source || payload.projectSource || null,
     status: normalizeProjectStatus(payload.status || 'in_progress', false),
     estimatedHours: Number(payload.estimated_hours ?? payload.estimatedHours ?? 0) || null,
     hourlyRate: Number(payload.hourly_rate ?? payload.rate ?? payload.hourlyRate ?? 0) || null,

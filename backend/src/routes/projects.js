@@ -13,6 +13,23 @@ const { calculateHourlyProjectFeesFromSettings } = require('../lib/platformFees'
 
 const router = express.Router();
 
+function isDirectHireProjectStart(payload = {}, job = {}) {
+  const source = String(payload.source || '').trim().toLowerCase().replace(/-/g, '_');
+  if (['direct_hire', 'direct_job', 'direct_job_application'].includes(source)) return true;
+
+  return Boolean(
+    job.postingPackage ||
+    job.postingFee != null ||
+    job.listingMonths != null ||
+    job.listingDurationDays != null ||
+    job.paymentStatus ||
+    job.companyName ||
+    job.jobType ||
+    job.workMode ||
+    job.compensationText
+  );
+}
+
 router.get('/', requireAuth, async (req, res) => {
   const where = { deletedAt: null };
   if (req.user.role === 'student') {
@@ -67,6 +84,7 @@ router.post('/start', requireAuth, async (req, res) => {
 
     const hourlyRate = payload.hourlyRate || Number(app.job.hourlyRate);
     const estimatedHours = payload.estimatedHours || null;
+    const directHireProject = isDirectHireProjectStart(payload, app.job);
 
     if (!project) {
       project = await prisma.project.create({
@@ -89,7 +107,7 @@ router.post('/start', requireAuth, async (req, res) => {
     await prisma.job.update({ where: { id: app.jobId }, data: { status: 'pending' } });
 
     const existingTx = await prisma.transaction.findUnique({ where: { projectId: project.id } });
-    if (!existingTx) {
+    if (!directHireProject && !existingTx) {
       const fees = await calculateHourlyProjectFeesFromSettings(prisma, Number(project.totalAmount || 0));
       await prisma.transaction.create({
         data: {
@@ -115,27 +133,34 @@ router.post('/start', requireAuth, async (req, res) => {
     await sendSystemMessage({
       conversationId: conversation.id,
       senderId: systemUser.id,
-      text: `Project started for "${app.job.title}". Payment is pending funding.`,
+      text: directHireProject
+        ? `Direct Hire started for "${app.job.title}". The employer will pay the student directly outside CoGo City payments.`
+        : `Project started for "${app.job.title}". Payment is pending funding.`,
     });
 
-    await createNotifications({
-      data: [
-        {
-          userId: project.studentId,
-          type: notificationType('project'),
-          title: 'Offer accepted / project started',
-          body: `${app.job.title} has started. Open your dashboard to view the project and messages.`,
-          link: `/dashboard?section=jobs_bookings&project=${project.id}`,
-        },
-        {
-          userId: project.employerId,
-          type: notificationType('payment'),
-          title: 'Project funding required',
-          body: `Fund project payment for ${app.job.title}. Open your dashboard to complete payment setup.`,
-          link: `/dashboard?section=transactions&project=${project.id}`,
-        },
-      ],
-    });
+    const notifications = [
+      {
+        userId: project.studentId,
+        type: notificationType('project'),
+        title: directHireProject ? 'Direct Hire started' : 'Offer accepted / project started',
+        body: directHireProject
+          ? `${app.job.title} has started. You will be paid directly by the employer outside CoGo City payments.`
+          : `${app.job.title} has started. Open your dashboard to view the project and messages.`,
+        link: directHireProject
+          ? `/dashboard?section=direct_hire&job=${app.jobId}`
+          : `/dashboard?section=jobs_bookings&project=${project.id}`,
+      },
+    ];
+    if (!directHireProject) {
+      notifications.push({
+        userId: project.employerId,
+        type: notificationType('payment'),
+        title: 'Project funding required',
+        body: `Fund project payment for ${app.job.title}. Open your dashboard to complete payment setup.`,
+        link: `/dashboard?section=transactions&project=${project.id}`,
+      });
+    }
+    await createNotifications({ data: notifications });
 
     await writeAuditLog({ userId: req.user.id, action: 'project.start', entityType: 'project', entityId: project.id, payload: req.body });
 

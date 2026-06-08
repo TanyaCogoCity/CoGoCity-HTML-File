@@ -3610,6 +3610,7 @@ async function ensureDirectHireProjectForApplication(app={}, job={}){
         method: 'POST',
         body: JSON.stringify({
           application_id: app.id,
+          source: 'direct_hire',
           status: 'in_progress',
           hourly_rate: Number(job.hourly_rate || job.rate || parseCompensationHourlyRate(job.compensation_text || formatDirectJobCompensation(job)) || 0) || undefined,
           estimated_hours: Number(app.estimatedHours || app.estimated_hours || 1) || 1
