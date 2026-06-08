@@ -12605,7 +12605,7 @@ function togglePostComposer(){
       </div>
       <div id="post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(draft.entity_images || [])}</div>
       <div class="field"><label>Post Video Link or Upload (optional)</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handlePostComposerVideoUpload(this)"></div>
+      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handlePostComposerVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removePostComposerVideo()">Remove video</button></div></div>
       <div id="post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(draft) ? renderCommunityVideoComposerPreview(getRenderableVideoUrl(draft), 'postVideoUrl', 'post-video-preview', 'removePostComposerVideo()') : `<div class="small muted">No video link added yet.</div>`}</div>
       ${canCreateJobPost ? `
         <div class="field">
@@ -12878,7 +12878,7 @@ function editPost(postId){
     </div>
     <div id="edit-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [], 'removeEditPostImage')}</div>
     <div class="field"><label>Post Video Link or Upload (optional)</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-    <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEditPostVideoUpload(this)"></div>
+    <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEditPostVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEditPostVideo()">Remove video</button></div></div>
     <div id="edit-post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(p) ? renderCommunityVideoComposerPreview(getRenderableVideoUrl(p), 'editPostVideoUrl', 'edit-post-video-preview', 'removeEditPostVideo()') : `<div class="small muted">No video link added yet.</div>`}</div>
     ${p.isJob ? `
       <div class="field"><label>Job Title</label><input id="editJobTitle" value="${esc(p.jobTitle || '')}"></div>
@@ -14734,7 +14734,7 @@ function renderEmployerCommunityJobs(el){
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
       <div class="field"><label>Post Video Link or Upload (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"></div>
+      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEmpPostVideo()">Remove video</button></div></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       <div class="field">
         <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
@@ -16495,7 +16495,7 @@ function renderMyPosts(el){
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
       <div class="field"><label>Post Video Link or Upload (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"></div>
+      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEmpPostVideo()">Remove video</button></div></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       ${canCreateJobs ? `
         <div class="field">
