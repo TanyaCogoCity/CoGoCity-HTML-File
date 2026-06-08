@@ -3560,6 +3560,7 @@ async function refreshBackendDashboardData(options={}){
   if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return;
   await Promise.all([
     loadBackendArraySetting('applications', 'cogo_applications', { rerender:false }),
+    refreshBackendDirectJobs({ rerender:false }),
     refreshBackendProjects({ rerender:false }),
     refreshBackendTransactions({ rerender:false }),
     refreshBackendBrowseStudents({ rerender:false })
@@ -3705,11 +3706,15 @@ function getDirectJobEffectiveCloseDate(job){
 }
 function formatDirectJobCloseMessageDate(value=''){
   if (!value) return 'Date TBD';
-  return new Date(value).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Date TBD';
+  return parsed.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
 function formatDirectJobCreatedDate(value=''){
   if (!value) return 'Date TBD';
-  return new Date(value).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Date TBD';
+  return parsed.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
 function daysUntilDate(value=''){
   if (!value) return null;
@@ -19474,21 +19479,48 @@ function isPaidDirectJobPosting(job={}){
   const paymentStatus = String(job.posting_payment_status || job.payment_status || '').toLowerCase();
   return ['paid','captured','succeeded','complete','completed'].includes(paymentStatus);
 }
+function normalizeSubscriptionJobTitle(value=''){
+  return String(value || '')
+    .replace(/^Job Posting(?: Extension)?:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+function findDirectJobForSubscriptionRow(row={}){
+  const jobs = getDirectJobs();
+  const directJobId = row.job_id || row.direct_job_id || row.cogoId || row.backendJobId || '';
+  if (directJobId) {
+    const exact = jobs.find(job =>
+      String(job.id || '') === String(directJobId) ||
+      String(job.backendJobId || '') === String(directJobId)
+    );
+    if (exact) return exact;
+  }
+  const employerId = row.employer_id || row.employerId || '';
+  const jobTitle = normalizeSubscriptionJobTitle(row.job_title || row.jobTitle || row.jobName || '');
+  if (!employerId || !jobTitle) return null;
+  return jobs.find(job =>
+    String(job.employer_id || job.employerId || '') === String(employerId) &&
+    normalizeSubscriptionJobTitle(job.job_title || job.jobTitle || '') === jobTitle
+  ) || null;
+}
 function getSubscriptionTransactionRows(){
   const backendRows = getTransactions().filter(tx => String(tx.payment_type || '').toLowerCase() === 'direct_job_listing');
   if (backendRows.length || backendTransactionsLoaded) {
     return backendRows.map(tx => {
       const employerId = tx.employer_id || tx.employerId || '';
+      const matchedJob = findDirectJobForSubscriptionRow(tx);
       return {
         employerId,
         employerName: tx.employerName || tx.employer_name || getUserById(employerId)?.publicName || getUserById(employerId)?.name || 'Employer / Neighbor',
         jobName: String(tx.job_title || tx.jobTitle || 'Direct Hire Job').replace(/^Job Posting(?: Extension)?:\s*/i, ''),
         dateStarted: tx.date_charged || tx.date_paid || tx.created_at || '',
-        expirationDate: tx.expiration_date || tx.expires_at || '',
+        expirationDate: getDirectJobEffectiveCloseDate(matchedJob) || tx.expiration_date || tx.expires_at || '',
         total: Number(tx.total_amount || tx.amount_total || tx.listing_fee || 0),
         status: tx.status || 'paid',
+        listingStatus: matchedJob ? matchedJob.status : (tx.listing_status || tx.listingStatus || tx.job_status || tx.jobStatus || ''),
         paymentStatus: tx.stripe_payment_status || tx.status || 'paid',
-        cogoId: tx.job_id || tx.direct_job_id || tx.id || tx.transaction_id || '',
+        cogoId: (matchedJob && matchedJob.id) || tx.job_id || tx.direct_job_id || tx.id || tx.transaction_id || '',
         stripeCheckoutSessionId: tx.stripe_checkout_session_id || '',
         stripePaymentIntentId: tx.stripe_payment_intent_id || '',
         stripeChargeId: tx.stripe_charge_id || ''
@@ -19507,6 +19539,7 @@ function getSubscriptionTransactionRows(){
       expirationDate: getDirectJobEffectiveCloseDate(job),
       total: Number(job.subscription_total || job.posting_fee || 0),
       status: job.status || 'active',
+      listingStatus: job.status || 'active',
       paymentStatus: job.posting_payment_status || job.payment_status || 'paid',
       cogoId: job.id || job.backendJobId || '',
       stripeCheckoutSessionId: job.stripe_checkout_session_id || job.checkout_session_id || '',
@@ -19547,9 +19580,14 @@ function renderSubscriptionTransactionsResults(){
   const totals = rows.reduce((acc, row) => {
     acc.count += 1;
     acc.total += Number(row.total || 0);
-    if (['active','open'].includes(String(row.status || '').toLowerCase())) acc.active += 1;
+    const rowKey = String(row.cogoId || `${row.employerId}:${row.jobName}`).trim();
+    const listingStatus = String(row.listingStatus || row.status || '').toLowerCase();
+    if (rowKey && ['active','open'].includes(listingStatus) && !acc.activeListingKeys.has(rowKey)) {
+      acc.activeListingKeys.add(rowKey);
+      acc.active += 1;
+    }
     return acc;
-  }, { count:0, total:0, active:0 });
+  }, { count:0, total:0, active:0, activeListingKeys:new Set() });
   transactionTableExportRows.subscription = {
     fileName: isAdmin ? 'admin-subscription-transactions' : `${currentUser.role || 'user'}-subscription-transactions`,
     headers: isAdmin
@@ -19844,6 +19882,7 @@ function renderWorkshopTransactionsResults(){
 function renderTransactionsSection(el){
   el.innerHTML = `<div id="transactions-panel"></div>`;
   if (backendAuthEnabled() && getBackendAccessToken() && !backendTransactionsLoaded && !backendTransactionsLoading) refreshBackendTransactions({ rerender:true });
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendJobsLoaded && !backendJobsLoading) refreshBackendDirectJobs({ rerender:true });
   renderTransactionsPanel();
 }
 function renderSettings(el){
