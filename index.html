@@ -15920,6 +15920,9 @@ async function submitReview(projectId){
       toast(error.message || 'Backend review save failed. Please try again so this review is saved permanently.');
       return;
     }
+  } else {
+    toast('Please refresh and sign in again before submitting this review so it is saved permanently.');
+    return;
   }
   const review = {
     id: backendReview?.id || uid('review'),
