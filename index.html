@@ -13961,7 +13961,7 @@ function renderStudentDirectHire(el){
  el.innerHTML = `
    <div class="section-title">My Direct Hire</div>
    <div class="warning" style="margin-bottom:14px">
-     Direct Hire jobs are employment opportunities with the employer. If you are hired, the employer pays you directly through their payroll system. CoGo City does not collect or release student wages for Direct Hire jobs.
+     Direct Hire jobs are employment opportunities with the employer. If you are hired, the employer pays you directly through their payroll system. CoGo City does not collect or release student wages for Direct Hire jobs. When the job is complete, send your employer a message through CoGo City and ask them to leave a review. Reviews help build your reputation and support future opportunities.
    </div>
    ${backendApplicationsLoading && !backendApplicationsLoaded
      ? `<div class="card form-card muted">Loading direct hire applications from the database...</div>`
@@ -13984,7 +13984,7 @@ function renderStudentDirectJobApplicationCard(app){
           <div class="muted small">Applied: ${esc(formatDirectJobCreatedDate(app.created_at))} \u00B7 Employer: ${renderBusinessNameLink(app.employer_id, company, true)}</div>
           <div class="small muted" style="margin-top:6px">Status: ${esc(status)}</div>
           <div class="warning" style="margin-top:10px">
-            If you are hired for this Direct Hire role, you will be hired and paid directly by the employer through the employer's payroll system, not through CoGo City payments.
+            If you are hired for this Direct Hire role, you will be hired and paid directly by the employer through the employer's payroll system, not through CoGo City payments. When the job is complete, send your employer a message through CoGo City and ask them to leave a review. Reviews help build your reputation and support future opportunities.
           </div>
           ${app.message ? `<div class="small" style="margin-top:8px;line-height:1.6">${esc(app.message)}</div>` : ''}
         </div>
@@ -15025,7 +15025,7 @@ function renderEmployerMyJobs(el){
     ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'applications') ? `
       <div style="font-weight:800;margin:12px 0 10px">Submitted Applications</div>
-      <div class="warning" style="margin-bottom:12px">Once you\u2019ve chosen a candidate, click \u201CHire\u201D to finalize your selection. Direct-hire payroll is handled directly by the employer outside CoGo City, so no additional CoGo payment is collected when hiring.</div>
+      <div class="warning" style="margin-bottom:12px">Once you\u2019ve chosen a candidate, click \u201CHire\u201D to finalize your selection. Direct-hire payroll is handled directly by the employer outside CoGo City, so no additional CoGo payment is collected when hiring. When the job is complete, please return here to leave a review for the student. Your review is extremely important because it helps students build trust, confidence, and future opportunities.</div>
       ${filteredApps.length ? filteredApps.map(app => {
         const job = getDirectJobById(app.job_id);
         const student = getStudentByUserId(app.student_id);
