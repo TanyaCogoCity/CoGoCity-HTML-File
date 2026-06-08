@@ -12892,23 +12892,53 @@ function routeToMigrationOnboardingIfNeeded(){
   }
   return false;
 }
-function focusRequiredReviewField(fieldId='migFirstName'){
-  dashSection = 'profile';
-  renderDashboard();
+function reviewFieldIdForCurrentRole(fieldId='migFirstName'){
+  if ((currentUser || {}).role !== 'student') return fieldId;
+  const map = {
+    migFirstName: 'migStudentName',
+    migLastName: 'migStudentName',
+    migPhone: 'migStudentPhone',
+    migAddress: 'migStudentAddress',
+    migEmail: 'migStudentEmail',
+    migAbout: 'migStudentAbout',
+    migServiceTitle: 'migServiceTitle',
+  };
+  return map[fieldId] || fieldId;
+}
+function openRequiredProfileReviewModal(fieldId='migFirstName'){
+  const user = getUserById((currentUser || {}).id) || currentUser;
+  if (!user) return;
+  if (user.role === 'student') {
+    const profile = currentStudentProfile();
+    openModal('Update Profile', renderStudentMigrationOnboardingForm(profile), '760px');
+  } else {
+    const isEmployer = user.role === 'employer' || user.type === 'business' || !!user.businessProfile;
+    openModal('Update Profile', renderEmployerMigrationOnboardingForm(user, user.businessProfile || {}, isEmployer), '760px');
+  }
+  setTimeout(() => focusRequiredReviewField(fieldId, { preserveCurrentView:true }), 120);
+}
+function focusRequiredReviewField(fieldId='migFirstName', options={}){
+  const targetFieldId = reviewFieldIdForCurrentRole(fieldId);
+  if (!options.preserveCurrentView) {
+    dashSection = 'profile';
+    renderDashboard();
+  }
   setTimeout(() => {
-    const target = document.getElementById(fieldId) || document.querySelector('.form-card input, .form-card textarea, .form-card button');
-    if (!target) return;
-    target.scrollIntoView({ behavior:'smooth', block:'center' });
-    if (typeof target.focus === 'function') {
-      try { target.focus({ preventScroll:true }); } catch (_) { target.focus(); }
+    const target = document.getElementById(targetFieldId);
+    if (!target && !options.preserveCurrentView) return openRequiredProfileReviewModal(fieldId);
+    const fallback = target || document.querySelector('.modal-content input, .modal-content textarea, .modal-content button, .form-card input, .form-card textarea, .form-card button');
+    if (!fallback) return;
+    fallback.scrollIntoView({ behavior:'smooth', block:'center' });
+    if (typeof fallback.focus === 'function') {
+      try { fallback.focus({ preventScroll:true }); } catch (_) { fallback.focus(); }
     }
-    const originalOutline = target.style.outline;
-    const originalBoxShadow = target.style.boxShadow;
-    target.style.outline = '3px solid #ffd600';
-    target.style.boxShadow = '0 0 0 5px rgba(255,214,0,.22)';
+    const originalOutline = fallback.style.outline;
+    const originalBoxShadow = fallback.style.boxShadow;
+    fallback.style.outline = '3px solid #ffd600';
+    fallback.style.boxShadow = '0 0 0 5px rgba(255,214,0,.22)';
     setTimeout(() => {
-      target.style.outline = originalOutline;
-      target.style.boxShadow = originalBoxShadow;
+      fallback.style.outline = originalOutline;
+      fallback.style.boxShadow = originalBoxShadow;
     }, 1800);
   }, 80);
 }
@@ -12961,7 +12991,7 @@ function renderRequiredAccountChecklist(user=currentUser, options={}){
         ${items.map(item => `
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px">
             <div style="font-weight:800">${esc(item.label)}</div>
-            <button class="btn btn-outline btn-sm" onclick="${item.action}">${esc(item.cta || 'Update')}</button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="event.preventDefault();event.stopPropagation();${item.action};return false;">${esc(item.cta || 'Update')}</button>
           </div>
         `).join('')}
       </div>
