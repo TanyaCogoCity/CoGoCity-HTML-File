@@ -970,6 +970,7 @@ let backendApplicationsLoadedAt = 0;
 let backendNotificationsLoading = false;
 let backendNotificationsLoaded = false;
 let backendNotificationsError = '';
+let backendNotificationsLoadedAt = 0;
 let backendMessagesLoading = false;
 let backendMessagesLoaded = false;
 let backendMessagesError = '';
@@ -1462,6 +1463,7 @@ function resetBackendSessionCaches(){
   backendNotificationsLoaded = false;
   backendNotificationsLoading = false;
   backendNotificationsError = '';
+  backendNotificationsLoadedAt = 0;
   backendTransactionsLoaded = false;
   backendTransactionsLoading = false;
   backendTransactionsError = '';
@@ -4203,6 +4205,11 @@ function saveBackendNotifications(id, data){
   if (!id) return;
   ls(backendNotificationsStorageKey(id), ensureArray(data).map(item => normalizeNotificationItem(item, 'backend')));
 }
+function backendNotificationsNeedRefresh(maxAgeMs=10000){
+  if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken()) return false;
+  if (!backendNotificationsLoaded || !backendNotificationsLoadedAt) return true;
+  return Date.now() - backendNotificationsLoadedAt > maxAgeMs;
+}
 async function refreshBackendNotifications(options={}){
   if (!backendAuthEnabled() || !currentUser || !getBackendAccessToken() || backendNotificationsLoading) return;
   backendNotificationsLoading = true;
@@ -4211,6 +4218,7 @@ async function refreshBackendNotifications(options={}){
     const list = ensureArray(rows.items || rows.notifications || rows.data || rows).map(item => normalizeNotificationItem(item, 'backend'));
     saveBackendNotifications(currentUser.id, list);
     backendNotificationsLoaded = true;
+    backendNotificationsLoadedAt = Date.now();
     backendNotificationsError = '';
     if (options.renderNav) renderNav();
     if (options.rerender) renderDashboard();
@@ -6496,7 +6504,7 @@ function renderNav(){
   }
 
   if (backendAuthEnabled() && getBackendAccessToken() && !backendMessagesLoaded && !backendMessagesLoading) refreshBackendMessages({ renderNav:true });
-  if (backendAuthEnabled() && getBackendAccessToken() && !backendNotificationsLoaded && !backendNotificationsLoading) refreshBackendNotifications({ renderNav:true });
+  if (backendAuthEnabled() && getBackendAccessToken() && backendNotificationsNeedRefresh(15000) && !backendNotificationsLoading) refreshBackendNotifications({ renderNav:true });
   const unreadMsgs = getUnreadMessageCountForUser(currentUser.id);
   const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
   const settings = getSiteSettings();
@@ -6617,7 +6625,7 @@ function dedupeVisibleNotifications(items=[]){
 }
 async function openNotifications(){
   if (currentUser && currentUser.role === 'employer') ensureDirectJobExpiryNotificationsForUser(currentUser.id);
-  if (backendAuthEnabled() && getBackendAccessToken() && !backendNotificationsLoaded && !backendNotificationsLoading) {
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendNotificationsLoading) {
     await refreshBackendNotifications({ renderNav:true });
   }
   const allItems = getNotifications(currentUser.id);
@@ -13035,13 +13043,15 @@ async function submitApplication(postId){
     return toast("You\u2019ve already applied to this gig. You can check the status in your Dashboard under My Community Gigs.");
   }
   const applicationId = uid('app');
+  const backendEmployerId = resolveBackendNotificationUserId(p.authorId) || p.authorId;
+  const backendStudentId = resolveBackendNotificationUserId(currentUser.id) || currentUser.id;
   apps.push({
     id: applicationId,
     postId,
     jobTitle: p.jobTitle,
-    employerId: p.authorId,
+    employerId: backendEmployerId,
     employerName: p.authorName,
-    studentUserId: currentUser.id,
+    studentUserId: backendStudentId,
     studentProfileId: student.id,
     studentName: currentUser.name,
     studentServiceId: primaryService?.id || null,
