@@ -26,6 +26,7 @@ const STATIC_PAGES = [
   { path: '/about-us', title: 'About CoGo City | Student Jobs and Services', description: 'Learn about CoGo City and our mission to connect students, families, neighbors, and businesses.' },
   { path: '/faq-safety-legal', title: 'FAQ, Safety and Legal Guidelines | CoGo City', description: 'Review CoGo City safety guidelines, legal policies, payment rules, and student work FAQs.' },
   { path: '/privacy-policy', title: 'Privacy Policy | CoGo City', description: 'Read the CoGo City Privacy Policy and learn how personal information is collected, used, and protected.' },
+  { path: '/accessibility', title: 'Accessibility Statement | CoGo City', description: 'Read the CoGo City accessibility statement and WCAG 2.1 AA compliance goals.' },
   { path: '/terms-and-conditions', title: 'Terms and Conditions | CoGo City', description: 'Read the CoGo City Terms and Conditions for students, employers, neighbors, and community users.' },
   { path: '/disclaimer', title: 'Disclaimer | CoGo City', description: 'Read the CoGo City marketplace disclaimer, user responsibilities, and platform limitations.' },
 ];

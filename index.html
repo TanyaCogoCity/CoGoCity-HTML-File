@@ -75,8 +75,8 @@
       --color-success:#22C55E;
       --color-bg:#FFFFFF;
       --color-bg-light:#F9FAFB;
-      --color-link:#3B82F6;
-      --color-link-hover:#2563EB;
+      --color-link:#1D4ED8;
+      --color-link-hover:#1E40AF;
 
       --navy:var(--color-text-main);
       --blue:var(--color-link);
@@ -94,6 +94,17 @@
     html,body{width:100%;max-width:100%;overflow-x:hidden}
     body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;background:var(--color-bg);color:var(--color-text-main)}
     a{color:inherit}
+    :focus-visible{outline:3px solid #111827;outline-offset:3px;box-shadow:0 0 0 6px rgba(255,230,0,.55)}
+    .skip-link{
+      position:absolute;left:12px;top:8px;z-index:1000;transform:translateY(-140%);
+      background:#111827;color:#fff;border:2px solid var(--color-primary);border-radius:10px;
+      padding:10px 14px;font-weight:900;text-decoration:none
+    }
+    .skip-link:focus{transform:translateY(0)}
+    .sr-only{
+      position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;
+      overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important
+    }
     #app,main,section,.container,.home-hero,.home-hero-content,.home-hero-copy{min-width:0;max-width:100%}
     h1,h2,h3,p,.section-title,.small{overflow-wrap:break-word}
     .blog-article-content a{color:var(--color-link)}
@@ -270,7 +281,7 @@
     }
     .modal-header{padding:20px 22px 0;display:flex;justify-content:space-between;align-items:center}
     .modal-body{padding:18px 22px 22px}
-    .close-btn{border:none;background:none;font-size:1.25rem;cursor:pointer}
+    .close-btn{border:none;background:none;font-size:1.25rem;cursor:pointer;border-radius:10px;padding:8px}
     .signup-legal-ack{
       display:flex;
       align-items:flex-start;
@@ -692,8 +703,10 @@
 <body>
   <!-- Google Tag Manager noscript fallback. Staging routes through the staging GA4 stream in GTM. -->
   <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TMHS95ZD" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-  <div id="toast" class="toast"></div>
-  <nav>
+  <a class="skip-link" href="#app">Skip to main content</a>
+  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="a11y-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <nav aria-label="Main navigation">
     <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
     <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Open navigation menu" aria-controls="nav-links" aria-expanded="false" onclick="toggleMobileNav()">☰</button>
     <div class="nav-links" id="nav-links">
@@ -705,7 +718,7 @@
     </div>
     <div class="nav-actions" id="nav-actions"></div>
   </nav>
-  <main id="app"></main>
+  <main id="app" tabindex="-1"></main>
   <footer class="site-footer">
     <div class="footer-inner">
       <div>
@@ -797,6 +810,7 @@ let employerMyJobsSearchQuery = '';
 let directJobApplyDraft = null;
 let cogoResolvedCleanHash = '';
 let cogoSeoMetaRequestId = 0;
+let modalTriggerElement = null;
 
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
@@ -4697,6 +4711,7 @@ function getSiteSettings(){
       { label:'Disclaimer', href:'#/disclaimer' },
       { label:'Terms and Conditions', href:'#/terms-and-conditions' },
       { label:'Privacy Policy', href:'#/privacy-policy' },
+      { label:'Accessibility', href:'#/accessibility' },
       { label:'Contact us', href:'#contact-us' }
     ],
     about_page: {
@@ -4762,11 +4777,18 @@ function getSiteSettings(){
     if (aboutIndex >= 0) merged.footer_important_links.splice(aboutIndex + 1, 0, faqLink);
     else merged.footer_important_links.unshift(faqLink);
   }
+  if (!merged.footer_important_links.some(link => String(link.href || '') === '#/accessibility' || String(link.label || '').toLowerCase() === 'accessibility')) {
+    const privacyIndex = merged.footer_important_links.findIndex(link => String(link.href || '') === '#/privacy-policy' || String(link.label || '').toLowerCase() === 'privacy policy');
+    const accessibilityLink = { label:'Accessibility', href:'#/accessibility' };
+    if (privacyIndex >= 0) merged.footer_important_links.splice(privacyIndex + 1, 0, accessibilityLink);
+    else merged.footer_important_links.push(accessibilityLink);
+  }
   const stagingLegalFooterLinks = {
     'youth labor law in ca': '#/youth-labor-law-in-ca',
     'disclaimer': '#/disclaimer',
     'terms and conditions': '#/terms-and-conditions',
-    'privacy policy': '#/privacy-policy'
+    'privacy policy': '#/privacy-policy',
+    'accessibility': '#/accessibility'
   };
   merged.footer_important_links = ensureArray(merged.footer_important_links).map(link => {
     const labelKey = String(link && link.label || '').trim().toLowerCase();
@@ -6097,14 +6119,63 @@ function bindModalDraftAutosave(){
     field.addEventListener('change', saveActiveModalDraft);
   });
 }
+function getFocusableElements(root=document){
+  return Array.from(root.querySelectorAll([
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(','))).filter(el => {
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  });
+}
+function focusFirstModalElement(){
+  const modal = document.querySelector('#modal-root .modal');
+  if (!modal) return;
+  const focusable = getFocusableElements(modal);
+  const target = focusable[0] || modal;
+  setTimeout(() => {
+    try { target.focus({ preventScroll:true }); } catch (_) { target.focus(); }
+  }, 0);
+}
+function handleModalKeydown(event){
+  const modal = document.querySelector('#modal-root .modal');
+  if (!modal) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal(true);
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = getFocusableElements(modal);
+  if (!focusable.length) {
+    event.preventDefault();
+    modal.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
 function openModal(title, bodyHtml, width='760px'){
   activeModalDraftKey = modalDraftKey(title);
+  modalTriggerElement = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+  const modalTitleId = `modal-title-${Date.now()}`;
   document.getElementById('modal-root').innerHTML = `
     <div class="modal-bg" onmousedown="window._modalBackdropDown=(event.target===this)" onclick="if(event.target===this && window._modalBackdropDown) closeModal(true)">
-      <div class="modal" style="max-width:${width}" onmousedown="window._modalBackdropDown=false">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="${modalTitleId}" tabindex="-1" style="max-width:${width}" onmousedown="window._modalBackdropDown=false" onkeydown="handleModalKeydown(event)">
         <div class="modal-header">
-          <h2 style="margin:0">${esc(title)}</h2>
-          <button class="close-btn" onclick="closeModal(true)">\u2715</button>
+          <h2 id="${modalTitleId}" style="margin:0">${esc(title)}</h2>
+          <button class="close-btn" type="button" aria-label="Close dialog" onclick="closeModal(true)">\u2715</button>
         </div>
         <div class="modal-body">${bodyHtml}</div>
       </div>
@@ -6112,12 +6183,20 @@ function openModal(title, bodyHtml, width='760px'){
   `;
   restoreActiveModalDraft();
   bindModalDraftAutosave();
+  focusFirstModalElement();
 }
 function closeModal(preserveDraft=false){
   if (preserveDraft) saveActiveModalDraft();
   else clearActiveModalDraft();
   document.getElementById('modal-root').innerHTML = '';
   activeModalDraftKey = null;
+  const trigger = modalTriggerElement;
+  modalTriggerElement = null;
+  if (trigger && typeof trigger.focus === 'function' && document.contains(trigger)) {
+    setTimeout(() => {
+      try { trigger.focus({ preventScroll:true }); } catch (_) { trigger.focus(); }
+    }, 0);
+  }
 }
 function applySiteSettings(){
   const settings = getSiteSettings();
@@ -6174,6 +6253,7 @@ function renderAboutPage(){
   const settings = getSiteSettings();
   const about = settings.about_page || {};
   const imageHtml = about.image_url ? `<img src="${esc(about.image_url)}" alt="About CoGo City" style="width:100%;max-height:360px;object-fit:cover;border-radius:14px;border:1px solid var(--border);margin-bottom:16px">` : '';
+  document.title = `${about.title || 'About Us'} | CoGo City`;
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -6346,6 +6426,47 @@ Users voluntarily assume all risks associated with their use of the platform.`
     title: 'Terms and Conditions',
     body: "### Platform Role Disclaimer\n\nCoGo City is a technology platform that connects students, parents, neighbors, businesses, mentors, and other users for educational, entrepreneurial, volunteer, and work-related opportunities. CoGo City is not an employer, staffing agency, labor provider, contractor, broker, agent, or representative of any user of the platform.\n\nCoGo City does not supervise, direct, control, monitor, or guarantee the quality, legality, timing, safety, or suitability of any project, job, service, communication, or interaction between users.\n\nAll projects, services, employment opportunities, transactions, and interactions are solely between the participating users.\n\n### Independent Contractor & Employment Disclaimer\n\nUsers understand and agree that CoGo City does not employ students or other service providers listed on the platform.\n\nNothing contained in these Terms shall be construed to create any partnership, joint venture, employment, agency, or contractor relationship between CoGo City and any user.\n\nUsers are solely responsible for determining their own compliance with any applicable local, state, and federal laws, including laws relating to:\n\n- youth employment\n- independent contracting\n- permits\n- taxes\n- wages\n- workplace safety\n- insurance\n- work-hour restrictions\n- parental consent requirements\n\n### Parents & Minors\n\nIf you are under the age of 18, you may use the platform only with the involvement and consent of a parent or legal guardian.\n\nParents and guardians are solely responsible for supervising minors using the platform and evaluating the safety and appropriateness of any project, employer, neighbor, business, or interaction.\n\n### Assumption of Risk\n\nUsers understand that interactions arranged through the platform may involve online communications, in-person meetings, transportation, physical activity, tools, equipment, private residences, businesses, or other risks.\n\nBy using the platform, users voluntarily assume all risks associated with participation in projects, services, jobs, communications, and interactions arranged through the platform.\n\n### Release of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY SHALL NOT BE LIABLE FOR ANY INJURY, LOSS, DAMAGE, CLAIM, DISPUTE, PROPERTY DAMAGE, PERSONAL INJURY, DEATH, NEGLIGENCE, MISCONDUCT, HARASSMENT, ASSAULT, CRIMINAL ACTIVITY, OR OTHER INCIDENT ARISING OUT OF OR RELATING TO:\n\n- USER INTERACTIONS;\n- PROJECTS OR SERVICES;\n- EMPLOYMENT OPPORTUNITIES;\n- PAYMENTS;\n- IN-PERSON MEETINGS;\n- TRANSPORTATION;\n- COMMUNICATIONS;\n- OR USE OF THE PLATFORM.\n\nUSERS RELEASE AND HOLD HARMLESS COGO CITY, ITS OFFICERS, EMPLOYEES, CONTRACTORS, AFFILIATES, AND AGENTS FROM ANY CLAIMS, LIABILITIES, DAMAGES, OR LOSSES ARISING FROM USER ACTIVITIES OR INTERACTIONS.\n\n### Background Checks & Verification Disclaimer\n\nCoGo City may offer optional identity verification, ratings, reviews, or background checks. However, no screening or verification process can guarantee user safety or prevent all risks.\n\nCoGo City does not guarantee the identity, honesty, trustworthiness, qualifications, licensing, or conduct of any user.\n\n### Payments & Stripe Disclaimer\n\nPayments may be processed through third-party payment providers, including Stripe. CoGo City is not a bank, money transmitter, escrow company, or financial institution.\n\nProcessing times, payout timing, holds, refunds, disputes, chargebacks, and payment availability may be subject to third-party provider policies.\n\nCoGo City does not guarantee uninterrupted or error-free payment processing services.\n\n### User Conduct\n\nUsers agree not to:\n\n- engage in unlawful, unsafe, discriminatory, abusive, fraudulent, or harassing behavior;\n- request or perform illegal services;\n- misrepresent identity, qualifications, age, or experience;\n- circumvent platform payments or safety systems;\n- use the platform for dangerous or prohibited activities.\n\nCoGo City reserves the right to suspend or terminate accounts at any time for safety, legal, or policy concerns.\n\n### No Guarantee Disclaimer\n\nCoGo City does not guarantee:\n\n- that users will receive jobs, projects, or income;\n- that employers will find suitable candidates;\n- the quality or completion of services;\n- payment collection from users;\n- the availability of opportunities;\n- or uninterrupted platform access.\n\n### Dispute Resolution Between Users\n\nCoGo City is not responsible for resolving disputes between users. Users are encouraged to attempt to resolve disputes directly.\n\nCoGo City may, but is not obligated to, assist with dispute resolution at its sole discretion.\n\n### Limitation of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY’S TOTAL LIABILITY ARISING OUT OF OR RELATING TO THE PLATFORM SHALL NOT EXCEED THE GREATER OF:\n(A) THE TOTAL FEES PAID TO COGO CITY IN THE SIX (6) MONTHS PRECEDING THE CLAIM; OR\n(B) $100 USD.\n\n### Class Action Waiver\n\nUsers agree that any disputes shall be brought solely in an individual capacity and not as part of any class action or representative proceeding.\n\n### California Law\n\nThese Terms shall be governed by the laws of the State of California without regard to conflict of law principles."
   },
+  accessibility: {
+    title: 'Accessibility Statement',
+    body: `Last Updated: June 9, 2026
+
+CoGo City is committed to making its website and platform accessible to the widest possible audience, including people who use assistive technologies such as screen readers, keyboard navigation, voice input, and browser zoom.
+
+### Accessibility Goal
+
+Our goal is to conform to Web Content Accessibility Guidelines (WCAG) 2.1 Level AA across public pages, onboarding flows, dashboards, messaging, job applications, and payment workflows.
+
+### What We Are Working On
+
+We are actively reviewing and improving:
+
+- semantic page structure and heading order
+- keyboard navigation
+- visible focus states
+- form labels and validation messages
+- image alt text
+- modal and dialog behavior
+- color contrast
+- accessible tables
+- messaging and notification announcements
+- responsive layout at 200% zoom
+
+### Third-Party Services
+
+Some payment flows are provided by Stripe. CoGo City aims to use accessible payment experiences and will continue testing custom payment pages and checkout flows for keyboard, screen-reader, and error-message accessibility.
+
+### Feedback
+
+If you have trouble accessing any part of CoGo City, please contact us so we can help and improve the experience.
+
+Email: tanya@cogocity.com
+
+Please include the page URL, the issue you experienced, your browser or device, and any assistive technology you were using if you are comfortable sharing that information.
+
+### Review Date
+
+Last accessibility review started: June 9, 2026`
+  },
   'privacy-policy': {
     title: 'Privacy Policy',
     body: `Last Updated: June 4th, 2026
@@ -6505,6 +6626,9 @@ Website: www.cogocity.com`
 function renderStagingLegalPage(pageKey=''){
   const page = STAGING_LEGAL_PAGES[pageKey];
   if (!page) return renderHome();
+  document.title = `${page.title} | CoGo City`;
+  const metaDescription = document.querySelector('meta[name="description"]');
+  if (metaDescription) metaDescription.setAttribute('content', `${page.title} for CoGo City.`);
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -6527,10 +6651,10 @@ function openContactUsForm(){
   const captchaQuestion = createContactCaptcha();
   openModal('Contact us', `
     <div class="small muted" style="margin-bottom:12px">Send a message to CoGo City support. This will open your email app addressed to tanya@cogocity.com.</div>
-    <div class="field"><label>Your Name</label><input id="contactName" placeholder="Your name"></div>
-    <div class="field"><label>Your Email</label><input id="contactEmail" type="email" placeholder="you@example.com"></div>
-    <div class="field"><label>Subject</label><input id="contactSubject" placeholder="How can we help?"></div>
-    <div class="field"><label>Message</label><textarea id="contactMessage" placeholder="Write your message here..."></textarea></div>
+    <div class="field"><label for="contactName">Your Name</label><input id="contactName" placeholder="Your name" autocomplete="name"></div>
+    <div class="field"><label for="contactEmail">Your Email</label><input id="contactEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
+    <div class="field"><label for="contactSubject">Subject</label><input id="contactSubject" placeholder="How can we help?"></div>
+    <div class="field"><label for="contactMessage">Message</label><textarea id="contactMessage" placeholder="Write your message here..."></textarea></div>
     <div class="field" style="background:#F8FAFC;border:1px solid var(--border);border-radius:12px;padding:12px">
       <label for="contactCaptcha" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span>Visible CAPTCHA</span>
@@ -6680,6 +6804,11 @@ function renderNav(){
   }
   if (navCommunity) navCommunity.classList.toggle('active', route === '#/community');
   if (navBlog) navBlog.classList.toggle('active', route === '#/blog' || route.startsWith('#/blog/'));
+  [navHome, navJobs, navWorkshops, navCommunity, navBlog].forEach(link => {
+    if (!link) return;
+    if (link.classList.contains('active')) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
 
   if (!currentUser){
     removeAdminContactWidget();
@@ -6746,11 +6875,11 @@ function renderNav(){
       : `<button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>`;
   nav.innerHTML = `
     ${primaryButton}
-    <button class="btn btn-outline btn-sm" onclick="openNotifications()">
-      \u{1F514}${unreadNotifs ? ` (${unreadNotifs})` : ''}
+    <button class="btn btn-outline btn-sm" type="button" aria-label="${unreadNotifs ? `Open notifications, ${unreadNotifs} unread` : 'Open notifications'}" onclick="openNotifications()">
+      <span aria-hidden="true">\u{1F514}</span>${unreadNotifs ? ` (${unreadNotifs})` : ''}
     </button>
-    <button class="btn btn-outline btn-sm" onclick="dashSection='messages';goDashboard()">
-      \u2709\uFE0F${unreadMsgs ? ` (${unreadMsgs})` : ''}
+    <button class="btn btn-outline btn-sm" type="button" aria-label="${unreadMsgs ? `Open messages, ${unreadMsgs} unread` : 'Open messages'}" onclick="dashSection='messages';goDashboard()">
+      <span aria-hidden="true">\u2709\uFE0F</span>${unreadMsgs ? ` (${unreadMsgs})` : ''}
     </button>
     <div style="position:relative" data-user-menu>
       <button class="btn btn-outline btn-sm" data-user-menu-toggle onclick="toggleAvatarMenu()" style="gap:10px">
@@ -8870,6 +8999,34 @@ function renderAppErrorState(error, route=''){
     </div>
   `;
 }
+function announceToAssistiveTech(message=''){
+  const live = document.getElementById('a11y-live-region');
+  if (!live || !message) return;
+  live.textContent = '';
+  setTimeout(() => { live.textContent = message; }, 30);
+}
+function normalizeRenderedPageAccessibility(route=''){
+  const app = document.getElementById('app');
+  if (!app) return;
+  const h1s = Array.from(app.querySelectorAll('h1'));
+  if (h1s.length > 1) {
+    h1s.slice(1).forEach(h => {
+      const replacement = document.createElement('h2');
+      replacement.className = h.className;
+      replacement.innerHTML = h.innerHTML;
+      h.replaceWith(replacement);
+    });
+  }
+  app.querySelectorAll('img:not([alt])').forEach(img => img.setAttribute('alt', ''));
+  app.querySelectorAll('button:not([type])').forEach(button => button.setAttribute('type', 'button'));
+  const title = (app.querySelector('h1') || {}).textContent || document.title || 'CoGo City';
+  announceToAssistiveTech(`${title} loaded`);
+  if (route && !route.startsWith('#/reset-password')) {
+    setTimeout(() => {
+      try { app.focus({ preventScroll:true }); } catch (_) { app.focus(); }
+    }, 0);
+  }
+}
 function renderPage(){
   try {
     if (!syncCurrentUserRecord()) return;
@@ -8891,27 +9048,28 @@ function renderPage(){
     }
     renderNav();
     applySeoForCurrentRoute(route);
-    if (route === '#/faq-safety-legal' || route.startsWith('#/faq-safety-legal#')) return renderFaqSafetyLegalPage();
-    if (route === '#/about-us') return renderAboutPage();
-      if (route === '#/youth-labor-law-in-ca') return renderStagingLegalPage('youth-labor-law-in-ca');
-      if (route === '#/disclaimer') return renderStagingLegalPage('disclaimer');
-      if (route === '#/terms-and-conditions') return renderStagingLegalPage('terms-and-conditions');
-      if (route === '#/privacy-policy') return renderStagingLegalPage('privacy-policy');
-    if (route.startsWith('#/profile/')) return renderPublicProfilePage();
-    if (route.startsWith('#/business/')) return renderBusinessPage();
-    if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
-    if (route === '#/workshops' || route.startsWith('#/workshops/')) {
+    let result;
+    if (route === '#/faq-safety-legal' || route.startsWith('#/faq-safety-legal#')) result = renderFaqSafetyLegalPage();
+    else if (route === '#/about-us') result = renderAboutPage();
+    else if (route === '#/youth-labor-law-in-ca') result = renderStagingLegalPage('youth-labor-law-in-ca');
+    else if (route === '#/disclaimer') result = renderStagingLegalPage('disclaimer');
+    else if (route === '#/terms-and-conditions') result = renderStagingLegalPage('terms-and-conditions');
+    else if (route === '#/privacy-policy') result = renderStagingLegalPage('privacy-policy');
+    else if (route === '#/accessibility') result = renderStagingLegalPage('accessibility');
+    else if (route.startsWith('#/profile/')) result = renderPublicProfilePage();
+    else if (route.startsWith('#/business/')) result = renderBusinessPage();
+    else if (route === '#/jobs' || route.startsWith('#/jobs/')) result = renderJobsPage();
+    else if (route === '#/workshops' || route.startsWith('#/workshops/')) {
       location.hash = '#/jobs';
-      return renderJobsPage();
-    }
-    if (route === '#/community' || route.startsWith('#/community/') || route.startsWith('#post-')) return renderCommunity();
-    if (route === '#/dashboard' || route.startsWith('#/dashboard?')) {
+      result = renderJobsPage();
+    } else if (route === '#/community' || route.startsWith('#/community/') || route.startsWith('#post-')) result = renderCommunity();
+    else if (route === '#/dashboard' || route.startsWith('#/dashboard?')) {
       applyDashboardRouteParams(route);
-      return renderDashboard();
-    }
-    if (route === '#/blog' || route.startsWith('#/blog/')) return renderBlog();
-    if (route === '#/students') return renderHome();
-    const result = renderHome();
+      result = renderDashboard();
+    } else if (route === '#/blog' || route.startsWith('#/blog/')) result = renderBlog();
+    else if (route === '#/students') result = renderHome();
+    else result = renderHome();
+    normalizeRenderedPageAccessibility(route);
     renderRecoveryAttempted = false;
     return result;
   } catch (error) {
@@ -9518,9 +9676,9 @@ function renderJobsPage(){
     <div class="container">
       <div class="card form-card" style="margin-bottom:16px">
         <div class="row">
-          <div class="field"><label>Search jobs</label><input value="${esc(directJobsSearchQuery)}" placeholder="Title, company, location, or keyword" oninput="updateDirectJobsSearch(this.value)"></div>
-          <div class="field"><label>Sort</label>
-            <select onchange="directJobsSort=this.value;renderJobsPage()">
+          <div class="field"><label for="directJobsSearchInput">Search jobs</label><input id="directJobsSearchInput" value="${esc(directJobsSearchQuery)}" placeholder="Title, company, location, or keyword" oninput="updateDirectJobsSearch(this.value)"></div>
+          <div class="field"><label for="directJobsSortSelect">Sort</label>
+            <select id="directJobsSortSelect" onchange="directJobsSort=this.value;renderJobsPage()">
               <option value="latest" ${directJobsSort === 'latest' ? 'selected' : ''}>Latest first</option>
               <option value="deadline" ${directJobsSort === 'deadline' ? 'selected' : ''}>Expiration soonest</option>
             </select>
@@ -12605,11 +12763,11 @@ function renderCommunity(){
       <div class="card" style="padding:14px;margin-bottom:16px">
         <div class="row" style="align-items:end">
           <div class="field" style="margin-bottom:0">
-            <label>Search Community Gigs</label>
+            <label for="communitySearchInput">Search Community Gigs</label>
             <input id="communitySearchInput" value="${esc(communitySearchQuery)}" placeholder="Search by keyword, job title, location, or poster" oninput="updateCommunityFilters()">
           </div>
           <div class="field" style="margin-bottom:0;max-width:220px">
-            <label>Show</label>
+            <label for="communityTypeFilter">Show</label>
             <select id="communityTypeFilter" onchange="updateCommunityFilters()">
               <option value="all" ${communityPostTypeFilter === 'all' ? 'selected' : ''}>All posts</option>
               <option value="jobs" ${communityPostTypeFilter === 'jobs' ? 'selected' : ''}>Jobs only</option>
