@@ -74,6 +74,8 @@ databases:
 
 # Public routing used on staging:
 # - /api/* -> cogocity-api (DigitalOcean strips the /api prefix before forwarding)
+# - /robots.txt -> cogocity-api (required for environment-specific SEO crawling rules)
+# - /sitemap.xml -> cogocity-api (required for dynamic production-domain sitemap generation)
 # - /*     -> cogocity-html-file static frontend
 # Staging migration history has been baselined and verified.
 # The backend now uses committed Prisma migrations before starting the API.
