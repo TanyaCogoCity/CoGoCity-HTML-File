@@ -318,7 +318,10 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
 
     await writeAuditLog({ userId: req.user.id, action: 'application.apply', entityType: 'application', entityId: app.id, payload: req.body });
 
-    return created(res, Object.assign(serializeApplication(app), { thread_id: payload.threadId }));
+    return created(res, Object.assign(serializeApplication(app), {
+      thread_id: conversation.id,
+      conversation_id: conversation.id,
+    }));
   } catch (error) {
     return fail(res, 400, 'Application failed', error.message);
   }
