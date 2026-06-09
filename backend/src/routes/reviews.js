@@ -127,9 +127,8 @@ router.post('/admin/reviews/remove-by-reviewers', requireAuth, requireRoles(['ad
       : [];
 
     const notificationWhere = reviewerDisplayNames.flatMap(name => ([
-      { AND: [{ userId: student.id }, { title: { contains: name, mode: 'insensitive' } }, { body: { contains: 'review', mode: 'insensitive' } }] },
-      { AND: [{ userId: student.id }, { body: { contains: name, mode: 'insensitive' } }, { title: { contains: 'review', mode: 'insensitive' } }] },
-      { AND: [{ userId: student.id }, { title: { contains: name, mode: 'insensitive' } }, { title: { contains: 'review', mode: 'insensitive' } }] },
+      { AND: [{ userId: student.id }, { title: { contains: name, mode: 'insensitive' } }, { title: { contains: 'left', mode: 'insensitive' } }, { title: { contains: 'review', mode: 'insensitive' } }] },
+      { AND: [{ userId: student.id }, { body: { contains: name, mode: 'insensitive' } }, { body: { contains: 'left', mode: 'insensitive' } }, { body: { contains: 'review', mode: 'insensitive' } }] },
     ]));
     const notifications = notificationWhere.length
       ? await prisma.notification.findMany({
