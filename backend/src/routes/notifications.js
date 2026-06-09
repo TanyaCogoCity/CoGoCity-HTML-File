@@ -22,7 +22,87 @@ function frontendNotificationLink(item = {}) {
   return '/dashboard?section=notifications';
 }
 
+function isCommunityApplicationForUser(payload = {}, userId = '') {
+  const employerId = String(payload.employerId || payload.employer_id || '').trim();
+  const status = String(payload.status || '').trim().toLowerCase();
+  const source = String(payload.source || '').trim().toLowerCase();
+  return employerId === userId
+    && ['pending', 'applied'].includes(status)
+    && (!source || source === 'community_feed');
+}
+
+async function backfillCommunityApplicationNotifications(userId = '') {
+  if (!userId) return 0;
+  const rows = await prisma.syncRecord.findMany({
+    where: { entity: 'applications', deletedAt: null },
+    select: { recordId: true, payload: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+    take: 250,
+  });
+  const candidates = rows.filter((row) => isCommunityApplicationForUser(row.payload || {}, userId));
+  if (!candidates.length) return 0;
+
+  const receiptIds = candidates.map((row) => `${userId}:${row.recordId}:student_application`);
+  const receipts = await prisma.syncRecord.findMany({
+    where: { entity: 'notification_email_receipts', recordId: { in: receiptIds }, deletedAt: null },
+    select: { recordId: true },
+  });
+  const existing = new Set(receipts.map((row) => row.recordId));
+  let created = 0;
+
+  for (const row of candidates) {
+    const receiptId = `${userId}:${row.recordId}:student_application`;
+    if (existing.has(receiptId)) continue;
+    const payload = row.payload || {};
+    const studentName = String(payload.studentName || payload.student_name || 'A student').trim();
+    const jobTitle = String(payload.jobTitle || payload.job_title || 'your job').trim();
+    const notification = await createNotification({
+      data: {
+        userId,
+        type: notificationType('application'),
+        title: `${studentName} applied to "${jobTitle}"`,
+        body: `${studentName} applied to "${jobTitle}". Open your dashboard to review the request.`,
+        link: `/dashboard?section=applicants_projects&employerTab=applicants&application=${encodeURIComponent(row.recordId)}`,
+      },
+    });
+    await prisma.syncRecord.upsert({
+      where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+      create: {
+        entity: 'notification_email_receipts',
+        recordId: receiptId,
+        payload: {
+          user_id: userId,
+          frontend_notification_id: row.recordId,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+      update: {
+        deletedAt: null,
+        payload: {
+          user_id: userId,
+          frontend_notification_id: row.recordId,
+          backend_notification_id: notification.id,
+          title: notification.title,
+          emailed: !notification.email?.skipped,
+          email: notification.email || null,
+        },
+      },
+    });
+    existing.add(receiptId);
+    created += 1;
+  }
+  return created;
+}
+
 router.get('/', requireAuth, async (req, res) => {
+  try {
+    await backfillCommunityApplicationNotifications(req.user.id);
+  } catch (error) {
+    console.warn('community_application_notification_backfill_failed', error.message);
+  }
   const rows = await prisma.notification.findMany({
     where: { userId: req.user.id },
     orderBy: { createdAt: 'desc' },
