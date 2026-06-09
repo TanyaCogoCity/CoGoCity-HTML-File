@@ -2461,6 +2461,72 @@ router.post('/capture-manual-project-payment-intent', requireAuth, async (req, r
   }
 });
 
+router.post('/update-project-payment-metadata', requireAuth, async (req, res) => {
+  if (!stripe) return fail(res, 503, 'Stripe is not configured');
+  if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can update project payment metadata');
+
+  const paymentIntentId = String(req.body?.payment_intent_id || req.body?.paymentIntentId || '').trim();
+  if (!paymentIntentId) return fail(res, 400, 'payment_intent_id is required');
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (paymentIntent.metadata?.payer_id && paymentIntent.metadata.payer_id !== req.user.id && req.user.role !== 'admin') return fail(res, 403, 'Forbidden');
+    const amountTotal = Number(req.body?.amount_total ?? req.body?.amountTotal ?? paymentIntent.metadata?.amount_total ?? 0);
+    const studentPayout = Number(req.body?.student_payout ?? req.body?.studentPayout ?? paymentIntent.metadata?.student_payout ?? 0);
+    const platformFee = Number(req.body?.platform_fee_total ?? req.body?.platformFeeTotal ?? paymentIntent.metadata?.platform_fee_total ?? Math.max(0, amountTotal - studentPayout));
+    const workTotal = Number(req.body?.work_total ?? req.body?.workTotal ?? paymentIntent.metadata?.work_total ?? 0);
+    const hourlyRate = Number(req.body?.hourly_rate ?? req.body?.hourlyRate ?? paymentIntent.metadata?.hourly_rate ?? 0);
+    const hoursWorked = Number(req.body?.hours_worked ?? req.body?.hoursWorked ?? paymentIntent.metadata?.hours_worked ?? 0);
+    if (!Number.isFinite(amountTotal) || amountTotal <= 0) return fail(res, 400, 'amount_total must be greater than 0');
+    if (!Number.isFinite(studentPayout) || studentPayout < 0) return fail(res, 400, 'student_payout must be zero or greater');
+
+    const updatedIntent = await updateProjectPaymentIntentFinalMetadata(
+      paymentIntent,
+      { amountTotal, studentPayout, platformFee },
+      { workTotal, hourlyRate, hoursWorked }
+    );
+
+    const coreTx = await prisma.transaction.findFirst({ where: { stripePaymentIntentId: paymentIntent.id } });
+    if (coreTx) {
+      await prisma.transaction.update({
+        where: { id: coreTx.id },
+        data: {
+          amountTotal,
+          platformFee,
+          studentPayout,
+        },
+      });
+    }
+    await updateManualProjectTransactionForIntent(updatedIntent, {
+      amountTotal,
+      workTotal,
+      platformFee,
+      studentPayout,
+      hourlyRate,
+      hoursWorked,
+      status: paymentStatusForIntent(updatedIntent),
+      stripeChargeId: latestChargeObject(updatedIntent)?.id || '',
+    });
+    await writeAuditLog({
+      userId: req.user.id,
+      action: 'payment.project.metadata.update',
+      entityType: 'stripe_payment_intent',
+      entityId: updatedIntent.id,
+      payload: { amountTotal, studentPayout, platformFee, workTotal, hourlyRate, hoursWorked },
+    });
+    return ok(res, {
+      payment_intent_id: updatedIntent.id,
+      status: paymentStatusForIntent(updatedIntent),
+      stripe_status: updatedIntent.status,
+      amount_total: amountTotal,
+      student_payout: studentPayout,
+      platform_fee_total: platformFee,
+    });
+  } catch (error) {
+    return fail(res, 400, 'Failed to update project payment metadata', error.message);
+  }
+});
+
 router.post('/manual-project-transfer', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
   if (!['employer', 'neighbor', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/neighbor/admin can release project payouts');
