@@ -74,7 +74,9 @@ function isPurgeableStagingTestUser(user = {}) {
     || email.startsWith('codex-')
     || email.startsWith('stripe-smoke-')
     || email.startsWith('tanya+pmtest-')
-    || /^qa$/i.test(firstName);
+    || email.startsWith('qa.')
+    || email.startsWith('qa-')
+    || /qa/i.test(firstName);
 }
 
 function nameFromEmail(email = '') {
@@ -959,7 +961,10 @@ router.post('/admin/users/purge-staging-test-accounts', requireAuth, requireRole
           { email: { startsWith: 'codex-' } },
           { email: { startsWith: 'stripe-smoke-' } },
           { email: { startsWith: 'tanya+pmtest-' } },
+          { email: { startsWith: 'qa.' } },
+          { email: { startsWith: 'qa-' } },
           { firstName: { equals: 'QA', mode: 'insensitive' } },
+          { firstName: { contains: 'QA', mode: 'insensitive' } },
         ],
       },
       select: { id: true, email: true, firstName: true, lastName: true, displayName: true, role: true },
