@@ -820,6 +820,7 @@ let cogoAnalyticsLastPage = '';
 let backendCommunityPostsLoaded = false;
 let backendCommunityPostsLoading = false;
 let backendCommunityPostsLoadedAt = 0;
+let backendCommunityPostsEmptyConfirmedAt = 0;
 function getCogoAnalyticsEnvironment(){
   return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
 }
@@ -1285,7 +1286,6 @@ function isStorageQuotaError(error){
 function clearStorageQuotaCaches(){
   const removableExact = new Set([
     'cogo_images',
-    'cogo_posts',
     'cogo_blog_posts',
     'cogo_workshops',
     'cogo_workshop_registrations',
@@ -1458,6 +1458,7 @@ function resetBackendSessionCaches(){
   backendCommunityPostsLoaded = false;
   backendCommunityPostsLoading = false;
   backendCommunityPostsLoadedAt = 0;
+  backendCommunityPostsEmptyConfirmedAt = 0;
   backendNotificationsLoaded = false;
   backendNotificationsLoading = false;
   backendNotificationsError = '';
@@ -3142,9 +3143,7 @@ async function loadBackendCommunityPosts(options={}){
   if (!backendAuthEnabled() || backendCommunityPostsLoading) return [];
   backendCommunityPostsLoading = true;
   try {
-    const data = getBackendAccessToken()
-      ? await backendAuthRequest('/community-posts', { method:'GET' })
-      : await publicBackendRequest('/community-posts', { method:'GET' });
+    const data = await publicBackendRequest('/community-posts', { method:'GET', timeoutMs:15000 });
     const rawPosts = getCommunityPostResponseList(data);
     if (!rawPosts) throw new Error('Community posts response did not include a posts list');
     const backendPosts = ensureArray(rawPosts).map(normalizePostRecord);
@@ -3152,6 +3151,7 @@ async function loadBackendCommunityPosts(options={}){
       ? backendPosts
       : mergeCommunityPosts(getPosts(), backendPosts);
     ls('cogo_posts', nextPosts);
+    backendCommunityPostsEmptyConfirmedAt = backendPosts.length ? 0 : Date.now();
     backendCommunityPostsLoaded = true;
     backendCommunityPostsLoadedAt = Date.now();
     if (options.rerender && getRoute().startsWith('#/community')) renderCommunity();
@@ -3171,7 +3171,7 @@ function backendCommunityPostsNeedRefresh(maxAgeMs=30000){
 function communityPostsAwaitingBackend(posts=[]){
   if (!backendAuthEnabled()) return false;
   if (ensureArray(posts).length) return false;
-  return !backendCommunityPostsLoaded || backendCommunityPostsLoading;
+  return backendCommunityPostsLoading || !backendCommunityPostsLoaded || !backendCommunityPostsEmptyConfirmedAt;
 }
 function refreshVisibleCommunityFeed(options={}){
   if (!backendAuthEnabled() || !getRoute().startsWith('#/community')) return;
@@ -12388,6 +12388,9 @@ function renderCommunity(){
     loadBackendCommunityPosts({ rerender:true });
   }
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (useBackendCommunityPosts && !posts.length && !backendCommunityPostsLoading && !backendCommunityPostsEmptyConfirmedAt) {
+    loadBackendCommunityPosts({ rerender:true });
+  }
   const filteredPosts = getFilteredCommunityPosts(posts);
   const isLoadingPosts = communityPostsAwaitingBackend(posts);
   const isRefreshingPosts = useBackendCommunityPosts && backendCommunityPostsLoading && backendCommunityPostsLoaded;
