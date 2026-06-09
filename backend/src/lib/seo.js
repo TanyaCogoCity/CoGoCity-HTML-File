@@ -9,6 +9,7 @@ const PRIVATE_NOINDEX_PATHS = [
   '/profile/edit',
   '/onboarding',
   '/settings',
+  '/admin',
   '/reset-password',
   '/guardian',
   '/guardians',
