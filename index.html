@@ -3133,6 +3133,11 @@ function mergeCommunityPosts(localPosts=[], backendPosts=[]){
   });
   return Array.from(byId.values()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
+function getCommunityPostResponseList(data={}){
+  if (Array.isArray(data?.posts)) return data.posts;
+  if (Array.isArray(data?.data?.posts)) return data.data.posts;
+  return null;
+}
 async function loadBackendCommunityPosts(options={}){
   if (!backendAuthEnabled() || backendCommunityPostsLoading) return [];
   backendCommunityPostsLoading = true;
@@ -3140,11 +3145,13 @@ async function loadBackendCommunityPosts(options={}){
     const data = getBackendAccessToken()
       ? await backendAuthRequest('/community-posts', { method:'GET' })
       : await publicBackendRequest('/community-posts', { method:'GET' });
-    const rawPosts = data && data.posts;
+    const rawPosts = getCommunityPostResponseList(data);
+    if (!rawPosts) throw new Error('Community posts response did not include a posts list');
     const backendPosts = ensureArray(rawPosts).map(normalizePostRecord);
-    if (Array.isArray(rawPosts) || backendPosts.length) {
-      ls('cogo_posts', backendPosts);
-    }
+    const nextPosts = backendPosts.length || !getPosts().length
+      ? backendPosts
+      : mergeCommunityPosts(getPosts(), backendPosts);
+    ls('cogo_posts', nextPosts);
     backendCommunityPostsLoaded = true;
     backendCommunityPostsLoadedAt = Date.now();
     if (options.rerender && getRoute().startsWith('#/community')) renderCommunity();
@@ -3160,6 +3167,11 @@ function backendCommunityPostsNeedRefresh(maxAgeMs=30000){
   if (!backendAuthEnabled()) return false;
   if (!backendCommunityPostsLoaded || !backendCommunityPostsLoadedAt) return true;
   return Date.now() - backendCommunityPostsLoadedAt > maxAgeMs;
+}
+function communityPostsAwaitingBackend(posts=[]){
+  if (!backendAuthEnabled()) return false;
+  if (ensureArray(posts).length) return false;
+  return !backendCommunityPostsLoaded || backendCommunityPostsLoading;
 }
 function refreshVisibleCommunityFeed(options={}){
   if (!backendAuthEnabled() || !getRoute().startsWith('#/community')) return;
@@ -12354,7 +12366,7 @@ function updateCommunityFilters(){
   communityPostTypeFilter = typeEl ? typeEl.value : 'all';
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const filteredPosts = getFilteredCommunityPosts(posts);
-  const isLoadingPosts = backendAuthEnabled() && backendCommunityPostsLoading && !backendCommunityPostsLoaded;
+  const isLoadingPosts = communityPostsAwaitingBackend(posts);
   const isRefreshingPosts = backendAuthEnabled() && backendCommunityPostsLoading && backendCommunityPostsLoaded;
   const countEl = document.getElementById('communityFilterCount');
   const listEl = document.getElementById('communityPostList');
@@ -12377,7 +12389,7 @@ function renderCommunity(){
   }
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const filteredPosts = getFilteredCommunityPosts(posts);
-  const isLoadingPosts = useBackendCommunityPosts && backendCommunityPostsLoading && !backendCommunityPostsLoaded;
+  const isLoadingPosts = communityPostsAwaitingBackend(posts);
   const isRefreshingPosts = useBackendCommunityPosts && backendCommunityPostsLoading && backendCommunityPostsLoaded;
   const communityActionLabel = currentUser && isEmployerAccount(currentUser) ? '+ Post or Create a Job' : '+ Post';
   document.getElementById('app').innerHTML = `
