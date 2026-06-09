@@ -3509,6 +3509,9 @@ function getDirectJobs(){
   const jobs = ensureArray(ls('cogo_direct_jobs'));
   const normalized = jobs.map(normalizeDirectJobRecord);
   if (JSON.stringify(jobs) !== JSON.stringify(normalized)) ls('cogo_direct_jobs', normalized);
+  if (backendAuthEnabled() && getBackendAccessToken() && (backendJobsLoaded || backendJobsLoading)) {
+    return getBackendDirectJobs().map(normalizeDirectJobRecord);
+  }
   return mergeBackendDirectJobs(normalized);
 }
 function saveDirectJobs(items){

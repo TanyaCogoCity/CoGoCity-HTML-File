@@ -1,10 +1,11 @@
 const express = require('express');
 const Stripe = require('stripe');
 const { prisma } = require('../lib/prisma');
-const { ok } = require('../lib/http');
+const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const config = require('../config');
 const { calculateHourlyProjectFees, getPlatformFeeSettings } = require('../lib/platformFees');
+const { writeAuditLog } = require('../lib/audit');
 
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const WORKSHOP_PLATFORM_FEE_PERCENT = 30;
@@ -535,6 +536,102 @@ router.get('/', requireAuth, async (req, res) => {
     .slice(0, 500);
 
   return ok(res, data);
+});
+
+router.delete('/admin/test-account-records', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
+
+  const emails = (Array.isArray(req.body?.emails) && req.body.emails.length ? req.body.emails : [
+    'tanya.lipovich@gmail.com',
+    'ilya.lipovich@getcider.com',
+    'dan.lipovich@gmail.com',
+  ]).map((email) => String(email || '').trim().toLowerCase()).filter(Boolean);
+
+  const users = await prisma.user.findMany({
+    where: { email: { in: emails } },
+    select: { id: true, email: true, displayName: true, firstName: true, lastName: true },
+  });
+  const userIds = users.map((user) => user.id);
+  const matchTerms = [
+    ...emails,
+    ...userIds.map((id) => String(id).toLowerCase()),
+  ].filter(Boolean);
+
+  const legacyEntities = [
+    'transactions',
+    'projects',
+    'applications',
+    'direct_jobs',
+    'direct_job_applications',
+    'workshop_registrations',
+    'payment_logs',
+  ];
+
+  const legacyRows = await prisma.syncRecord.findMany({
+    where: { entity: { in: legacyEntities }, deletedAt: null },
+    select: { entity: true, recordId: true, payload: true },
+    take: 5000,
+  });
+  const legacyRowsToDelete = legacyRows.filter((row) => {
+    const text = JSON.stringify(row.payload || {}).toLowerCase();
+    return matchTerms.some((term) => text.includes(term));
+  });
+
+  const result = await prisma.$transaction(async (tx) => {
+    const deleted = {};
+    if (userIds.length) {
+      deleted.transactions = await tx.transaction.deleteMany({
+        where: { OR: [{ payerId: { in: userIds } }, { payeeId: { in: userIds } }] },
+      });
+      deleted.workshopEnrollments = await tx.workshopEnrollment.deleteMany({
+        where: {
+          OR: [
+            { userId: { in: userIds } },
+            { workshop: { createdBy: { in: userIds } } },
+          ],
+        },
+      });
+    } else {
+      deleted.transactions = { count: 0 };
+      deleted.workshopEnrollments = { count: 0 };
+    }
+
+    let syncRecords = { count: 0 };
+    for (const row of legacyRowsToDelete) {
+      const removed = await tx.syncRecord.deleteMany({
+        where: { entity: row.entity, recordId: row.recordId },
+      });
+      syncRecords.count += removed.count;
+    }
+    deleted.syncRecords = syncRecords;
+    return deleted;
+  }, { timeout: 60000 });
+
+  await writeAuditLog({
+    userId: req.user.id,
+    action: 'admin.transactions.cleanup_test_accounts',
+    entityType: 'transaction',
+    entityId: 'test-account-records',
+    payload: {
+      emails,
+      user_ids: userIds,
+      deleted: {
+        transactions: result.transactions.count,
+        workshop_enrollments: result.workshopEnrollments.count,
+        sync_records: result.syncRecords.count,
+      },
+    },
+  });
+
+  return ok(res, {
+    emails,
+    users,
+    deleted: {
+      transactions: result.transactions.count,
+      workshop_enrollments: result.workshopEnrollments.count,
+      sync_records: result.syncRecords.count,
+    },
+  });
 });
 
 module.exports = router;
