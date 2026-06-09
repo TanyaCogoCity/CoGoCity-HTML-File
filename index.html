@@ -3140,8 +3140,11 @@ async function loadBackendCommunityPosts(options={}){
     const data = getBackendAccessToken()
       ? await backendAuthRequest('/community-posts', { method:'GET' })
       : await publicBackendRequest('/community-posts', { method:'GET' });
-    const backendPosts = ensureArray(data.posts || []).map(normalizePostRecord);
-    ls('cogo_posts', backendPosts);
+    const rawPosts = data && data.posts;
+    const backendPosts = ensureArray(rawPosts).map(normalizePostRecord);
+    if (Array.isArray(rawPosts) || backendPosts.length) {
+      ls('cogo_posts', backendPosts);
+    }
     backendCommunityPostsLoaded = true;
     backendCommunityPostsLoadedAt = Date.now();
     if (options.rerender && getRoute().startsWith('#/community')) renderCommunity();
@@ -12351,12 +12354,18 @@ function updateCommunityFilters(){
   communityPostTypeFilter = typeEl ? typeEl.value : 'all';
   const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const filteredPosts = getFilteredCommunityPosts(posts);
+  const isLoadingPosts = backendAuthEnabled() && backendCommunityPostsLoading && !backendCommunityPostsLoaded;
+  const isRefreshingPosts = backendAuthEnabled() && backendCommunityPostsLoading && backendCommunityPostsLoaded;
   const countEl = document.getElementById('communityFilterCount');
   const listEl = document.getElementById('communityPostList');
-  if (countEl) countEl.textContent = `${filteredPosts.length} of ${posts.length} post${posts.length === 1 ? '' : 's'}`;
+  if (countEl) countEl.textContent = isLoadingPosts
+    ? 'Loading posts from the database...'
+    : `${filteredPosts.length} of ${posts.length} post${posts.length === 1 ? '' : 's'}${isRefreshingPosts ? ' · refreshing' : ''}`;
   if (listEl) listEl.innerHTML = filteredPosts.length
-    ? filteredPosts.map(renderPost).join('')
-    : `<div class="card"><div class="muted">No Community Gigs match your search yet.</div></div>`;
+    ? `${isRefreshingPosts ? `<div class="notice" style="margin-bottom:12px">Refreshing Community Gigs...</div>` : ''}${filteredPosts.map(renderPost).join('')}`
+    : (isLoadingPosts
+      ? `<div class="card"><div class="muted">Loading Community Gigs from the database...</div></div>`
+      : `<div class="card"><div class="muted">No Community Gigs match your search yet.</div></div>`);
 }
 function renderCommunity(){
   const useBackendCommunityPosts = backendAuthEnabled();
@@ -12366,10 +12375,10 @@ function renderCommunity(){
   if (useBackendCommunityPosts && backendCommunityPostsNeedRefresh() && !backendCommunityPostsLoading) {
     loadBackendCommunityPosts({ rerender:true });
   }
-  const posts = useBackendCommunityPosts && !backendCommunityPostsLoaded
-    ? []
-    : syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const filteredPosts = getFilteredCommunityPosts(posts);
+  const isLoadingPosts = useBackendCommunityPosts && backendCommunityPostsLoading && !backendCommunityPostsLoaded;
+  const isRefreshingPosts = useBackendCommunityPosts && backendCommunityPostsLoading && backendCommunityPostsLoaded;
   const communityActionLabel = currentUser && isEmployerAccount(currentUser) ? '+ Post or Create a Job' : '+ Post';
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -12396,10 +12405,14 @@ function renderCommunity(){
             </select>
           </div>
         </div>
-        <div id="communityFilterCount" class="small muted" style="margin-top:8px">${filteredPosts.length} of ${posts.length} post${posts.length === 1 ? '' : 's'}</div>
+        <div id="communityFilterCount" class="small muted" style="margin-top:8px">${isLoadingPosts ? 'Loading posts from the database...' : `${filteredPosts.length} of ${posts.length} post${posts.length === 1 ? '' : 's'}${isRefreshingPosts ? ' · refreshing' : ''}`}</div>
       </div>
       <div id="post-composer-wrap"></div>
-      <div id="communityPostList">${filteredPosts.length ? filteredPosts.map(renderPost).join('') : `<div class="card"><div class="muted">No Community Gigs match your search yet.</div></div>`}</div>
+      <div id="communityPostList">${filteredPosts.length
+        ? `${isRefreshingPosts ? `<div class="notice" style="margin-bottom:12px">Refreshing Community Gigs...</div>` : ''}${filteredPosts.map(renderPost).join('')}`
+        : (isLoadingPosts
+          ? `<div class="card"><div class="muted">Loading Community Gigs from the database...</div></div>`
+          : `<div class="card"><div class="muted">No Community Gigs match your search yet.</div></div>`)}</div>
     </div>
   `;
   scrollToSharedCommunityPost();
