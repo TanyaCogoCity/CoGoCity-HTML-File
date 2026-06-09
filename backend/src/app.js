@@ -20,6 +20,7 @@ const transactionRoutes = require('./routes/transactions');
 const notificationRoutes = require('./routes/notifications');
 const communityPostRoutes = require('./routes/communityPosts');
 const syncRecordRoutes = require('./routes/syncRecords');
+const seoRoutes = require('./routes/seo');
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use(
 );
 app.use(morgan('dev'));
 app.use(apiLimiter);
+app.use(['/api', '/'], seoRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'cogocity-backend', environment: config.nodeEnv, time: new Date().toISOString() });

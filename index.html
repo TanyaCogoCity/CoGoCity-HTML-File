@@ -7,8 +7,26 @@
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
   <meta name="description" content="CoGo City connects local students, families, neighbors, and businesses for trusted services, jobs, messages, and community opportunities." />
+  <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#FFE600" />
+  <link rel="canonical" href="https://cogocity.com/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="CoGo City | Student Jobs and Local Services" />
+  <meta property="og:description" content="Hire students for local services, discover student jobs, and connect with trusted community opportunities through CoGo City." />
+  <meta property="og:image" content="https://cogocity.com/assets/cogocity-social-share.png" />
+  <meta property="og:url" content="https://cogocity.com/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CoGo City | Student Jobs and Local Services" />
+  <meta name="twitter:description" content="Hire students for local services, discover student jobs, and connect with trusted community opportunities through CoGo City." />
+  <meta name="twitter:image" content="https://cogocity.com/assets/cogocity-social-share.png" />
   <title>CoGo City</title>
+  <script>
+    (function(){
+      var host = window.location && window.location.hostname;
+      var robots = document.querySelector('meta[name="robots"]');
+      if (robots && host === 'staging.cogocity.com') robots.setAttribute('content', 'noindex,nofollow');
+    })();
+  </script>
   <!-- Google Tag Manager + Consent Mode: privacy-first default before any Google tag loads. -->
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -777,6 +795,8 @@ let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
 let employerMyJobsSearchQuery = '';
 let directJobApplyDraft = null;
+let cogoResolvedCleanHash = '';
+let cogoSeoMetaRequestId = 0;
 
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
@@ -823,6 +843,110 @@ let backendCommunityPostsLoadedAt = 0;
 let backendCommunityPostsEmptyConfirmedAt = 0;
 function getCogoAnalyticsEnvironment(){
   return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
+}
+function ensureHeadTag(selector, createTag, attrs={}){
+  let el = document.head.querySelector(selector);
+  if (!el) {
+    el = document.createElement(createTag);
+    Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+    document.head.appendChild(el);
+  }
+  return el;
+}
+function setMetaTag(selector, attrName, attrValue, content=''){
+  const attrs = {};
+  attrs[attrName] = attrValue;
+  const el = ensureHeadTag(selector, 'meta', attrs);
+  el.setAttribute(attrName, attrValue);
+  el.setAttribute('content', content || '');
+  return el;
+}
+function setCanonicalUrl(url=''){
+  const canonical = ensureHeadTag('link[rel="canonical"]', 'link', { rel:'canonical' });
+  canonical.setAttribute('href', url || 'https://cogocity.com/');
+}
+function currentSeoPathFromRoute(route=''){
+  const path = String(window.location.pathname || '/');
+  if (path !== '/' && path !== '/index.html') return path;
+  const cleanRoute = String(route || '#/').replace(/^#/, '');
+  if (cleanRoute === '/' || cleanRoute === '/students') return '/';
+  if (cleanRoute.startsWith('/profile/')) return '';
+  if (cleanRoute.startsWith('/business/')) return '';
+  if (cleanRoute.startsWith('/jobs/')) return '';
+  if (cleanRoute.startsWith('/community/post/')) return '';
+  return cleanRoute;
+}
+function fallbackSeoMeta(route=''){
+  const isStaging = COGO_IS_STAGING;
+  const defaultImage = 'https://cogocity.com/assets/cogocity-social-share.png';
+  const path = currentSeoPathFromRoute(route) || '/';
+  const publicPage = !String(route || '').startsWith('#/dashboard') && !String(route || '').startsWith('#/reset-password');
+  const robots = isStaging ? 'noindex,nofollow' : (publicPage ? 'index,follow' : 'noindex,nofollow');
+  return {
+    title: document.title || 'CoGo City',
+    description: document.querySelector('meta[name="description"]')?.getAttribute('content') || 'CoGo City connects students, families, neighbors, and businesses for local jobs and services.',
+    canonical: `https://cogocity.com${path}`,
+    ogUrl: `https://cogocity.com${path}`,
+    image: defaultImage,
+    robots,
+    type: 'website',
+  };
+}
+function applySeoMeta(meta={}){
+  const merged = Object.assign(fallbackSeoMeta(getRoute()), meta || {});
+  if (merged.title) document.title = merged.title;
+  setMetaTag('meta[name="description"]', 'name', 'description', merged.description || '');
+  setMetaTag('meta[name="robots"]', 'name', 'robots', COGO_IS_STAGING ? 'noindex,nofollow' : (merged.robots || 'index,follow'));
+  setCanonicalUrl(merged.canonical || 'https://cogocity.com/');
+  setMetaTag('meta[property="og:type"]', 'property', 'og:type', merged.type || 'website');
+  setMetaTag('meta[property="og:title"]', 'property', 'og:title', merged.title || 'CoGo City');
+  setMetaTag('meta[property="og:description"]', 'property', 'og:description', merged.description || '');
+  setMetaTag('meta[property="og:image"]', 'property', 'og:image', merged.image || 'https://cogocity.com/assets/cogocity-social-share.png');
+  setMetaTag('meta[property="og:url"]', 'property', 'og:url', merged.ogUrl || merged.canonical || 'https://cogocity.com/');
+  setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
+  setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', merged.title || 'CoGo City');
+  setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', merged.description || '');
+  setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', merged.image || 'https://cogocity.com/assets/cogocity-social-share.png');
+  let schemaEl = document.getElementById('cogo-seo-schema');
+  if (merged.schema) {
+    if (!schemaEl) {
+      schemaEl = document.createElement('script');
+      schemaEl.type = 'application/ld+json';
+      schemaEl.id = 'cogo-seo-schema';
+      document.head.appendChild(schemaEl);
+    }
+    schemaEl.textContent = JSON.stringify(merged.schema);
+  } else if (schemaEl) {
+    schemaEl.remove();
+  }
+}
+async function applySeoForCurrentRoute(route=''){
+  applySeoMeta(fallbackSeoMeta(route));
+  if (!COGO_BACKEND_ENABLED) return;
+  const path = currentSeoPathFromRoute(route);
+  if (!path) return;
+  const requestId = ++cogoSeoMetaRequestId;
+  try {
+    const result = await backendRequest(`/seo/meta?path=${encodeURIComponent(path)}`, { method:'GET', auth:false });
+    const meta = result?.data || result;
+    if (requestId === cogoSeoMetaRequestId && meta && meta.title) applySeoMeta(meta);
+  } catch (error) {
+    if (!String(path || '').startsWith('/dashboard')) console.warn('SEO metadata unavailable', path, error.message || error);
+  }
+}
+function resolveCleanPublicPath(){
+  if (!COGO_BACKEND_ENABLED || location.hash) return;
+  const path = String(location.pathname || '/');
+  if (!/^\/(student|employer|jobs|community|blog)\//.test(path)) return;
+  backendRequest(`/seo/resolve?path=${encodeURIComponent(path)}`, { method:'GET', auth:false })
+    .then(result => {
+      const resolved = result?.data || result;
+      if (resolved && resolved.hash) {
+        cogoResolvedCleanHash = resolved.hash;
+        renderPage();
+      }
+    })
+    .catch(error => console.warn('Could not resolve clean public URL', path, error.message || error));
 }
 function getCogoAnalyticsPagePath(route=''){
   const rawPath = `${window.location.pathname}${route || window.location.hash || '#/'}`;
@@ -6028,7 +6152,7 @@ function renderAboutPage(){
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
       <div class="card form-card">
-        <div class="section-title">${esc(about.title || 'About Us')}</div>
+        <h1 class="section-title">${esc(about.title || 'About Us')}</h1>
         ${imageHtml}
         ${renderFormattedLongText(about.body || '')}
       </div>
@@ -6359,7 +6483,7 @@ function renderStagingLegalPage(pageKey=''){
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
       <div class="card form-card">
-        <div class="section-title">${esc(page.title)}</div>
+        <h1 class="section-title">${esc(page.title)}</h1>
         ${renderFormattedLongText(page.body || '')}
       </div>
     </div>
@@ -8459,7 +8583,7 @@ function signOut(){
 }
 
 // ---------- Routes ----------
-function getRoute(){ return location.hash || '#/'; }
+function getRoute(){ return location.hash || cogoResolvedCleanHash || '#/'; }
 function goDashboard(){ location.hash = '#/dashboard'; renderPage(); }
 function applyDashboardRouteParams(route=''){
   const queryStart = String(route || '').indexOf('?');
@@ -8740,6 +8864,7 @@ function renderPage(){
       return;
     }
     renderNav();
+    applySeoForCurrentRoute(route);
     if (route === '#/faq-safety-legal' || route.startsWith('#/faq-safety-legal#')) return renderFaqSafetyLegalPage();
     if (route === '#/about-us') return renderAboutPage();
       if (route === '#/youth-labor-law-in-ca') return renderStagingLegalPage('youth-labor-law-in-ca');
@@ -16702,7 +16827,7 @@ function renderPublicStudentProfilePage(student){
           <div style="display:flex;gap:14px;align-items:center">
             ${renderStudentAvatar(student, 78, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
             <div>
-              <div class="section-title" style="margin:0">${esc(student.name)}${student.age ? `, ${esc(student.age)}` : ''}</div>
+              <h1 class="section-title" style="margin:0">${esc(student.name)}${student.age ? `, ${esc(student.age)}` : ''}</h1>
               <div class="muted small">📍 ${esc(student.location || '')} · 🎓 ${esc(student.school || '')}</div>
               <div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews across services)</div>
             </div>
@@ -16762,7 +16887,7 @@ function renderPublicProfilePage(){
           <div style="display:flex;gap:14px;align-items:center">
             ${renderPublicUserAvatar(user, 84, 'personal')}
             <div>
-              <div class="section-title" style="margin:0">${esc(user.publicName || user.name || 'User')}</div>
+              <h1 class="section-title" style="margin:0">${esc(user.publicName || user.name || 'User')}</h1>
               <div class="muted small">${esc(getUserRoleLabel(user))} · 📍 ${esc(getPublicUserCity(user, 'personal') || 'City not added')}</div>
             </div>
           </div>
@@ -16791,7 +16916,7 @@ function renderBusinessPage(){
           <div style="display:flex;gap:14px;align-items:center">
             ${renderPublicUserAvatar(user, 92, 'business')}
             <div>
-              <div class="section-title" style="margin:0">${esc(businessName)}</div>
+              <h1 class="section-title" style="margin:0">${esc(businessName)}</h1>
               <div class="muted small">Business · 📍 ${esc(getPublicUserCity(user, 'business') || 'City not added')}</div>
               <div class="small muted">Contact: ${renderUserNameLink(user.id, user.publicName || user.name || 'Owner')}</div>
             </div>
@@ -20125,6 +20250,7 @@ function attachConnectivityHandlers(){
 
 function initializePrototype(){
   try {
+    resolveCleanPublicPath();
     seedData();
     loadCurrentUser();
     flushPendingBackendSyncs();
