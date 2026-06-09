@@ -1409,7 +1409,13 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
 function ensureBackendArraySettingLoaded(entityKey='', storageKey='', options={}){
   const state = backendGenericSyncState[entityKey] || {};
   const needsFullImages = entityKey === 'images' && options.full && !state.fullLoaded;
-  if (BACKEND_MIGRATION.enabled && (!state.loaded || options.force || needsFullImages) && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
+  const specificImageIds = entityKey === 'images' ? ensureArray(options.ids).map(id => String(id || '').trim()).filter(Boolean) : [];
+  const cachedImages = entityKey === 'images' ? ensureArray(ls(storageKey)) : [];
+  const needsSpecificImages = specificImageIds.some(id => {
+    const image = cachedImages.find(item => String((item || {}).id || (item || {}).record_id || '') === id);
+    return !image || !image.url || image.embedded_image_omitted;
+  });
+  if (BACKEND_MIGRATION.enabled && (!state.loaded || options.force || needsFullImages || needsSpecificImages) && !state.loading) loadBackendArraySetting(entityKey, storageKey, options);
 }
 function backendSyncArrayIsFresh(entityKey='', maxAgeMs=15000){
   const state = backendGenericSyncState[entityKey] || {};
@@ -4670,6 +4676,35 @@ function getAdvertisingImageIds(slots=[]){
 }
 function ensureAdvertisingImagesLoaded(slots=[], options={}){
   const missingIds = getAdvertisingImageIds(slots).filter(id => {
+    const image = getImageById(id);
+    return !image || !image.url || image.embedded_image_omitted;
+  });
+  if (!missingIds.length) return;
+  ensureBackendArraySettingLoaded('images', 'cogo_images', {
+    full: true,
+    ids: missingIds,
+    rerender: options.rerender !== false
+  });
+}
+function getBlogPostImageIds(posts=[]){
+  const ids = new Set();
+  ensureArray(posts).forEach(post => {
+    if (!post) return;
+    [
+      post.featured_image,
+      post.featuredImage,
+      post.image_id,
+      post.media_type === 'image' ? post.media_url : '',
+      post.articleMediaImage,
+    ].forEach(value => {
+      const clean = String(value || '').trim();
+      if (isImageRecordId(clean)) ids.add(clean);
+    });
+  });
+  return Array.from(ids);
+}
+function ensureBlogImagesLoaded(posts=[], options={}){
+  const missingIds = getBlogPostImageIds(posts).filter(id => {
     const image = getImageById(id);
     return !image || !image.url || image.embedded_image_omitted;
   });
@@ -9511,6 +9546,7 @@ function renderBlog(){
   const articleMatch = route.match(/^#\/blog\/([^?#]+)/);
   if (articleMatch) return renderBlogArticle(decodeURIComponent(articleMatch[1]));
   const posts = getPublicBlogPosts();
+  ensureBlogImagesLoaded(posts, { rerender:true });
   const featuredPost = posts[0];
   const remainingPosts = posts.slice(1);
   document.getElementById('app').innerHTML = `
@@ -9552,6 +9588,7 @@ function renderBlogArticle(slug){
     `;
     return;
   }
+  ensureBlogImagesLoaded([post], { rerender:true });
   const articleImage = getImageView(post.media_type === 'image' ? post.media_url : '', 'full');
   const persistedVideoUrl = (post.videoUrl || post.video_url || '').trim();
   const videoFrameHtml = persistedVideoUrl
@@ -18925,12 +18962,31 @@ function clearAdminBlogFeaturedImage(){
   if (input) input.value = '';
   previewAdminBlogFeaturedImage('');
 }
+async function uploadBlogImageToBackend(file, meta={}){
+  if (!file) return '';
+  if (backendAuthEnabled() && !getBackendAccessToken()) {
+    throw new Error('Please sign in with the backend admin account before uploading blog images.');
+  }
+  const imageId = await prepareUploadedImageRecord(file, Object.assign({
+    owner_id: currentUser ? currentUser.id : '',
+    ownerId: currentUser ? currentUser.id : ''
+  }, meta));
+  if (!imageId || !isImageRecordId(imageId)) return imageId || '';
+  const imageSync = await syncReferencedImagesBeforeBlogPosts([{ featured_image:imageId }]);
+  if (imageSync && imageSync.ok === false) {
+    throw new Error(imageSync.reason === 'missing_backend_token' ? 'Please sign in with the backend admin account before uploading blog images.' : (imageSync.error || imageSync.reason || 'Staging did not confirm the uploaded image.'));
+  }
+  await loadBackendArraySetting('images', 'cogo_images', { ids:[imageId], full:true, force:true });
+  const confirmed = getImageView(imageId, 'full');
+  if (!confirmed || !confirmed.url) throw new Error('Staging did not return the uploaded image. Please try uploading it again.');
+  return imageId;
+}
 function handleAdminBlogFeaturedImageUpload(input){
   if (!adminBlogDraft) return;
   syncAdminBlogDraftFromForm();
   const file = input && input.files && input.files[0];
   if (!file) return;
-  prepareUploadedImageRecord(file, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' })
+  uploadBlogImageToBackend(file, { source:'article_featured', entity_type:'article', entity_id: adminBlogDraft.id || '' })
     .then(imageId => {
       adminBlogDraft.featured_image = imageId;
       adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
@@ -19031,7 +19087,7 @@ function handleAdminBlogImagesUpload(input){
   syncAdminBlogDraftFromForm();
   const file = (input && input.files && input.files[0]) || null;
   if (!file) return;
-  prepareUploadedImageRecord(file, { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' })
+  uploadBlogImageToBackend(file, { source:'article_media', entity_type:'article', entity_id: adminBlogDraft.id || '' })
     .then(imageId => {
       adminBlogDraft.media_type = imageId ? 'image' : '';
       adminBlogDraft.media_url = imageId || '';
