@@ -109,6 +109,15 @@
     h1,h2,h3,p,.section-title,.small{overflow-wrap:break-word}
     .blog-article-content a{color:var(--color-link)}
     .blog-article-content a:hover{color:var(--color-link-hover)}
+    .formatted-long-text,.blog-article-content{color:var(--dark);line-height:1.75}
+    .formatted-long-text h2,.blog-article-content h2{font-size:1.45rem;line-height:1.25;margin:30px 0 12px;color:var(--navy)}
+    .formatted-long-text h3,.blog-article-content h3{font-size:1.16rem;line-height:1.35;margin:24px 0 10px;color:var(--navy)}
+    .formatted-long-text p,.formatted-long-text ul,.formatted-long-text ol,.blog-article-content p,.blog-article-content ul,.blog-article-content ol{margin:14px 0}
+    .formatted-long-text ul,.formatted-long-text ol,.blog-article-content ul,.blog-article-content ol{padding-left:1.35rem}
+    .formatted-long-text li,.blog-article-content li{margin:7px 0}
+    .text-align-left{text-align:left}
+    .text-align-center{text-align:center}
+    .text-align-right{text-align:right}
     .money{color:var(--color-success);font-weight:800}
     button,input,textarea,select{font:inherit}
     nav{
@@ -5301,7 +5310,31 @@ function togglePasswordVisibility(inputId, button){
   }
   input.focus();
 }
-function renderFormattedLongText(value='', options={}){
+function renderFormattedInlineMarkdown(value=''){
+  const placeholders = [];
+  let html = esc(value);
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
+    const index = placeholders.push(`<a href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`) - 1;
+    return `@@LINK_${index}@@`;
+  });
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  placeholders.forEach((replacement, index) => {
+    html = html.replaceAll(`@@LINK_${index}@@`, replacement);
+  });
+  return html;
+}
+function getFormattedTextAlignment(line=''){
+  const raw = String(line || '').trim();
+  if (/^&gt;&gt;\s+/.test(esc(raw)) || /^>>\s+/.test(raw)) return { align:'right', text: raw.replace(/^>>\s+/, '') };
+  if (/^&lt;&lt;\s+/.test(esc(raw)) || /^<<\s+/.test(raw)) return { align:'left', text: raw.replace(/^<<\s+/, '') };
+  if (/^::center\s+/.test(raw)) return { align:'center', text: raw.replace(/^::center\s+/, '') };
+  if (/^::right\s+/.test(raw)) return { align:'right', text: raw.replace(/^::right\s+/, '') };
+  if (/^::left\s+/.test(raw)) return { align:'left', text: raw.replace(/^::left\s+/, '') };
+  return { align:'', text: raw };
+}
+function renderMarkdownLikeText(value='', options={}){
   const text = Array.isArray(value) ? value.filter(Boolean).join('\n\n') : String(value || '');
   const trimmed = text.trim();
   if (!trimmed) return options.emptyHtml || '';
@@ -5309,16 +5342,32 @@ function renderFormattedLongText(value='', options={}){
   if (options.small) classes.push('small');
   const bulletRe = /^\s*(?:[-*•‣–—]|\d+[.)])\s+/;
   const blocks = trimmed.replace(/\r\n?/g, '\n').split(/\n{2,}/).map(block => block.trim()).filter(Boolean);
+  const hasExplicitH2 = blocks.some(block => /^#{1,2}\s+/.test(block.trim()));
   const html = blocks.map(block => {
     const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
     if (!lines.length) return '';
+    const heading = lines.length === 1 ? lines[0].match(/^(#{1,4})\s+(.+)$/) : null;
+    if (heading) {
+      const level = heading[1].length <= 2 || !hasExplicitH2 ? 'h2' : 'h3';
+      return `<${level}>${renderFormattedInlineMarkdown(heading[2])}</${level}>`;
+    }
     const bulletLike = lines.filter(line => bulletRe.test(line)).length;
     if (bulletLike && bulletLike >= Math.max(1, Math.ceil(lines.length / 2))) {
-      return `<ul>${lines.map(line => `<li>${esc(line.replace(bulletRe, ''))}</li>`).join('')}</ul>`;
+      const ordered = lines.every(line => /^\s*\d+[.)]\s+/.test(line));
+      const tag = ordered ? 'ol' : 'ul';
+      return `<${tag}>${lines.map(line => `<li>${renderFormattedInlineMarkdown(line.replace(bulletRe, ''))}</li>`).join('')}</${tag}>`;
     }
-    return `<p>${lines.map(esc).join('<br>')}</p>`;
+    const firstLineAlignment = getFormattedTextAlignment(lines[0]);
+    const alignClass = firstLineAlignment.align ? ` class="text-align-${firstLineAlignment.align}"` : '';
+    const normalizedLines = firstLineAlignment.align
+      ? [firstLineAlignment.text].concat(lines.slice(1))
+      : lines;
+    return `<p${alignClass}>${normalizedLines.map(renderFormattedInlineMarkdown).join('<br>')}</p>`;
   }).join('');
   return `<div class="${classes.join(' ')}">${html}</div>`;
+}
+function renderFormattedLongText(value='', options={}){
+  return renderMarkdownLikeText(value, options);
 }
 function insertTextareaSnippet(textarea, snippet='', wrapSelection=false){
   if (!textarea) return;
@@ -5344,6 +5393,36 @@ function formatTextareaSelectionAsBullets(textarea){
   if (end > start) return insertTextareaSnippet(textarea, '', true);
   insertTextareaSnippet(textarea, '• First point\n• Second point\n');
 }
+function wrapTextareaSelection(textarea, before='', after='', fallback=''){
+  if (!textarea) return;
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || start;
+  const selected = textarea.value.slice(start, end) || fallback;
+  const beforeText = textarea.value.slice(0, start);
+  const afterText = textarea.value.slice(end);
+  const replacement = `${before}${selected}${after}`;
+  textarea.value = `${beforeText}${replacement}${afterText}`;
+  const selectStart = start + String(before).length;
+  const selectEnd = selectStart + selected.length;
+  textarea.focus();
+  textarea.setSelectionRange(selectStart, selectEnd);
+  textarea.dispatchEvent(new Event('input', { bubbles:true }));
+}
+function prefixTextareaSelectionLines(textarea, prefix='', fallback=''){
+  if (!textarea) return;
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || start;
+  const selected = textarea.value.slice(start, end) || fallback;
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+  const needsLeadingBreak = before && !before.endsWith('\n') ? '\n' : '';
+  const replacement = selected.split('\n').map(line => line.trim() ? `${prefix}${line.replace(/^(?:#{1,4}|>>|<<|::left|::right|::center)\s+/, '')}` : line).join('\n');
+  textarea.value = `${before}${needsLeadingBreak}${replacement}${after}`;
+  const cursorStart = start + needsLeadingBreak.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursorStart, cursorStart + replacement.length);
+  textarea.dispatchEvent(new Event('input', { bubbles:true }));
+}
 function attachLongFieldFormatting(root=document){
   const scope = root || document;
   scope.querySelectorAll('textarea').forEach(textarea => {
@@ -5355,7 +5434,15 @@ function attachLongFieldFormatting(root=document){
     const toolbar = document.createElement('div');
     toolbar.className = 'long-field-format';
     toolbar.setAttribute('aria-label', 'Text formatting options');
+    const isRichTextArea = textarea.id === 'adminBlogContent' || textarea.dataset.richFormat === 'true';
     toolbar.innerHTML = `
+      ${isRichTextArea ? `
+        <button type="button" data-format-action="bold"><strong>B</strong> Bold</button>
+        <button type="button" data-format-action="h2">H2</button>
+        <button type="button" data-format-action="h3">H3</button>
+        <button type="button" data-format-action="left">Indent left</button>
+        <button type="button" data-format-action="right">Indent right</button>
+      ` : ''}
       <button type="button" data-format-action="bullet">• Bullet list</button>
       <button type="button" data-format-action="paragraph">New paragraph</button>
       <button type="button" data-format-action="line">Line break</button>
@@ -5364,6 +5451,11 @@ function attachLongFieldFormatting(root=document){
       const button = event.target.closest('button[data-format-action]');
       if (!button) return;
       const action = button.dataset.formatAction;
+      if (action === 'bold') return wrapTextareaSelection(textarea, '**', '**', 'bold text');
+      if (action === 'h2') return prefixTextareaSelectionLines(textarea, '## ', 'Section heading');
+      if (action === 'h3') return prefixTextareaSelectionLines(textarea, '### ', 'Subsection heading');
+      if (action === 'left') return prefixTextareaSelectionLines(textarea, '<< ', 'Left aligned text');
+      if (action === 'right') return prefixTextareaSelectionLines(textarea, '>> ', 'Right aligned text');
       if (action === 'bullet') return formatTextareaSelectionAsBullets(textarea);
       if (action === 'paragraph') return insertTextareaSnippet(textarea, '\n\n');
       if (action === 'line') return insertTextareaSnippet(textarea, '\n');
@@ -9365,12 +9457,7 @@ function formatArticleBodyHtml(content=''){
   const raw = String(content || '').trim();
   if (!raw) return '';
   if (/<[a-z][\s\S]*>/i.test(raw)) return enrichArticleHtmlWithEmbeddedVideos(sanitizeArticleHtml(raw));
-  return raw.split(/\n\s*\n/).map(block => {
-    const text = String(block || '').trim();
-    const embedUrl = extractEmbeddableVideoUrlFromText(text);
-    if (embedUrl) return renderVideoPreviewHtml(embedUrl, 'Article video', { maxWidth:'100%', showLabel:false });
-    return `<p>${esc(block).replace(/\n/g, '<br>')}</p>`;
-  }).join('');
+  return renderMarkdownLikeText(raw).replace(/^<div class="formatted-long-text">|<\/div>$/g, '');
 }
 function getBlogPostBySlug(slug=''){
   return getPublicBlogPosts().find(post => post.slug === slug);
@@ -18789,9 +18876,9 @@ function renderAdminBlogEditorHtml(){
       <div class="field"><label>Or upload video</label><input type="file" accept="video/*" onchange="handleAdminBlogVideoUpload(this)"></div>
       <div id="admin-blog-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(post.media_type === 'video' ? articleVideoUrl : '', 'Article video')}</div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="clearAdminBlogVideo()">Remove Video</button></div>
-      <div class="field"><label>Article Content</label><textarea id="adminBlogContent" rows="16" placeholder="Write the article content here. Plain text or HTML both work.">${esc(post.content || '')}</textarea></div>
+      <div class="field"><label>Article Content</label><textarea id="adminBlogContent" data-rich-format="true" rows="16" placeholder="Write the article content here. Use H2 for main sections and H3 for subsections.">${esc(post.content || '')}</textarea></div>
       <div class="field"><label>Article Author</label><input id="adminBlogAuthor" value="${esc(post.authorName || 'CoGo Team')}" placeholder="CoGo Team"></div>
-      <div class="small muted" style="margin-bottom:0">Tip: you can paste structured HTML, or just write normal text and the article page will format it into paragraphs.</div>
+      <div class="small muted" style="margin-bottom:0">Tip: use one page title, then H2 for main sections and H3 for subsections. Bold, bullets, and alignment controls are saved with the article.</div>
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn btn-outline" type="button" onclick="cancelAdminBlogEditor()">Cancel</button>
