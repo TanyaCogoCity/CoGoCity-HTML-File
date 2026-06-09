@@ -1133,9 +1133,15 @@ async function loadBackendSyncedRecords(entityKey='', options={}){
   const isPublicEntity = BACKEND_PUBLIC_SYNC_ENTITIES.has(entityKey);
   if (!isPublicEntity && (!currentUser || !getBackendAccessToken())) return [];
   try {
-    const readEndpoint = entityKey === 'images'
-      ? `${endpoint}${endpoint.includes('?') ? '&' : '?'}${options.full ? '' : 'summary=true&'}limit=300`
-      : endpoint;
+    let readEndpoint = endpoint;
+    if (entityKey === 'images') {
+      const params = new URLSearchParams();
+      const imageIds = ensureArray(options.ids).map(id => String(id || '').trim()).filter(Boolean).slice(0, 100);
+      if (!options.full) params.set('summary', 'true');
+      if (imageIds.length) params.set('ids', imageIds.join(','));
+      params.set('limit', String(imageIds.length || 300));
+      readEndpoint = `${endpoint}${endpoint.includes('?') ? '&' : '?'}${params.toString()}`;
+    }
     const result = isPublicEntity
       ? await backendRequest(readEndpoint, { method:'GET', auth:false })
       : { ok:true, data: await backendAuthRequest(readEndpoint, { method:'GET' }) };
@@ -1180,8 +1186,14 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
   const state = backendGenericSyncState[entityKey] || { loading:false, loaded:false };
   backendGenericSyncState[entityKey] = state;
   const needsFullImages = entityKey === 'images' && options.full && !state.fullLoaded;
+  const specificImageIds = entityKey === 'images' ? ensureArray(options.ids).map(id => String(id || '').trim()).filter(Boolean) : [];
+  const cachedImages = entityKey === 'images' ? ensureArray(ls(storageKey)) : [];
+  const needsSpecificImages = specificImageIds.some(id => {
+    const image = cachedImages.find(item => String((item || {}).id || (item || {}).record_id || '') === id);
+    return !image || !image.url || image.embedded_image_omitted;
+  });
   if (state.loading) return ensureArray(ls(storageKey));
-  if (state.loaded && !options.force && !needsFullImages) return ensureArray(ls(storageKey));
+  if (state.loaded && !options.force && !needsFullImages && !needsSpecificImages) return ensureArray(ls(storageKey));
   state.loading = true;
   try {
     const records = await loadBackendSyncedRecords(entityKey, options);
@@ -1213,7 +1225,7 @@ async function loadBackendArraySetting(entityKey='', storageKey='', options={}){
       }
     }
     state.loaded = true;
-    if (entityKey === 'images' && options.full) state.fullLoaded = true;
+    if (entityKey === 'images' && options.full && !specificImageIds.length) state.fullLoaded = true;
     state.loadedAt = Date.now();
     return records;
   } finally {
@@ -4467,6 +4479,28 @@ function renderAdvertisingStrip(slots=getActiveAdvertisingSlots()){
       </div>
     </div>
   `;
+}
+function getAdvertisingImageIds(slots=[]){
+  const ids = new Set();
+  ensureArray(slots).forEach(slot => {
+    ['desktop_image','mobile_image'].forEach(key => {
+      const value = String((slot || {})[key] || '').trim();
+      if (isImageRecordId(value)) ids.add(value);
+    });
+  });
+  return Array.from(ids);
+}
+function ensureAdvertisingImagesLoaded(slots=[], options={}){
+  const missingIds = getAdvertisingImageIds(slots).filter(id => {
+    const image = getImageById(id);
+    return !image || !image.url || image.embedded_image_omitted;
+  });
+  if (!missingIds.length) return;
+  ensureBackendArraySettingLoaded('images', 'cogo_images', {
+    full: true,
+    ids: missingIds,
+    rerender: options.rerender !== false
+  });
 }
 function refreshAdvertisingImagesFromStore(root=document){
   if (!root || typeof root.querySelectorAll !== 'function') return;
@@ -8887,6 +8921,7 @@ function renderHome(){
     body:'Find local student services for social media, office support, event help, tutoring, and more.'
   }, (getSiteSettings().page_blocks || {}).home || {});
   const advertisingSlots = getActiveAdvertisingSlots();
+  ensureAdvertisingImagesLoaded(advertisingSlots, { rerender:true });
   const advertisingHtml = renderAdvertisingStrip(advertisingSlots);
   const mobileExtraAdvertisingHtml = renderAdvertisingStrip(advertisingSlots.slice(1));
   document.getElementById('app').innerHTML = `

@@ -589,10 +589,19 @@ function requireReadAccess(req, res, next) {
 router.get('/:entity', requireReadAccess, async (req, res) => {
   const entity = validateEntity(req.params.entity);
   try {
+    const requestedIds = String(req.query.ids || req.query.id || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 100);
     const rows = await prisma.syncRecord.findMany({
-      where: { entity, deletedAt: null },
+      where: {
+        entity,
+        deletedAt: null,
+        ...(requestedIds.length ? { recordId: { in: requestedIds } } : {}),
+      },
       orderBy: { updatedAt: 'desc' },
-      take: Math.min(Number(req.query.limit || 500) || 500, 1000),
+      take: requestedIds.length || Math.min(Number(req.query.limit || 500) || 500, 1000),
     });
     const lightweightImages = entity === 'images' && ['1', 'true', 'yes'].includes(String(req.query.summary || req.query.light || '').toLowerCase());
     const records = entity === 'workshops'
