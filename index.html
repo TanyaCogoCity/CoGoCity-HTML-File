@@ -3215,15 +3215,17 @@ function savePosts(v){
   ls('cogo_posts', payload);
   return syncCommunityPostsToBackend(payload);
 }
-async function persistCommunityPostsPermanently(v, failureMessage='Backend post save failed. Please try again so this change is saved for everyone.'){
+async function persistCommunityPostsPermanently(v, failureMessage='Backend post save failed. Please try again so this change is saved for everyone.', options={}){
   const payload = ensureArray(v).map(normalizePostRecord);
   if (backendAuthEnabled()) {
     if (requireBackendWriteSession('save this post change')) return false;
     try {
-      const imageSync = await syncReferencedImagesBeforeCommunityPosts(payload);
-      if (imageSync && imageSync.ok === false) {
-        toast('Could not publish the post image. Please try uploading the image again before saving.');
-        return false;
+      if (!options.skipImageSync) {
+        const imageSync = await syncReferencedImagesBeforeCommunityPosts(payload);
+        if (imageSync && imageSync.ok === false) {
+          toast('Could not publish the post image. Please try uploading the image again before saving.');
+          return false;
+        }
       }
       await syncCommunityPostsToBackend(payload);
     } catch (error) {
@@ -16108,16 +16110,20 @@ async function approveFinalInvoice(projectId, buttonEl=null){
     Object.keys(p).forEach(key => delete p[key]);
     Object.assign(p, JSON.parse(JSON.stringify(originalProjectState)));
   };
-  p.approvalInProgress = true;
-  const now = new Date().toISOString();
-  const finalBreakdown = calculateCommissionBreakdown(projectFinalHours(p, true), projectBillingRate(p));
-  let isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
-  if (STRIPE_ENABLED && (!backendAuthEnabled() || !getBackendAccessToken())) {
-    restoreProjectState();
+  const resetApprovalButton = () => {
     if (buttonEl) {
       buttonEl.disabled = false;
       buttonEl.textContent = 'Approve & Release Payment';
     }
+  };
+  p.approvalInProgress = true;
+  const now = new Date().toISOString();
+  const finalBreakdown = calculateCommissionBreakdown(projectFinalHours(p, true), projectBillingRate(p));
+  let backendCaptureResult = null;
+  let isLocalPaymentReference = String(p.stripe_payment_intent_id || '').includes('_payref_');
+  if (STRIPE_ENABLED && (!backendAuthEnabled() || !getBackendAccessToken())) {
+    restoreProjectState();
+    resetApprovalButton();
     toast('Secure Stripe payment setup is required before approving this project on staging. Please sign in again.');
     return;
   }
@@ -16134,10 +16140,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
       }
     } catch (error) {
       restoreProjectState();
-      if (buttonEl) {
-        buttonEl.disabled = false;
-        buttonEl.textContent = 'Approve & Release Payment';
-      }
+      resetApprovalButton();
       console.warn('Stripe final invoice payment authorization failed', error);
       if (isStripePayoutSafetyError(error)) showStripePayoutSafetyBlock(error, p.studentName || 'this student');
       else toast(error.message || 'Stripe final invoice payment authorization failed. Please check payment setup and try again.');
@@ -16158,10 +16161,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
       }
     } catch (error) {
       restoreProjectState();
-      if (buttonEl) {
-        buttonEl.disabled = false;
-        buttonEl.textContent = 'Approve & Release Payment';
-      }
+      resetApprovalButton();
       console.warn('Stripe capture failed', error);
       if (isStripePayoutSafetyError(error)) showStripePayoutSafetyBlock(error, p.studentName || 'this student');
       else toast(error.message || 'Stripe payment capture failed. Please try again before completing this project.');
@@ -16315,6 +16315,7 @@ async function approveFinalInvoice(projectId, buttonEl=null){
       upsertBackendProject(p);
     } catch (error) {
       restoreProjectState();
+      resetApprovalButton();
       console.warn('Backend project approval failed', error);
       toast(error.message || 'Backend project approval failed. Please try again so this payment release is saved permanently.');
       return;
@@ -16324,19 +16325,22 @@ async function approveFinalInvoice(projectId, buttonEl=null){
   delete p.approvalInProgress;
   if (!await persistProjectsPermanently(projects, 'Backend project approval failed. Please try again so this payment release is saved permanently.')) {
     restoreProjectState();
+    resetApprovalButton();
     return;
   }
   const posts = getPosts();
   const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
   if (post) {
     post.status = 'completed';
-    if (!await persistCommunityPostsPermanently(posts, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.')) {
+    if (!await persistCommunityPostsPermanently(posts, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.', { skipImageSync:true })) {
       restoreProjectState();
+      resetApprovalButton();
       return;
     }
   }
   if (!await persistTransactionsPermanently(transactions, 'Backend transaction save failed. Please try again so this payment release is saved for everyone.')) {
     restoreProjectState();
+    resetApprovalButton();
     return;
   }
   await refreshBackendDashboardData();
