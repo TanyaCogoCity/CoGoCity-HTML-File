@@ -23,6 +23,67 @@ router.get('/', async (req, res) => {
   return ok(res, jobs.map(serializeJob));
 });
 
+router.delete('/admin/hard-delete/:id', requireAuth, async (req, res) => {
+  if (req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
+  const job = await prisma.job.findUnique({ where: { id: req.params.id } });
+  if (!job) return fail(res, 404, 'Job not found');
+
+  try {
+    const deleted = await prisma.$transaction(async (tx) => {
+      const applications = await tx.application.findMany({
+        where: { jobId: job.id },
+        select: { id: true },
+      });
+      const applicationIds = applications.map((app) => app.id);
+      const projects = await tx.project.findMany({
+        where: {
+          OR: [
+            { jobId: job.id },
+            ...(applicationIds.length ? [{ applicationId: { in: applicationIds } }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+      const projectIds = projects.map((project) => project.id);
+      const result = {};
+      result.transactions = projectIds.length
+        ? await tx.transaction.deleteMany({ where: { projectId: { in: projectIds } } })
+        : { count: 0 };
+      result.reviews = projectIds.length
+        ? await tx.review.deleteMany({ where: { projectId: { in: projectIds } } })
+        : { count: 0 };
+      result.projects = projectIds.length
+        ? await tx.project.deleteMany({ where: { id: { in: projectIds } } })
+        : { count: 0 };
+      result.applications = await tx.application.deleteMany({ where: { jobId: job.id } });
+      result.job = await tx.job.delete({ where: { id: job.id } });
+      return result;
+    }, { timeout: 60000 });
+
+    await writeAuditLog({
+      userId: req.user.id,
+      action: 'admin.job.hard_delete',
+      entityType: 'job',
+      entityId: job.id,
+      payload: { title: job.title, deleted },
+    });
+
+    return ok(res, {
+      id: job.id,
+      permanently_deleted: true,
+      deleted: {
+        transactions: deleted.transactions.count,
+        reviews: deleted.reviews.count,
+        projects: deleted.projects.count,
+        applications: deleted.applications.count,
+        jobs: deleted.job ? 1 : 0,
+      },
+    });
+  } catch (error) {
+    return fail(res, 500, 'Could not permanently delete job', error.message);
+  }
+});
+
 router.post('/', requireAuth, async (req, res) => {
   if (!['employer', 'admin'].includes(req.user.role)) return fail(res, 403, 'Only employer/admin can create direct job listings. Neighbors should post jobs through Community Gigs.');
   const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
