@@ -2831,8 +2831,13 @@ async function syncReferencedImagesBeforeBlogPosts(posts=[]){
     });
   });
   if (!referencedIds.size || !backendAuthEnabled()) return { ok:true, skipped:true };
-  const images = getImages();
-  const missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  let images = getImages();
+  let missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  if (missing.length && BACKEND_MIGRATION.enabled) {
+    await loadBackendArraySetting('images', 'cogo_images', { ids: missing, full:true, force:true });
+    images = getImages();
+    missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  }
   if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
   const referencedImages = images.filter(image => referencedIds.has(String(image.id)));
   const result = await syncEntityToBackend('images', referencedImages, { replace:false });
@@ -19100,7 +19105,7 @@ async function persistAdminBlogPost(mode='draft'){
   const index = posts.findIndex(post => String(post.id) === String(adminBlogDraft.id));
   if (index >= 0) posts[index] = normalizeBlogPostRecord(adminBlogDraft);
   else posts.unshift(normalizeBlogPostRecord(adminBlogDraft));
-  const imageSyncResult = await syncReferencedImagesBeforeBlogPosts(posts);
+  const imageSyncResult = await syncReferencedImagesBeforeBlogPosts([adminBlogDraft]);
   if (imageSyncResult && imageSyncResult.ok === false) {
     ls('cogo_blog_posts', previousPosts);
     if (imageSyncResult.reason === 'missing_backend_token') {
