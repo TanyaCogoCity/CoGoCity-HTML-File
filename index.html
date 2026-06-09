@@ -841,6 +841,20 @@ let backendCommunityPostsLoaded = false;
 let backendCommunityPostsLoading = false;
 let backendCommunityPostsLoadedAt = 0;
 let backendCommunityPostsEmptyConfirmedAt = 0;
+const COGO_PRIVATE_NOINDEX_PATHS = [
+  '/dashboard',
+  '/messages',
+  '/offers',
+  '/transactions',
+  '/payments',
+  '/profile/edit',
+  '/onboarding',
+  '/settings',
+  '/reset-password',
+  '/guardian',
+  '/guardians',
+  '/guardian-information',
+];
 function getCogoAnalyticsEnvironment(){
   return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
 }
@@ -865,6 +879,17 @@ function setCanonicalUrl(url=''){
   const canonical = ensureHeadTag('link[rel="canonical"]', 'link', { rel:'canonical' });
   canonical.setAttribute('href', url || 'https://cogocity.com/');
 }
+function normalizeSeoRoutePath(value=''){
+  const raw = String(value || '/').trim();
+  const hashRoute = raw.includes('#') ? raw.slice(raw.indexOf('#') + 1) : raw;
+  const pathOnly = hashRoute.split('?')[0].replace(/^https?:\/\/[^/]+/i, '') || '/';
+  return (`/${pathOnly.replace(/^\/+/, '')}`).replace(/\/+$/, '').toLowerCase() || '/';
+}
+function isPrivateNoindexRoute(value=''){
+  const path = normalizeSeoRoutePath(value);
+  if (COGO_PRIVATE_NOINDEX_PATHS.some(privatePath => path === privatePath || path.startsWith(`${privatePath}/`))) return true;
+  return /\b(parent|guardian|birth-?date|date-of-birth|dob|school-schedule|class-schedule)\b/i.test(path);
+}
 function currentSeoPathFromRoute(route=''){
   const path = String(window.location.pathname || '/');
   if (path !== '/' && path !== '/index.html') return path;
@@ -880,7 +905,7 @@ function fallbackSeoMeta(route=''){
   const isStaging = COGO_IS_STAGING;
   const defaultImage = 'https://cogocity.com/assets/cogocity-social-share.png';
   const path = currentSeoPathFromRoute(route) || '/';
-  const publicPage = !String(route || '').startsWith('#/dashboard') && !String(route || '').startsWith('#/reset-password');
+  const publicPage = !isPrivateNoindexRoute(path) && !isPrivateNoindexRoute(route);
   const robots = isStaging ? 'noindex,nofollow' : (publicPage ? 'index,follow' : 'noindex,nofollow');
   return {
     title: document.title || 'CoGo City',

@@ -1,5 +1,34 @@
 const PRODUCTION_ORIGIN = 'https://cogocity.com';
 const DEFAULT_SOCIAL_IMAGE = `${PRODUCTION_ORIGIN}/assets/cogocity-social-share.png`;
+const PRIVATE_NOINDEX_PATHS = [
+  '/dashboard',
+  '/messages',
+  '/offers',
+  '/transactions',
+  '/payments',
+  '/profile/edit',
+  '/onboarding',
+  '/settings',
+  '/reset-password',
+  '/guardian',
+  '/guardians',
+  '/guardian-information',
+];
+
+function normalizeSeoPath(value = '') {
+  const raw = String(value || '/').trim();
+  const hashRoute = raw.includes('#') ? raw.slice(raw.indexOf('#') + 1) : raw;
+  const pathOnly = hashRoute.split('?')[0].replace(/^https?:\/\/[^/]+/i, '') || '/';
+  return `/${pathOnly.replace(/^\/+/, '')}`.replace(/\/+$/, '').toLowerCase() || '/';
+}
+
+function isPrivateNoindexPath(value = '') {
+  const path = normalizeSeoPath(value);
+  if (PRIVATE_NOINDEX_PATHS.some(privatePath => path === privatePath || path.startsWith(`${privatePath}/`))) {
+    return true;
+  }
+  return /\b(parent|guardian|birth-?date|date-of-birth|dob|school-schedule|class-schedule)\b/i.test(path);
+}
 
 function compactText(value = '', max = 160) {
   const text = String(value || '')
@@ -61,6 +90,9 @@ function containsPrivateDetails(value = '') {
     /\b\d{1,6}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,4}\s+(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|court|ct|circle|cir|way|place|pl|boulevard|blvd)\b/i,
     /\b(?:apartment|apt|unit|suite|ste)\s*[#\w-]+/i,
     /\b(?:call|text|email|phone me|contact me at)\b/i,
+    /\b(?:parent|guardian|mother|father|mom|dad)\s+(?:name|email|phone|contact|information|info)\b/i,
+    /\b(?:birth\s*date|date\s*of\s*birth|dob)\b/i,
+    /\b(?:school|class)\s+schedule\b/i,
   ];
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -84,6 +116,8 @@ module.exports = {
   slugify,
   uniqueSlug,
   xmlEscape,
+  normalizeSeoPath,
+  isPrivateNoindexPath,
   metadataAllowsIndex,
   containsPrivateDetails,
   publicCity,

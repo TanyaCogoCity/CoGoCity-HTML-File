@@ -7,6 +7,8 @@ const {
   compactText,
   uniqueSlug,
   xmlEscape,
+  normalizeSeoPath,
+  isPrivateNoindexPath,
   metadataAllowsIndex,
   containsPrivateDetails,
   publicCity,
@@ -58,6 +60,19 @@ function withDefaults(meta = {}) {
   };
 }
 
+function privateNoindexMeta(path = '/') {
+  const cleanPath = normalizeSeoPath(path);
+  return withDefaults({
+    title: 'Private Page | CoGo City',
+    description: 'This CoGo City page is private and is not available for search indexing.',
+    path: cleanPath,
+    canonical: urlFor(cleanPath),
+    robots: 'noindex,nofollow',
+    hash: cleanPath === '/' ? '#/' : `#${cleanPath}`,
+    schema: null,
+  });
+}
+
 function studentSlug(profile) {
   const service = (profile.services || [])[0] || {};
   return uniqueSlug([profile.user?.displayName, service.title || profile.title, profile.user?.city || service.location], profile.userId || profile.id);
@@ -101,10 +116,12 @@ function employerIndexable(user) {
 }
 
 function jobIndexable(job) {
+  const text = [job.title, job.description, job.requirements, job.location, job.companyName].filter(Boolean).join(' ');
   return job.status === 'open'
     && !job.deletedAt
     && job.creator?.status === 'active'
-    && !job.creator?.deletedAt;
+    && !job.creator?.deletedAt
+    && !containsPrivateDetails(text);
 }
 
 function communityPostIndexable(row) {
@@ -268,7 +285,8 @@ function blogMeta(row) {
 }
 
 async function findMetaByPath(path = '/') {
-  const cleanPath = String(path || '/').split('?')[0].replace(/\/+$/, '') || '/';
+  const cleanPath = normalizeSeoPath(path);
+  if (isPrivateNoindexPath(cleanPath)) return privateNoindexMeta(cleanPath);
   const staticPage = STATIC_PAGES.find(page => page.path === cleanPath);
   if (staticPage) return withDefaults({ ...staticPage, hash: cleanPath === '/' || cleanPath === '/students' ? '#/' : `#${cleanPath}` });
 
