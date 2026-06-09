@@ -67,6 +67,16 @@ function isDeletedPlaceholderName(name = '') {
   return /^deleted\s+user$/i.test(String(name || '').trim());
 }
 
+function isPurgeableStagingTestUser(user = {}) {
+  const email = normalizeEmail(user.email);
+  const firstName = String(user.firstName || '').trim();
+  return email.startsWith('cogo-db-test-')
+    || email.startsWith('codex-')
+    || email.startsWith('stripe-smoke-')
+    || email.startsWith('tanya+pmtest-')
+    || /^qa$/i.test(firstName);
+}
+
 function nameFromEmail(email = '') {
   const local = String(email || '').split('@')[0] || '';
   const first = local.split(/[._+\-\s]+/).find(Boolean) || '';
@@ -936,6 +946,181 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
     if (error?.code === 'P2002') return fail(res, 409, 'That email is already in use.');
     const message = error?.name === 'ZodError' ? 'Please check the user fields and try again.' : 'Unable to update user';
     return fail(res, 400, message, error.message);
+  }
+});
+
+router.post('/admin/users/purge-staging-test-accounts', requireAuth, requireRoles(['admin']), async (req, res) => {
+  try {
+    const execute = req.body?.execute === true;
+    const candidates = await prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { startsWith: 'cogo-db-test-' } },
+          { email: { startsWith: 'codex-' } },
+          { email: { startsWith: 'stripe-smoke-' } },
+          { email: { startsWith: 'tanya+pmtest-' } },
+          { firstName: { equals: 'QA', mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, email: true, firstName: true, lastName: true, displayName: true, role: true },
+    });
+    const users = candidates.filter(user => user.id !== req.user.id && isPurgeableStagingTestUser(user));
+    const userIds = users.map(user => user.id);
+    const userSummaries = users.map(user => ({ id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role }));
+
+    if (!userIds.length) {
+      return ok(res, {
+        execute,
+        plan: {
+          users: [],
+          counts: {
+            users: 0,
+            student_profiles: 0,
+            services: 0,
+            jobs: 0,
+            community_posts: 0,
+            applications: 0,
+            projects: 0,
+            transactions: 0,
+            reviews: 0,
+            conversations: 0,
+            messages: 0,
+            notifications: 0,
+            workshops: 0,
+            workshop_enrollments: 0,
+            sync_records: 0,
+          },
+        },
+        deleted: null,
+      });
+    }
+
+    const studentProfiles = await prisma.studentProfile.findMany({ where: { userId: { in: userIds } }, select: { id: true } });
+    const studentProfileIds = studentProfiles.map(row => row.id);
+    const services = await prisma.service.findMany({ where: { profileId: { in: studentProfileIds } }, select: { id: true } });
+    const serviceIds = services.map(row => row.id);
+    const jobs = await prisma.job.findMany({ where: { createdBy: { in: userIds } }, select: { id: true } });
+    const jobIds = jobs.map(row => row.id);
+    const communityPosts = await prisma.communityPost.findMany({ where: { authorId: { in: userIds } }, select: { id: true } });
+    const communityPostIds = communityPosts.map(row => row.id);
+    const applications = await prisma.application.findMany({
+      where: { OR: [{ studentId: { in: userIds } }, { jobId: { in: jobIds } }] },
+      select: { id: true },
+    });
+    const applicationIds = applications.map(row => row.id);
+    const projects = await prisma.project.findMany({
+      where: {
+        OR: [
+          { employerId: { in: userIds } },
+          { studentId: { in: userIds } },
+          { jobId: { in: jobIds } },
+          { applicationId: { in: applicationIds } },
+          { serviceId: { in: serviceIds } },
+        ],
+      },
+      select: { id: true },
+    });
+    const projectIds = projects.map(row => row.id);
+    const workshops = await prisma.workshop.findMany({ where: { createdBy: { in: userIds } }, select: { id: true } });
+    const workshopIds = workshops.map(row => row.id);
+    const conversationParticipants = await prisma.conversationParticipant.findMany({ where: { userId: { in: userIds } }, select: { conversationId: true } });
+    const messageConversations = await prisma.message.findMany({ where: { senderId: { in: userIds } }, select: { conversationId: true } });
+    const projectConversations = await prisma.conversation.findMany({ where: { projectId: { in: projectIds } }, select: { id: true } });
+    const conversationIds = [...new Set([
+      ...conversationParticipants.map(row => row.conversationId),
+      ...messageConversations.map(row => row.conversationId),
+      ...projectConversations.map(row => row.id),
+    ])];
+    const entityIds = [...new Set([
+      ...userIds,
+      ...studentProfileIds,
+      ...serviceIds,
+      ...jobIds,
+      ...communityPostIds,
+      ...applicationIds,
+      ...projectIds,
+      ...workshopIds,
+    ])];
+    const entityTextNeedles = [...new Set([
+      ...entityIds,
+      ...users.map(user => normalizeEmail(user.email)).filter(Boolean),
+    ])];
+    const syncRows = await prisma.syncRecord.findMany({
+      where: { deletedAt: null },
+      select: { entity: true, recordId: true, payload: true },
+    });
+    const syncRecordKeys = syncRows
+      .filter(row => entityTextNeedles.some(needle => {
+        if (!needle) return false;
+        if (String(row.recordId || '').includes(needle)) return true;
+        return JSON.stringify(row.payload || {}).includes(needle);
+      }))
+      .map(row => ({ entity: row.entity, recordId: row.recordId }));
+
+    const plan = {
+      users: userSummaries,
+      counts: {
+        users: userIds.length,
+        student_profiles: studentProfileIds.length,
+        services: serviceIds.length,
+        jobs: jobIds.length,
+        community_posts: communityPostIds.length,
+        applications: applicationIds.length,
+        projects: projectIds.length,
+        transactions: 0,
+        reviews: 0,
+        conversations: conversationIds.length,
+        messages: 0,
+        notifications: 0,
+        workshops: workshopIds.length,
+        workshop_enrollments: 0,
+        sync_records: syncRecordKeys.length,
+      },
+    };
+    if (!execute) return ok(res, { execute: false, plan, deleted: null });
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      const result = {};
+      for (const key of syncRecordKeys) {
+        await tx.syncRecord.updateMany({
+          where: { entity: key.entity, recordId: key.recordId },
+          data: { deletedAt: new Date() },
+        });
+      }
+      result.syncRecords = { count: syncRecordKeys.length };
+      result.workshopEnrollments = await tx.workshopEnrollment.deleteMany({ where: { OR: [{ userId: { in: userIds } }, { workshopId: { in: workshopIds } }] } });
+      result.entityMedia = await tx.entityMedia.deleteMany({ where: { entityId: { in: entityIds } } });
+      result.messages = await tx.message.deleteMany({ where: { OR: [{ senderId: { in: userIds } }, { conversationId: { in: conversationIds } }] } });
+      result.conversationParticipants = await tx.conversationParticipant.deleteMany({ where: { OR: [{ userId: { in: userIds } }, { conversationId: { in: conversationIds } }] } });
+      result.conversations = await tx.conversation.deleteMany({ where: { id: { in: conversationIds } } });
+      result.notifications = await tx.notification.deleteMany({ where: { userId: { in: userIds } } });
+      result.refreshTokens = await tx.refreshToken.deleteMany({ where: { userId: { in: userIds } } });
+      result.passwordResetTokens = await tx.passwordResetToken.deleteMany({ where: { userId: { in: userIds } } });
+      result.reviews = await tx.review.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { reviewerId: { in: userIds } }, { studentId: { in: userIds } }, { serviceId: { in: serviceIds } }] } });
+      result.transactions = await tx.transaction.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { payerId: { in: userIds } }, { payeeId: { in: userIds } }] } });
+      result.projects = await tx.project.deleteMany({ where: { id: { in: projectIds } } });
+      result.applications = await tx.application.deleteMany({ where: { OR: [{ id: { in: applicationIds } }, { studentId: { in: userIds } }, { jobId: { in: jobIds } }] } });
+      result.jobs = await tx.job.deleteMany({ where: { id: { in: jobIds } } });
+      result.communityPosts = await tx.communityPost.deleteMany({ where: { id: { in: communityPostIds } } });
+      result.workshops = await tx.workshop.deleteMany({ where: { id: { in: workshopIds } } });
+      result.services = await tx.service.deleteMany({ where: { id: { in: serviceIds } } });
+      result.studentProfiles = await tx.studentProfile.deleteMany({ where: { id: { in: studentProfileIds } } });
+      result.userProfiles = await tx.userProfile.deleteMany({ where: { userId: { in: userIds } } });
+      result.auditLogs = await tx.auditLog.deleteMany({ where: { userId: { in: userIds } } });
+      result.users = await tx.user.deleteMany({ where: { id: { in: userIds } } });
+      return result;
+    }, { timeout: 120000 });
+
+    await writeAuditLog({
+      userId: req.user.id,
+      action: 'admin.user.purge_staging_test_accounts',
+      entityType: 'user',
+      entityId: 'staging_test_accounts',
+      payload: { users: plan.users, counts: plan.counts, deleted },
+    });
+    return ok(res, { execute: true, plan, deleted });
+  } catch (error) {
+    return fail(res, 500, 'Unable to purge staging test accounts', error.message);
   }
 });
 
