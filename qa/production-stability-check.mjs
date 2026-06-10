@@ -29,6 +29,32 @@ const checks = [
       && /const showJobStatus = canViewCommunityJobStatus\(p\);/.test(indexHtml),
   },
   {
+    name: 'Backend is the global source of truth for shared signed-in data',
+    test: () => /function backendSharedDataIsAuthoritative\(\)/.test(indexHtml)
+      && /function canUseLocalSharedCache\(entityKey=''\)/.test(indexHtml)
+      && /if \(!canUseLocalSharedCache\('applications'\)\) return \[\];/.test(indexHtml)
+      && /if \(backendSharedDataIsAuthoritative\(\) && !backendMessagesLoaded\)/.test(indexHtml)
+      && /if \(backendSharedDataIsAuthoritative\(\) && currentUser && String\(id\) === String\(currentUser\.id\) && !backendNotificationsLoaded\)/.test(indexHtml),
+  },
+  {
+    name: 'Community posts use backend list as authoritative snapshot',
+    test: () => /const nextPosts = backendPosts;/.test(indexHtml)
+      && /byId\.set\(id, normalizePostRecord\(Object\.assign\(\{\}, existing, post\)\)\);/.test(indexHtml),
+  },
+  {
+    name: 'Community applicant counts include started projects and avoid stale post count',
+    test: () => /const ignoredStatuses = new Set\(\['withdrawn','rejected','declined','removed','deleted'\]\);/.test(indexHtml)
+      && /getProjects\(\)\.forEach\(project => \{/.test(indexHtml)
+      && /const hasFreshApplicationSnapshot = backendAuthEnabled\(\) && currentUser && getBackendAccessToken\(\) && backendSyncArrayIsFresh\('applications', 60000\);/.test(indexHtml),
+  },
+  {
+    name: 'Community private status is explicitly scoped to poster or applying student',
+    test: () => /function canViewCommunityJobStatus\(post=\{\}\)/.test(indexHtml)
+      && /String\(currentUser\.id \|\| ''\) === String\(post\.authorId \|\| ''\) \|\| !!getViewerCommunityApplication\(post\.id\)/.test(indexHtml)
+      && /return `Your status: \$\{String\(application\.status \|\| 'pending'\)\.replaceAll\('_', ' '\)\}`;/.test(indexHtml)
+      && /const statusBadgeText = viewerApplication \? visibleJobStatusLabel : `Job status: \$\{visibleJobStatusLabel\}`;/.test(indexHtml),
+  },
+  {
     name: 'Direct Hire submit refreshes backend job before failing local-cache applications',
     test: () => /let job = getDirectJobById\(jobId\);/.test(indexHtml)
       && /await refreshBackendDirectJobs\(\{ rerender:false \}\);/.test(indexHtml)

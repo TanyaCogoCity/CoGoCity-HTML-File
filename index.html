@@ -1433,6 +1433,17 @@ function backendSyncArrayHydrating(entityKey=''){
   const state = backendGenericSyncState[entityKey] || {};
   return !!(state.loading || !state.loaded);
 }
+function backendSharedDataIsAuthoritative(){
+  return !!(BACKEND_MIGRATION.enabled && currentUser && getBackendAccessToken());
+}
+function backendSharedEntityLoaded(entityKey=''){
+  const state = backendGenericSyncState[entityKey] || {};
+  return !!(state.loaded || state.loadedAt);
+}
+function canUseLocalSharedCache(entityKey=''){
+  if (!backendSharedDataIsAuthoritative()) return true;
+  return backendSharedEntityLoaded(entityKey);
+}
 function isInlineImageDataSource(value=''){
   return /^data:image\//i.test(String(value || '').trim());
 }
@@ -3338,9 +3349,7 @@ function mergeCommunityPosts(localPosts=[], backendPosts=[]){
     const existing = byId.get(id);
     if (!existing) byId.set(id, normalizePostRecord(post));
     else {
-      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime() || 0;
-      const backendTime = new Date(post.updatedAt || post.createdAt || 0).getTime() || 0;
-      if (backendTime > existingTime) byId.set(id, normalizePostRecord(Object.assign({}, existing, post)));
+      byId.set(id, normalizePostRecord(Object.assign({}, existing, post)));
     }
   });
   return Array.from(byId.values()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -3358,9 +3367,7 @@ async function loadBackendCommunityPosts(options={}){
     const rawPosts = getCommunityPostResponseList(data);
     if (!rawPosts) throw new Error('Community posts response did not include a posts list');
     const backendPosts = ensureArray(rawPosts).map(normalizePostRecord);
-    const nextPosts = backendPosts.length || !getPosts().length
-      ? backendPosts
-      : mergeCommunityPosts(getPosts(), backendPosts);
+    const nextPosts = backendPosts;
     ls('cogo_posts', nextPosts);
     backendCommunityPostsEmptyConfirmedAt = backendPosts.length ? 0 : Date.now();
     backendCommunityPostsLoaded = true;
@@ -4094,6 +4101,7 @@ function saveStudentResume(userId, resume){
 }
 function getApplications(){
   ensureBackendApplicationsLoaded();
+  if (!canUseLocalSharedCache('applications')) return [];
   return ls('cogo_applications') || [];
 }
 function saveApplications(v){
@@ -4166,7 +4174,11 @@ function mergeBackendProjects(localProjects=[]){
   ensureArray(localProjects).forEach(addProject);
   return merged;
 }
-function getProjects(){ return mergeBackendProjects(ls('cogo_projects') || []); }
+function getProjects(){
+  ensureBackendProjectsLoaded();
+  if (backendSharedDataIsAuthoritative() && !backendProjectsLoaded && !backendSyncedProjectsLoaded) return [];
+  return mergeBackendProjects(ls('cogo_projects') || []);
+}
 function saveProjects(v){
   const payload = ensureArray(v);
   const localOnly = payload.filter(item => !item.backendSource);
@@ -4331,6 +4343,10 @@ async function refreshBackendMessages(options={}){
   }
 }
 function getMessages(){
+  if (backendSharedDataIsAuthoritative() && !backendMessagesLoaded) {
+    if (!backendMessagesLoading) refreshBackendMessages();
+    return [];
+  }
   const messages = ensureArray(ls('cogo_messages'));
   const normalized = messages.map(normalizeMessageRecord);
   const localOnly = normalized.filter(item => !item.backendSource);
@@ -4400,6 +4416,10 @@ function normalizeNotificationItem(item={}, source='local'){
   return notification;
 }
 function getNotifications(id){
+  if (backendSharedDataIsAuthoritative() && currentUser && String(id) === String(currentUser.id) && !backendNotificationsLoaded) {
+    if (!backendNotificationsLoading) refreshBackendNotifications({ renderNav:true });
+    return [];
+  }
   const local = ensureArray(ls('cogo_notifs_' + id)).map(item => normalizeNotificationItem(item, 'local')).filter(item => !item.backendSource);
   const backend = currentUser && String(id) === String(currentUser.id)
     ? ensureArray(ls(backendNotificationsStorageKey(id))).map(item => normalizeNotificationItem(item, 'backend'))
