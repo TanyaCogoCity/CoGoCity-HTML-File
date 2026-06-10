@@ -322,9 +322,11 @@ async function main() {
   if (RUN_DIRECT_HIRE) {
     await check('Direct Hire application persists from student session to employer/admin fresh session', async () => {
       const title = `${stamp} Direct Hire`;
+      const employerSession = sessions.ilyaA || sessions.adminA;
+      const employerFreshSession = sessions.ilyaFresh || sessions.adminFresh;
       const job = await request('/jobs', {
         method: 'POST',
-        headers: auth(sessions.adminA),
+        headers: auth(employerSession),
         body: JSON.stringify({
           title,
           description: `${stamp} direct hire QA job`,
@@ -354,12 +356,12 @@ async function main() {
         }),
       });
       ensure(app.id, 'direct hire application did not return id');
-      const adminApps = records(await request('/jobs/applications/me', { headers: auth(sessions.adminFresh) }));
-      ensure(adminApps.some((item) => item.id === app.id && includesJson(item, stamp)), 'fresh employer/admin session cannot see direct hire application');
-      const adminMessages = records(await request('/messages', { headers: auth(sessions.adminFresh) }));
-      ensure(includesJson(adminMessages, `${stamp} direct hire application`), 'direct hire message missing for employer/admin fresh session');
-      const adminNotifications = await request('/notifications', { headers: auth(sessions.adminFresh) });
-      ensure(includesJson(adminNotifications, title), 'direct hire notification missing for employer/admin fresh session');
+      const employerApps = records(await request('/jobs/applications/me', { headers: auth(employerFreshSession) }));
+      ensure(employerApps.some((item) => item.id === app.id && includesJson(item, stamp)), 'fresh employer session cannot see direct hire application');
+      const employerMessages = records(await request('/messages', { headers: auth(employerFreshSession) }));
+      ensure(includesJson(employerMessages, `${stamp} direct hire application`), 'direct hire message missing for employer fresh session');
+      const employerNotifications = await request('/notifications', { headers: auth(employerFreshSession) });
+      ensure(includesJson(employerNotifications, title), 'direct hire notification missing for employer fresh session');
       return `${directJobId}/${app.id}`;
     });
   }
