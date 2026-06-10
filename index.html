@@ -16342,8 +16342,34 @@ function shouldDisableDeclineApplicant(application){
 function getPosterCommunityJobPosts(){
   if (!currentUser) return [];
   return getPosts()
-    .filter(post => post.isJob && String(post.authorId || '') === String(currentUser.id || ''))
+    .filter(post => post.isJob && currentUserOwnsCommunityPost(post))
     .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+function currentUserOwnsCommunityPost(post={}){
+  if (!currentUser || !post) return false;
+  const currentIds = new Set([
+    String(currentUser.id || ''),
+    String(currentUser.backendUserId || ''),
+    String(resolveBackendNotificationUserId(currentUser.id) || ''),
+  ].filter(Boolean));
+  return currentIds.has(String(post.authorId || '')) || currentIds.has(String(post.author_id || ''));
+}
+function currentUserOwnsCommunityApplication(application={}){
+  if (!currentUser || !application) return false;
+  const currentIds = new Set([
+    String(currentUser.id || ''),
+    String(currentUser.backendUserId || ''),
+    String(resolveBackendNotificationUserId(currentUser.id) || ''),
+  ].filter(Boolean));
+  const employerIds = [
+    application.employerId,
+    application.employer_id,
+    application.ownerId,
+    application.owner_id,
+  ].map(value => String(value || '')).filter(Boolean);
+  if (employerIds.some(id => currentIds.has(id))) return true;
+  const post = getApplicationJobPost(application);
+  return !!(post && currentUserOwnsCommunityPost(post));
 }
 function renderEmployerCommunityJobManageCard(post){
   const count = getCommunityFeedApplicationCount(post.id);
@@ -16381,7 +16407,7 @@ function renderEmployerApplicantsBookings(el){
  ensureBackendApplicationsLoaded({ rerender:true, forceFresh:true });
  ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
  const projectAppIds = new Set(getProjects().map(p => p.applicationId));
- const allApplications = getApplications().filter(a => a.employerId === currentUser.id && a.status !== 'project_started' && !projectAppIds.has(a.id))
+ const allApplications = getApplications().filter(a => currentUserOwnsCommunityApplication(a) && a.status !== 'project_started' && !projectAppIds.has(a.id))
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
   const myApplications = allApplications.filter(a => a.status !== 'rejected');
   const declinedApplications = allApplications.filter(a => a.status === 'rejected');
@@ -16426,9 +16452,10 @@ function renderEmployerAppCard(a){
   const job = getApplicationJobPost(a);
   const actions = [];
   actions.push(`<button class="btn btn-outline btn-sm" onclick="openApplicationThread('${esc(a.id)}')">Message</button>`);
-  if (a.status === 'pending') actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
+  if (['pending','applied'].includes(String(a.status || '').toLowerCase())) actions.push(`<button class="btn btn-green btn-sm" onclick="sendOfferFromApplication('${esc(a.id)}')">Offer Job</button>`);
   if (canDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" onclick="openDeclineApplicantModal('${esc(a.id)}')">Decline</button>`);
   else if (shouldDisableDeclineApplicant(a)) actions.push(`<button class="btn btn-danger btn-sm" disabled title="Decline is only available while the job is open and the applicant has not been accepted.">Decline</button>`);
+  if (job && getCommunityFeedStatusLabel(job) !== 'Closed') actions.push(`<button class="btn btn-outline btn-sm" onclick="closeCommunityJob('${esc(job.id)}')">Close Position</button>`);
   if (a.status === 'accepted') actions.push(`<button class="btn btn-blue btn-sm" onclick="startProject('${esc(a.id)}','${esc(a.status)}')">Start Project</button>`);
 
   return `
@@ -16436,7 +16463,7 @@ function renderEmployerAppCard(a){
       <div class="split">
         <div>
           <div style="font-weight:800;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            ${student ? `<a class="link-btn" href="${getProfileUrl(student.userId)}">${esc(a.studentName)}</a>` : `<span>${esc(a.studentName)}</span>`}
+            ${student ? `<a class="link-btn" href="${getProfileUrl(student.userId)}">${esc(a.studentName)}</a>` : renderUserNameLink(a.studentUserId || a.student_user_id, a.studentName || 'Student', true)}
             <span class="muted">\u2192</span>
             ${a.postId ? `<button class="link-btn" onclick="openPostFromDashboard('${esc(a.postId)}')">${esc(a.jobTitle)}</button>` : `<span>${esc(a.jobTitle)}</span>`}
           </div>

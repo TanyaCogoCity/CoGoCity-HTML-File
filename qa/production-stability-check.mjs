@@ -56,6 +56,14 @@ const checks = [
       && /onclick="closeCommunityJob\('\$\{esc\(post\.id\)\}'\)">Close Position/.test(indexHtml),
   },
   {
+    name: 'Community poster dashboard finds applicants by owned post as well as employer id',
+    test: () => /function currentUserOwnsCommunityApplication\(application=\{\}\)/.test(indexHtml)
+      && /const post = getApplicationJobPost\(application\);/.test(indexHtml)
+      && /currentUserOwnsCommunityApplication\(a\) && a\.status !== 'project_started'/.test(indexHtml)
+      && /renderUserNameLink\(a\.studentUserId \|\| a\.student_user_id, a\.studentName \|\| 'Student', true\)/.test(indexHtml)
+      && /openPostFromDashboard\('\$\{esc\(a\.postId\)\}'\)/.test(indexHtml),
+  },
+  {
     name: 'Direct Hire submit refreshes backend job before failing local-cache applications',
     test: () => /let job = getDirectJobById\(jobId\);/.test(indexHtml)
       && /await refreshBackendDirectJobs\(\{ rerender:false \}\);/.test(indexHtml)
