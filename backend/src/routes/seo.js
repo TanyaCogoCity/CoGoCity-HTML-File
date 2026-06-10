@@ -97,6 +97,27 @@ function blogSlug(row) {
   return String(payload.slug || '').trim() || uniqueSlug([payload.title || 'blog'], row.recordId);
 }
 
+function blogImage(payload = {}) {
+  return payload.seo_image
+    || payload.og_image
+    || payload.featured_image
+    || payload.featuredImage
+    || payload.image
+    || DEFAULT_SOCIAL_IMAGE;
+}
+
+function blogDescription(payload = {}) {
+  return compactText(
+    payload.seo_description
+      || payload.meta_description
+      || payload.excerpt
+      || payload.description
+      || payload.content
+      || 'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
+    155
+  );
+}
+
 function studentIndexable(profile) {
   const user = profile.user || {};
   const metadata = user.userProfile?.metadata || {};
@@ -274,14 +295,45 @@ function communityMeta(row) {
 function blogMeta(row) {
   const payload = row.payload || {};
   const path = `/blog/${blogSlug(row)}`;
+  const title = compactText(`${payload.seo_title || payload.title || 'CoGo City Blog'} | CoGo City`, 70);
+  const description = blogDescription(payload);
+  const image = blogImage(payload);
+  const authorName = payload.authorName || payload.author_name || 'CoGo Team';
+  const publishedAt = payload.date || row.createdAt || row.updatedAt;
+  const updatedAt = payload.updatedAt || payload.updated_at || row.updatedAt || publishedAt;
   return withDefaults({
     type: 'article',
-    title: compactText(`${payload.title || 'CoGo City Blog'} | CoGo City`, 70),
-    description: compactText(payload.excerpt || payload.description || payload.content || 'Read CoGo City articles about student jobs and community opportunities.', 155),
+    title,
+    description,
     path,
     hash: `#/blog/${encodeURIComponent(blogSlug(row))}`,
-    image: payload.featured_image || payload.featuredImage || payload.image || DEFAULT_SOCIAL_IMAGE,
+    image,
     updatedAt: row.updatedAt,
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: compactText(payload.title || payload.seo_title || 'CoGo City Blog', 110),
+      description,
+      image,
+      datePublished: publishedAt,
+      dateModified: updatedAt,
+      author: {
+        '@type': 'Organization',
+        name: authorName,
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: 'CoGo City',
+        logo: {
+          '@type': 'ImageObject',
+          url: `${PRODUCTION_ORIGIN}/assets/cogocity-logo-blue.jpg`,
+        },
+      },
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        '@id': urlFor(path),
+      },
+    },
   });
 }
 

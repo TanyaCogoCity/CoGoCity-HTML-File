@@ -903,6 +903,12 @@ function setCanonicalUrl(url=''){
   const canonical = ensureHeadTag('link[rel="canonical"]', 'link', { rel:'canonical' });
   canonical.setAttribute('href', url || 'https://cogocity.com/');
 }
+function compactSeoText(value='', max=160){
+  const text = stripHtmlTags(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  const clipped = text.slice(0, max - 1).replace(/\s+\S*$/, '').trim();
+  return `${clipped || text.slice(0, max - 1).trim()}…`;
+}
 function normalizeSeoRoutePath(value=''){
   const raw = String(value || '/').trim();
   const hashRoute = raw.includes('#') ? raw.slice(raw.indexOf('#') + 1) : raw;
@@ -3037,6 +3043,9 @@ function normalizeBlogPostRecord(post){
     video_url: '',
     video_type: '',
     video_id: '',
+    seo_title: '',
+    seo_description: '',
+    seo_image: '',
     status: 'published',
     publishRequested: true,
     updatedAt: null
@@ -3083,6 +3092,9 @@ function normalizeBlogPostRecord(post){
   const rawImages = Array.isArray(normalized.entity_images) && normalized.entity_images.length ? normalized.entity_images : normalized.images;
   normalized.entity_images = upsertImageRecords(rawImages, { source:'article_gallery', entity_type:'article', entity_id: normalized.id || '' });
   normalized.images = [...normalized.entity_images];
+  normalized.seo_title = String(normalized.seo_title || normalized.meta_title || '').trim();
+  normalized.seo_description = String(normalized.seo_description || normalized.meta_description || '').trim();
+  normalized.seo_image = String(normalized.seo_image || normalized.og_image || normalized.featured_image || '').trim();
   if (!normalized.video_url && normalized.videoLink) normalized.video_url = normalized.videoLink;
   if (!normalized.videoUrl && normalized.videoLink) normalized.videoUrl = normalized.videoLink;
   delete normalized.videoLink;
@@ -9505,6 +9517,95 @@ function formatArticleBodyHtml(content=''){
 function getBlogPostBySlug(slug=''){
   return getPublicBlogPosts().find(post => post.slug === slug);
 }
+function getBlogPostSeoImageUrl(post={}){
+  const imageSources = [post.seo_image, post.featured_image, post.image_id, post.featuredImage, post.media_type === 'image' ? post.media_url : ''].filter(Boolean);
+  for (const source of imageSources) {
+    const image = getImageView(source, 'full') || getImageView(source, 'thumb');
+    if (image && image.url) return image.url;
+    if (/^https?:\/\//i.test(String(source || ''))) return source;
+  }
+  return 'https://cogocity.com/assets/cogocity-social-share.png';
+}
+function getBlogPostSeoDescription(post={}){
+  return compactSeoText(
+    post.seo_description
+      || post.meta_description
+      || post.excerpt
+      || post.content
+      || 'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
+    155
+  );
+}
+function buildBlogListSeoMeta(){
+  const path = '/blog';
+  return {
+    type:'website',
+    title:'Student Work and Career Blog | CoGo City',
+    description:'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
+    canonical:`https://cogocity.com${path}`,
+    ogUrl:`https://cogocity.com${path}`,
+    image:'https://cogocity.com/assets/cogocity-social-share.png',
+    robots:COGO_IS_STAGING ? 'noindex,nofollow' : 'index,follow',
+    schema:{
+      '@context':'https://schema.org',
+      '@type':'Blog',
+      name:'CoGo City Blog',
+      url:`https://cogocity.com${path}`,
+      description:'Articles about student jobs, entrepreneurship, safety, and real-world work experience.',
+      publisher:{
+        '@type':'Organization',
+        name:'CoGo City',
+        logo:{
+          '@type':'ImageObject',
+          url:'https://cogocity.com/assets/cogocity-logo-blue.jpg'
+        }
+      }
+    }
+  };
+}
+function buildBlogPostSeoMeta(post={}){
+  const slug = post.slug || slugifyBlogTitle(post.title || 'blog');
+  const path = `/blog/${slug}`;
+  const description = getBlogPostSeoDescription(post);
+  const image = getBlogPostSeoImageUrl(post);
+  const title = compactSeoText(`${post.seo_title || stripHtmlTags(post.title || 'CoGo City Blog')} | CoGo City`, 70);
+  const publishedAt = post.date || post.createdAt || new Date().toISOString();
+  const updatedAt = post.updatedAt || post.updated_at || publishedAt;
+  return {
+    type:'article',
+    title,
+    description,
+    canonical:`https://cogocity.com${path}`,
+    ogUrl:`https://cogocity.com${path}`,
+    image,
+    robots:COGO_IS_STAGING ? 'noindex,nofollow' : 'index,follow',
+    schema:{
+      '@context':'https://schema.org',
+      '@type':'BlogPosting',
+      headline:compactSeoText(stripHtmlTags(post.title || post.seo_title || 'CoGo City Blog'), 110),
+      description,
+      image,
+      datePublished:publishedAt,
+      dateModified:updatedAt,
+      author:{
+        '@type':'Organization',
+        name:post.authorName || post.author_name || 'CoGo Team'
+      },
+      publisher:{
+        '@type':'Organization',
+        name:'CoGo City',
+        logo:{
+          '@type':'ImageObject',
+          url:'https://cogocity.com/assets/cogocity-logo-blue.jpg'
+        }
+      },
+      mainEntityOfPage:{
+        '@type':'WebPage',
+        '@id':`https://cogocity.com${path}`
+      }
+    }
+  };
+}
 function getBlogThumbnailView(post, variant='thumb'){
   const sources = [post.featured_image, post.image_id, post.featuredImage].filter(Boolean);
   for (const source of sources) {
@@ -9550,6 +9651,7 @@ function renderBlog(){
   if (articleMatch) return renderBlogArticle(decodeURIComponent(articleMatch[1]));
   const posts = getPublicBlogPosts();
   ensureBlogImagesLoaded(posts, { rerender:true });
+  applySeoMeta(buildBlogListSeoMeta());
   const featuredPost = posts[0];
   const remainingPosts = posts.slice(1);
   document.getElementById('app').innerHTML = `
@@ -9592,6 +9694,7 @@ function renderBlogArticle(slug){
     return;
   }
   ensureBlogImagesLoaded([post], { rerender:true });
+  applySeoMeta(buildBlogPostSeoMeta(post));
   const articleImage = getImageView(post.media_type === 'image' ? post.media_url : '', 'full');
   const persistedVideoUrl = (post.videoUrl || post.video_url || '').trim();
   const videoFrameHtml = persistedVideoUrl
@@ -18830,6 +18933,8 @@ function syncAdminBlogDraftFromForm(){
   const slugEl = document.getElementById('adminBlogSlug');
   const dateEl = document.getElementById('adminBlogDate');
   const excerptEl = document.getElementById('adminBlogExcerpt');
+  const seoTitleEl = document.getElementById('adminBlogSeoTitle');
+  const seoDescriptionEl = document.getElementById('adminBlogSeoDescription');
   const authorEl = document.getElementById('adminBlogAuthor');
   const featuredEl = document.getElementById('adminBlogFeaturedImage');
   const articleImageEl = document.getElementById('adminBlogArticleImage');
@@ -18840,6 +18945,8 @@ function syncAdminBlogDraftFromForm(){
   if (slugEl) adminBlogDraft.slug = slugEl.value || '';
   if (dateEl && dateEl.value) adminBlogDraft.date = new Date(dateEl.value).toISOString();
   if (excerptEl) adminBlogDraft.excerpt = excerptEl.value || '';
+  if (seoTitleEl) adminBlogDraft.seo_title = seoTitleEl.value || '';
+  if (seoDescriptionEl) adminBlogDraft.seo_description = seoDescriptionEl.value || '';
   if (authorEl) adminBlogDraft.authorName = authorEl.value || 'CoGo Team';
   if (featuredEl) {
     const featuredValue = (featuredEl.value || '').trim();
@@ -18901,6 +19008,8 @@ function renderAdminBlogEditorHtml(){
       </div>
       <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
       <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
+      <div class="field"><label>SEO Title (optional)</label><input id="adminBlogSeoTitle" value="${esc(post.seo_title || '')}" placeholder="${esc(stripHtmlTags(post.title || 'Article title'))} | CoGo City"></div>
+      <div class="field"><label>Meta Description (optional)</label><textarea id="adminBlogSeoDescription" rows="3" maxlength="170" placeholder="120-160 characters for Google search results">${esc(post.seo_description || '')}</textarea></div>
       <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
       <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(featuredImage ? featuredImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
       <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
@@ -19152,6 +19261,9 @@ async function persistAdminBlogPost(mode='draft'){
   adminBlogDraft.featured_image = adminBlogDraft.featured_image || adminBlogDraft.featuredImage || adminBlogDraft.image_id || '';
   adminBlogDraft.image_id = adminBlogDraft.featured_image;
   adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
+  adminBlogDraft.seo_title = String(adminBlogDraft.seo_title || '').trim();
+  adminBlogDraft.seo_description = String(adminBlogDraft.seo_description || '').trim();
+  adminBlogDraft.seo_image = String(adminBlogDraft.seo_image || adminBlogDraft.featured_image || '').trim();
   adminBlogDraft.media_type = adminBlogDraft.media_type || '';
   adminBlogDraft.media_url = adminBlogDraft.media_url || '';
   adminBlogDraft.articleMediaImage = adminBlogDraft.media_type === 'image' ? adminBlogDraft.media_url : '';
