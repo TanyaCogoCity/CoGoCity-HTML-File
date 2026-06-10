@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node qa/production-stability-check.mjs",
-    "stability:check": "node qa/production-stability-check.mjs"
+    "stability:check": "node qa/production-stability-check.mjs",
+    "qa:persistence": "node qa/two-session-backend-persistence.mjs"
   }
 }
