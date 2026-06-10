@@ -1,0 +1,10 @@
+{
+  "name": "cogocity-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node qa/production-stability-check.mjs",
+    "stability:check": "node qa/production-stability-check.mjs"
+  }
+}

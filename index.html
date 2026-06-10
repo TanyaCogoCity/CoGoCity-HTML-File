@@ -10068,10 +10068,18 @@ function openDirectJobApplyModal(jobId=''){
   `, '700px');
 }
 async function submitDirectJobApplication(jobId=''){
-  const job = getDirectJobById(jobId);
+  let job = getDirectJobById(jobId);
   if (!job || !currentUser) return;
   if (requireBackendWriteSession('apply for this job')) return;
-  if (backendAuthEnabled() && !job.backendSource) return toast('Please refresh jobs from the database before applying so this application is visible to the employer.');
+  if (backendAuthEnabled() && getBackendAccessToken() && !job.backendSource) {
+    await refreshBackendDirectJobs({ rerender:false });
+    job = getDirectJobById(jobId);
+  }
+  if (backendAuthEnabled() && !job?.backendSource) return toast('This job is still loading from the database. Please try Apply again in a moment.');
+  if (job.status !== 'active') return toast('This job is not available.');
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    await refreshBackendDirectJobApplications({ rerender:false });
+  }
   const message = String((document.getElementById('directJobApplicationMessage') || {}).value || '').trim();
   if (toastRequiredFields({ 'Message for the employer':message })) return;
   if (!blockTextCheck(message)) return;
@@ -12974,7 +12982,9 @@ function getCommunityJobVisibleStatusLabel(post={}){
   return getCommunityFeedStatusLabel(post);
 }
 function isCommunityFeedJobOpen(post){
-  return post.status === 'open' || post.status === 'pending';
+  if (!post || !post.isJob) return false;
+  const status = String(post.status || 'open').toLowerCase();
+  return !['closed','completed','in_progress','removed'].includes(status);
 }
 function getCommunityPostSearchText(post={}){
   return [
@@ -13393,7 +13403,8 @@ function renderPost(p){
   const appsCount = Number(p.application_count ?? getCommunityFeedApplicationCount(p.id));
   const jobIsOpen = p.isJob && isCommunityFeedJobOpen(p);
   const isPending = p.status === 'pending';
-  const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen;
+  const viewerApplication = getViewerCommunityApplication(p.id);
+  const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen && !viewerApplication;
   const canManage = currentUser && currentUser.id === p.authorId;
   const showJobStatus = canViewCommunityJobStatus(p);
   const visibleJobStatusLabel = showJobStatus ? getCommunityJobVisibleStatusLabel(p) : '';
@@ -13435,7 +13446,9 @@ function renderPost(p){
         <button class="btn btn-outline btn-sm" onclick="toggleLike('${esc(p.id)}')">${liked ? '\u2764\uFE0F Liked' : '\u{1F90D} Like'} (${(p.likes||[]).length})</button>
         <button class="btn btn-outline btn-sm" onclick="sharePost('${esc(p.id)}')">\u2197 Share (${esc(Number(p.shares || 0))})</button>
         <button class="btn btn-outline btn-sm" onclick="togglePostComments('${esc(p.id)}')">\u{1F4AC} Comment (${esc(comments.length)})</button>
-        ${p.isJob && currentUser && currentUser.role === 'student' ? `<button class="btn ${jobIsOpen ? 'btn-blue' : 'btn-outline'} btn-sm" style="${jobIsOpen ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${jobIsOpen ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${jobIsOpen ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>` : ''}
+        ${p.isJob && currentUser && currentUser.role === 'student' ? (viewerApplication
+          ? `<button class="btn btn-outline btn-sm" onclick="dashSection='jobs_bookings';studentJobsTab='jobs';goDashboard()">View Status</button>`
+          : `<button class="btn ${canApply ? 'btn-blue' : 'btn-outline'} btn-sm" style="${canApply ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${canApply ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${canApply ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>`) : ''}
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
@@ -13640,14 +13653,20 @@ async function deletePost(postId){
   if (dashSection === 'myposts') renderDashboard();
   else renderCommunity();
 }
-function applyToPost(postId){
+async function applyToPost(postId){
   if (!currentUser) return openLoginModal();
   if (currentUser.role !== 'student') return toast('Only students can apply.');
   const p = getPosts().find(x => x.id === postId);
   if (!p) return;
   if (!isCommunityFeedJobOpen(p)) return toast('This job is no longer accepting applications.');
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    await loadBackendArraySetting('applications', 'cogo_applications', { force:true, rerender:false });
+  }
   const apps = getApplications();
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
+    dashSection = 'jobs_bookings';
+    studentJobsTab = 'jobs';
+    renderCommunity();
     return toast("You\u2019ve already applied to this gig. You can check the status in your Dashboard under My Community Gigs.");
   }
   if (!currentStudentProfile()) return goToAddProfile();
@@ -13670,6 +13689,9 @@ async function submitApplication(postId){
   const student = currentStudentProfile();
   const primaryService = currentStudentPrimaryService();
   if (!p || !student) return toast('Student profile required.');
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    await loadBackendArraySetting('applications', 'cogo_applications', { force:true, rerender:false });
+  }
   const apps = getApplications();
   if (apps.some(a => a.postId === postId && a.studentUserId === currentUser.id)) {
     return toast("You\u2019ve already applied to this gig. You can check the status in your Dashboard under My Community Gigs.");
