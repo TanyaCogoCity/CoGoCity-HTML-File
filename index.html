@@ -773,6 +773,7 @@ let adminContactSending = false;
 let studentSignupStep = 1;
 let studentSignupDraft = null;
 let studentSignupEditingServiceIndex = null;
+let studentSignupServiceFormResetToken = 0;
 let employerSignupStep = 1;
 let employerSignupMode = 'neighbor';
 let employerSignupDraft = null;
@@ -7459,8 +7460,31 @@ function getStudentSignupSuggestions(){
 function openStudentSignupWorkflow(step=1){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupStep = step;
-  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location:'', availability:'' };
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = createEmptyStudentSignupServiceForm();
   renderStudentSignupModal();
+}
+function createEmptyStudentSignupServiceForm(){
+  studentSignupServiceFormResetToken += 1;
+  return { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location:'', availability:'', resetToken: studentSignupServiceFormResetToken };
+}
+function clearStudentSignupServiceInputsIfBlank(){
+  if (studentSignupStep !== 4 || studentSignupEditingServiceIndex !== null || !studentSignupDraft) return;
+  const form = studentSignupDraft.serviceForm || {};
+  const hasDraftValues = !!(form.title || form.description || getRenderableVideoUrl(form) || form.location || form.availability || Number(form.rate || 0) || (form.images || []).length);
+  if (hasDraftValues) return;
+  [
+    'studentFlowServiceTitle',
+    'studentFlowServiceDescription',
+    'studentFlowServiceVideoLink',
+    'studentFlowServiceRate',
+    'studentFlowServiceLocation',
+    'studentFlowServiceAvailability'
+  ].forEach(id => {
+    const el = getStudentSignupElement(id);
+    if (el) el.value = '';
+  });
+  const preview = document.getElementById('student-service-video-preview');
+  if (preview) preview.innerHTML = renderVideoPreviewHtml('', 'Service video preview');
 }
 function renderSignupLegalAcknowledgement(id='signupLegalAck'){
   return `
@@ -7563,6 +7587,7 @@ function renderStudentSignupModal(){
     </div>
   `, '900px');
   setTimeout(initGoogleAddressFields, 0);
+  setTimeout(clearStudentSignupServiceInputsIfBlank, 0);
 }
 function renderStudentSignupStepContent(){
   const d = studentSignupDraft;
@@ -7624,8 +7649,8 @@ function renderStudentSignupStepContent(){
         </div>
       ` : ''}
       <div style="font-weight:800;margin-bottom:10px">${studentSignupEditingServiceIndex === null ? 'Create Service' : 'Edit Service'}</div>
-      <div class="field"><label>Title</label><input id="studentFlowServiceTitle" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
-      <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
+      <div class="field"><label>Title</label><input id="studentFlowServiceTitle" autocomplete="off" value="${esc((d.serviceForm || {}).title || '')}" placeholder="Bike repair helper" oninput="syncStudentSignupServiceForm()"></div>
+      <div class="field"><label>Description</label><textarea id="studentFlowServiceDescription" autocomplete="off" placeholder="What do you offer?" oninput="syncStudentSignupServiceForm()">${esc((d.serviceForm || {}).description || '')}</textarea></div>
       <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleStudentSignupServiceImagesUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderEditableSingleImage(((d.serviceForm || {}).images || [])[0] || '', 'Service image', 'removeStudentSignupServiceImage()', 120, 'No service image added yet.')}
@@ -7633,10 +7658,10 @@ function renderStudentSignupStepContent(){
       <div class="field"><label>Upload Service Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupServiceVideoUpload(this)"></div>
       <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
-        <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" value="${esc((d.serviceForm || {}).rate || '')}" placeholder="20" oninput="syncStudentSignupServiceForm()"></div>
-        <div class="field"><label>Service Area</label><input id="studentFlowServiceLocation" value="${esc((d.serviceForm || {}).location || extractCity(d.address || ''))}" placeholder="Danville, CA or online" oninput="syncStudentSignupServiceForm()"><div class="small muted" style="margin-top:6px">This can be a general service area; your full home address stays private.</div></div>
+        <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" autocomplete="off" value="${esc((d.serviceForm || {}).rate || '')}" placeholder="20" oninput="syncStudentSignupServiceForm()"></div>
+        <div class="field"><label>Service Area</label><input id="studentFlowServiceLocation" autocomplete="off" value="${esc((d.serviceForm || {}).location || '')}" placeholder="Danville, CA or online" oninput="syncStudentSignupServiceForm()"><div class="small muted" style="margin-top:6px">This can be a general service area; your full home address stays private.</div></div>
       </div>
-      <div class="field"><label>Availability</label><input id="studentFlowServiceAvailability" value="${esc((d.serviceForm || {}).availability || '')}" placeholder="Weekday afternoons \u00B7 Weekends" oninput="syncStudentSignupServiceForm()"></div>
+      <div class="field"><label>Availability</label><input id="studentFlowServiceAvailability" autocomplete="off" value="${esc((d.serviceForm || {}).availability || '')}" placeholder="Weekday afternoons \u00B7 Weekends" oninput="syncStudentSignupServiceForm()"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-blue" onclick="saveStudentSignupService()">${studentSignupEditingServiceIndex === null ? 'Save Service' : 'Update Service'}</button>
         <button class="btn btn-outline" onclick="startNewStudentSignupService()">Add Another Service</button>
@@ -7741,7 +7766,7 @@ async function saveStudentSignupStep(step){
       };
       studentSignupDraft.services.push(service);
       studentSignupEditingServiceIndex = null;
-      studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location: extractCity(studentSignupDraft.address || ''), availability:'' };
+      studentSignupDraft.serviceForm = createEmptyStudentSignupServiceForm();
     }
     if (!(studentSignupDraft.services || []).length) return toast('Please save at least one service before continuing.'), false;
     return true;
@@ -7845,7 +7870,7 @@ function addStudentSignupProfileImageFromLibrary(imageId){
 }
 function syncStudentSignupServiceForm(){
   if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
-  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location:'', availability:'' };
+  if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = createEmptyStudentSignupServiceForm();
   const titleEl = getStudentSignupElement('studentFlowServiceTitle');
   const descriptionEl = getStudentSignupElement('studentFlowServiceDescription');
   const videoEl = getStudentSignupElement('studentFlowServiceVideoLink');
@@ -7899,7 +7924,7 @@ function removeStudentSignupServiceImage(){
 }
 function startNewStudentSignupService(){
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location: extractCity(studentSignupDraft.address || ''), availability:'' };
+  studentSignupDraft.serviceForm = createEmptyStudentSignupServiceForm();
   renderStudentSignupModal();
 }
 function editStudentSignupService(index){
@@ -7943,7 +7968,7 @@ function saveStudentSignupService(){
   if (studentSignupEditingServiceIndex !== null) studentSignupDraft.services[studentSignupEditingServiceIndex] = service;
   else studentSignupDraft.services.push(service);
   studentSignupEditingServiceIndex = null;
-  studentSignupDraft.serviceForm = { title:'', description:'', images:[], video_url:'', video_type:'', video_id:'', rate:'', location: extractCity(studentSignupDraft.address || ''), availability:'' };
+  studentSignupDraft.serviceForm = createEmptyStudentSignupServiceForm();
   toast('Service saved.');
   renderStudentSignupModal();
 }
