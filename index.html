@@ -5882,8 +5882,14 @@ function pushNotif(userId, title, action=''){
     ? dashboardLinkForAction(action)
     : '/dashboard?section=notifications';
   const dedupeKey = action && typeof action === 'object' ? String(action.dedupeKey || '').trim() : '';
-  if (dedupeKey && items.some(item => item && item.dedupeKey === dedupeKey)) return;
-  const item = { id: uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() };
+  const notificationId = action && typeof action === 'object' ? String(action.notificationId || '').trim() : '';
+  const existingItem = dedupeKey ? items.find(item => item && item.dedupeKey === dedupeKey) : null;
+  if (existingItem) {
+    const backendUserId = resolveBackendNotificationUserId(userId);
+    const canSyncDirectly = currentUser && backendAuthEnabled() && getBackendAccessToken() && backendUserId;
+    return { item: existingItem, syncPromise: canSyncDirectly ? syncNotificationEmail(backendUserId, existingItem) : Promise.resolve(null) };
+  }
+  const item = { id: notificationId || uid('n'), title, action, link, dedupeKey: dedupeKey || undefined, read:false, createdAt:new Date().toISOString() };
   items.unshift(item);
   saveNotifications(userId, items.slice(0, 50));
   const backendUserId = resolveBackendNotificationUserId(userId);
@@ -12885,7 +12891,7 @@ function openProfile(studentId){
 
 // ---------- Community ----------
 function getCommunityFeedApplicationCount(postId, applications=getApplications()){
-  const countableStatuses = new Set(['pending','applied','offer_sent','offer_pending']);
+  const countableStatuses = new Set(['pending','applied','offer_sent','offer_pending','accepted']);
   return applications.filter(application => application.postId === postId && countableStatuses.has(application.status)).length;
 }
 function syncCommunityJobApplicationCounts(applications=getApplications()){
@@ -12924,6 +12930,23 @@ function getCommunityFeedStatusLabel(post){
     return 'Open';
   }
   return 'Closed';
+}
+function getCommunityFeedApplicantCountLabel(count=0){
+  const total = Number(count || 0);
+  return `${total} Applicant${total === 1 ? '' : 's'}`;
+}
+function getViewerCommunityApplication(postId=''){
+  if (!currentUser || currentUser.role !== 'student') return null;
+  return getApplications().find(application => String(application.postId || '') === String(postId || '') && String(application.studentUserId || application.student_user_id || '') === String(currentUser.id || '')) || null;
+}
+function canViewCommunityJobStatus(post={}){
+  if (!currentUser || !post || !post.isJob) return false;
+  return String(currentUser.id || '') === String(post.authorId || '') || !!getViewerCommunityApplication(post.id);
+}
+function getCommunityJobVisibleStatusLabel(post={}){
+  const application = getViewerCommunityApplication(post.id);
+  if (application) return String(application.status || 'pending').replaceAll('_', ' ');
+  return getCommunityFeedStatusLabel(post);
 }
 function isCommunityFeedJobOpen(post){
   return post.status === 'open' || post.status === 'pending';
@@ -13347,6 +13370,8 @@ function renderPost(p){
   const isPending = p.status === 'pending';
   const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen;
   const canManage = currentUser && currentUser.id === p.authorId;
+  const showJobStatus = canViewCommunityJobStatus(p);
+  const visibleJobStatusLabel = showJobStatus ? getCommunityJobVisibleStatusLabel(p) : '';
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
   const comments = ensureArray(p.comments);
   const commentsOpen = openPostCommentId === p.id;
@@ -13374,7 +13399,8 @@ function renderPost(p){
             <span>\u{1F4B0} $${esc(p.rate)}/hr</span>
             <span>\u23F1\uFE0F ${esc(p.hoursNeeded)} hours</span>
             <span>\u{1F4CD} ${esc(p.location)}</span>
-            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#E0F2FE' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#0369A1' : '#374151')};font-size:.78rem;font-weight:700">${esc(getCommunityFeedStatusLabel(p))}</span>
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(appsCount))}</span>
+            ${showJobStatus ? `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#EEF2FF' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#3730A3' : '#374151')};font-size:.78rem;font-weight:700">Status: ${esc(visibleJobStatusLabel)}</span>` : ''}
           </div>
           ${renderFormattedLongText(p.description || '', { small:true })}
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
@@ -16376,20 +16402,19 @@ async function confirmSendOffer(appId){
   if (!await persistApplicationsPermanently(apps, 'Backend offer send failed. Please try again so the offer is saved for everyone.')) return;
   syncCommunityJobApplicationCounts(apps);
   syncCommunityJobStatus(a.postId, apps);
-  if (!backendAuthEnabled() || currentUser.role === 'admin' || String(currentUser.id) === String(a.studentUserId)) {
-    const notification = pushNotif(a.studentUserId, `You have an offer for "${title}"`, {
-      type:'dashboard',
-      section:'jobs_bookings',
-      studentJobsTab:'jobs',
-      applicationId: a.id,
-      dedupeKey: `community_offer:${a.id}:${a.studentUserId}`
-    });
-    if (backendAuthEnabled() && notification?.syncPromise && (currentUser.role === 'admin' || String(currentUser.id) === String(a.studentUserId))) {
-      const syncResult = await notification.syncPromise;
-      if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
-        toast('Offer saved, but student notification was not confirmed. Please contact CoGo City support.');
-        return;
-      }
+  const notification = pushNotif(a.studentUserId, `You have an offer for "${title}"`, {
+    type:'dashboard',
+    section:'jobs_bookings',
+    studentJobsTab:'jobs',
+    applicationId: a.id,
+    notificationId: `${a.id}:offer_sent`,
+    dedupeKey: `community_offer:${a.id}:${a.studentUserId}`
+  });
+  if (backendAuthEnabled() && notification?.syncPromise) {
+    const syncResult = await notification.syncPromise;
+    if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
+      toast('Offer saved, but student notification was not confirmed. Please contact CoGo City support.');
+      return;
     }
   }
   closeModal();
