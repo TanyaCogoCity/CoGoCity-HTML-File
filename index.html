@@ -12924,8 +12924,20 @@ function openProfile(studentId){
 
 // ---------- Community ----------
 function getCommunityFeedApplicationCount(postId, applications=getApplications()){
-  const countableStatuses = new Set(['pending','applied','offer_sent','offer_pending','accepted']);
-  return applications.filter(application => application.postId === postId && countableStatuses.has(application.status)).length;
+  const normalizedPostId = String(postId || '');
+  const ignoredStatuses = new Set(['withdrawn','rejected','declined','removed','deleted']);
+  const applicationIds = new Set();
+  applications.forEach(application => {
+    if (String(application.postId || '') !== normalizedPostId) return;
+    const status = String(application.status || 'pending').toLowerCase();
+    if (ignoredStatuses.has(status)) return;
+    if (application.id) applicationIds.add(String(application.id));
+  });
+  getProjects().forEach(project => {
+    if (String(project.postId || '') !== normalizedPostId) return;
+    if (project.applicationId) applicationIds.add(String(project.applicationId));
+  });
+  return applicationIds.size;
 }
 function syncCommunityJobApplicationCounts(applications=getApplications()){
   const posts = getPosts();
@@ -12978,7 +12990,7 @@ function canViewCommunityJobStatus(post={}){
 }
 function getCommunityJobVisibleStatusLabel(post={}){
   const application = getViewerCommunityApplication(post.id);
-  if (application) return String(application.status || 'pending').replaceAll('_', ' ');
+  if (application) return `Your status: ${String(application.status || 'pending').replaceAll('_', ' ')}`;
   return getCommunityFeedStatusLabel(post);
 }
 function isCommunityFeedJobOpen(post){
@@ -13400,7 +13412,9 @@ async function submitPost(){
   renderCommunity();
 }
 function renderPost(p){
-  const appsCount = Number(p.application_count ?? getCommunityFeedApplicationCount(p.id));
+  const calculatedAppsCount = getCommunityFeedApplicationCount(p.id);
+  const hasFreshApplicationSnapshot = backendAuthEnabled() && currentUser && getBackendAccessToken() && backendSyncArrayIsFresh('applications', 60000);
+  const appsCount = hasFreshApplicationSnapshot ? calculatedAppsCount : Math.max(Number(p.application_count || 0), calculatedAppsCount);
   const jobIsOpen = p.isJob && isCommunityFeedJobOpen(p);
   const isPending = p.status === 'pending';
   const viewerApplication = getViewerCommunityApplication(p.id);
@@ -13408,6 +13422,7 @@ function renderPost(p){
   const canManage = currentUser && currentUser.id === p.authorId;
   const showJobStatus = canViewCommunityJobStatus(p);
   const visibleJobStatusLabel = showJobStatus ? getCommunityJobVisibleStatusLabel(p) : '';
+  const statusBadgeText = viewerApplication ? visibleJobStatusLabel : `Job status: ${visibleJobStatusLabel}`;
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
   const comments = ensureArray(p.comments);
   const commentsOpen = openPostCommentId === p.id;
@@ -13436,7 +13451,7 @@ function renderPost(p){
             <span>\u23F1\uFE0F ${esc(p.hoursNeeded)} hours</span>
             <span>\u{1F4CD} ${esc(p.location)}</span>
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(appsCount))}</span>
-            ${showJobStatus ? `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#EEF2FF' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#3730A3' : '#374151')};font-size:.78rem;font-weight:700">Status: ${esc(visibleJobStatusLabel)}</span>` : ''}
+            ${showJobStatus ? `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#EEF2FF' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#3730A3' : '#374151')};font-size:.78rem;font-weight:700">${esc(statusBadgeText)}</span>` : ''}
           </div>
           ${renderFormattedLongText(p.description || '', { small:true })}
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
