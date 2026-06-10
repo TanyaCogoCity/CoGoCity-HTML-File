@@ -2521,11 +2521,11 @@ function mergeBackendStudentRecords(localStudents=[]){
       const localService = localList.find(item => item && service && item.id && service.id && String(item.id) === String(service.id)) || null;
       if (!localService) return service;
       return Object.assign({}, service, {
-        reviews: ensureArray(localService.reviews).length ? localService.reviews : service.reviews,
-        review_count: localService.review_count ?? localService.reviewCount ?? service.review_count ?? service.reviewCount,
-        reviewCount: localService.reviewCount ?? localService.review_count ?? service.reviewCount ?? service.review_count,
-        average_rating: localService.average_rating ?? localService.averageRating ?? service.average_rating ?? service.averageRating,
-        averageRating: localService.averageRating ?? localService.average_rating ?? service.averageRating ?? service.average_rating
+        reviews: service.reviews,
+        review_count: service.review_count ?? service.reviewCount,
+        reviewCount: service.reviewCount ?? service.review_count,
+        average_rating: service.average_rating ?? service.averageRating,
+        averageRating: service.averageRating ?? service.average_rating
       });
     });
   };
@@ -2534,7 +2534,7 @@ function mergeBackendStudentRecords(localStudents=[]){
     const localMatch = findLocalMatch(student);
     const mergedStudent = localMatch ? Object.assign({}, localMatch, student, {
       services: mergeServices(student.services, localMatch.services),
-      reviews: ensureArray(localMatch.reviews).length ? localMatch.reviews : student.reviews
+      reviews: student.reviews
     }) : student;
     merged.push(normalizeStudentRecord(mergedStudent));
   });
