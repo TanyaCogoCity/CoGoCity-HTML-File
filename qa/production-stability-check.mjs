@@ -10,7 +10,7 @@ const checks = [
   {
     name: 'Community Apply treats legacy missing status as open',
     test: () => /const status = String\(post\.status \|\| 'open'\)\.toLowerCase\(\);/.test(indexHtml)
-      && /!\['closed','completed','in_progress','removed'\]\.includes\(status\)/.test(indexHtml),
+      && /!\['closed','completed','in_progress','project_started','removed'\]\.includes\(status\)/.test(indexHtml),
   },
   {
     name: 'Community Apply hides duplicate Apply button after student applied',
@@ -24,9 +24,10 @@ const checks = [
       && /loadBackendArraySetting\('applications', 'cogo_applications', \{ force:true, rerender:false \}\)/.test(indexHtml),
   },
   {
-    name: 'Community public feed shows applicant counts separately from private status',
+    name: 'Community public feed shows only public job status and applicant count',
     test: () => /getCommunityFeedApplicantCountLabel\(appsCount\)/.test(indexHtml)
-      && /const showJobStatus = canViewCommunityJobStatus\(p\);/.test(indexHtml),
+      && /const publicJobStatusLabel = getCommunityFeedStatusLabel\(p\);/.test(indexHtml)
+      && /return getCommunityJobDerivedStatus\(post\) === 'closed' \? 'Closed' : 'Open';/.test(indexHtml),
   },
   {
     name: 'Backend is the global source of truth for shared signed-in data',
@@ -43,16 +44,16 @@ const checks = [
   },
   {
     name: 'Community applicant counts include started projects and avoid stale post count',
-    test: () => /const ignoredStatuses = new Set\(\['withdrawn','rejected','declined','removed','deleted'\]\);/.test(indexHtml)
+    test: () => /const ignoredStatuses = new Set\(\['withdrawn','removed','deleted'\]\);/.test(indexHtml)
       && /getProjects\(\)\.forEach\(project => \{/.test(indexHtml)
       && /const hasFreshApplicationSnapshot = backendAuthEnabled\(\) && currentUser && getBackendAccessToken\(\) && backendSyncArrayIsFresh\('applications', 60000\);/.test(indexHtml),
   },
   {
-    name: 'Community private status is explicitly scoped to poster or applying student',
-    test: () => /function canViewCommunityJobStatus\(post=\{\}\)/.test(indexHtml)
-      && /String\(currentUser\.id \|\| ''\) === String\(post\.authorId \|\| ''\) \|\| !!getViewerCommunityApplication\(post\.id\)/.test(indexHtml)
-      && /return `Your status: \$\{String\(application\.status \|\| 'pending'\)\.replaceAll\('_', ' '\)\}`;/.test(indexHtml)
-      && /const statusBadgeText = viewerApplication \? visibleJobStatusLabel : `Job status: \$\{visibleJobStatusLabel\}`;/.test(indexHtml),
+    name: 'Community rejection stays private and does not allow another offer',
+    test: () => /if \(!await persistCommunityJobDerivedState\(application\.postId, apps/.test(indexHtml)
+      && /if \(!\['pending','applied'\]\.includes\(String\(a\.status \|\| ''\)\.toLowerCase\(\)\)\) return toast\('This applicant can no longer receive an offer\.'\);/.test(indexHtml)
+      && /function renderEmployerCommunityJobManageCard\(post\)/.test(indexHtml)
+      && /onclick="closeCommunityJob\('\$\{esc\(post\.id\)\}'\)">Close Position/.test(indexHtml),
   },
   {
     name: 'Direct Hire submit refreshes backend job before failing local-cache applications',

@@ -12945,7 +12945,7 @@ function openProfile(studentId){
 // ---------- Community ----------
 function getCommunityFeedApplicationCount(postId, applications=getApplications()){
   const normalizedPostId = String(postId || '');
-  const ignoredStatuses = new Set(['withdrawn','rejected','declined','removed','deleted']);
+  const ignoredStatuses = new Set(['withdrawn','removed','deleted']);
   const applicationIds = new Set();
   applications.forEach(application => {
     if (String(application.postId || '') !== normalizedPostId) return;
@@ -12958,6 +12958,18 @@ function getCommunityFeedApplicationCount(postId, applications=getApplications()
     if (project.applicationId) applicationIds.add(String(project.applicationId));
   });
   return applicationIds.size;
+}
+function getCommunityJobDerivedStatus(post={}, applications=getApplications()){
+  if (!post || !post.isJob) return '';
+  const currentStatus = String(post.status || 'open').toLowerCase();
+  if (['closed','completed','in_progress','project_started'].includes(currentStatus)) return 'closed';
+  const postId = String(post.id || '');
+  const hasHiredStudent = ensureArray(applications).some(application => {
+    if (String(application.postId || '') !== postId) return false;
+    return ['accepted','project_started','in_progress','completed'].includes(String(application.status || '').toLowerCase());
+  });
+  const hasProject = getProjects().some(project => String(project.postId || '') === postId);
+  return hasHiredStudent || hasProject ? 'closed' : 'open';
 }
 function syncCommunityJobApplicationCounts(applications=getApplications()){
   const posts = getPosts();
@@ -12977,24 +12989,28 @@ function syncCommunityJobStatus(postId, applications=getApplications()){
   if (!postId) return;
   const posts = getPosts();
   const post = posts.find(item => item.id === postId && item.isJob);
-  if (!post || ['in_progress','completed'].includes(post.status)) return;
-  const relatedApplications = applications.filter(application => application.postId === postId);
-  const hasAccepted = relatedApplications.some(application => application.status === 'accepted');
-  const hasOfferPending = relatedApplications.some(application => ['offer_sent','offer_pending'].includes(application.status));
-  const nextStatus = hasAccepted ? 'closed' : (hasOfferPending ? 'pending' : (post.status === 'closed' ? 'closed' : 'open'));
+  if (!post) return;
+  const nextStatus = getCommunityJobDerivedStatus(post, applications);
   if (post.status !== nextStatus) {
     post.status = nextStatus;
     savePosts(posts);
   }
 }
+async function persistCommunityJobDerivedState(postId='', applications=getApplications(), failureMessage='Backend job status update failed. Please try again so this change is saved for everyone.'){
+  if (!postId) return true;
+  const posts = getPosts();
+  const post = posts.find(item => String(item.id || '') === String(postId || '') && item.isJob);
+  if (!post) return true;
+  const nextCount = getCommunityFeedApplicationCount(post.id, applications);
+  const nextStatus = getCommunityJobDerivedStatus(post, applications);
+  const changed = Number(post.application_count || 0) !== nextCount || String(post.status || 'open') !== nextStatus;
+  post.application_count = nextCount;
+  post.status = nextStatus;
+  if (!changed) return true;
+  return await persistCommunityPostsPermanently(posts, failureMessage, { skipImageSync:true });
+}
 function getCommunityFeedStatusLabel(post){
-  const applicationCount = Number(post.application_count || 0);
-  if (post.status === 'pending') return 'Pending';
-  if (post.status === 'open') {
-    if (applicationCount > 0) return `${applicationCount} Student${applicationCount === 1 ? '' : 's'} Applied`;
-    return 'Open';
-  }
-  return 'Closed';
+  return getCommunityJobDerivedStatus(post) === 'closed' ? 'Closed' : 'Open';
 }
 function getCommunityFeedApplicantCountLabel(count=0){
   const total = Number(count || 0);
@@ -13009,14 +13025,12 @@ function canViewCommunityJobStatus(post={}){
   return String(currentUser.id || '') === String(post.authorId || '') || !!getViewerCommunityApplication(post.id);
 }
 function getCommunityJobVisibleStatusLabel(post={}){
-  const application = getViewerCommunityApplication(post.id);
-  if (application) return `Your status: ${String(application.status || 'pending').replaceAll('_', ' ')}`;
   return getCommunityFeedStatusLabel(post);
 }
 function isCommunityFeedJobOpen(post){
   if (!post || !post.isJob) return false;
   const status = String(post.status || 'open').toLowerCase();
-  return !['closed','completed','in_progress','removed'].includes(status);
+  return !['closed','completed','in_progress','project_started','removed'].includes(status);
 }
 function getCommunityPostSearchText(post={}){
   return [
@@ -13043,7 +13057,7 @@ function updateCommunityFilters(){
   const typeEl = document.getElementById('communityTypeFilter');
   communitySearchQuery = searchEl ? searchEl.value : '';
   communityPostTypeFilter = typeEl ? typeEl.value : 'all';
-  const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const posts = getPosts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   const filteredPosts = getFilteredCommunityPosts(posts);
   const isLoadingPosts = communityPostsAwaitingBackend(posts);
   const isRefreshingPosts = backendAuthEnabled() && backendCommunityPostsLoading && backendCommunityPostsLoaded;
@@ -13066,7 +13080,7 @@ function renderCommunity(){
   if (useBackendCommunityPosts && backendCommunityPostsNeedRefresh() && !backendCommunityPostsLoading) {
     loadBackendCommunityPosts({ rerender:true });
   }
-  const posts = syncCommunityJobApplicationCounts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const posts = getPosts().sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
   if (useBackendCommunityPosts && !posts.length && !backendCommunityPostsLoading && !backendCommunityPostsEmptyConfirmedAt) {
     loadBackendCommunityPosts({ rerender:true });
   }
@@ -13440,9 +13454,7 @@ function renderPost(p){
   const viewerApplication = getViewerCommunityApplication(p.id);
   const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen && !viewerApplication;
   const canManage = currentUser && currentUser.id === p.authorId;
-  const showJobStatus = canViewCommunityJobStatus(p);
-  const visibleJobStatusLabel = showJobStatus ? getCommunityJobVisibleStatusLabel(p) : '';
-  const statusBadgeText = viewerApplication ? visibleJobStatusLabel : `Job status: ${visibleJobStatusLabel}`;
+  const publicJobStatusLabel = getCommunityFeedStatusLabel(p);
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
   const comments = ensureArray(p.comments);
   const commentsOpen = openPostCommentId === p.id;
@@ -13471,7 +13483,7 @@ function renderPost(p){
             <span>\u23F1\uFE0F ${esc(p.hoursNeeded)} hours</span>
             <span>\u{1F4CD} ${esc(p.location)}</span>
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(appsCount))}</span>
-            ${showJobStatus ? `<span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isPending ? '#FEF3C7' : (jobIsOpen ? '#EEF2FF' : '#E5E7EB')};color:${isPending ? '#92400E' : (jobIsOpen ? '#3730A3' : '#374151')};font-size:.78rem;font-weight:700">${esc(statusBadgeText)}</span>` : ''}
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${jobIsOpen ? '#DCFCE7' : '#E5E7EB'};color:${jobIsOpen ? '#166534' : '#374151'};font-size:.78rem;font-weight:700">${esc(publicJobStatusLabel)}</span>
           </div>
           ${renderFormattedLongText(p.description || '', { small:true })}
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
@@ -13485,6 +13497,7 @@ function renderPost(p){
           ? `<button class="btn btn-outline btn-sm" onclick="dashSection='jobs_bookings';studentJobsTab='jobs';goDashboard()">View Status</button>`
           : `<button class="btn ${canApply ? 'btn-blue' : 'btn-outline'} btn-sm" style="${canApply ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${canApply ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${canApply ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>`) : ''}
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
+        ${canManage && p.isJob && jobIsOpen ? `<button class="btn btn-outline btn-sm" onclick="closeCommunityJob('${esc(p.id)}')">Close Position</button>` : ''}
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}
       </div>
       <div style="margin-top:10px;${commentsOpen ? '' : 'display:none'}">
@@ -13755,8 +13768,8 @@ async function submitApplication(postId){
     createdAt: new Date().toISOString()
   });
   if (!await persistApplicationsPermanently(apps, 'Backend application failed. Please try again so the application is saved for everyone.')) return;
+  if (!await persistCommunityJobDerivedState(postId, apps, 'Backend applicant count update failed. Please try again so the application is saved for everyone.')) return;
   trackCogoEvent('application_submitted', { source: 'community_feed' });
-  syncCommunityJobApplicationCounts(apps);
   if (!backendAuthEnabled() || !getBackendAccessToken()) {
     pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   }
@@ -15267,8 +15280,7 @@ async function acceptOffer(appId){
   if (!a) return;
   a.status = 'accepted';
   if (!await persistApplicationsPermanently(apps, 'Backend offer acceptance failed. Please try again so this change is saved for everyone.')) return;
-  syncCommunityJobApplicationCounts(apps);
-  syncCommunityJobStatus(a.postId, apps);
+  if (!await persistCommunityJobDerivedState(a.postId, apps, 'Backend job status update failed. Please try again so this change is saved for everyone.')) return;
   pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   openModal('Offer Accepted', `
     <div class="warning">You can\u2019t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to \u201CIn Progress\u201D once confirmed.</div>
@@ -15283,8 +15295,7 @@ async function declineOffer(appId){
   if (!a) return;
   a.status = 'declined';
   if (!await persistApplicationsPermanently(apps, 'Backend offer decline failed. Please try again so this change is saved for everyone.')) return;
-  syncCommunityJobApplicationCounts(apps);
-  syncCommunityJobStatus(a.postId, apps);
+  if (!await persistCommunityJobDerivedState(a.postId, apps, 'Backend job status update failed. Please try again so this change is saved for everyone.')) return;
   pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
   toast('Offer declined.');
   renderDashboard();
@@ -16299,6 +16310,22 @@ async function toggleJobStatus(postId){
   toast('Job status updated.');
   renderDashboard();
 }
+async function closeCommunityJob(postId=''){
+  if (requireBackendWriteSession('close this position')) return;
+  const posts = getPosts();
+  const post = posts.find(item => String(item.id || '') === String(postId || '') && item.isJob);
+  if (!post) return toast('Job post not found.');
+  if (String(post.authorId || '') !== String(currentUser?.id || '') && currentUser?.role !== 'admin') return toast('Only the job poster can close this position.');
+  if (getCommunityJobDerivedStatus(post) === 'closed') return toast('This position is already closed.');
+  if (!confirm('Close this position? Students will no longer be able to apply.')) return;
+  post.status = 'closed';
+  post.updatedAt = new Date().toISOString();
+  post.application_count = getCommunityFeedApplicationCount(post.id);
+  if (!await persistCommunityPostsPermanently(posts, 'Backend job close failed. Please try again so this position is closed for everyone.', { skipImageSync:true })) return;
+  toast('Position closed.');
+  if (getRoute().startsWith('#/community')) renderCommunity();
+  else renderDashboard();
+}
 
 function getApplicationJobPost(application){
   return application && application.postId ? getPosts().find(post => post.id === application.postId) : null;
@@ -16311,6 +16338,36 @@ function canDeclineApplicant(application){
 function shouldDisableDeclineApplicant(application){
   const job = getApplicationJobPost(application);
   return application.status === 'accepted' || !!(job && !['open','pending'].includes(job.status));
+}
+function getPosterCommunityJobPosts(){
+  if (!currentUser) return [];
+  return getPosts()
+    .filter(post => post.isJob && String(post.authorId || '') === String(currentUser.id || ''))
+    .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+function renderEmployerCommunityJobManageCard(post){
+  const count = getCommunityFeedApplicationCount(post.id);
+  const publicStatus = getCommunityFeedStatusLabel(post);
+  const isClosed = publicStatus === 'Closed';
+  return `
+    <div class="card item-card">
+      <div class="split">
+        <div>
+          <div style="font-weight:800">${esc(post.jobTitle || 'Community job')}</div>
+          <div class="small muted" style="margin-top:6px">${esc(post.location || 'Location TBD')} \u00B7 $${esc(post.rate || 0)}/hr \u00B7 ${esc(post.hoursNeeded || '')} hours</div>
+          <div class="meta-row" style="margin-top:8px">
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(count))}</span>
+            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isClosed ? '#E5E7EB' : '#DCFCE7'};color:${isClosed ? '#374151' : '#166534'};font-size:.78rem;font-weight:700">${esc(publicStatus)}</span>
+          </div>
+          <div class="small" style="margin-top:8px">${renderFormattedLongText(post.description || post.content || '', { small:true })}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;justify-content:flex-end">
+          <button class="btn btn-outline btn-sm" onclick="openPostFromDashboard('${esc(post.id)}')">View Post</button>
+          ${isClosed ? `<button class="btn btn-outline btn-sm" disabled>Closed</button>` : `<button class="btn btn-outline btn-sm" onclick="closeCommunityJob('${esc(post.id)}')">Close Position</button>`}
+        </div>
+      </div>
+    </div>
+  `;
 }
 function renderEmployerApplicantsBookings(el){
  if (backendDataSessionMissing()) {
@@ -16328,6 +16385,7 @@ function renderEmployerApplicantsBookings(el){
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
   const myApplications = allApplications.filter(a => a.status !== 'rejected');
   const declinedApplications = allApplications.filter(a => a.status === 'rejected');
+  const communityJobPosts = getPosterCommunityJobPosts();
   const myProjects = getProjects().filter(p => p.employerId === currentUser.id)
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
@@ -16344,6 +16402,9 @@ function renderEmployerApplicantsBookings(el){
 
   let html = '';
   if (employerTab === 'all' || employerTab === 'applicants'){
+    html += `<div style="font-weight:800;margin-bottom:10px">My Community Job Posts</div>`;
+    html += communityJobPosts.length ? communityJobPosts.map(renderEmployerCommunityJobManageCard).join('') : `<div class="card form-card muted">No community job posts yet.</div>`;
+    html += `<div style="height:12px"></div>`;
     html += `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers</div>`;
     html += backendSyncArrayHydrating('applications')
       ? `<div class="card form-card muted">Loading applicants and offers from the database...</div>`
@@ -16423,8 +16484,7 @@ async function declineApplicant(appId, shouldSendMessage){
   const sendableMessage = shouldSendMessage && message && !detectContactInfo(message);
   application.status = 'rejected';
   if (!await persistApplicationsPermanently(apps, 'Backend applicant decline failed. Please try again so this change is saved for everyone.')) return;
-  syncCommunityJobApplicationCounts(apps);
-  syncCommunityJobStatus(application.postId, apps);
+  if (!await persistCommunityJobDerivedState(application.postId, apps, 'Backend applicant count update failed. Please try again so this decline is saved for everyone.')) return;
   if (sendableMessage) {
     sendInboxMessage(application.studentUserId, application.studentName, message, null, currentUser, { postId: application.postId || null, applicationId: application.id });
     pushNotif(application.studentUserId, `${currentUser.name} sent you a message about "${application.jobTitle}".`, { type:'dashboard', section:'messages' });
@@ -16446,6 +16506,7 @@ function sendOfferFromApplication(appId){
   const apps = getApplications();
   const a = apps.find(x => x.id === appId);
   if (!a) return;
+  if (!['pending','applied'].includes(String(a.status || '').toLowerCase())) return toast('This applicant can no longer receive an offer.');
   openModal('Send Offer', `
     <div class="warning" style="margin-bottom:14px">
       Define the terms clearly. Estimated hours set the initial agreed project value.
@@ -16473,6 +16534,7 @@ async function confirmSendOffer(appId){
   const location = (document.getElementById('offerLocation').value || '').trim();
   if (toastRequiredFields({ Title:title, Scope:scope, Rate:rate, Hours:hours, Location:location }, 'Offer')) return;
   if (!blockTextCheck(scope)) return;
+  if (!['pending','applied'].includes(String(a.status || '').toLowerCase())) return toast('This applicant can no longer receive an offer.');
   Object.assign(a, {
     jobTitle:title,
     message:scope,
@@ -16482,8 +16544,7 @@ async function confirmSendOffer(appId){
     status:'offer_sent'
   });
   if (!await persistApplicationsPermanently(apps, 'Backend offer send failed. Please try again so the offer is saved for everyone.')) return;
-  syncCommunityJobApplicationCounts(apps);
-  syncCommunityJobStatus(a.postId, apps);
+  if (!await persistCommunityJobDerivedState(a.postId, apps, 'Backend applicant count update failed. Please try again so the offer is saved for everyone.')) return;
   const notification = pushNotif(a.studentUserId, `You have an offer for "${title}"`, {
     type:'dashboard',
     section:'jobs_bookings',
@@ -16633,17 +16694,12 @@ async function startProject(appId, expectedStatus=''){
   });
   a.status = 'project_started';
   if (!await persistApplicationsPermanently(apps, 'Backend project application update failed. Please try again so this project is saved correctly.')) return;
-  syncCommunityJobApplicationCounts(apps);
   const posts = getPosts();
   const post = posts.find(x => x.id === a.postId);
   if (post) {
-    post.status = 'in_progress';
-    try {
-      if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
-    } catch (error) {
-      return toast('Backend job status update failed. Please try again so this project is saved correctly.');
-    }
-    ls('cogo_posts', posts.map(normalizePostRecord));
+    post.status = 'closed';
+    post.application_count = getCommunityFeedApplicationCount(post.id, apps);
+    if (!await persistCommunityPostsPermanently(posts, 'Backend job status update failed. Please try again so this project is saved correctly.', { skipImageSync:true })) return;
   }
   if (!await persistProjectsPermanently(projects, 'Backend project save failed. Please try again so this project is saved correctly.')) return;
   await refreshBackendDashboardData();
@@ -16717,18 +16773,13 @@ async function activateProject(projectId){
   if (a) {
     a.status = 'project_started';
     if (!await persistApplicationsPermanently(apps, 'Backend project application update failed. Please try again so this project is saved correctly.')) return;
-    syncCommunityJobApplicationCounts(apps);
   }
   const posts = getPosts();
   const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
   if (post) {
-    post.status = 'in_progress';
-    try {
-      if (backendAuthEnabled()) await syncCommunityPostsToBackend(posts);
-    } catch (error) {
-      return toast('Backend job status update failed. Please try again so this project is saved correctly.');
-    }
-    ls('cogo_posts', posts.map(normalizePostRecord));
+    post.status = 'closed';
+    post.application_count = getCommunityFeedApplicationCount(post.id, apps);
+    if (!await persistCommunityPostsPermanently(posts, 'Backend job status update failed. Please try again so this project is saved correctly.', { skipImageSync:true })) return;
   }
   if (!await persistProjectsPermanently(projects, 'Backend project start failed. Please try again so this project is saved correctly.')) return;
   await refreshBackendDashboardData();
