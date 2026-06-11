@@ -2896,6 +2896,56 @@ async function syncReferencedImagesBeforeBlogPosts(posts=[]){
   if (result && result.ok === false) return result;
   return { ok:true };
 }
+function collectProfileImageReferences(record={}, bucket=new Set()){
+  if (!record || typeof record !== 'object') return bucket;
+  [
+    record.photo,
+    record.profile_image_id,
+    record.profileImageId,
+    record.businessLogo,
+    record.business_logo,
+  ].forEach(value => {
+    const cleanId = String(value || '').trim();
+    if (isImageRecordId(cleanId)) bucket.add(cleanId);
+  });
+  ensureArray(record.profileImages || record.profile_images).forEach(value => {
+    const cleanId = String(value || '').trim();
+    if (isImageRecordId(cleanId)) bucket.add(cleanId);
+  });
+  const business = record.businessProfile || record.business_profile || {};
+  [business.logo, business.image_id, business.imageId].forEach(value => {
+    const cleanId = String(value || '').trim();
+    if (isImageRecordId(cleanId)) bucket.add(cleanId);
+  });
+  ensureArray(record.services).forEach(service => {
+    ensureArray(service && (service.images || service.entity_images)).forEach(value => {
+      const cleanId = String(value || '').trim();
+      if (isImageRecordId(cleanId)) bucket.add(cleanId);
+    });
+  });
+  return bucket;
+}
+async function syncReferencedImagesBeforeProfileSave(records=[]){
+  if (!backendAuthEnabled()) return { ok:true, skipped:true };
+  if (!getBackendAccessToken()) return { ok:false, reason:'missing_backend_token' };
+  const referencedIds = new Set();
+  ensureArray(records).forEach(record => collectProfileImageReferences(record, referencedIds));
+  if (!referencedIds.size) return { ok:true, skipped:true };
+  let images = getImages();
+  let missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
+  if (missing.length && BACKEND_MIGRATION.enabled) {
+    await loadBackendArraySetting('images', 'cogo_images', { ids: missing, full:true, force:true });
+    images = getImages();
+    missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
+  }
+  if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
+  const referencedImages = images.filter(image => referencedIds.has(String(image.id)) && image.url && !image.embedded_image_omitted);
+  if (!referencedImages.length) return { ok:true, skipped:true };
+  const result = await syncEntityToBackend('images', referencedImages, { replace:false, skipQueue:true });
+  if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
+  if (!result || result.ok === false) return { ok:false, reason:(result && (result.reason || result.error || result.status)) || 'image_sync_failed' };
+  return { ok:true };
+}
 function getImageById(imageId=''){
   return getImages().find(image => String(image.id) === String(imageId)) || null;
 }
@@ -8228,6 +8278,21 @@ async function publishStudentSignupProfile(){
       });
       saveBackendAuthSession(data);
       backendUser = data.user || null;
+      const imageSync = await syncReferencedImagesBeforeProfileSave([{
+        photo: d.photo || ((d.profileImages || [])[0]) || '',
+        profileImages: d.profileImages || [],
+        services: d.services || []
+      }]);
+      if (imageSync && imageSync.ok === false) {
+        toast('Your account was created, but staging did not confirm your uploaded image. Please sign in and upload the photo again so it is saved permanently.');
+        d.photo = '';
+        d.profileImages = [];
+        (d.services || []).forEach(service => { service.images = []; service.entity_images = []; });
+        await backendAuthRequest('/user-profile/me', {
+          method:'PATCH',
+          body: JSON.stringify({ profile: { photo:'', profileImages:[] } })
+        }).catch(() => null);
+      }
     } catch (error) {
       const message = userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.');
       toast(message);
@@ -8924,6 +8989,20 @@ async function publishEmployerSignupProfile(){
       });
       saveBackendAuthSession(data);
       backendUser = data.user || null;
+      const imageSync = await syncReferencedImagesBeforeProfileSave([{
+        photo: d.photo || '',
+        businessLogo: d.businessLogo || '',
+        businessProfile: { logo: d.businessLogo || '' }
+      }]);
+      if (imageSync && imageSync.ok === false) {
+        toast('Your account was created, but staging did not confirm your uploaded image. Please sign in and upload the photo again so it is saved permanently.');
+        d.photo = '';
+        d.businessLogo = '';
+        await backendAuthRequest('/user-profile/me', {
+          method:'PATCH',
+          body: JSON.stringify({ profile: { photo:'' }, businessProfile: { logo:'' } })
+        }).catch(() => null);
+      }
     } catch (error) {
       const message = userFacingBackendError(error, 'Signup failed. Please check the required fields and try again.');
       toast(message);
@@ -15074,6 +15153,15 @@ async function saveStudentProfileForm(profileId=''){
   profile.video_type = draft.video_type || '';
   profile.video_id = draft.video_id || '';
   profile.updatedAt = new Date().toISOString();
+  if (backendAuthEnabled()) {
+    const imageSync = await syncReferencedImagesBeforeProfileSave([profile]);
+    if (imageSync && imageSync.ok === false) {
+      toast(imageSync.reason === 'missing_backend_token'
+        ? 'Please sign in again before saving this profile photo so it is saved permanently.'
+        : 'Staging did not confirm the uploaded profile image. Please upload the image again before saving.');
+      return;
+    }
+  }
   if (user) {
     user.name = draft.name;
     user.email = draft.email;
@@ -15280,6 +15368,15 @@ async function saveStudentServiceForm(serviceIndex=''){
   profile.title = profile.services[0]?.title || profile.title || 'Student Service';
   profile.rate = profile.services[0]?.rate || profile.rate || 20;
   profile.availability = profile.services[0]?.availability || profile.availability || '';
+  if (backendAuthEnabled()) {
+    const imageSync = await syncReferencedImagesBeforeProfileSave([{ services:[service] }]);
+    if (imageSync && imageSync.ok === false) {
+      toast(imageSync.reason === 'missing_backend_token'
+        ? 'Please sign in again before saving this service image so it is saved permanently.'
+        : 'Staging did not confirm the uploaded service image. Please upload the image again before saving.');
+      return;
+    }
+  }
   saveStudents(students);
   if (backendAuthEnabled() && profile.backendSource && profile.backendProfileId) {
     try {

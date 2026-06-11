@@ -141,6 +141,14 @@ const checks = [
       && /record\.embedded_image_omitted = false;/.test(syncRecordsRoute),
   },
   {
+    name: 'Profile and service images are backend-confirmed before saved records point at them',
+    test: () => /function syncReferencedImagesBeforeProfileSave\(records=\[\]\)/.test(indexHtml)
+      && /collectProfileImageReferences\(record, referencedIds\)/.test(indexHtml)
+      && /await syncReferencedImagesBeforeProfileSave\(\[\{[\s\S]*profileImages: d\.profileImages \|\| \[\],[\s\S]*services: d\.services \|\| \[\]/.test(indexHtml)
+      && /await syncReferencedImagesBeforeProfileSave\(\[profile\]\)/.test(indexHtml)
+      && /await syncReferencedImagesBeforeProfileSave\(\[\{ services:\[service\] \}\]\)/.test(indexHtml),
+  },
+  {
     name: 'Testimonials use backend pending approval and admin publishing controls',
     test: () => /testimonials: '\/sync\/testimonials'/.test(indexHtml)
       && /BACKEND_PUBLIC_SYNC_ENTITIES = new Set\(\['blog_posts','workshops','site_settings','direct_job_packages','testimonials','images'\]\)/.test(indexHtml)
