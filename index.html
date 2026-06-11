@@ -2489,6 +2489,9 @@ function mapBackendStudentProfile(row={}){
     age: Number(profile.age || 0) || '',
     school: profile.school || '',
     location: primaryService.location || user.city || profile.address || '',
+    address: profile.address || '',
+    phone: user.phone || profile.phone || '',
+    privateEmail: profile.metadata?.private_email || user.email || profile.email || '',
     photo: profilePhoto,
     profile_image_id: profilePhoto,
     profileImages: profile.metadata?.profile_images || [],
@@ -2524,6 +2527,8 @@ function mapBackendAuthStudent(apiUser={}){
     user: {
       id: apiUser.id,
       displayName: apiUser.display_name || apiUser.displayName || apiUser.name,
+      email: apiUser.email || '',
+      phone: apiUser.phone || '',
       city: apiUser.city || '',
       role: apiUser.role || 'student',
       userProfile: apiUser.profile || null
@@ -2538,7 +2543,17 @@ function cacheBackendAuthUser(apiUser){
   saveUsers(existing ? users.map(item => (item.id === existing.id ? user : item)) : users.concat(user));
   upsertBackendBrowseUser(user);
   const student = mapBackendAuthStudent(apiUser);
-  if (student) upsertBackendBrowseStudent(student);
+  if (student) {
+    upsertBackendBrowseStudent(student);
+    const students = ensureArray(ls('cogo_students')).map(normalizeStudentRecord);
+    const idx = students.findIndex(item =>
+      (item.userId && student.userId && String(item.userId) === String(student.userId)) ||
+      (item.id && student.id && String(item.id) === String(student.id))
+    );
+    if (idx >= 0) students[idx] = normalizeStudentRecord(Object.assign({}, students[idx], student));
+    else students.unshift(normalizeStudentRecord(student));
+    ls('cogo_students', students);
+  }
   ensureDanielStagingProfileForUser(user);
   if (currentUser && String(currentUser.id) === String(user.id)) {
     currentUser = Object.assign({}, currentUser, user);
@@ -2587,12 +2602,20 @@ function mergeBackendStudentRecords(localStudents=[]){
     });
   };
   const merged = [];
+  const privateProfileFields = ['birthDate','birthday','birthYear','phone','privateEmail','address'];
   backendStudents.forEach(student => {
     const localMatch = findLocalMatch(student);
     const mergedStudent = localMatch ? Object.assign({}, localMatch, student, {
       services: mergeServices(student.services, localMatch.services),
       reviews: student.reviews
     }) : student;
+    if (localMatch && currentUser && student.userId && String(student.userId) === String(currentUser.id)) {
+      privateProfileFields.forEach(field => {
+        if ((mergedStudent[field] === undefined || mergedStudent[field] === null || mergedStudent[field] === '') && localMatch[field]) {
+          mergedStudent[field] = localMatch[field];
+        }
+      });
+    }
     merged.push(normalizeStudentRecord(mergedStudent));
   });
   return merged;
@@ -15223,9 +15246,12 @@ async function saveStudentProfileForm(profileId=''){
             school: profile.school,
             address: profile.location,
             about: profile.about[0] || '',
+            privateEmail: draft.email || '',
             photo: profile.photo || '',
             profileImages: profile.profileImages || [],
-            video_url: profile.video_url || ''
+            video_url: profile.video_url || '',
+            video_type: profile.video_type || '',
+            video_id: profile.video_id || ''
           }
         })
       });
@@ -15239,12 +15265,6 @@ async function saveStudentProfileForm(profileId=''){
         })
       });
       await refreshBackendCurrentProfile();
-      const refreshedStudents = getStudents();
-      const refreshedIndex = refreshedStudents.findIndex(item => item.id === profile.id || item.userId === profile.userId);
-      if (refreshedIndex >= 0) {
-        refreshedStudents[refreshedIndex] = Object.assign({}, refreshedStudents[refreshedIndex], profile);
-        saveStudents(refreshedStudents);
-      }
     } catch (error) {
       toast(error.message || 'Backend profile save failed. Please try again so your profile is saved permanently.');
       return;
@@ -15448,14 +15468,6 @@ async function saveStudentServiceForm(serviceIndex=''){
         });
       }
       await refreshBackendCurrentProfile();
-      const refreshedStudents = getStudents();
-      const refreshedIndex = refreshedStudents.findIndex(item => item.id === profile.id || item.userId === profile.userId);
-      if (refreshedIndex >= 0) {
-        const refreshedProfile = Object.assign({}, refreshedStudents[refreshedIndex], profile);
-        refreshedProfile.services = profile.services;
-        refreshedStudents[refreshedIndex] = refreshedProfile;
-        saveStudents(refreshedStudents);
-      }
     } catch (error) {
       toast(error.message || 'Backend service save failed. Please try again so this service is saved permanently.');
       return;

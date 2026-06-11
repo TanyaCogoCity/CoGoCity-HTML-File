@@ -207,10 +207,17 @@ function passwordResetEmailHtml({ displayName, resetUrl }) {
 function buildUserProfileData(userId, payload = {}) {
   const profile = payload.profile || {};
   const business = payload.businessProfile || profile.businessProfile || {};
+  const birthDate = profile.birthDate || profile.birth_date || profile.birthday || payload.dateOfBirth || payload.date_of_birth || '';
   const metadata = {
     photo: profile.photo || payload.photo || '',
     profile_images: profile.profileImages || [],
     video_url: profile.video_url || profile.videoUrl || '',
+    video_type: profile.video_type || profile.videoType || '',
+    video_id: profile.video_id || profile.videoId || '',
+    birth_date: birthDate || '',
+    birthday: birthDate || '',
+    birth_year: profile.birthYear || profile.birth_year || (birthDate ? String(birthDate).slice(0, 4) : ''),
+    private_email: profile.privateEmail || profile.private_email || payload.email || '',
   };
   return {
     userId,

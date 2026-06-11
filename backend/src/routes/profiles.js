@@ -9,7 +9,43 @@ const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
 
 const router = express.Router();
 
+function publicUserProfile(profile) {
+  if (!profile) return null;
+  const metadata = userProfileMetadata(profile);
+  return {
+    id: profile.id,
+    userId: profile.userId,
+    type: profile.type,
+    about: profile.about,
+    school: profile.school,
+    age: profile.age,
+    avatar: profile.avatar,
+    metadata: {
+      photo: metadata.photo || '',
+      profile_images: Array.isArray(metadata.profile_images) ? metadata.profile_images : [],
+      video_url: metadata.video_url || '',
+      video_type: metadata.video_type || '',
+      video_id: metadata.video_id || '',
+      business_logo: metadata.business_logo || '',
+    },
+  };
+}
+
+function publicStudentUser(user) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    displayName: user.displayName,
+    city: user.city,
+    role: user.role,
+    userProfile: publicUserProfile(user.userProfile),
+    reviewsReceived: user.reviewsReceived || [],
+  };
+}
+
 function serializeStudentProfile(profile) {
+  const user = publicStudentUser(profile.user);
+  const profileRecord = publicUserProfile(profile.user?.userProfile);
   return {
     id: profile.id,
     user_id: profile.userId,
@@ -21,8 +57,8 @@ function serializeStudentProfile(profile) {
     created_at: profile.createdAt,
     services: (profile.services || []).map(serializeService),
     reviews: (profile.user?.reviewsReceived || []).map(serializeReview),
-    user: profile.user,
-    profile: profile.user?.userProfile || null,
+    user,
+    profile: profileRecord,
   };
 }
 
@@ -51,15 +87,26 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
   const payload = req.body || {};
   const profilePayload = payload.profile || payload;
   const businessPayload = payload.businessProfile || profilePayload.businessProfile || {};
-  const metadata = {
-    photo: profilePayload.photo || '',
-    profile_images: profilePayload.profileImages || profilePayload.profile_images || [],
-    video_url: profilePayload.video_url || profilePayload.videoUrl || '',
-    birth_date: profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '',
-    birthday: profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '',
-    birth_year: profilePayload.birthYear || profilePayload.birth_year || '',
-    business_logo: businessPayload.logo || businessPayload.business_logo || profilePayload.business_logo || '',
-  };
+  const hasProfileField = (field) => Object.prototype.hasOwnProperty.call(profilePayload, field);
+  const hasBusinessField = (field) => Object.prototype.hasOwnProperty.call(businessPayload, field);
+  const metadata = {};
+  if (hasProfileField('photo')) metadata.photo = profilePayload.photo || '';
+  if (hasProfileField('profileImages') || hasProfileField('profile_images')) {
+    metadata.profile_images = profilePayload.profileImages || profilePayload.profile_images || [];
+  }
+  if (hasProfileField('video_url') || hasProfileField('videoUrl')) metadata.video_url = profilePayload.video_url || profilePayload.videoUrl || '';
+  if (hasProfileField('video_type') || hasProfileField('videoType')) metadata.video_type = profilePayload.video_type || profilePayload.videoType || '';
+  if (hasProfileField('video_id') || hasProfileField('videoId')) metadata.video_id = profilePayload.video_id || profilePayload.videoId || '';
+  if (hasProfileField('birthDate') || hasProfileField('birth_date') || hasProfileField('birthday')) {
+    const birthDate = profilePayload.birthDate || profilePayload.birth_date || profilePayload.birthday || '';
+    metadata.birth_date = birthDate;
+    metadata.birthday = birthDate;
+  }
+  if (hasProfileField('birthYear') || hasProfileField('birth_year')) metadata.birth_year = profilePayload.birthYear || profilePayload.birth_year || '';
+  if (hasProfileField('privateEmail') || hasProfileField('private_email')) metadata.private_email = profilePayload.privateEmail || profilePayload.private_email || '';
+  if (hasBusinessField('logo') || hasBusinessField('business_logo') || hasProfileField('business_logo')) {
+    metadata.business_logo = businessPayload.logo || businessPayload.business_logo || profilePayload.business_logo || '';
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const existingProfile = await tx.userProfile.findUnique({ where: { userId: req.user.id } });
