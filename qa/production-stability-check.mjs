@@ -7,6 +7,8 @@ const indexPath = path.join(rootDir, 'index.html');
 const indexHtml = fs.readFileSync(indexPath, 'utf8');
 const notificationsRoutePath = path.join(rootDir, 'backend/src/routes/notifications.js');
 const notificationsRoute = fs.existsSync(notificationsRoutePath) ? fs.readFileSync(notificationsRoutePath, 'utf8') : '';
+const messagesRoutePath = path.join(rootDir, 'backend/src/routes/messages.js');
+const messagesRoute = fs.existsSync(messagesRoutePath) ? fs.readFileSync(messagesRoutePath, 'utf8') : '';
 
 function sliceBetween(startNeedle, endNeedle) {
   const start = indexHtml.indexOf(startNeedle);
@@ -119,6 +121,14 @@ const checks = [
       && /reused_existing: true/.test(notificationsRoute)
       && /function dedupeNotificationRows\(rows = \[\]\)/.test(notificationsRoute)
       && /dedupeNotificationRows\(rows\)\.map/.test(notificationsRoute),
+  },
+  {
+    name: 'Message notifications dedupe to one unread conversation notice',
+    test: () => /paymentTitle\.startsWith\("you've got a message from "\)/.test(indexHtml)
+      && /title\.startsWith\("you've got a message from "\)/.test(notificationsRoute)
+      && /existingUnreadMessageNotice/.test(messagesRoute)
+      && /isRead: false/.test(messagesRoute)
+      && /if \(notificationRows\.length\) await createNotifications/.test(messagesRoute),
   },
   {
     name: 'Community public feed management controls are poster-only',

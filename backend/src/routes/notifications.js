@@ -31,6 +31,7 @@ function frontendNotificationReceiptId(userId = '', item = {}) {
 function notificationVisibleDedupeKey(row = {}) {
   const title = String(row.title || '').toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
   if (title.includes("you've been paid") && title.includes('my transactions')) return `student_payment:${title}`;
+  if (title.startsWith("you've got a message from ")) return `message_thread:${title}:${row.link || ''}`;
   return '';
 }
 

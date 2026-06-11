@@ -7128,6 +7128,12 @@ function dedupeVisibleNotifications(items=[]){
       seen.set(paymentKey, item.createdAt || Date.now());
       return true;
     }
+    if (paymentTitle.startsWith("you've got a message from ")) {
+      const messageKey = `message_thread:${paymentTitle}:${item.link || ''}`;
+      if (seen.has(messageKey)) return false;
+      seen.set(messageKey, item.createdAt || Date.now());
+      return true;
+    }
     const isCommunityApplicationNotice = normalizedTitle.includes(' applied to "') && !(normalizedTitle.includes('resume') || String(item.link || '').includes('my_jobs'));
     const fallbackKey = isCommunityApplicationNotice
       ? `community_application:${normalizedTitle}`
