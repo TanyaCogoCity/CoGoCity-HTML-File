@@ -1451,11 +1451,19 @@ function canUseLocalSharedCache(entityKey=''){
 function isInlineImageDataSource(value=''){
   return /^data:image\//i.test(String(value || '').trim());
 }
+function backendImageAssetUrl(imageId=''){
+  const cleanId = String(imageId || '').trim();
+  if (!cleanId || !BACKEND_MIGRATION.enabled) return '';
+  return `${BACKEND_MIGRATION.baseUrl}/sync/images/${encodeURIComponent(cleanId)}/file`;
+}
 function compactImageRecordForLocalCache(image={}){
   const next = Object.assign({}, image || {});
   if (next.embedded_image_omitted) {
     if (isInlineImageDataSource(next.url)) next.url = '';
     if (isInlineImageDataSource(next.thumbnail_url)) next.thumbnail_url = next.url || '';
+    if (!next.url && next.id) next.url = backendImageAssetUrl(next.id);
+    if (!next.thumbnail_url && next.id) next.thumbnail_url = next.url;
+    if (next.url) next.embedded_image_omitted = false;
   }
   return next;
 }
@@ -3014,7 +3022,12 @@ function getImageView(source='', variant='full'){
   const raw = String(source || '').trim();
   if (!raw) return null;
   const stored = isImageRecordId(raw) ? getImageById(raw) : null;
-  if (stored) return Object.assign({}, stored, { url: variant === 'thumb' ? (stored.thumbnail_url || stored.url) : stored.url });
+  if (stored) {
+    const assetUrl = backendImageAssetUrl(stored.id || raw);
+    const fullUrl = stored.url || (stored.embedded_image_omitted ? assetUrl : '');
+    const thumbUrl = stored.thumbnail_url || fullUrl || assetUrl;
+    return Object.assign({}, stored, { url: variant === 'thumb' ? (thumbUrl || fullUrl) : fullUrl, thumbnail_url: thumbUrl });
+  }
   if (looksLikeImageSource(raw)) return { id:'', url: raw, thumbnail_url: raw, alt:'' };
   return null;
 }

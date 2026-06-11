@@ -9,6 +9,8 @@ const notificationsRoutePath = path.join(rootDir, 'backend/src/routes/notificati
 const notificationsRoute = fs.existsSync(notificationsRoutePath) ? fs.readFileSync(notificationsRoutePath, 'utf8') : '';
 const messagesRoutePath = path.join(rootDir, 'backend/src/routes/messages.js');
 const messagesRoute = fs.existsSync(messagesRoutePath) ? fs.readFileSync(messagesRoutePath, 'utf8') : '';
+const syncRecordsRoutePath = path.join(rootDir, 'backend/src/routes/syncRecords.js');
+const syncRecordsRoute = fs.existsSync(syncRecordsRoutePath) ? fs.readFileSync(syncRecordsRoutePath, 'utf8') : '';
 
 function sliceBetween(startNeedle, endNeedle) {
   const start = indexHtml.indexOf(startNeedle);
@@ -129,6 +131,14 @@ const checks = [
       && /existingUnreadMessageNotice/.test(messagesRoute)
       && /isRead: false/.test(messagesRoute)
       && /if \(notificationRows\.length\) await createNotifications/.test(messagesRoute),
+  },
+  {
+    name: 'Blog images load through backend asset URLs instead of local embedded cache',
+    test: () => /function backendImageAssetUrl\(imageId=''\)/.test(indexHtml)
+      && /BACKEND_MIGRATION\.baseUrl}\/sync\/images\/\$\{encodeURIComponent\(cleanId\)\}\/file/.test(indexHtml)
+      && /router\.get\('\/images\/:id\/file'/.test(syncRecordsRoute)
+      && /record\.backend_asset_url = publicImageUrl;/.test(syncRecordsRoute)
+      && /record\.embedded_image_omitted = false;/.test(syncRecordsRoute),
   },
   {
     name: 'Community public feed management controls are poster-only',

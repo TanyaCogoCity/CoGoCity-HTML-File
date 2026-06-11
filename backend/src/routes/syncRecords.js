@@ -352,12 +352,23 @@ function serializeImageSummary(row) {
   const hasEmbeddedImage = /^data:image\//i.test(url) || /^data:image\//i.test(thumb);
   const isLargeEmbeddedImage = hasEmbeddedImage && Math.max(url.length, thumb.length) > 20000;
   if (isLargeEmbeddedImage) {
-    record.url = '';
-    record.thumbnail_url = '';
-    record.embedded_image_omitted = true;
+    const publicImageUrl = `/api/sync/images/${encodeURIComponent(row.recordId)}/file`;
+    record.url = publicImageUrl;
+    record.thumbnail_url = publicImageUrl;
+    record.backend_asset_url = publicImageUrl;
+    record.embedded_image_omitted = false;
     record.embedded_image_size = Math.max(url.length, thumb.length);
   }
   return record;
+}
+
+function parseEmbeddedImage(dataUrl = '') {
+  const match = String(dataUrl || '').match(/^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i);
+  if (!match) return null;
+  return {
+    mime: match[1].toLowerCase(),
+    buffer: Buffer.from(match[2], 'base64'),
+  };
 }
 
 function stripeSearchValue(value = '') {
@@ -585,6 +596,25 @@ function requireReadAccess(req, res, next) {
   if (PUBLIC_READ_ENTITIES.has(entity)) return next();
   return requireAuth(req, res, next);
 }
+
+router.get('/images/:id/file', async (req, res) => {
+  const imageId = String(req.params.id || '').trim();
+  if (!imageId) return fail(res, 404, 'Image not found');
+  const row = await prisma.syncRecord.findFirst({
+    where: { entity: 'images', recordId: imageId, deletedAt: null },
+    select: { payload: true, updatedAt: true },
+  });
+  if (!row) return fail(res, 404, 'Image not found');
+  const payload = row.payload || {};
+  const source = String(payload.url || payload.thumbnail_url || payload.thumb_url || '').trim();
+  if (/^https?:\/\//i.test(source)) return res.redirect(302, source);
+  const embedded = parseEmbeddedImage(source);
+  if (!embedded) return fail(res, 404, 'Image data not found');
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  res.setHeader('Last-Modified', row.updatedAt.toUTCString());
+  res.type(embedded.mime);
+  return res.send(embedded.buffer);
+});
 
 router.get('/:entity', requireReadAccess, async (req, res) => {
   const entity = validateEntity(req.params.entity);
