@@ -82,6 +82,17 @@ const checks = [
     },
   },
   {
+    name: 'Community gig text clamps to three lines with see more controls',
+    test: () => /function renderCollapsibleLongText\(value='', key='', options=\{\}\)/.test(indexHtml)
+      && /max-height:5\.1em;overflow:hidden/.test(indexHtml)
+      && /See less/.test(indexHtml)
+      && /See more/.test(indexHtml)
+      && /renderCollapsibleLongText\(p\.content \|\| '', `community_post_content_\$\{p\.id\}`\)/.test(indexHtml)
+      && /renderCollapsibleLongText\(p\.description \|\| '', `community_post_description_\$\{p\.id\}`, \{ small:true \}\)/.test(indexHtml)
+      && /renderCollapsibleLongText\(displayDescription, `student_app_description_\$\{a\.id\}`, \{ small:true \}\)/.test(indexHtml)
+      && /renderCollapsibleLongText\(a\.jobDescription \|\| a\.message \|\| '', `employer_app_description_\$\{a\.id\}`, \{ small:true \}\)/.test(indexHtml),
+  },
+  {
     name: 'Community public feed management controls are poster-only',
     test: () => /const canManage = currentUserOwnsCommunityPost\(p\);/.test(indexHtml)
       && /\$\{canManage \? `<button class="btn btn-outline btn-sm" onclick="editPost\('\$\{esc\(p\.id\)\}'\)">Edit<\/button>` : ''\}/.test(indexHtml)

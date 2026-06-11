@@ -191,6 +191,9 @@
     .formatted-long-text p:last-child{margin-bottom:0}
     .formatted-long-text ul{margin:.35rem 0 .75rem;padding-left:1.25rem}
     .formatted-long-text li{margin:.25rem 0}
+    .expandable-long-text.collapsed .expandable-long-text-body{max-height:5.1em;overflow:hidden}
+    .expandable-long-text-toggle{margin-top:6px;border:0;background:transparent;color:var(--color-link);font-weight:800;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px}
+    .expandable-long-text-toggle:hover{color:var(--navy)}
     .long-field-textarea{min-height:120px;line-height:1.55;white-space:pre-wrap}
     .long-field-format{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 8px}
     .long-field-format button{border:1px solid var(--border);background:#fff;color:var(--color-text-main);border-radius:999px;padding:5px 10px;font-size:.78rem;font-weight:700;cursor:pointer}
@@ -765,6 +768,7 @@ let dashSection = 'profile';
 let studentJobsTab = 'all';
 let employerTab = 'all';
 let myPostsTab = 'all';
+let expandedLongTextKeys = new Set();
 let activeThreadUserId = null;
 let messagePartnerNameHints = {};
 let avatarMenuOpen = false;
@@ -3864,7 +3868,7 @@ function renderProjectContractHtml(project={}){
   return `
     <div><strong>Work Agreement</strong></div>
     <div>Title: ${esc(snapshot.title || getProjectDisplayTitle(project))}</div>
-    <div>Description: ${esc(snapshot.description || project.scope || '')}</div>
+    <div>Description: ${renderCollapsibleLongText(snapshot.description || project.scope || '', `project_contract_description_${project.id || project.project_id || snapshot.title || ''}`, { small:true })}</div>
     <div>Rate: $${esc(snapshot.rate || project.rate || 0)}/hr</div>
     <div>Location: ${esc(snapshot.location || project.location || 'TBD')}</div>
     ${hours ? `<div>Estimated hours: ${esc(hours)}</div>` : ''}
@@ -5444,6 +5448,33 @@ function renderMarkdownLikeText(value='', options={}){
 }
 function renderFormattedLongText(value='', options={}){
   return renderMarkdownLikeText(value, options);
+}
+function shouldCollapseLongText(value=''){
+  const text = String(value || '').trim();
+  if (!text) return false;
+  const lines = text.split(/\r?\n/).filter(line => line.trim());
+  return text.length > 180 || lines.length > 3;
+}
+function renderCollapsibleLongText(value='', key='', options={}){
+  const raw = String(value || '');
+  if (!shouldCollapseLongText(raw)) return renderFormattedLongText(raw, options);
+  const safeKey = String(key || uid('txt'));
+  const expanded = expandedLongTextKeys.has(safeKey);
+  const classes = `expandable-long-text${expanded ? ' expanded' : ' collapsed'}`;
+  return `
+    <div class="${classes}" data-long-text-key="${esc(safeKey)}">
+      <div class="expandable-long-text-body">${renderFormattedLongText(raw, options)}</div>
+      <button class="expandable-long-text-toggle" type="button" onclick="toggleLongTextExpansion('${esc(safeKey)}')">${expanded ? 'See less' : 'See more'}</button>
+    </div>
+  `;
+}
+function toggleLongTextExpansion(key=''){
+  const safeKey = String(key || '');
+  if (!safeKey) return;
+  if (expandedLongTextKeys.has(safeKey)) expandedLongTextKeys.delete(safeKey);
+  else expandedLongTextKeys.add(safeKey);
+  if ((location.hash || '').startsWith('#/dashboard')) renderDashboard();
+  else renderPage();
 }
 function insertTextareaSnippet(textarea, snippet='', wrapSelection=false){
   if (!textarea) return;
@@ -13458,7 +13489,7 @@ function renderPost(p){
           <div class="muted small">${timeAgo(p.createdAt)}</div>
         </div>
       </div>
-      <div style="margin-bottom:10px">${renderFormattedLongText(p.content || '')}</div>
+      <div style="margin-bottom:10px">${renderCollapsibleLongText(p.content || '', `community_post_content_${p.id}`)}</div>
       ${mediaHtml}
       ${p.isJob ? `
         <div class="card" style="padding:14px;background:#F9FAFB;border-color:#E5E7EB">
@@ -13470,7 +13501,7 @@ function renderPost(p){
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(appsCount))}</span>
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${jobIsOpen ? '#DCFCE7' : '#E5E7EB'};color:${jobIsOpen ? '#166534' : '#374151'};font-size:.78rem;font-weight:700">${esc(publicJobStatusLabel)}</span>
           </div>
-          ${renderFormattedLongText(p.description || '', { small:true })}
+          ${renderCollapsibleLongText(p.description || '', `community_post_description_${p.id}`, { small:true })}
           ${canManage ? `<div class="small muted" style="margin-top:10px">Applicants: <strong style="color:var(--navy);cursor:pointer" onclick="dashSection='applicants_projects';goDashboard()">${appsCount}</strong></div>` : ''}
         </div>
       ` : ''}
@@ -15246,7 +15277,7 @@ function renderStudentAppCard(a){
           <div class="muted small">Employer: ${renderUserNameLink(a.employerId || a.employer_id, a.employerName)} \u00B7 ${timeAgo(a.createdAt)}</div>
           ${a.rate ? `<div class="muted small">Rate: $${esc(a.rate)}/hr \u00B7 Estimated hours: ${esc(a.estimatedHours || '')}</div>` : ''}
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(a.studentServiceTitle)}</div>` : ''}
-          <div class="small" style="margin-top:8px">${esc(displayDescription)}</div>
+          <div class="small" style="margin-top:8px">${renderCollapsibleLongText(displayDescription, `student_app_description_${a.id}`, { small:true })}</div>
         ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, ${esc(a.employerName)} can review it and start the project.</div>` : ''}
         ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">You can\u2019t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to \u201CIn Progress\u201D once confirmed.</div>` : ''}
         </div>
@@ -16421,7 +16452,7 @@ function renderEmployerAppCard(a){
           <div class="small muted" style="margin-top:6px">Source: ${esc(sourceLabel)}</div>
           ${job ? `<div class="small muted" style="margin-top:6px">Job status: ${esc(getCommunityFeedStatusLabel(job))}</div>` : ''}
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(a.studentServiceTitle)}</div>` : ''}
-          <div class="small" style="margin-top:8px">${esc(a.jobDescription || a.message || '')}</div>
+          <div class="small" style="margin-top:8px">${renderCollapsibleLongText(a.jobDescription || a.message || '', `employer_app_description_${a.id}`, { small:true })}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr \u00B7 ${esc(a.estimatedHours||'')} hours</div>` : ''}
           ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To help us keep CoGo City safe and running smoothly, a ${formatPercent(getPaymentSettings().employerCommissionPct)} platform support fee is added to the final work total for employers and neighbors.</div>` : ''}
 
