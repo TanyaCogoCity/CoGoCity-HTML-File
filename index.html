@@ -17688,10 +17688,13 @@ function renderMessages(el){
     .sort((a,b) => Number(!!b.pending)-Number(!!a.pending) || new Date(b.createdAt)-new Date(a.createdAt));
   if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].threadKey;
   if (activeThreadUserId && !threadList.some(t => t.threadKey === activeThreadUserId)) activeThreadUserId = threadList[0] ? threadList[0].threadKey : null;
+  const messagingSafetyText = currentUser?.role === 'student'
+    ? 'For your safety, use CoGo City Messages whenever possible. If you share contact information or meet someone for a job, let a parent, family member, or trusted friend know who you are meeting and where.'
+    : 'Many CoGo City students are minors. Please be transparent when sharing contact information, job details, and meeting locations. Keep all interactions safe, professional, and respectful.';
 
   el.innerHTML = `
     <div class="section-title">Messages</div>
-    <div class="small muted" style="margin-bottom:10px">User-to-user messages are grouped by person. CoGo Team system/admin updates appear in their own thread.</div>
+    <div class="small muted" style="margin-bottom:10px">${esc(messagingSafetyText)}</div>
     <div class="msg-shell">
       <div class="thread-list">
         ${threadList.length ? threadList.map(t => `
