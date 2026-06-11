@@ -16338,12 +16338,6 @@ function shouldDisableDeclineApplicant(application){
   const job = getApplicationJobPost(application);
   return application.status === 'accepted' || !!(job && !['open','pending'].includes(job.status));
 }
-function getPosterCommunityJobPosts(){
-  if (!currentUser) return [];
-  return getPosts()
-    .filter(post => post.isJob && currentUserOwnsCommunityPost(post))
-    .sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-}
 function currentUserOwnsCommunityPost(post={}){
   if (!currentUser || !post) return false;
   const currentIds = new Set([
@@ -16370,30 +16364,6 @@ function currentUserOwnsCommunityApplication(application={}){
   const post = getApplicationJobPost(application);
   return !!(post && currentUserOwnsCommunityPost(post));
 }
-function renderEmployerCommunityJobManageCard(post){
-  const count = getCommunityFeedApplicationCount(post.id);
-  const publicStatus = getCommunityFeedStatusLabel(post);
-  const isClosed = publicStatus === 'Closed';
-  return `
-    <div class="card item-card">
-      <div class="split">
-        <div>
-          <div style="font-weight:800">${esc(post.jobTitle || 'Community job')}</div>
-          <div class="small muted" style="margin-top:6px">${esc(post.location || 'Location TBD')} \u00B7 $${esc(post.rate || 0)}/hr \u00B7 ${esc(post.hoursNeeded || '')} hours</div>
-          <div class="meta-row" style="margin-top:8px">
-            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(count))}</span>
-            <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${isClosed ? '#E5E7EB' : '#DCFCE7'};color:${isClosed ? '#374151' : '#166534'};font-size:.78rem;font-weight:700">${esc(publicStatus)}</span>
-          </div>
-          <div class="small" style="margin-top:8px">${renderFormattedLongText(post.description || post.content || '', { small:true })}</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;justify-content:flex-end">
-          <button class="btn btn-outline btn-sm" onclick="openPostFromDashboard('${esc(post.id)}')">View Post</button>
-          ${isClosed ? `<button class="btn btn-outline btn-sm" disabled>Closed</button>` : `<button class="btn btn-outline btn-sm" onclick="closeCommunityJob('${esc(post.id)}')">Close Position</button>`}
-        </div>
-      </div>
-    </div>
-  `;
-}
 function renderEmployerApplicantsBookings(el){
  if (backendDataSessionMissing()) {
    el.innerHTML = `
@@ -16410,7 +16380,6 @@ function renderEmployerApplicantsBookings(el){
  .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
   const myApplications = allApplications.filter(a => a.status !== 'rejected');
   const declinedApplications = allApplications.filter(a => a.status === 'rejected');
-  const communityJobPosts = getPosterCommunityJobPosts();
   const myProjects = getProjects().filter(p => p.employerId === currentUser.id)
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
 
@@ -16427,9 +16396,6 @@ function renderEmployerApplicantsBookings(el){
 
   let html = '';
   if (employerTab === 'all' || employerTab === 'applicants'){
-    html += `<div style="font-weight:800;margin-bottom:10px">My Community Job Posts</div>`;
-    html += communityJobPosts.length ? communityJobPosts.map(renderEmployerCommunityJobManageCard).join('') : `<div class="card form-card muted">No community job posts yet.</div>`;
-    html += `<div style="height:12px"></div>`;
     html += `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers</div>`;
     html += backendSyncArrayHydrating('applications')
       ? `<div class="card form-card muted">Loading applicants and offers from the database...</div>`
@@ -17279,7 +17245,7 @@ async function submitReview(projectId){
 
 // ---------- My Posts ----------
 function renderMyPosts(el){
-  const allPosts = getPosts().filter(p => p.authorId === currentUser.id)
+  const allPosts = getPosts().filter(p => currentUserOwnsCommunityPost(p))
     .sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
   const posts = myPostsTab === 'social'
     ? allPosts.filter(p => !p.isJob)

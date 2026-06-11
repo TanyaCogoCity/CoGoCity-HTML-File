@@ -52,8 +52,14 @@ const checks = [
     name: 'Community rejection stays private and does not allow another offer',
     test: () => /if \(!await persistCommunityJobDerivedState\(application\.postId, apps/.test(indexHtml)
       && /if \(!\['pending','applied'\]\.includes\(String\(a\.status \|\| ''\)\.toLowerCase\(\)\)\) return toast\('This applicant can no longer receive an offer\.'\);/.test(indexHtml)
-      && /function renderEmployerCommunityJobManageCard\(post\)/.test(indexHtml)
-      && /onclick="closeCommunityJob\('\$\{esc\(post\.id\)\}'\)">Close Position/.test(indexHtml),
+      && /if \(job && getCommunityFeedStatusLabel\(job\) !== 'Closed'\) actions\.push\(`<button class="btn btn-outline btn-sm" onclick="closeCommunityJob\('\$\{esc\(job\.id\)\}'\)">Close Position<\/button>`\);/.test(indexHtml),
+  },
+  {
+    name: 'Community dashboard applicants page does not list owned posts above applicants',
+    test: () => !/My Community Job Posts/.test(indexHtml)
+      && !/renderEmployerCommunityJobManageCard/.test(indexHtml)
+      && /const allPosts = getPosts\(\)\.filter\(p => currentUserOwnsCommunityPost\(p\)\)/.test(indexHtml)
+      && /html \+= `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers<\/div>`;/.test(indexHtml),
   },
   {
     name: 'Community public feed management controls are poster-only',
