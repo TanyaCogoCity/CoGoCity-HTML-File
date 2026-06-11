@@ -22,6 +22,29 @@ function frontendNotificationLink(item = {}) {
   return '/dashboard?section=notifications';
 }
 
+function frontendNotificationReceiptId(userId = '', item = {}) {
+  const dedupeKey = String(item.dedupeKey || item.dedupe_key || item.action?.dedupeKey || item.action?.dedupe_key || '').trim();
+  if (dedupeKey) return `${userId}:dedupe:${dedupeKey}`;
+  return `${userId}:${String(item?.id || '').trim()}`;
+}
+
+function notificationVisibleDedupeKey(row = {}) {
+  const title = String(row.title || '').toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
+  if (title.includes("you've been paid") && title.includes('my transactions')) return `student_payment:${title}`;
+  return '';
+}
+
+function dedupeNotificationRows(rows = []) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = notificationVisibleDedupeKey(row);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function isCommunityApplicationForUser(payload = {}, userId = '') {
   const employerId = String(payload.employerId || payload.employer_id || '').trim();
   const status = String(payload.status || '').trim().toLowerCase();
@@ -108,7 +131,7 @@ router.get('/', requireAuth, async (req, res) => {
     orderBy: { createdAt: 'desc' },
     take: 200,
   });
-  return ok(res, rows.map((n) => ({
+  return ok(res, dedupeNotificationRows(rows).map((n) => ({
     id: n.id,
     user_id: n.userId,
     type: n.type,
@@ -141,7 +164,7 @@ router.post('/sync', requireAuth, async (req, res) => {
       continue;
     }
 
-    const receiptId = `${userId}:${frontendId}`;
+    const receiptId = frontendNotificationReceiptId(userId, item);
     const existing = await prisma.syncRecord.findUnique({
       where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
     });
@@ -152,13 +175,53 @@ router.post('/sync', requireAuth, async (req, res) => {
 
     const action = item.action && typeof item.action === 'object' ? item.action : {};
     const body = String(item.body || item.message || title).trim();
+    const link = frontendNotificationLink(item);
+    const recentDuplicate = await prisma.notification.findFirst({
+      where: {
+        userId,
+        title,
+        link,
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (recentDuplicate) {
+      await prisma.syncRecord.upsert({
+        where: { entity_recordId: { entity: 'notification_email_receipts', recordId: receiptId } },
+        create: {
+          entity: 'notification_email_receipts',
+          recordId: receiptId,
+          payload: {
+            user_id: userId,
+            frontend_notification_id: frontendId,
+            backend_notification_id: recentDuplicate.id,
+            title,
+            dedupe_key: item.dedupeKey || item.dedupe_key || action.dedupeKey || action.dedupe_key || null,
+            reused_existing: true,
+          },
+        },
+        update: {
+          deletedAt: null,
+          payload: {
+            user_id: userId,
+            frontend_notification_id: frontendId,
+            backend_notification_id: recentDuplicate.id,
+            title,
+            dedupe_key: item.dedupeKey || item.dedupe_key || action.dedupeKey || action.dedupe_key || null,
+            reused_existing: true,
+          },
+        },
+      });
+      skippedCount += 1;
+      continue;
+    }
     const notification = await createNotification({
       data: {
         userId,
         type: frontendNotificationType(action.type || item.type),
         title,
         body,
-        link: frontendNotificationLink(item),
+        link,
       },
     });
 
@@ -172,6 +235,7 @@ router.post('/sync', requireAuth, async (req, res) => {
           frontend_notification_id: frontendId,
           backend_notification_id: notification.id,
           title,
+          dedupe_key: item.dedupeKey || item.dedupe_key || action.dedupeKey || action.dedupe_key || null,
           emailed: !notification.email?.skipped,
           email: notification.email || null,
         },
@@ -183,6 +247,7 @@ router.post('/sync', requireAuth, async (req, res) => {
           frontend_notification_id: frontendId,
           backend_notification_id: notification.id,
           title,
+          dedupe_key: item.dedupeKey || item.dedupe_key || action.dedupeKey || action.dedupe_key || null,
           emailed: !notification.email?.skipped,
           email: notification.email || null,
         },

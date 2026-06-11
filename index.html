@@ -7117,6 +7117,16 @@ function dedupeVisibleNotifications(items=[]){
     }
     const action = item.action || {};
     const normalizedTitle = String(item.title || '').trim().toLowerCase();
+    const paymentTitle = normalizedTitle
+      .replace(/[’']/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (paymentTitle.includes("you've been paid") && paymentTitle.includes('my transactions')) {
+      const paymentKey = paymentTitle.replace(/\b\d+\s*(?:sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|day|days)\s+ago\b/g, '');
+      if (seen.has(paymentKey)) return false;
+      seen.set(paymentKey, item.createdAt || Date.now());
+      return true;
+    }
     const isCommunityApplicationNotice = normalizedTitle.includes(' applied to "') && !(normalizedTitle.includes('resume') || String(item.link || '').includes('my_jobs'));
     const fallbackKey = isCommunityApplicationNotice
       ? `community_application:${normalizedTitle}`

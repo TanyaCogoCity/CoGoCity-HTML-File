@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const indexPath = path.join(rootDir, 'index.html');
 const indexHtml = fs.readFileSync(indexPath, 'utf8');
+const notificationsRoutePath = path.join(rootDir, 'backend/src/routes/notifications.js');
+const notificationsRoute = fs.existsSync(notificationsRoutePath) ? fs.readFileSync(notificationsRoutePath, 'utf8') : '';
 
 function sliceBetween(startNeedle, endNeedle) {
   const start = indexHtml.indexOf(startNeedle);
@@ -91,6 +93,16 @@ const checks = [
       && /renderCollapsibleLongText\(p\.description \|\| '', `community_post_description_\$\{p\.id\}`, \{ small:true \}\)/.test(indexHtml)
       && /renderCollapsibleLongText\(displayDescription, `student_app_description_\$\{a\.id\}`, \{ small:true \}\)/.test(indexHtml)
       && /renderCollapsibleLongText\(a\.jobDescription \|\| a\.message \|\| '', `employer_app_description_\$\{a\.id\}`, \{ small:true \}\)/.test(indexHtml),
+  },
+  {
+    name: 'Payment notifications dedupe across frontend and backend sync',
+    test: () => /paymentTitle\.includes\("you've been paid"\) && paymentTitle\.includes\('my transactions'\)/.test(indexHtml)
+      && /function frontendNotificationReceiptId\(userId = '', item = \{\}\)/.test(notificationsRoute)
+      && /`\$\{userId\}:dedupe:\$\{dedupeKey\}`/.test(notificationsRoute)
+      && /const recentDuplicate = await prisma\.notification\.findFirst/.test(notificationsRoute)
+      && /reused_existing: true/.test(notificationsRoute)
+      && /function dedupeNotificationRows\(rows = \[\]\)/.test(notificationsRoute)
+      && /dedupeNotificationRows\(rows\)\.map/.test(notificationsRoute),
   },
   {
     name: 'Community public feed management controls are poster-only',
