@@ -64,6 +64,13 @@ const checks = [
       && /if \(job && getCommunityFeedStatusLabel\(job\) !== 'Closed'\) actions\.push\(`<button class="btn btn-outline btn-sm" onclick="closeCommunityJob\('\$\{esc\(job\.id\)\}'\)">Close Position<\/button>`\);/.test(indexHtml),
   },
   {
+    name: 'Community rejection sends one status notification plus optional message thread',
+    test: () => /Your application for "\$\{application\.jobTitle\}" has been rejected\./.test(indexHtml)
+      && /dedupeKey:`community_application_rejected:\$\{application\.id\}:\$\{application\.studentUserId\}`/.test(indexHtml)
+      && /sendInboxMessage\(application\.studentUserId, application\.studentName, message, null, currentUser, \{ postId: application\.postId \|\| null, applicationId: application\.id \}\);/.test(indexHtml)
+      && !/sent you a message about "\$\{application\.jobTitle\}"/.test(indexHtml),
+  },
+  {
     name: 'Community dashboard applicants page does not list owned posts above applicants',
     test: () => !/My Community Job Posts/.test(indexHtml)
       && !/renderEmployerCommunityJobManageCard/.test(indexHtml)

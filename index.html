@@ -16504,9 +16504,14 @@ async function declineApplicant(appId, shouldSendMessage){
   application.status = 'rejected';
   if (!await persistApplicationsPermanently(apps, 'Backend applicant decline failed. Please try again so this change is saved for everyone.')) return;
   if (!await persistCommunityJobDerivedState(application.postId, apps, 'Backend applicant count update failed. Please try again so this decline is saved for everyone.')) return;
+  pushNotif(application.studentUserId, `Your application for "${application.jobTitle}" has been rejected.`, {
+    type:'dashboard',
+    section:'jobs_bookings',
+    studentJobsTab:'jobs',
+    dedupeKey:`community_application_rejected:${application.id}:${application.studentUserId}`
+  });
   if (sendableMessage) {
     sendInboxMessage(application.studentUserId, application.studentName, message, null, currentUser, { postId: application.postId || null, applicationId: application.id });
-    pushNotif(application.studentUserId, `${currentUser.name} sent you a message about "${application.jobTitle}".`, { type:'dashboard', section:'messages' });
   }
   closeModal();
   if (shouldSendMessage && message && !sendableMessage) toast('Applicant declined. Message not sent because contact info is blocked.');
