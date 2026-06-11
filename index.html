@@ -5841,22 +5841,7 @@ function openCommunityComposer(options={}){
 function goToPostJob(){
   if (!isEmployerAccount(currentUser)) return;
   if (!platformReadyForEmployerAction('post jobs')) return;
-  if (isNeighborAccount(currentUser)) {
-    openCommunityComposer();
-    return;
-  }
-  if (!getEmployerCompanyName(currentUser)) {
-    toast('Complete your company profile before posting direct-hire jobs.');
-    dashSection = 'profile';
-    return goDashboard();
-  }
-  dashSection = 'my_jobs';
-  employerMyJobsTab = 'create';
-  goDashboard();
-  setTimeout(() => {
-    const input = document.getElementById('directJobTitle');
-    if (input) input.focus();
-  }, 80);
+  openCommunityComposer();
 }
 function dashboardLinkForAction(action={}){
   if (!action || action.type !== 'dashboard') return '/dashboard?section=notifications';
@@ -17252,39 +17237,9 @@ function renderMyPosts(el){
     : myPostsTab === 'jobs'
       ? allPosts.filter(p => p.isJob)
       : allPosts;
-  const canCreateJobs = ['employer','neighbor'].includes(currentUser.role);
 
   el.innerHTML = `
     <div class="section-title">My Posts</div>
-    <div class="card form-card">
-      <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..." oninput="syncJobDescriptionFromPost()"></textarea></div>
-      <div class="field">
-        <label>Post Image (optional, one image)</label>
-        <input type="file" accept="image/*" onchange="handleEmpPostImagesUpload(this)">
-        <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
-        <input type="hidden" id="empPostImagesValue" value="[]">
-      </div>
-      <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
-      <div class="field"><label>Post Video Link or Upload (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEmpPostVideo()">Remove video</button></div></div>
-      <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
-      ${canCreateJobs ? `
-        <div class="field">
-          <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
-        </div>
-        <div id="empJobFields" class="hidden">
-          <div class="field"><label>Job Title</label><input id="empJobTitle"></div>
-          <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
-          <div class="row">
-            <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
-            <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
-          </div>
-          <div class="field"><label>Location</label><input id="empJobLocation"></div>
-        </div>
-      ` : ''}
-      <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post to Feed</button>
-    </div>
-    <div style="height:16px"></div>
     <div class="subtabs">
       <button class="pill ${myPostsTab==='all'?'active':''}" onclick="myPostsTab='all';renderDashboard()">All</button>
       <button class="pill ${myPostsTab==='social'?'active':''}" onclick="myPostsTab='social';renderDashboard()">Social</button>

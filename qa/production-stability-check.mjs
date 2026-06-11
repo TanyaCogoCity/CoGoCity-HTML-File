@@ -6,6 +6,13 @@ const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const indexPath = path.join(rootDir, 'index.html');
 const indexHtml = fs.readFileSync(indexPath, 'utf8');
 
+function sliceBetween(startNeedle, endNeedle) {
+  const start = indexHtml.indexOf(startNeedle);
+  if (start < 0) return '';
+  const end = indexHtml.indexOf(endNeedle, start);
+  return indexHtml.slice(start, end > start ? end : undefined);
+}
+
 const checks = [
   {
     name: 'Community Apply treats legacy missing status as open',
@@ -60,6 +67,19 @@ const checks = [
       && !/renderEmployerCommunityJobManageCard/.test(indexHtml)
       && /const allPosts = getPosts\(\)\.filter\(p => currentUserOwnsCommunityPost\(p\)\)/.test(indexHtml)
       && /html \+= `<div style="font-weight:800;margin-bottom:10px">Applicants & Offers<\/div>`;/.test(indexHtml),
+  },
+  {
+    name: 'My Posts is a management list and top post button opens community composer',
+    test: () => {
+      const goToPostJobBody = sliceBetween('function goToPostJob(){', 'function dashboardLinkForAction');
+      const renderMyPostsBody = sliceBetween('function renderMyPosts(el){', '// ---------- Messages ----------');
+      return /openCommunityComposer\(\);/.test(goToPostJobBody)
+        && !/employerMyJobsTab = 'create'/.test(goToPostJobBody)
+        && /<button class="pill \$\{myPostsTab==='all'\?'active':''\}" onclick="myPostsTab='all';renderDashboard\(\)">All<\/button>/.test(renderMyPostsBody)
+        && /<button class="pill \$\{myPostsTab==='social'\?'active':''\}" onclick="myPostsTab='social';renderDashboard\(\)">Social<\/button>/.test(renderMyPostsBody)
+        && /<button class="pill \$\{myPostsTab==='jobs'\?'active':''\}" onclick="myPostsTab='jobs';renderDashboard\(\)">Jobs<\/button>/.test(renderMyPostsBody)
+        && !/empPostContent|empPostImagesValue|empIsJob|submitEmployerDashboardPost/.test(renderMyPostsBody);
+    },
   },
   {
     name: 'Community public feed management controls are poster-only',
