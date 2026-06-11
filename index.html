@@ -12977,7 +12977,14 @@ function handleAdminModalSingleImageUpload(input, inputId='', previewId='', sour
   const file = input && input.files && input.files[0];
   if (!file) return;
   prepareUploadedImageRecord(file, { source })
-    .then(imageId => {
+    .then(async imageId => {
+      if (backendAuthEnabled() && imageId && isImageRecordId(imageId)) {
+        const imageSync = await syncReferencedImagesBeforeProfileSave([{ photo:imageId, profileImages:[imageId], businessLogo:imageId }]);
+        if (imageSync && imageSync.ok === false) {
+          throw new Error(imageSync.reason === 'missing_backend_token' ? 'Please sign in with the backend admin account before uploading images.' : (imageSync.error || imageSync.reason || 'Staging did not confirm the uploaded image.'));
+        }
+        await loadBackendArraySetting('images', 'cogo_images', { ids:[imageId], full:true, force:true });
+      }
       setAdminModalSingleImage(inputId, previewId, imageId, alt, emptyLabel);
       if (input) input.value = '';
     })
@@ -12987,8 +12994,22 @@ function handleAdminModalSingleImageUpload(input, inputId='', previewId='', sour
     });
 }
 function handleAdminModalImageListUpload(input, inputId='', previewId='', source='gallery', limit=1){
-  readImagesToDataUrls(input, (images) => {
+  readImagesToDataUrls(input, async (images) => {
     const taggedImages = upsertImageRecords(images.slice(0, 1), { source });
+    if (backendAuthEnabled() && taggedImages.length) {
+      try {
+        const imageSync = await syncReferencedImagesBeforeProfileSave([{ profileImages:taggedImages, services:[{ images:taggedImages }] }]);
+        if (imageSync && imageSync.ok === false) {
+          throw new Error(imageSync.reason === 'missing_backend_token' ? 'Please sign in with the backend admin account before uploading images.' : (imageSync.error || imageSync.reason || 'Staging did not confirm the uploaded image.'));
+        }
+        await loadBackendArraySetting('images', 'cogo_images', { ids:taggedImages, full:true, force:true });
+      } catch (error) {
+        console.error('Image upload failed', error);
+        toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+        if (input) input.value = '';
+        return;
+      }
+    }
     setAdminModalImageList(inputId, previewId, taggedImages, 1);
     if (input) input.value = '';
   }, 1, { source });
@@ -19307,6 +19328,16 @@ async function saveAdminUserEdit(userId){
   }
   if (backendAuthEnabled() && adminBackendUsersLoaded && user.backendAuth) {
     try {
+      const imageRecordsToConfirm = [];
+      if (user.photo) imageRecordsToConfirm.push({ photo:user.photo, profileImages:user.photo ? [user.photo] : [] });
+      if (user.businessProfile?.logo) imageRecordsToConfirm.push({ businessLogo:user.businessProfile.logo });
+      if (student) imageRecordsToConfirm.push(student);
+      const imageSync = await syncReferencedImagesBeforeProfileSave(imageRecordsToConfirm);
+      if (imageSync && imageSync.ok === false) {
+        return toast(imageSync.reason === 'missing_backend_token'
+          ? 'Please sign in again before saving this user image so it is saved permanently.'
+          : 'Staging did not confirm the uploaded profile image. Please upload the image again before saving.');
+      }
       const updatedBackendUser = await backendAuthRequest(`/auth/admin/users/${encodeURIComponent(user.id)}`, {
         method:'PATCH',
         body: JSON.stringify({
@@ -19320,6 +19351,36 @@ async function saveAdminUserEdit(userId){
           city:user.city || null,
           address:finalAddress || null,
           photo:user.photo || null,
+          ...(student ? {
+            student_profile:{
+              title:student.title || '',
+              bio:(student.about || [])[0] || '',
+              experience:(student.highlights || [])[0] || '',
+              school:student.school || '',
+              birth_date:student.birthDate || '',
+              birth_year:student.birthYear || '',
+              age:student.age || null,
+              profile_images:student.profileImages || [],
+              photo:student.photo || '',
+              video_url:student.video_url || '',
+              video_type:student.video_type || '',
+              video_id:student.video_id || '',
+              services:(student.services || []).map(service => ({
+                id:service.id || '',
+                title:service.title || '',
+                description:service.description || '',
+                rate:Number(service.rate || service.hourlyRate || service.hourly_rate || 0) || 0,
+                hourlyRate:Number(service.rate || service.hourlyRate || service.hourly_rate || 0) || 0,
+                location:service.location || '',
+                availability:service.availability || '',
+                images:service.images || service.entity_images || [],
+                entity_images:service.entity_images || service.images || [],
+                video_url:service.video_url || '',
+                video_type:service.video_type || '',
+                video_id:service.video_id || ''
+              }))
+            }
+          } : {}),
           ...(nextRole === 'employer' ? {
             business_name:user.company || null,
             business_about:user.businessProfile?.about || null,

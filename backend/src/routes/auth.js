@@ -4,7 +4,7 @@ const { z } = require('zod');
 const { prisma } = require('../lib/prisma');
 const config = require('../config');
 const { ok, created, fail } = require('../lib/http');
-const { normalizeRegisterPayload, serializeService } = require('../lib/compat');
+const { normalizeRegisterPayload, normalizeServicePayload, serializeService } = require('../lib/compat');
 const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashToken, verifyRefreshToken } = require('../lib/auth');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
@@ -291,6 +291,44 @@ const adminUserUpdateSchema = z.object({
   businessAbout: z.string().trim().optional().nullable(),
   business_logo: z.string().trim().optional().nullable(),
   businessLogo: z.string().trim().optional().nullable(),
+  student_profile: z.object({
+    title: z.string().trim().optional().nullable(),
+    bio: z.string().optional().nullable(),
+    experience: z.string().optional().nullable(),
+    school: z.string().trim().optional().nullable(),
+    birth_date: z.string().trim().optional().nullable(),
+    birthDate: z.string().trim().optional().nullable(),
+    birth_year: z.union([z.string(), z.number()]).optional().nullable(),
+    birthYear: z.union([z.string(), z.number()]).optional().nullable(),
+    age: z.union([z.string(), z.number()]).optional().nullable(),
+    profile_images: z.array(z.string()).optional(),
+    profileImages: z.array(z.string()).optional(),
+    photo: z.string().trim().optional().nullable(),
+    video_url: z.string().trim().optional().nullable(),
+    videoUrl: z.string().trim().optional().nullable(),
+    video_type: z.string().trim().optional().nullable(),
+    videoType: z.string().trim().optional().nullable(),
+    video_id: z.string().trim().optional().nullable(),
+    videoId: z.string().trim().optional().nullable(),
+    services: z.array(z.object({
+      id: z.string().trim().optional().nullable(),
+      title: z.string().trim().optional().nullable(),
+      description: z.string().optional().nullable(),
+      rate: z.union([z.string(), z.number()]).optional().nullable(),
+      hourlyRate: z.union([z.string(), z.number()]).optional().nullable(),
+      hourly_rate: z.union([z.string(), z.number()]).optional().nullable(),
+      location: z.string().trim().optional().nullable(),
+      availability: z.string().optional().nullable(),
+      images: z.array(z.string()).optional(),
+      entity_images: z.array(z.string()).optional(),
+      video_url: z.string().trim().optional().nullable(),
+      videoUrl: z.string().trim().optional().nullable(),
+      video_type: z.string().trim().optional().nullable(),
+      videoType: z.string().trim().optional().nullable(),
+      video_id: z.string().trim().optional().nullable(),
+      videoId: z.string().trim().optional().nullable(),
+    })).optional(),
+  }).optional(),
   migration_onboarding_required: z.boolean().optional(),
   migrationOnboardingRequired: z.boolean().optional(),
   payment_method_required: z.boolean().optional(),
@@ -923,15 +961,36 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
       if (Object.keys(data).length) {
         await tx.user.update({ where: { id: targetId }, data });
       }
-      if (payload.address !== undefined || payload.about !== undefined || payload.role !== undefined || photo !== undefined || businessName !== undefined || businessAbout !== undefined || businessLogo !== undefined || Object.keys(profileFlagUpdates).length) {
+      const studentPayload = payload.student_profile || null;
+      if (payload.address !== undefined || payload.about !== undefined || payload.role !== undefined || photo !== undefined || businessName !== undefined || businessAbout !== undefined || businessLogo !== undefined || studentPayload || Object.keys(profileFlagUpdates).length) {
         const existingProfile = await tx.userProfile.findUnique({ where: { userId: targetId } });
         const metadata = Object.assign({}, userProfileMetadata(existingProfile), profileFlagUpdates);
         if (photo !== undefined) metadata.photo = photo || '';
+        if (studentPayload) {
+          const studentPhoto = studentPayload.photo || photo || '';
+          const profileImages = studentPayload.profileImages || studentPayload.profile_images || (studentPhoto ? [studentPhoto] : []);
+          const birthDate = studentPayload.birthDate || studentPayload.birth_date || '';
+          metadata.photo = studentPhoto || metadata.photo || '';
+          metadata.profile_images = profileImages;
+          metadata.birth_date = birthDate;
+          metadata.birthday = birthDate;
+          metadata.birth_year = studentPayload.birthYear || studentPayload.birth_year || (birthDate ? String(birthDate).slice(0, 4) : '');
+          metadata.video_url = studentPayload.video_url || studentPayload.videoUrl || '';
+          metadata.video_type = studentPayload.video_type || studentPayload.videoType || '';
+          metadata.video_id = studentPayload.video_id || studentPayload.videoId || '';
+          metadata.private_email = payload.email || metadata.private_email || '';
+        }
         if (businessLogo !== undefined) metadata.business_logo = businessLogo || '';
         const profileData = { metadata };
         if (payload.address !== undefined) profileData.address = payload.address || null;
         if (payload.about !== undefined) profileData.about = payload.about || null;
         if (payload.role !== undefined) profileData.type = payload.role === 'employer' ? 'business' : (payload.role === 'neighbor' ? 'neighbor' : null);
+        if (studentPayload) {
+          profileData.type = 'student';
+          if (studentPayload.bio !== undefined) profileData.about = studentPayload.bio || null;
+          if (studentPayload.school !== undefined) profileData.school = studentPayload.school || null;
+          if (studentPayload.age !== undefined) profileData.age = studentPayload.age ? Number(studentPayload.age) : null;
+        }
         if (businessName !== undefined) profileData.businessName = businessName || null;
         if (businessAbout !== undefined) profileData.businessAbout = businessAbout || null;
         if (payload.phone !== undefined) profileData.businessPhone = payload.phone || null;
@@ -942,6 +1001,49 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
           create: Object.assign({ userId: targetId }, profileData),
           update: profileData,
         });
+      }
+      if (payload.student_profile) {
+        const studentPayload = payload.student_profile;
+        const existingStudentProfile = await tx.studentProfile.findFirst({ where: { userId: targetId, deletedAt: null } });
+        const studentProfile = existingStudentProfile
+          ? await tx.studentProfile.update({
+            where: { id: existingStudentProfile.id },
+            data: {
+              title: studentPayload.title || existingStudentProfile.title,
+              bio: studentPayload.bio ?? existingStudentProfile.bio,
+              experience: studentPayload.experience ?? existingStudentProfile.experience,
+              isActive: true,
+            },
+          })
+          : await tx.studentProfile.create({
+            data: {
+              userId: targetId,
+              title: studentPayload.title || 'Student Service',
+              bio: studentPayload.bio || '',
+              experience: studentPayload.experience || '',
+              isActive: true,
+            },
+          });
+        const services = Array.isArray(studentPayload.services) ? studentPayload.services : [];
+        for (const servicePayload of services) {
+          const normalizedService = normalizeServicePayload({ ...(servicePayload || {}), profileId: studentProfile.id });
+          if (!normalizedService.title || normalizedService.hourlyRate <= 0) continue;
+          const serviceId = String(servicePayload.id || '').trim();
+          const existingService = serviceId
+            ? await tx.service.findFirst({ where: { id: serviceId, profileId: studentProfile.id, deletedAt: null } })
+            : null;
+          const data = {
+            title: normalizedService.title,
+            description: normalizedService.description,
+            hourlyRate: normalizedService.hourlyRate,
+            availability: normalizedService.availability,
+            location: normalizedService.location,
+            isActive: Boolean(normalizedService.isActive),
+            metadata: normalizedService.metadata,
+          };
+          if (existingService) await tx.service.update({ where: { id: existingService.id }, data });
+          else await tx.service.create({ data: Object.assign({ profileId: studentProfile.id }, data) });
+        }
       }
       return tx.user.findUnique({
         where: { id: targetId },
