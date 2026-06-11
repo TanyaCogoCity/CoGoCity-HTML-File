@@ -9797,6 +9797,22 @@ function findUserByNameHint(nameHint=''){
     return names.some(name => name === hint || name.includes(hint) || hint.includes(name));
   }) || null;
 }
+function normalizePersonNameForMatch(value=''){
+  return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function testimonialNameMatchesProfile(testimonialName='', profileName=''){
+  const testimonial = normalizePersonNameForMatch(testimonialName);
+  const profile = normalizePersonNameForMatch(profileName);
+  if (!testimonial || !profile) return false;
+  if (testimonial === profile || testimonial.includes(profile) || profile.includes(testimonial)) return true;
+  const testimonialParts = testimonial.split(' ').filter(Boolean);
+  const profileParts = profile.split(' ').filter(Boolean);
+  if (!testimonialParts.length || !profileParts.length) return false;
+  const firstMatches = testimonialParts[0] === profileParts[0];
+  const testimonialLast = testimonialParts[testimonialParts.length - 1] || '';
+  const profileLast = profileParts[profileParts.length - 1] || '';
+  return firstMatches && testimonialLast && profileLast && testimonialLast[0] === profileLast[0];
+}
 function getTestimonialUser(testimonial={}){
   if (testimonial.user_id) {
     const byId = getUserById(testimonial.user_id);
@@ -9810,7 +9826,8 @@ function getTestimonialStudentProfile(user=null, testimonial={}){
   return getStudents().find(student => {
     if (userId && String(student.userId || student.user_id || '') === userId) return true;
     const privateEmail = String(student.privateEmail || student.email || '').trim().toLowerCase();
-    return email && privateEmail && (privateEmail === email || privateEmail.includes(email) || email.includes(privateEmail));
+    if (email && privateEmail && (privateEmail === email || privateEmail.includes(email) || email.includes(privateEmail))) return true;
+    return testimonialNameMatchesProfile(testimonial.name, student.name || student.publicName || student.displayName || '');
   }) || null;
 }
 function getTestimonialDisplay(testimonial={}){
