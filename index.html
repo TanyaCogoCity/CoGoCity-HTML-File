@@ -13453,7 +13453,7 @@ function renderPost(p){
   const isPending = p.status === 'pending';
   const viewerApplication = getViewerCommunityApplication(p.id);
   const canApply = currentUser && currentUser.role === 'student' && p.isJob && jobIsOpen && !viewerApplication;
-  const canManage = currentUser && currentUser.id === p.authorId;
+  const canManage = currentUserOwnsCommunityPost(p);
   const publicJobStatusLabel = getCommunityFeedStatusLabel(p);
   const liked = currentUser && (p.likes || []).includes(currentUser.id);
   const comments = ensureArray(p.comments);
@@ -13493,9 +13493,8 @@ function renderPost(p){
         <button class="btn btn-outline btn-sm" onclick="toggleLike('${esc(p.id)}')">${liked ? '\u2764\uFE0F Liked' : '\u{1F90D} Like'} (${(p.likes||[]).length})</button>
         <button class="btn btn-outline btn-sm" onclick="sharePost('${esc(p.id)}')">\u2197 Share (${esc(Number(p.shares || 0))})</button>
         <button class="btn btn-outline btn-sm" onclick="togglePostComments('${esc(p.id)}')">\u{1F4AC} Comment (${esc(comments.length)})</button>
-        ${p.isJob && currentUser && currentUser.role === 'student' ? (viewerApplication
-          ? `<button class="btn btn-outline btn-sm" onclick="dashSection='jobs_bookings';studentJobsTab='jobs';goDashboard()">View Status</button>`
-          : `<button class="btn ${canApply ? 'btn-blue' : 'btn-outline'} btn-sm" style="${canApply ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${canApply ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${canApply ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>`) : ''}
+        ${p.isJob && currentUser && currentUser.role === 'student' && !viewerApplication
+          ? `<button class="btn ${canApply ? 'btn-blue' : 'btn-outline'} btn-sm" style="${canApply ? '' : 'opacity:.45;filter:saturate(.55);cursor:not-allowed;'}" onclick="${canApply ? `applyToPost('${esc(p.id)}')` : 'return false;'}" ${canApply ? '' : 'disabled aria-disabled="true" title="This job is no longer accepting applications"'}>Apply</button>` : ''}
         ${canManage ? `<button class="btn btn-outline btn-sm" onclick="editPost('${esc(p.id)}')">Edit</button>` : ''}
         ${canManage && p.isJob && jobIsOpen ? `<button class="btn btn-outline btn-sm" onclick="closeCommunityJob('${esc(p.id)}')">Close Position</button>` : ''}
         ${canManage ? `<button class="btn btn-danger btn-sm" onclick="deletePost('${esc(p.id)}')">Delete</button>` : ''}

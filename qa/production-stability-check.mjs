@@ -13,9 +13,9 @@ const checks = [
       && /!\['closed','completed','in_progress','project_started','removed'\]\.includes\(status\)/.test(indexHtml),
   },
   {
-    name: 'Community Apply hides duplicate Apply button after student applied',
+    name: 'Community public feed hides private application status after student applied',
     test: () => /const viewerApplication = getViewerCommunityApplication\(p\.id\);/.test(indexHtml)
-      && /View Status/.test(indexHtml)
+      && !/View Status/.test(indexHtml)
       && /const canApply = currentUser && currentUser\.role === 'student' && p\.isJob && jobIsOpen && !viewerApplication;/.test(indexHtml),
   },
   {
@@ -54,6 +54,13 @@ const checks = [
       && /if \(!\['pending','applied'\]\.includes\(String\(a\.status \|\| ''\)\.toLowerCase\(\)\)\) return toast\('This applicant can no longer receive an offer\.'\);/.test(indexHtml)
       && /function renderEmployerCommunityJobManageCard\(post\)/.test(indexHtml)
       && /onclick="closeCommunityJob\('\$\{esc\(post\.id\)\}'\)">Close Position/.test(indexHtml),
+  },
+  {
+    name: 'Community public feed management controls are poster-only',
+    test: () => /const canManage = currentUserOwnsCommunityPost\(p\);/.test(indexHtml)
+      && /\$\{canManage \? `<button class="btn btn-outline btn-sm" onclick="editPost\('\$\{esc\(p\.id\)\}'\)">Edit<\/button>` : ''\}/.test(indexHtml)
+      && /\$\{canManage && p\.isJob && jobIsOpen \? `<button class="btn btn-outline btn-sm" onclick="closeCommunityJob\('\$\{esc\(p\.id\)\}'\)">Close Position<\/button>` : ''\}/.test(indexHtml)
+      && /\$\{canManage \? `<button class="btn btn-danger btn-sm" onclick="deletePost\('\$\{esc\(p\.id\)\}'\)">Delete<\/button>` : ''\}/.test(indexHtml),
   },
   {
     name: 'Community poster dashboard finds applicants by owned post as well as employer id',
