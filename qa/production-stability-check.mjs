@@ -141,6 +141,18 @@ const checks = [
       && /record\.embedded_image_omitted = false;/.test(syncRecordsRoute),
   },
   {
+    name: 'Testimonials use backend pending approval and admin publishing controls',
+    test: () => /testimonials: '\/sync\/testimonials'/.test(indexHtml)
+      && /BACKEND_PUBLIC_SYNC_ENTITIES = new Set\(\['blog_posts','workshops','site_settings','direct_job_packages','testimonials','images'\]\)/.test(indexHtml)
+      && /function renderTestimonialsSection\(\)/.test(indexHtml)
+      && /openLeaveReviewModal\(\);return false;">Leave us a Review/.test(indexHtml)
+      && /status:'pending'/.test(indexHtml)
+      && /function renderAdminTestimonialsSection\(el\)/.test(indexHtml)
+      && /setAdminTestimonialStatus/.test(indexHtml)
+      && /requireTestimonialsWriteAccess/.test(syncRecordsRoute)
+      && /'testimonials'/.test(syncRecordsRoute),
+  },
+  {
     name: 'Community public feed management controls are poster-only',
     test: () => /const canManage = currentUserOwnsCommunityPost\(p\);/.test(indexHtml)
       && /\$\{canManage \? `<button class="btn btn-outline btn-sm" onclick="editPost\('\$\{esc\(p\.id\)\}'\)">Edit<\/button>` : ''\}/.test(indexHtml)

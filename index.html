@@ -384,6 +384,18 @@
     .blog-featured-media img{width:100%;height:100%;object-fit:cover;display:block}
     .blog-card-media{position:relative;aspect-ratio:16/9;background:linear-gradient(135deg,#1F2937,#374151);overflow:hidden}
     .blog-card-image{width:100%;height:100%;object-fit:cover;display:block}
+    .testimonial-section{margin:34px 0}
+    .testimonial-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:16px}
+    .testimonial-carousel{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}
+    .testimonial-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .testimonial-card{min-height:260px;display:flex;flex-direction:column;gap:12px}
+    .testimonial-person{display:flex;align-items:center;gap:12px}
+    .testimonial-avatar{width:56px;height:56px;border-radius:50%;object-fit:cover;background:#F3F4F6;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.45rem;font-weight:900;flex-shrink:0}
+    .testimonial-copy{line-height:1.55;color:var(--color-text-main)}
+    .testimonial-copy.is-collapsed{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+    .testimonial-nav{width:40px;height:40px;border-radius:999px;border:1px solid var(--border);background:#fff;font-weight:900;cursor:pointer;box-shadow:var(--shadow)}
+    .testimonial-nav:disabled{opacity:.45;cursor:not-allowed}
+    @media (max-width:860px){.testimonial-track{grid-template-columns:1fr}.testimonial-card{min-height:220px}}
     .blog-video-frame{width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#1F2937;margin:18px 0}
     .blog-video-frame iframe{width:100%;height:100%;border:0;display:block}
     .blog-article-content img{max-width:100%;height:auto;border-radius:12px}
@@ -795,6 +807,8 @@ let adminBackendUsersLoading = false;
 let adminBackendUsersError = '';
 let adminBlogQuery = '';
 let adminBlogDraft = null;
+let adminTestimonialsQuery = '';
+let testimonialCarouselIndex = 0;
 let adminImagesVisibleCount = 24;
 let adminUserEditDraft = null;
 let adminModalImageLibraryTarget = null;
@@ -1112,6 +1126,7 @@ const BACKEND_SYNC_ENDPOINTS = {
   notifications: '/sync/notifications',
   transactions: '/sync/transactions',
   blog_posts: '/sync/blog_posts',
+  testimonials: '/sync/testimonials',
   images: '/sync/images',
   bookings: '/sync/bookings',
   finance: '/sync/finance',
@@ -1126,7 +1141,7 @@ const BACKEND_SYNC_ENDPOINTS = {
   payment_settings: '/sync/payment-settings',
   site_settings: '/sync/site-settings'
 };
-const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','images']);
+const BACKEND_PUBLIC_SYNC_ENTITIES = new Set(['blog_posts','workshops','site_settings','direct_job_packages','testimonials','images']);
 const BACKEND_ADMIN_WRITE_SYNC_ENTITIES = new Set(['blog_posts','direct_job_packages','payment_settings','site_settings','finance','admin_action_log','email_queue']);
 const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
   'users',
@@ -6423,7 +6438,7 @@ function applySiteSettings(){
       if (String(link.href) === '#contact-us') return `<a href="#" onclick="openContactUsForm();return false;">${esc(link.label)}</a>`;
       const external = /^https?:\/\//i.test(String(link.href || ''));
       return `<a href="${esc(link.href)}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(link.label)}</a>`;
-    }).join('');
+    }).join('') + `<a href="#" onclick="openLeaveReviewModal();return false;">Leave us a Review</a>`;
   }
 }
 function renderPageContentBlock(pageKey='', fallback={}){
@@ -9503,6 +9518,7 @@ function renderHome(){
             ${renderBrowseStudentMoreButton(filteredServiceCards)}
           </div>
           ${mobileExtraAdvertisingHtml ? `<div class="cogo-mobile-extra-ads" aria-label="Additional sponsored community ads">${mobileExtraAdvertisingHtml}</div>` : ''}
+          ${renderTestimonialsSection()}
           <div class="split" style="align-items:flex-end;margin-bottom:18px">
             <div>
               <div class="section-title" style="margin:0 0 6px">From the CoGo City Blog</div>
@@ -9739,6 +9755,198 @@ function renderBlogCard(post){
       </div>
     </article>
   `;
+}
+const SEEDED_TESTIMONIALS = [
+  { id:'testimonial_ilya_l', user_email:'ilya@getcider.com', name:'Ilya L.', review:'CoGo City is an exceptional platform where I can find talented teens and students for both business and personal projects. It is truly refreshing to see the younger generation building their businesses from a young age. Through CoGo City, I found an excellent candidate for my business as well as a few tutors for my son. This platform is perfect for discovering young entrepreneurs for a wide range of projects. Highly recommended!', status:'approved', sort_order:10, createdAt:'2026-06-01T12:00:00.000Z', seeded:true },
+  { id:'testimonial_whitney_k', user_email:'whitlkay4', name:'Whitney K.', review:'I uploaded a babysitting profile on CoGo and found a job within a week! The platform is super user-friendly, and I loved that I could connect with employers directly through CoGo messaging. CoGo has been a game-changer for me!', status:'approved', sort_order:20, createdAt:'2026-06-01T12:05:00.000Z', seeded:true },
+  { id:'testimonial_caden_b', user_email:'cadenbanks1', name:'Caden B.', review:'I recently started using CoGo City, and it has quickly become an invaluable platform for me. In no time, I was able to connect with new clients quickly and effortlessly. CoGo City has given me the chance to build my own business and pursue my passion for teaching languages. If you are looking for new opportunities and a way to follow your passion, I highly recommend CoGo City.', status:'approved', sort_order:30, createdAt:'2026-06-01T12:10:00.000Z', seeded:true },
+  { id:'testimonial_remie_r', user_email:'remier2020', name:'Remie R.', review:'CoGo City helped me land my first photography gig and gave me the confidence to start promoting my services in the community. It is a great platform for students who want to gain real-world experience and earn money doing what they love. I look forward to finding more opportunities through CoGo City!', status:'approved', sort_order:40, createdAt:'2026-06-01T12:15:00.000Z', seeded:true },
+  { id:'testimonial_daniel_l', user_email:'dan.lipovich@gmail.com', name:'Daniel L.', review:'CoGo City helped me connect with people in my community who needed help. Through the platform, I repaired bikes for neighbors, built a website, and earned my own money doing things I enjoy. It has been a great way to gain experience, build confidence, and learn how to work with clients. I am excited to continue growing and finding new opportunities through CoGo City.', status:'approved', sort_order:50, createdAt:'2026-06-01T12:20:00.000Z', seeded:true }
+];
+function normalizeTestimonialRecord(item={}){
+  const createdAt = item.createdAt || item.created_at || new Date().toISOString();
+  const status = String(item.status || 'pending').trim().toLowerCase();
+  return {
+    id:String(item.id || uid('testimonial')),
+    user_id:String(item.user_id || item.userId || '').trim(),
+    user_email:String(item.user_email || item.userEmail || '').trim(),
+    name:String(item.name || item.display_name || '').trim(),
+    review:String(item.review || item.text || item.content || '').trim(),
+    status:['approved','pending','rejected'].includes(status) ? status : 'pending',
+    sort_order:Number(item.sort_order ?? item.sortOrder ?? 9999) || 9999,
+    createdAt,
+    updatedAt:item.updatedAt || item.updated_at || createdAt,
+    approvedAt:item.approvedAt || item.approved_at || '',
+    rejectedAt:item.rejectedAt || item.rejected_at || '',
+    seeded:!!item.seeded
+  };
+}
+function findUserByEmailHint(emailHint=''){
+  const hint = String(emailHint || '').trim().toLowerCase();
+  if (!hint) return null;
+  return getUsers().find(user => {
+    const email = String(user.email || '').trim().toLowerCase();
+    return email && (email === hint || email.includes(hint) || hint.includes(email));
+  }) || null;
+}
+function findUserByNameHint(nameHint=''){
+  const hint = String(nameHint || '').trim().toLowerCase();
+  if (!hint) return null;
+  return getUsers().find(user => {
+    const names = [user.publicName, user.name, `${user.firstName || ''} ${user.lastName || ''}`].map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+    return names.some(name => name === hint || name.includes(hint) || hint.includes(name));
+  }) || null;
+}
+function getTestimonialUser(testimonial={}){
+  if (testimonial.user_id) {
+    const byId = getUserById(testimonial.user_id);
+    if (byId) return byId;
+  }
+  return findUserByEmailHint(testimonial.user_email) || findUserByNameHint(testimonial.name) || null;
+}
+function getTestimonialStudentProfile(user=null, testimonial={}){
+  const userId = String((user && user.id) || testimonial.user_id || '').trim();
+  const email = String((user && user.email) || testimonial.user_email || '').trim().toLowerCase();
+  return getStudents().find(student => {
+    if (userId && String(student.userId || student.user_id || '') === userId) return true;
+    const privateEmail = String(student.privateEmail || student.email || '').trim().toLowerCase();
+    return email && privateEmail && (privateEmail === email || privateEmail.includes(email) || email.includes(privateEmail));
+  }) || null;
+}
+function getTestimonialDisplay(testimonial={}){
+  const user = getTestimonialUser(testimonial);
+  const student = getTestimonialStudentProfile(user, testimonial);
+  const name = (user && (user.publicName || user.name)) || (student && student.name) || testimonial.name || 'CoGo City User';
+  const imageId = (student && (student.profile_image_id || student.photo || (student.profileImages || [])[0]))
+    || (user && (user.profile_image_id || user.photo || user.businessProfile?.image_id || user.businessProfile?.logo))
+    || '';
+  const image = getImageView(imageId, 'thumb') || getImageView(imageId, 'full');
+  return { user, student, name, image };
+}
+function renderTestimonialAvatar(testimonial={}){
+  const display = getTestimonialDisplay(testimonial);
+  if (display.image && display.image.url) return `<img class="testimonial-avatar" src="${esc(display.image.url)}" alt="${esc(display.name)}" loading="lazy">`;
+  const initials = display.name.split(/\s+/).filter(Boolean).slice(0,2).map(part => part[0]).join('').toUpperCase();
+  return `<div class="testimonial-avatar" aria-label="${esc(display.name)}">${esc(initials || '👤')}</div>`;
+}
+function getTestimonials(){
+  ensureBackendArraySettingLoaded('testimonials', 'cogo_testimonials', { rerender:true });
+  const byId = new Map(SEEDED_TESTIMONIALS.map(item => [item.id, normalizeTestimonialRecord(item)]));
+  ensureArray(ls('cogo_testimonials')).map(normalizeTestimonialRecord).forEach(item => byId.set(item.id, item));
+  return Array.from(byId.values()).sort((a,b) => (a.sort_order - b.sort_order) || new Date(a.createdAt) - new Date(b.createdAt));
+}
+function saveTestimonials(items, options={}){
+  const payload = ensureArray(items).map(normalizeTestimonialRecord);
+  ls('cogo_testimonials', payload);
+  return syncEntityToBackend('testimonials', options.records || payload, { replace:false });
+}
+function getApprovedTestimonials(){
+  return getTestimonials().filter(item => item.status === 'approved' && item.review);
+}
+function testimonialAlreadySubmittedForCurrentUser(){
+  if (!currentUser) return false;
+  const email = String(currentUser.email || '').trim().toLowerCase();
+  return getTestimonials().some(item => {
+    if (item.user_id && String(item.user_id) === String(currentUser.id)) return true;
+    const itemEmail = String(item.user_email || '').trim().toLowerCase();
+    return email && itemEmail && (email === itemEmail || email.includes(itemEmail) || itemEmail.includes(email));
+  });
+}
+function renderTestimonialCard(testimonial={}){
+  const display = getTestimonialDisplay(testimonial);
+  const key = `testimonial_${testimonial.id}`;
+  const expanded = expandedLongTextKeys.has(key);
+  const isLong = testimonial.review.length > 220;
+  return `
+    <article class="card form-card testimonial-card">
+      <div class="testimonial-person">
+        ${renderTestimonialAvatar(testimonial)}
+        <div>
+          <div style="font-weight:900">${esc(display.name)}</div>
+          <div class="small muted">CoGo City member</div>
+        </div>
+      </div>
+      <div class="testimonial-copy ${expanded ? '' : 'is-collapsed'}">${esc(testimonial.review)}</div>
+      ${isLong ? `<button class="btn btn-outline btn-sm" style="align-self:flex-start;margin-top:auto" onclick="toggleTestimonialText('${esc(key)}')">${expanded ? 'Read less' : 'Read more'}</button>` : '<div style="margin-top:auto"></div>'}
+    </article>
+  `;
+}
+function renderTestimonialsSection(){
+  const items = getApprovedTestimonials();
+  if (!items.length) return '';
+  const visibleCount = typeof window !== 'undefined' && window.innerWidth <= 860 ? 1 : 3;
+  const maxStart = Math.max(0, items.length - visibleCount);
+  testimonialCarouselIndex = Math.min(Math.max(0, testimonialCarouselIndex), maxStart);
+  const visible = items.slice(testimonialCarouselIndex, testimonialCarouselIndex + visibleCount);
+  return `
+    <section class="testimonial-section" aria-label="CoGo City testimonials">
+      <div class="testimonial-head">
+        <div>
+          <div class="section-title" style="margin:0 0 6px">What CoGo City Members Say</div>
+          <div class="small muted">Real feedback from students, neighbors, and employers using CoGo City.</div>
+        </div>
+      </div>
+      <div class="testimonial-carousel">
+        <button class="testimonial-nav" type="button" onclick="moveTestimonials(-1)" ${testimonialCarouselIndex <= 0 ? 'disabled' : ''} aria-label="Previous testimonials">‹</button>
+        <div class="testimonial-track">${visible.map(renderTestimonialCard).join('')}</div>
+        <button class="testimonial-nav" type="button" onclick="moveTestimonials(1)" ${testimonialCarouselIndex >= maxStart ? 'disabled' : ''} aria-label="Next testimonials">›</button>
+      </div>
+    </section>
+  `;
+}
+function moveTestimonials(delta=0){
+  testimonialCarouselIndex = Math.max(0, testimonialCarouselIndex + Number(delta || 0));
+  renderPage();
+}
+function toggleTestimonialText(key=''){
+  if (expandedLongTextKeys.has(key)) expandedLongTextKeys.delete(key);
+  else expandedLongTextKeys.add(key);
+  renderPage();
+}
+function openLeaveReviewModal(){
+  if (!currentUser) return openModal('Leave us a Review', `<div class="warning">You need to be signed in to leave us your review.</div>`, '520px');
+  if (testimonialAlreadySubmittedForCurrentUser()) return openModal('Leave us a Review', `<div class="warning">You already submitted a testimonial. Thank you for sharing your CoGo City experience.</div>`, '520px');
+  const draft = normalizeTestimonialRecord({ id:`testimonial_${currentUser.id}`, user_id:currentUser.id, user_email:currentUser.email || '', name:currentUser.publicName || currentUser.name || '', status:'pending' });
+  const display = getTestimonialDisplay(draft);
+  openModal('Leave us a Review', `
+    <div class="testimonial-person" style="margin-bottom:14px">
+      ${renderTestimonialAvatar(draft)}
+      <div><div class="small muted">Name</div><div style="font-weight:900">${esc(display.name)}</div></div>
+    </div>
+    <div class="field"><label>Leave us your review</label><textarea id="testimonialReviewText" rows="6" placeholder="Share your experience with CoGo City"></textarea></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="submitUserTestimonial()">Submit</button>
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+    </div>
+  `, '620px');
+}
+async function submitUserTestimonial(){
+  if (!currentUser) return toast('You need to be signed in to leave us your review.');
+  if (testimonialAlreadySubmittedForCurrentUser()) return toast('You already submitted a testimonial.');
+  const review = String((document.getElementById('testimonialReviewText') || {}).value || '').trim();
+  if (toastRequiredFields({ Review:review })) return;
+  if (!blockTextCheck(review)) return;
+  const record = normalizeTestimonialRecord({
+    id:`testimonial_${currentUser.id}`,
+    user_id:currentUser.id,
+    user_email:currentUser.email || '',
+    name:currentUser.publicName || currentUser.name || '',
+    review,
+    status:'pending',
+    sort_order:Date.now(),
+    createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  });
+  const result = await syncEntityToBackend('testimonials', [record], { replace:false });
+  if (!result || !result.ok) {
+    return toast(result && result.reason === 'missing_backend_token'
+      ? 'Please sign in again before submitting your testimonial so it is saved permanently.'
+      : 'Your testimonial was not saved. Please try again.');
+  }
+  const items = getTestimonials().filter(item => String(item.id) !== String(record.id));
+  ls('cogo_testimonials', items.concat([record]).filter(item => !item.seeded));
+  closeModal();
+  toast('Thank you. Your testimonial was submitted for Admin approval.');
 }
 function renderBlog(){
   ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true });
@@ -13954,7 +14162,7 @@ function renderDashboard(){
   }
 
   if (!WORKSHOPS_ENABLED && dashSection === 'workshops') dashSection = currentUser.role === 'admin' ? 'admin' : 'profile';
-  const adminDashboardSections = ['admin','users','blog_manager','images','advertising','messages','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
+  const adminDashboardSections = ['admin','users','blog_manager','testimonials','images','advertising','messages','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
   const studentDashboardSections = ['profile','jobs_bookings','direct_hire','messages','myposts','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
   const employerDashboardSections = ['profile','myposts','my_jobs','applicants_projects','messages','transactions','settings'].concat(WORKSHOPS_ENABLED ? ['workshops'] : []);
   if (currentUser.role === 'admin' && !adminDashboardSections.includes(dashSection)) {
@@ -13975,6 +14183,7 @@ function renderDashboard(){
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">\u{1F6E1}\uFE0F Admin Panel</a>
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">\u{1F465} Users</a>
           <a href="#" class="${dashSection==='blog_manager'?'active':''}" onclick="dashSection='blog_manager';renderDashboard();return false;">\u{1F4F0} Blog Manager</a>
+          <a href="#" class="${dashSection==='testimonials'?'active':''}" onclick="dashSection='testimonials';renderDashboard();return false;">\u2B50 Testimonials</a>
           <a href="#" class="${dashSection==='images'?'active':''}" onclick="dashSection='images';renderDashboard();return false;">\u{1F5BC}\uFE0F Images</a>
           <a href="#" class="${dashSection==='advertising'?'active':''}" onclick="dashSection='advertising';renderDashboard();return false;">\u{1F4E3} Advertising</a>
           <a href="#" class="${dashSection==='messages'?'active':''}" onclick="dashSection='messages';renderDashboard();return false;">\u{1F4AC} Messages</a>
@@ -14026,6 +14235,7 @@ function renderDashboard(){
     if (dashSection === 'admin') return renderAdminPanel(el);
     if (dashSection === 'users') return renderAdminUsersSection(el);
     if (dashSection === 'blog_manager') return renderAdminBlogManager(el);
+    if (dashSection === 'testimonials') return renderAdminTestimonialsSection(el);
     if (dashSection === 'images') return renderAdminImagesSection(el);
     if (dashSection === 'advertising') return renderAdminAdvertisingSection(el);
     if (dashSection === 'messages') return renderMessages(el);
@@ -19569,6 +19779,133 @@ function renderAdminBlogManager(el){
     <div class="card form-card" id="admin-blog-results"></div>
   `;
   renderAdminBlogResults();
+}
+
+function getFilteredAdminTestimonials(){
+  const q = String(adminTestimonialsQuery || '').trim().toLowerCase();
+  return getTestimonials().filter(item => {
+    if (!q) return true;
+    const display = getTestimonialDisplay(item);
+    return [display.name, item.user_email, item.review, item.status].some(value => String(value || '').toLowerCase().includes(q));
+  });
+}
+function renderAdminTestimonialsResults(){
+  const wrap = document.getElementById('admin-testimonials-results');
+  if (!wrap) return;
+  const items = getFilteredAdminTestimonials();
+  wrap.innerHTML = items.length ? items.map((item, index) => {
+    const display = getTestimonialDisplay(item);
+    const userId = display.user?.id || item.user_id || '';
+    return `
+      <div class="card item-card" style="margin-bottom:12px">
+        <div class="split" style="align-items:flex-start;gap:12px">
+          <div style="min-width:0">
+            <div class="testimonial-person" style="margin-bottom:8px">
+              ${renderTestimonialAvatar(item)}
+              <div>
+                <div style="font-weight:900">${esc(display.name)}</div>
+                <div class="small muted">${esc(item.user_email || display.user?.email || 'No email found')} · ${esc(item.status)}</div>
+              </div>
+            </div>
+            <div class="testimonial-copy">${esc(item.review)}</div>
+            <div class="small muted" style="margin-top:8px">Submitted ${esc(formatBlogDate(item.createdAt))}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            <button class="btn btn-outline btn-sm" onclick="moveAdminTestimonial('${esc(item.id)}', -1)" ${index <= 0 ? 'disabled' : ''}>Move Up</button>
+            <button class="btn btn-outline btn-sm" onclick="moveAdminTestimonial('${esc(item.id)}', 1)" ${index >= items.length - 1 ? 'disabled' : ''}>Move Down</button>
+            <button class="btn btn-outline btn-sm" onclick="openAdminTestimonialEdit('${esc(item.id)}')">Edit</button>
+            ${item.status !== 'approved' ? `<button class="btn btn-blue btn-sm" onclick="setAdminTestimonialStatus('${esc(item.id)}','approved')">Approve</button>` : ''}
+            ${item.status !== 'rejected' ? `<button class="btn btn-danger btn-sm" onclick="setAdminTestimonialStatus('${esc(item.id)}','rejected')">Rejected</button>` : ''}
+            ${userId ? `<button class="btn btn-outline btn-sm" onclick="openAdminMessageModal('${esc(userId)}')">Message User</button>` : `<button class="btn btn-outline btn-sm" disabled>Message User</button>`}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('') : `<div class="muted">No testimonials match this search.</div>`;
+}
+function renderAdminTestimonialsSection(el){
+  const items = getTestimonials();
+  const pending = items.filter(item => item.status === 'pending').length;
+  const approved = items.filter(item => item.status === 'approved').length;
+  const rejected = items.filter(item => item.status === 'rejected').length;
+  el.innerHTML = `
+    <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
+      <div>
+        <div class="section-title" style="margin:0">Testimonials</div>
+        <div class="small muted">Review, approve, edit, message users, and adjust homepage testimonial order.</div>
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
+      <div class="card form-card"><div class="small muted">Pending</div><div style="font-size:1.5rem;font-weight:800">${pending}</div></div>
+      <div class="card form-card"><div class="small muted">Approved</div><div style="font-size:1.5rem;font-weight:800">${approved}</div></div>
+      <div class="card form-card"><div class="small muted">Rejected</div><div style="font-size:1.5rem;font-weight:800">${rejected}</div></div>
+    </div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div class="field" style="margin:0"><label>Search Testimonials</label><input value="${esc(adminTestimonialsQuery)}" placeholder="Search by name, email, status, or text" oninput="adminTestimonialsQuery=this.value;renderAdminTestimonialsResults()"></div>
+    </div>
+    <div class="card form-card" id="admin-testimonials-results"></div>
+  `;
+  renderAdminTestimonialsResults();
+}
+async function persistAdminTestimonials(items, successMessage='Testimonials updated.'){
+  const payload = ensureArray(items).map(item => normalizeTestimonialRecord(Object.assign({}, item, { updatedAt:new Date().toISOString() })));
+  const result = await syncEntityToBackend('testimonials', payload, { replace:false });
+  if (!result || !result.ok) {
+    toast(result && result.reason === 'missing_backend_token'
+      ? 'Please sign in again with the backend admin account so testimonials are saved permanently.'
+      : 'Testimonials were not saved to the backend. Please try again.');
+    return false;
+  }
+  ls('cogo_testimonials', payload);
+  toast(successMessage);
+  renderDashboard();
+  return true;
+}
+function getAdminTestimonialById(id=''){
+  return getTestimonials().find(item => String(item.id) === String(id)) || null;
+}
+async function setAdminTestimonialStatus(id='', status='pending'){
+  const items = getTestimonials();
+  const item = items.find(entry => String(entry.id) === String(id));
+  if (!item) return toast('Testimonial not found.');
+  item.status = status;
+  item.updatedAt = new Date().toISOString();
+  if (status === 'approved') item.approvedAt = item.updatedAt;
+  if (status === 'rejected') item.rejectedAt = item.updatedAt;
+  await persistAdminTestimonials(items, status === 'approved' ? 'Testimonial approved.' : 'Testimonial marked Rejected.');
+}
+function openAdminTestimonialEdit(id=''){
+  const item = getAdminTestimonialById(id);
+  if (!item) return toast('Testimonial not found.');
+  const display = getTestimonialDisplay(item);
+  openModal(`Edit Testimonial: ${display.name}`, `
+    <div class="field"><label>Testimonial Text</label><textarea id="adminTestimonialEditText" rows="8">${esc(item.review)}</textarea></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="saveAdminTestimonialEdit('${esc(item.id)}')">Save</button>
+      <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
+    </div>
+  `, '720px');
+}
+async function saveAdminTestimonialEdit(id=''){
+  const text = String((document.getElementById('adminTestimonialEditText') || {}).value || '').trim();
+  if (toastRequiredFields({ Testimonial:text })) return;
+  if (!blockTextCheck(text)) return;
+  const items = getTestimonials();
+  const item = items.find(entry => String(entry.id) === String(id));
+  if (!item) return toast('Testimonial not found.');
+  item.review = text;
+  await persistAdminTestimonials(items, 'Testimonial updated.');
+  closeModal();
+}
+async function moveAdminTestimonial(id='', direction=0){
+  const items = getTestimonials();
+  const index = items.findIndex(item => String(item.id) === String(id));
+  const nextIndex = index + Number(direction || 0);
+  if (index < 0 || nextIndex < 0 || nextIndex >= items.length) return;
+  const currentOrder = items[index].sort_order;
+  items[index].sort_order = items[nextIndex].sort_order;
+  items[nextIndex].sort_order = currentOrder;
+  await persistAdminTestimonials(items, 'Testimonial order updated.');
 }
 
 function renderAdAdminImagePreview(value='', label='Ad image'){

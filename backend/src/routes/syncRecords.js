@@ -31,6 +31,7 @@ const ALLOWED_ENTITIES = new Set([
   'payment_settings',
   'site_settings',
   'blog_posts',
+  'testimonials',
   'images',
   'bookings',
   'finance',
@@ -43,6 +44,7 @@ const PUBLIC_READ_ENTITIES = new Set([
   'workshops',
   'site_settings',
   'direct_job_packages',
+  'testimonials',
   'images',
 ]);
 
@@ -597,6 +599,20 @@ function requireReadAccess(req, res, next) {
   return requireAuth(req, res, next);
 }
 
+function requireTestimonialsWriteAccess(req, res, records = [], replace = false) {
+  if (req.user.role === 'admin') return true;
+  if (replace) return fail(res, 403, 'Admin access required');
+  const userId = String(req.user.id || '').trim();
+  const valid = records.length > 0 && records.length <= 1 && records.every((record) => {
+    const payload = record.payload || {};
+    const ownerId = String(payload.user_id || payload.userId || '').trim();
+    const status = String(payload.status || '').trim().toLowerCase();
+    return ownerId === userId && status === 'pending';
+  });
+  if (!valid) return fail(res, 403, 'You can only submit your own pending testimonial');
+  return true;
+}
+
 router.get('/images/:id/file', async (req, res) => {
   const imageId = String(req.params.id || '').trim();
   if (!imageId) return fail(res, 404, 'Image not found');
@@ -652,6 +668,10 @@ router.post('/:entity', requireAuth, async (req, res) => {
   try {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
     const normalized = records.map((record) => normalizeRecord(record, entity)).filter(Boolean).slice(0, 1000);
+    if (entity === 'testimonials') {
+      const testimonialsWriteAllowed = requireTestimonialsWriteAccess(req, res, normalized, !!req.body?.replace);
+      if (testimonialsWriteAllowed !== true) return null;
+    }
     if (entity === 'images') {
       const imageWriteAllowed = await requireImageWriteAccess(req, res, normalized);
       if (!imageWriteAllowed) return null;
@@ -732,6 +752,7 @@ router.delete('/:entity/:recordId', requireAuth, async (req, res) => {
   if (!entity) return fail(res, 404, 'Unknown sync entity');
   if (DEDICATED_ROUTE_ENTITIES.has(entity)) return fail(res, 410, 'Use the dedicated API route for this entity');
   if (ADMIN_WRITE_ENTITIES.has(entity) && req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
+  if (entity === 'testimonials' && req.user.role !== 'admin') return fail(res, 403, 'Admin access required');
 
   try {
     const recordId = String(req.params.recordId);
