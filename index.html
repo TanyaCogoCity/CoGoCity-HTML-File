@@ -17694,7 +17694,7 @@ function renderMessages(el){
 
   el.innerHTML = `
     <div class="section-title">Messages</div>
-    <div class="small muted" style="margin-bottom:10px">${esc(messagingSafetyText)}</div>
+    <div class="warning" style="margin-bottom:10px;line-height:1.5">${esc(messagingSafetyText)}</div>
     <div class="msg-shell">
       <div class="thread-list">
         ${threadList.length ? threadList.map(t => `
