@@ -623,7 +623,20 @@ router.get('/images/:id/file', async (req, res) => {
   if (!row) return fail(res, 404, 'Image not found');
   const payload = row.payload || {};
   const source = String(payload.url || payload.thumbnail_url || payload.thumb_url || '').trim();
-  if (/^https?:\/\//i.test(source)) return res.redirect(302, source);
+  if (/^https?:\/\//i.test(source)) {
+    try {
+      const upstream = await fetch(source);
+      if (!upstream.ok) return fail(res, 404, 'Image data not found');
+      const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      res.setHeader('Last-Modified', row.updatedAt.toUTCString());
+      res.type(contentType);
+      return res.send(buffer);
+    } catch (error) {
+      return fail(res, 404, 'Image data not found');
+    }
+  }
   const embedded = parseEmbeddedImage(source);
   if (!embedded) return fail(res, 404, 'Image data not found');
   res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');

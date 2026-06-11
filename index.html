@@ -1471,6 +1471,24 @@ function backendImageAssetUrl(imageId=''){
   if (!cleanId || !BACKEND_MIGRATION.enabled) return '';
   return `${BACKEND_MIGRATION.baseUrl}/sync/images/${encodeURIComponent(cleanId)}/file`;
 }
+function imageIdFromBackendAssetUrl(value=''){
+  const clean = String(value || '').trim();
+  const match = clean.match(/\/api\/sync\/images\/([^/?#]+)\/file/i) || clean.match(/\/sync\/images\/([^/?#]+)\/file/i);
+  return match ? decodeURIComponent(match[1] || '') : '';
+}
+function imageReferenceForPersistence(value=''){
+  const clean = String(value || '').trim();
+  if (!clean) return '';
+  const assetImageId = imageIdFromBackendAssetUrl(clean);
+  if (assetImageId && isImageRecordId(assetImageId)) return assetImageId;
+  if (isImageRecordId(clean)) return clean;
+  const existing = findImageByUrl(clean);
+  return existing && existing.id ? existing.id : clean;
+}
+function imageReferenceAssetUrl(value='', variant='full'){
+  const image = getImageView(value, variant);
+  return image && image.url ? image.url : String(value || '').trim();
+}
 function compactImageRecordForLocalCache(image={}){
   const next = Object.assign({}, image || {});
   if (next.embedded_image_omitted) {
@@ -2883,17 +2901,32 @@ async function syncReferencedImagesBeforeBlogPosts(posts=[]){
   });
   if (!referencedIds.size || !backendAuthEnabled()) return { ok:true, skipped:true };
   let images = getImages();
-  let missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+  let missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
   if (missing.length && BACKEND_MIGRATION.enabled) {
     await loadBackendArraySetting('images', 'cogo_images', { ids: missing, full:true, force:true });
     images = getImages();
-    missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && image.url));
+    missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
   }
   if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
-  const referencedImages = images.filter(image => referencedIds.has(String(image.id)));
-  const result = await syncEntityToBackend('images', referencedImages, { replace:false });
+  const referencedImages = images.filter(image => referencedIds.has(String(image.id)) && image.url && !image.embedded_image_omitted);
+  const result = referencedImages.length
+    ? await syncEntityToBackend('images', referencedImages, { replace:false, skipQueue:true })
+    : { ok:true };
   if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
   if (result && result.ok === false) return result;
+  await loadBackendArraySetting('images', 'cogo_images', { ids:Array.from(referencedIds), full:false, force:true });
+  const assetChecks = await Promise.all(Array.from(referencedIds).map(async id => {
+    const assetUrl = backendImageAssetUrl(id);
+    if (!assetUrl) return { id, ok:true };
+    try {
+      const response = await fetch(assetUrl, { method:'GET', cache:'no-store' });
+      return { id, ok: response.ok, status: response.status };
+    } catch (error) {
+      return { id, ok:false, error:(error && error.message) || 'image_asset_unreachable' };
+    }
+  }));
+  const failedAsset = assetChecks.find(check => !check.ok);
+  if (failedAsset) return { ok:false, reason:'image_asset_unreachable', error:`Image ${failedAsset.id} is not available from backend storage` };
   return { ok:true };
 }
 function collectProfileImageReferences(record={}, bucket=new Set()){
@@ -3089,8 +3122,8 @@ function getImageView(source='', variant='full'){
   const stored = isImageRecordId(raw) ? getImageById(raw) : null;
   if (stored) {
     const assetUrl = backendImageAssetUrl(stored.id || raw);
-    const fullUrl = stored.url || (stored.embedded_image_omitted ? assetUrl : '');
-    const thumbUrl = stored.thumbnail_url || fullUrl || assetUrl;
+    const fullUrl = assetUrl || stored.url || '';
+    const thumbUrl = assetUrl || stored.thumbnail_url || fullUrl;
     return Object.assign({}, stored, { url: variant === 'thumb' ? (thumbUrl || fullUrl) : fullUrl, thumbnail_url: thumbUrl });
   }
   if (looksLikeImageSource(raw)) return { id:'', url: raw, thumbnail_url: raw, alt:'' };
@@ -3145,7 +3178,7 @@ function normalizeBlogPostRecord(post){
     updatedAt: null
   }, post || {});
   normalized.id = String(normalized.id || uid('blog'));
-  normalized.featured_image = normalized.featured_image || normalized.image_id || normalized.featuredImage || '';
+  normalized.featured_image = imageReferenceForPersistence(normalized.featured_image || normalized.image_id || normalized.featuredImage || '');
   normalized.featured_image = upsertImageRecord(normalized.featured_image, { source:'article_featured', entity_type:'article', entity_id: normalized.id || '' }) || '';
   if (normalized.featured_image && !getImageView(normalized.featured_image, 'thumb')) {
     const entityFeaturedImage = findImageByEntity('article_featured', normalized.id || '');
@@ -3165,6 +3198,7 @@ function normalizeBlogPostRecord(post){
     if (normalized.media_type === 'image') normalized.media_url = normalized.articleMediaImage || normalized.article_media || ((normalized.entity_images || [])[0] || '');
   }
   if (normalized.media_type === 'image') {
+    normalized.media_url = imageReferenceForPersistence(normalized.media_url);
     normalized.media_url = upsertImageRecord(normalized.media_url, { source:'article_media', entity_type:'article', entity_id: normalized.id || '' }) || '';
     normalized.articleMediaImage = normalized.media_url;
   } else {
@@ -3270,6 +3304,9 @@ function getBlogPostStatusLabel(post){
   return getBlogPostStatus(post) === 'published' ? 'Published' : 'Draft';
 }
 function getPublicBlogPosts(){
+  if (BACKEND_MIGRATION.enabled && !backendBlogPostsLoaded) {
+    return getSeededBlogPosts().filter(post => getBlogPostStatus(post) === 'published').sort((a,b) => new Date(b.date) - new Date(a.date));
+  }
   return getBlogPosts().filter(post => getBlogPostStatus(post) === 'published').sort((a,b) => new Date(b.date) - new Date(a.date));
 }
 function normalizeBirthDateInput(value=''){
@@ -19435,6 +19472,7 @@ function syncAdminBlogDraftFromForm(){
   const seoDescriptionEl = document.getElementById('adminBlogSeoDescription');
   const authorEl = document.getElementById('adminBlogAuthor');
   const featuredEl = document.getElementById('adminBlogFeaturedImage');
+  const featuredStoredEl = document.getElementById('adminBlogFeaturedImageValue');
   const articleImageEl = document.getElementById('adminBlogArticleImage');
   const articleImageStoredEl = document.getElementById('adminBlogArticleImageValue');
   const videoEl = document.getElementById('blog-video-url') || document.getElementById('adminBlogVideoLink');
@@ -19446,8 +19484,8 @@ function syncAdminBlogDraftFromForm(){
   if (seoTitleEl) adminBlogDraft.seo_title = seoTitleEl.value || '';
   if (seoDescriptionEl) adminBlogDraft.seo_description = seoDescriptionEl.value || '';
   if (authorEl) adminBlogDraft.authorName = authorEl.value || 'CoGo Team';
-  if (featuredEl) {
-    const featuredValue = (featuredEl.value || '').trim();
+  if (featuredEl || featuredStoredEl) {
+    const featuredValue = imageReferenceForPersistence((featuredStoredEl && featuredStoredEl.value) || (featuredEl && featuredEl.value) || '');
     if (featuredValue) {
       adminBlogDraft.featured_image = featuredValue;
       adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
@@ -19455,7 +19493,7 @@ function syncAdminBlogDraftFromForm(){
     }
   }
   const articleImageValue = articleImageEl ? (articleImageEl.value || '').trim() : '';
-  const articleImageStoredValue = articleImageStoredEl ? (articleImageStoredEl.value || '').trim() : '';
+  const articleImageStoredValue = imageReferenceForPersistence(articleImageStoredEl ? (articleImageStoredEl.value || '').trim() : '');
   const rawVideoValue = videoEl ? (videoEl.value || '').trim() : '';
   const videoState = normalizeVideoInputValue(rawVideoValue);
   if (videoEl && rawVideoValue && videoState.input_url && videoState.input_url !== rawVideoValue) videoEl.value = videoState.input_url;
@@ -19466,7 +19504,7 @@ function syncAdminBlogDraftFromForm(){
     adminBlogDraft.video_id = videoState.video_id || '';
   } else if (articleImageStoredValue || articleImageValue) {
     adminBlogDraft.media_type = 'image';
-    adminBlogDraft.media_url = articleImageStoredValue || articleImageValue;
+    adminBlogDraft.media_url = articleImageStoredValue || imageReferenceForPersistence(articleImageValue);
   } else if (!adminBlogDraft.media_url) {
     adminBlogDraft.media_type = '';
     adminBlogDraft.media_url = '';
@@ -19509,6 +19547,7 @@ function renderAdminBlogEditorHtml(){
       <div class="field"><label>SEO Title (optional)</label><input id="adminBlogSeoTitle" value="${esc(post.seo_title || '')}" placeholder="${esc(stripHtmlTags(post.title || 'Article title'))} | CoGo City"></div>
       <div class="field"><label>Meta Description (optional)</label><textarea id="adminBlogSeoDescription" rows="3" maxlength="170" placeholder="120-160 characters for Google search results">${esc(post.seo_description || '')}</textarea></div>
       <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
+      <input id="adminBlogFeaturedImageValue" type="hidden" value="${esc(post.featured_image || post.image_id || post.featuredImage || '')}">
       <div class="field"><label>Featured Image URL</label><input id="adminBlogFeaturedImage" value="${esc(featuredImage ? featuredImage.url : '')}" placeholder="https://..." oninput="previewAdminBlogFeaturedImage(this.value)"></div>
       <div class="field"><label>Or upload featured image</label><input type="file" accept="image/*" onchange="handleAdminBlogFeaturedImageUpload(this)"></div>
       <div style="margin:-6px 0 14px"><button class="btn btn-outline btn-sm" type="button" onclick="openAdminBlogFeaturedImageLibrary()">Select from Library</button></div>
@@ -19552,16 +19591,20 @@ function cancelAdminBlogEditor(){
   closeModal();
 }
 function previewAdminBlogFeaturedImage(value){
+  const persistedValue = imageReferenceForPersistence(value);
+  const displayValue = imageReferenceAssetUrl(persistedValue || value, 'full');
   if (adminBlogDraft) {
-    adminBlogDraft.featured_image = value || '';
+    adminBlogDraft.featured_image = persistedValue || '';
     adminBlogDraft.featuredImage = adminBlogDraft.featured_image;
     adminBlogDraft.image_id = adminBlogDraft.featured_image;
   }
   const input = document.getElementById('adminBlogFeaturedImage');
-  if (input && input.value !== value) input.value = value || '';
+  const hidden = document.getElementById('adminBlogFeaturedImageValue');
+  if (input && input.value !== displayValue) input.value = displayValue || '';
+  if (hidden) hidden.value = persistedValue || '';
   const el = document.getElementById('admin-blog-featured-preview');
   if (!el) return;
-  el.innerHTML = value ? renderManagedImage(value, 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`;
+  el.innerHTML = persistedValue ? renderManagedImage(persistedValue, 'Featured image', 'width:100%;max-width:420px;border-radius:14px;border:1px solid var(--border)', 'full', 'loading="eager"') : `<div class="small muted">No featured image yet.</div>`;
 }
 function clearAdminBlogFeaturedImage(){
   if (!adminBlogDraft) return;
@@ -19569,7 +19612,9 @@ function clearAdminBlogFeaturedImage(){
   adminBlogDraft.featuredImage = '';
   adminBlogDraft.image_id = '';
   const input = document.getElementById('adminBlogFeaturedImage');
+  const hidden = document.getElementById('adminBlogFeaturedImageValue');
   if (input) input.value = '';
+  if (hidden) hidden.value = '';
   previewAdminBlogFeaturedImage('');
 }
 async function uploadBlogImageToBackend(file, meta={}){

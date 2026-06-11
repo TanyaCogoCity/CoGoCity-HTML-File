@@ -136,9 +136,28 @@ const checks = [
     name: 'Blog images load through backend asset URLs instead of local embedded cache',
     test: () => /function backendImageAssetUrl\(imageId=''\)/.test(indexHtml)
       && /BACKEND_MIGRATION\.baseUrl}\/sync\/images\/\$\{encodeURIComponent\(cleanId\)\}\/file/.test(indexHtml)
+      && /const fullUrl = assetUrl \|\| stored\.url \|\| '';/.test(indexHtml)
       && /router\.get\('\/images\/:id\/file'/.test(syncRecordsRoute)
       && /record\.backend_asset_url = publicImageUrl;/.test(syncRecordsRoute)
-      && /record\.embedded_image_omitted = false;/.test(syncRecordsRoute),
+      && /record\.embedded_image_omitted = false;/.test(syncRecordsRoute)
+      && /const upstream = await fetch\(source\);/.test(syncRecordsRoute)
+      && !/res\.redirect\(302, source\)/.test(syncRecordsRoute),
+  },
+  {
+    name: 'Blog image uploads persist backend image ids and confirm asset URL before blog save',
+    test: () => /function imageReferenceForPersistence\(value=''\)/.test(indexHtml)
+      && /function imageIdFromBackendAssetUrl\(value=''\)/.test(indexHtml)
+      && /const featuredStoredEl = document\.getElementById\('adminBlogFeaturedImageValue'\);/.test(indexHtml)
+      && /<input id="adminBlogFeaturedImageValue" type="hidden"/.test(indexHtml)
+      && /await loadBackendArraySetting\('images', 'cogo_images', \{ ids:Array\.from\(referencedIds\), full:false, force:true \}\);/.test(indexHtml)
+      && /fetch\(assetUrl, \{ method:'GET', cache:'no-store' \}\)/.test(indexHtml)
+      && /image_asset_unreachable/.test(indexHtml),
+  },
+  {
+    name: 'Public blog does not use stale local blog cache before backend snapshot loads',
+    test: () => /if \(BACKEND_MIGRATION\.enabled && !backendBlogPostsLoaded\) \{[\s\S]*return getSeededBlogPosts\(\)\.filter/.test(indexHtml)
+      && /ensureBackendBlogPostsLoaded\(\{ rerender:true \}\);/.test(indexHtml)
+      && /loadBackendBlogPosts\(options\)/.test(indexHtml),
   },
   {
     name: 'Profile and service images are backend-confirmed before saved records point at them',
