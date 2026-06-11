@@ -84,6 +84,15 @@ const checks = [
     },
   },
   {
+    name: 'Employer community button matches neighbor flow and Direct Hire keeps create job',
+    test: () => /employer: 'Post or Create a Job'/.test(indexHtml)
+      && /const employerPrimaryLabel = !btnLabels\.employer \|\| btnLabels\.employer === 'Post a Job' \? 'Post or Create a Job' : btnLabels\.employer;/.test(indexHtml)
+      && /onclick="goToPostJob\(\)">\$\{esc\(employerPrimaryLabel\)\}<\/button>/.test(indexHtml)
+      && /openCommunityComposer\(\);/.test(sliceBetween('function goToPostJob(){', 'function dashboardLinkForAction'))
+      && /My Direct Hire/.test(indexHtml)
+      && /Create Job<\/button>/.test(indexHtml),
+  },
+  {
     name: 'Community gig text clamps to three lines with see more controls',
     test: () => /function renderCollapsibleLongText\(value='', key='', options=\{\}\)/.test(indexHtml)
       && /max-height:5\.1em;overflow:hidden/.test(indexHtml)

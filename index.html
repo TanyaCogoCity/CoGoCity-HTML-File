@@ -4780,7 +4780,7 @@ function getSiteSettings(){
     nav_primary_buttons: {
       admin: 'Admin Panel',
       student: 'Add Service',
-      employer: 'Post a Job',
+      employer: 'Post or Create a Job',
       neighbor: 'Post or Create a Job'
     },
     footer_about_title: 'About CoGo City',
@@ -7015,6 +7015,7 @@ function renderNav(){
   const settings = getSiteSettings();
   const btnLabels = settings.nav_primary_buttons || {};
   const neighborPrimaryLabel = !btnLabels.neighbor || btnLabels.neighbor === 'Post to Community' ? 'Post or Create a Job' : btnLabels.neighbor;
+  const employerPrimaryLabel = !btnLabels.employer || btnLabels.employer === 'Post a Job' ? 'Post or Create a Job' : btnLabels.employer;
   const onboardingLocked = needsMigrationOnboarding() && currentUser.role !== 'admin' && currentUser.role !== 'student';
   const primaryButton = currentUser.role === 'student'
     ? `<button class="btn btn-blue btn-sm" onclick="goToAddService()">${esc(btnLabels.student || 'Add Service')}</button>`
@@ -7024,7 +7025,7 @@ function renderNav(){
         ? `<button class="btn btn-blue btn-sm" onclick="goDashboard()">${esc(btnLabels.admin || 'Admin Panel')}</button>`
         : (isNeighborAccount(currentUser)
             ? `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(neighborPrimaryLabel)}</button>`
-            : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(btnLabels.employer || 'Post a Job')}</button>`);
+            : `<button class="btn btn-blue btn-sm" onclick="goToPostJob()">${esc(employerPrimaryLabel)}</button>`);
   const rawAvatarLabel = currentUser.emoji || firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}';
   const avatarLabel = /^https?:\/\//i.test(String(rawAvatarLabel || '')) ? firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}' : rawAvatarLabel;
   const avatarMenuButtons = currentUser.role === 'student'
@@ -16320,8 +16321,8 @@ function renderEmployerMyJobs(el){
 function renderEmployerWorkTypeGuidance(){
   return `
     <div class="warning" style="margin:0 0 14px;line-height:1.55">
-      <strong>Post a Job</strong> if you plan to hire and pay the student directly as your employee. We will charge a monthly job posting fee and help you find qualified candidates.<br>
-      <strong>Use Community Gigs</strong> if you're looking for part-time help and would like CoGo City to handle payments through the platform.
+      <strong>Post or Create a Job</strong> opens the public Community Gigs page so you can create a community post or hourly gig.<br>
+      <strong>My Direct Hire</strong> is separate and stays available for direct-hire job listings.
     </div>
   `;
 }
