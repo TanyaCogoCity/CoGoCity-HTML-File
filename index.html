@@ -7509,7 +7509,7 @@ function openLoginModal(tab='signin'){
       ` : ''}
     `;
   } else if (authTab === 'student') {
-    return openStudentSignupWorkflow();
+    return openStudentSignupWorkflow(1, { reset:true });
   } else {
     return openEmployerSignupWorkflow(authTab === 'neighbor' ? 'neighbor' : 'employer');
   }
@@ -7762,8 +7762,8 @@ function getStudentSignupSuggestions(){
   if ((d.experience || '').length < 30) suggestions.push('Share a little experience so employers trust your profile faster.');
   return suggestions.slice(0, 2);
 }
-function openStudentSignupWorkflow(step=1){
-  if (!studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
+function openStudentSignupWorkflow(step=1, options={}){
+  if (options.reset || !studentSignupDraft) studentSignupDraft = createDefaultStudentSignupDraft();
   studentSignupStep = step;
   if (!studentSignupDraft.serviceForm) studentSignupDraft.serviceForm = createEmptyStudentSignupServiceForm();
   renderStudentSignupModal();
@@ -7899,8 +7899,8 @@ function renderStudentSignupStepContent(){
   if (studentSignupStep === 1) return `
     <div class="card form-card">
       <div class="row">
-        <div class="field"><label>First Name</label><input id="studentFlowFirstName" value="${esc(d.firstName || splitFullName(d.name)[0] || '')}" placeholder="Daniel"></div>
-        <div class="field"><label>Last Name</label><input id="studentFlowLastName" value="${esc(d.lastName || splitFullName(d.name).slice(1).join(' ') || '')}" placeholder="Lipovich"></div>
+        <div class="field"><label>First Name</label><input id="studentFlowFirstName" value="${esc(d.firstName || '')}" placeholder=""></div>
+        <div class="field"><label>Last Name</label><input id="studentFlowLastName" value="${esc(d.lastName || '')}" placeholder=""></div>
       </div>
       <div class="field"><label>Email address</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"><div class="small muted" style="margin-top:6px">We will use this email for your account and important onboarding updates.</div></div>
       <div class="row">
@@ -8878,8 +8878,8 @@ function renderEmployerSignupStepContent(){
     <div class="card form-card">
       ${renderUsOnlySignupNotice()}
       <div class="row">
-        <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="Tanya" oninput="syncEmployerSignupPersonalDraft()"></div>
-        <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="Lip" oninput="syncEmployerSignupPersonalDraft()"></div>
+        <div class="field"><label>First Name</label><input id="employerSignupFirstName" value="${esc(d.firstName)}" placeholder="" oninput="syncEmployerSignupPersonalDraft()"></div>
+        <div class="field"><label>Last Name</label><input id="employerSignupLastName" value="${esc(d.lastName)}" placeholder="" oninput="syncEmployerSignupPersonalDraft()"></div>
       </div>
       ${renderSignupPhotoUploadControl('employerSignupProfilePhotoInput', 'handleEmployerSignupPhotoUpload', d.photo || '', { label:'Profile Photo', selectedName:d.photoFileName || '' })}
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
@@ -14904,7 +14904,7 @@ function renderMigrationOnboarding(el){
   setTimeout(initGoogleAddressFields, 0);
 }
 function renderStudentMigrationOnboardingForm(profile){
-  if (!profile) return `<div class="card form-card"><div class="warning">No student profile was found yet.</div><div style="margin-top:12px"><button class="btn btn-blue" onclick="openStudentSignupWorkflow()">Start Student Onboarding</button></div></div>`;
+  if (!profile) return `<div class="card form-card"><div class="warning">No student profile was found yet.</div><div style="margin-top:12px"><button class="btn btn-blue" onclick="openStudentSignupWorkflow(1, { reset:true })">Start Student Onboarding</button></div></div>`;
   const service = getRenderableStudentServices(profile)[0] || {};
   return `
     <div class="card form-card">
@@ -15205,7 +15205,7 @@ function renderStudentProfile(el){
     el.innerHTML = `
       <div class="card form-card muted">
         No student profile found yet.
-        <div style="margin-top:12px"><button class="btn btn-blue" onclick="openStudentSignupWorkflow()">Start Student Onboarding</button></div>
+        <div style="margin-top:12px"><button class="btn btn-blue" onclick="openStudentSignupWorkflow(1, { reset:true })">Start Student Onboarding</button></div>
       </div>
     `;
     return;
