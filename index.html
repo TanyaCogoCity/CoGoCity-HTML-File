@@ -3095,7 +3095,8 @@ function optimizeImageDataUrlForStorage(dataUrl='', file=null){
 function prepareUploadedImageRecord(file, meta={}){
   if (!file) return Promise.resolve('');
   const fingerprint = buildUploadedImageFingerprint(file);
-  const existing = findImageByFingerprint(fingerprint);
+  const forceNew = meta && meta.forceNew === true;
+  const existing = forceNew ? null : findImageByFingerprint(fingerprint);
   if (existing) return Promise.resolve(existing.id);
   return readFileAsDataUrl(file)
     .then(dataUrl => optimizeImageDataUrlForStorage(dataUrl, file))
@@ -3119,11 +3120,12 @@ function upsertImageRecord(value, meta={}){
   if (isImageRecordId(raw)) return raw;
   if (!looksLikeImageSource(raw)) return raw;
   const fingerprint = String(meta.fingerprint || '').trim();
-  if (fingerprint) {
+  const forceNew = meta && meta.forceNew === true;
+  if (fingerprint && !forceNew) {
     const existingByFingerprint = findImageByFingerprint(fingerprint);
     if (existingByFingerprint) return existingByFingerprint.id;
   }
-  const existing = findImageByUrl(raw);
+  const existing = forceNew ? null : findImageByUrl(raw);
   if (existing) return existing.id;
   const images = getImages();
   const record = normalizeImageRecord(Object.assign({ url: raw, thumbnail_url: raw }, meta));
@@ -12976,7 +12978,7 @@ function selectAdminModalImageFromLibrary(imageId=''){
 function handleAdminModalSingleImageUpload(input, inputId='', previewId='', source='profile', alt='Image', emptyLabel='No image selected yet.'){
   const file = input && input.files && input.files[0];
   if (!file) return;
-  prepareUploadedImageRecord(file, { source })
+  prepareUploadedImageRecord(file, { source, forceNew:true })
     .then(async imageId => {
       if (backendAuthEnabled() && imageId && isImageRecordId(imageId)) {
         const imageSync = await syncReferencedImagesBeforeProfileSave([{ photo:imageId, profileImages:[imageId], businessLogo:imageId }]);
@@ -12995,7 +12997,7 @@ function handleAdminModalSingleImageUpload(input, inputId='', previewId='', sour
 }
 function handleAdminModalImageListUpload(input, inputId='', previewId='', source='gallery', limit=1){
   readImagesToDataUrls(input, async (images) => {
-    const taggedImages = upsertImageRecords(images.slice(0, 1), { source });
+    const taggedImages = upsertImageRecords(images.slice(0, 1), { source, forceNew:true });
     if (backendAuthEnabled() && taggedImages.length) {
       try {
         const imageSync = await syncReferencedImagesBeforeProfileSave([{ profileImages:taggedImages, services:[{ images:taggedImages }] }]);
@@ -13012,7 +13014,7 @@ function handleAdminModalImageListUpload(input, inputId='', previewId='', source
     }
     setAdminModalImageList(inputId, previewId, taggedImages, 1);
     if (input) input.value = '';
-  }, 1, { source });
+  }, 1, { source, forceNew:true });
 }
 function selectImageFromLibrary(callbackName, imageId){
   const fn = window[callbackName];
