@@ -1167,6 +1167,12 @@ const DEFAULT_COMMUNITY_JOB_PLACEHOLDERS = {
   videoUploadLabel: 'Upload Video (Optional)',
   videoUploadHelper: 'MP4 or WebM, Max. file size: 15 MB'
 };
+const DEFAULT_EMPLOYER_ONBOARDING_COPY = {
+  profileVideoLinkLabel: 'Add Profile Video Link (Optional)',
+  profileVideoLinkHelper: 'Paste a YouTube/Vimeo link',
+  profileVideoUploadLabel: 'Upload Profile Video (Optional)',
+  profileVideoUploadHelper: 'Upload a short video: 16:9 at 720p or 1080p, under 60 seconds, and under 15 MB.'
+};
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
 let backendSyncRetryTimer = null;
@@ -1198,6 +1204,9 @@ let backendProjectsLoadedAt = 0;
 let communityJobPlaceholderConfig = Object.assign({}, DEFAULT_COMMUNITY_JOB_PLACEHOLDERS);
 let communityJobPlaceholderConfigLoaded = false;
 let communityJobPlaceholderConfigPromise = null;
+let employerOnboardingCopyConfig = Object.assign({}, DEFAULT_EMPLOYER_ONBOARDING_COPY);
+let employerOnboardingCopyConfigLoaded = false;
+let employerOnboardingCopyConfigPromise = null;
 let backendSyncedProjectsLoading = false;
 let backendSyncedProjectsLoaded = false;
 let backendSyncedProjectsError = '';
@@ -1325,6 +1334,60 @@ async function ensureCommunityJobPlaceholderConfigLoaded(options={}){
     communityJobPlaceholderConfigPromise = null;
   });
   return communityJobPlaceholderConfigPromise;
+}
+function normalizeEmployerOnboardingCopyConfig(config={}){
+  const source = config && typeof config === 'object' ? config : {};
+  return {
+    profileVideoLinkLabel: String(source.profile_video_link_label ?? source.profileVideoLinkLabel ?? DEFAULT_EMPLOYER_ONBOARDING_COPY.profileVideoLinkLabel),
+    profileVideoLinkHelper: String(source.profile_video_link_helper ?? source.profileVideoLinkHelper ?? DEFAULT_EMPLOYER_ONBOARDING_COPY.profileVideoLinkHelper),
+    profileVideoUploadLabel: String(source.profile_video_upload_label ?? source.profileVideoUploadLabel ?? DEFAULT_EMPLOYER_ONBOARDING_COPY.profileVideoUploadLabel),
+    profileVideoUploadHelper: String(source.profile_video_upload_helper ?? source.profileVideoUploadHelper ?? DEFAULT_EMPLOYER_ONBOARDING_COPY.profileVideoUploadHelper)
+  };
+}
+function getEmployerOnboardingCopy(){
+  return Object.assign({}, DEFAULT_EMPLOYER_ONBOARDING_COPY, employerOnboardingCopyConfig || {});
+}
+function applyEmployerOnboardingCopyToOpenForms(){
+  const copy = getEmployerOnboardingCopy();
+  [
+    ['profile-video-link-label', copy.profileVideoLinkLabel],
+    ['profile-video-link-helper', copy.profileVideoLinkHelper],
+    ['profile-video-upload-label', copy.profileVideoUploadLabel],
+    ['profile-video-upload-helper', copy.profileVideoUploadHelper]
+  ].forEach(([key, value]) => {
+    document.querySelectorAll(`[data-employer-onboarding-copy="${key}"]`).forEach((el) => {
+      el.textContent = value || '';
+      el.classList.toggle('hidden', !value);
+    });
+  });
+}
+async function ensureEmployerOnboardingCopyConfigLoaded(options={}){
+  if (!BACKEND_MIGRATION.enabled) {
+    employerOnboardingCopyConfig = Object.assign({}, DEFAULT_EMPLOYER_ONBOARDING_COPY);
+    employerOnboardingCopyConfigLoaded = true;
+    return employerOnboardingCopyConfig;
+  }
+  if (employerOnboardingCopyConfigLoaded && !options.force) return employerOnboardingCopyConfig;
+  if (employerOnboardingCopyConfigPromise && !options.force) return employerOnboardingCopyConfigPromise;
+  employerOnboardingCopyConfigPromise = backendRequest('/sync/form-config/employer-neighbor-onboarding', {
+    method: 'GET',
+    auth: false,
+    cache: 'no-store'
+  }).then(result => {
+    const data = result && result.ok ? (result.data && result.data.data ? result.data.data : result.data) : null;
+    employerOnboardingCopyConfig = normalizeEmployerOnboardingCopyConfig((data && data.placeholders) || {});
+    employerOnboardingCopyConfigLoaded = true;
+    applyEmployerOnboardingCopyToOpenForms();
+    return employerOnboardingCopyConfig;
+  }).catch(error => {
+    console.warn('Employer onboarding copy config unavailable', error);
+    employerOnboardingCopyConfig = Object.assign({}, DEFAULT_EMPLOYER_ONBOARDING_COPY);
+    employerOnboardingCopyConfigLoaded = true;
+    return employerOnboardingCopyConfig;
+  }).finally(() => {
+    employerOnboardingCopyConfigPromise = null;
+  });
+  return employerOnboardingCopyConfigPromise;
 }
 window.CoGoBackend = {
   config: BACKEND_MIGRATION,
@@ -8855,6 +8918,7 @@ function renderEmployerSignupModal(){
   const d = employerSignupDraft || createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
   const label = employerSignupMode === 'employer' ? 'Employer' : 'Neighbor';
   const footer = renderEmployerSignupFooter();
+  ensureEmployerOnboardingCopyConfigLoaded();
   openModal(`Join CoGo City as ${label}`, `
     <div data-employer-signup-root="true">
       <div class="card" style="padding:14px 16px;background:#F9FAFB;border:1px solid var(--border);margin-bottom:16px">
@@ -8874,6 +8938,7 @@ function renderEmployerSignupModal(){
 }
 function renderEmployerSignupStepContent(){
   const d = employerSignupDraft;
+  const onboardingCopy = getEmployerOnboardingCopy();
   if (employerSignupStep === 1) return `
     <div class="card form-card">
       ${renderUsOnlySignupNotice()}
@@ -8886,8 +8951,8 @@ function renderEmployerSignupStepContent(){
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
       <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderSignupSelectedImagePreview(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.', d.photoFileName || '', d.photoPreviewUrl || '') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
       <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
-      <div class="field"><label>Profile Video Link or Upload (optional)</label><input id="employerSignupProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmployerSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Profile Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmployerSignupProfileVideoUpload(this)"></div>
+      <div class="field"><label data-employer-onboarding-copy="profile-video-link-label">${esc(onboardingCopy.profileVideoLinkLabel)}</label><input id="employerSignupProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmployerSignupProfileVideo(this.value)"><div class="small muted ${onboardingCopy.profileVideoLinkHelper ? '' : 'hidden'}" data-employer-onboarding-copy="profile-video-link-helper" style="margin-top:6px">${esc(onboardingCopy.profileVideoLinkHelper)}</div></div>
+      <div class="field"><label data-employer-onboarding-copy="profile-video-upload-label">${esc(onboardingCopy.profileVideoUploadLabel)}</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmployerSignupProfileVideoUpload(this)"><div class="small muted ${onboardingCopy.profileVideoUploadHelper ? '' : 'hidden'}" data-employer-onboarding-copy="profile-video-upload-helper" style="margin-top:6px">${esc(onboardingCopy.profileVideoUploadHelper)}</div></div>
       <div id="employer-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video')}</div>
       <div class="field"><label>Email (private)</label><input id="employerSignupEmail" type="email" value="${esc(d.email)}" placeholder="you@email.com" oninput="syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly.</div></div>
       <div class="field"><label>Phone Number (private)</label><input id="employerSignupPhone" value="${esc(d.phone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupPersonalDraft()" onblur="this.value=formatUsPhoneNumber(this.value);syncEmployerSignupPersonalDraft()"><div class="small muted" style="margin-top:6px">This is not visible publicly. Use a complete 10-digit U.S. phone number.</div></div>

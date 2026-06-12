@@ -28,6 +28,12 @@ const DEFAULT_FORM_CONFIGS = {
     video_upload_label: 'Upload Video (Optional)',
     video_upload_helper: 'MP4 or WebM, Max. file size: 15 MB',
   },
+  'employer-neighbor-onboarding': {
+    profile_video_link_label: 'Add Profile Video Link (Optional)',
+    profile_video_link_helper: 'Paste a YouTube/Vimeo link',
+    profile_video_upload_label: 'Upload Profile Video (Optional)',
+    profile_video_upload_helper: 'Upload a short video: 16:9 at 720p or 1080p, under 60 seconds, and under 15 MB.',
+  },
 };
 
 const ALLOWED_ENTITIES = new Set([
@@ -651,24 +657,40 @@ function normalizeCommunityJobPostingConfig(config = {}) {
   };
 }
 
+function normalizeEmployerNeighborOnboardingConfig(config = {}) {
+  const defaults = DEFAULT_FORM_CONFIGS['employer-neighbor-onboarding'];
+  const source = config && typeof config === 'object' ? config : {};
+  return {
+    profile_video_link_label: String(source.profile_video_link_label ?? source.profileVideoLinkLabel ?? defaults.profile_video_link_label),
+    profile_video_link_helper: String(source.profile_video_link_helper ?? source.profileVideoLinkHelper ?? defaults.profile_video_link_helper),
+    profile_video_upload_label: String(source.profile_video_upload_label ?? source.profileVideoUploadLabel ?? defaults.profile_video_upload_label),
+    profile_video_upload_helper: String(source.profile_video_upload_helper ?? source.profileVideoUploadHelper ?? defaults.profile_video_upload_helper),
+  };
+}
+
 router.get('/form-config/:key', async (req, res) => {
   const key = String(req.params.key || '').trim().toLowerCase();
-  if (key !== 'community-job-posting') return fail(res, 404, 'Unknown form configuration');
+  const normalizers = {
+    'community-job-posting': normalizeCommunityJobPostingConfig,
+    'employer-neighbor-onboarding': normalizeEmployerNeighborOnboardingConfig,
+  };
+  const normalizeConfig = normalizers[key];
+  if (!normalizeConfig) return fail(res, 404, 'Unknown form configuration');
   try {
     const row = await prisma.syncRecord.findFirst({
       where: { entity: 'site_settings', recordId: 'site_settings', deletedAt: null },
       select: { payload: true },
     });
     const formConfigs = row?.payload?.form_configs || row?.payload?.formConfigs || {};
-    const configured = formConfigs[key] || formConfigs.community_job_posting || {};
+    const configured = formConfigs[key] || formConfigs[key.replace(/-/g, '_')] || {};
     return ok(res, {
       key,
-      placeholders: normalizeCommunityJobPostingConfig(configured),
+      placeholders: normalizeConfig(configured),
     });
   } catch (error) {
     return ok(res, {
       key,
-      placeholders: normalizeCommunityJobPostingConfig(),
+      placeholders: normalizeConfig(),
       fallback: true,
     });
   }
