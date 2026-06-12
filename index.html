@@ -13787,13 +13787,22 @@ function renderCommunityVideoComposerPreview(videoValue='', inputId='', previewI
     </div>
   `;
 }
+function getImmediateImagePreviewSource(source=''){
+  const clean = String(source || '').trim();
+  if (!isImageRecordId(clean)) return clean;
+  const stored = getImageById(clean);
+  if (stored && isInlineImageDataSource(stored.url)) return stored.url;
+  if (stored && isInlineImageDataSource(stored.thumbnail_url)) return stored.thumbnail_url;
+  return clean;
+}
 function renderPostComposerImagePreview(images=[], removeAction='removePostComposerImage'){
   const safe = ensureArray(images).filter(Boolean).slice(0, 1);
   if (!safe.length) return '';
   const action = removeAction ? `${removeAction}()` : '';
+  const previewSource = getImmediateImagePreviewSource(safe[0]);
   return `
     <div style="max-width:540px;margin-bottom:14px">
-      ${renderManagedImage(safe[0], 'Post image', 'width:100%;aspect-ratio:16/9;min-height:220px;max-height:340px;border-radius:16px;object-fit:cover;border:1px solid var(--border);background:#F9FAFB;display:block', 'full', 'loading="eager"')}
+      ${renderManagedImage(previewSource, 'Post image', 'width:100%;aspect-ratio:16/9;min-height:220px;max-height:340px;border-radius:16px;object-fit:cover;border:1px solid var(--border);background:#F9FAFB;display:block', 'full', 'loading="eager"')}
       <div style="margin-top:10px">${action ? `<button class="btn btn-outline btn-sm" type="button" onclick="${action}">Remove image</button>` : ''}</div>
     </div>
   `;
