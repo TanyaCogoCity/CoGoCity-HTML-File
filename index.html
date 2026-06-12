@@ -6075,6 +6075,15 @@ function isNeighborAccount(user=currentUser){
 function isEmployerAccount(user=currentUser){
   return !!user && (user.role === 'employer' || user.role === 'neighbor');
 }
+function isDirectHireEmployerAccount(user=currentUser){
+  return !!user && String(user.role || '').toLowerCase() === 'employer';
+}
+function goToDirectHireJobCreator(){
+  if (!isDirectHireEmployerAccount(currentUser)) return;
+  dashSection = 'my_jobs';
+  employerMyJobsTab = 'create';
+  goDashboard();
+}
 function openCommunityComposer(options={}){
   location.hash = '#/community';
   renderPage();
@@ -10443,6 +10452,7 @@ function renderJobsPage(){
   const route = getRoute();
   const detailMatch = route.match(/^#\/jobs\/([^?#]+)/);
   if (detailMatch) return renderDirectJobDetailPage(decodeURIComponent(detailMatch[1]));
+  const showDirectHireCreateJob = isDirectHireEmployerAccount(currentUser);
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('jobs', {
@@ -10450,6 +10460,11 @@ function renderJobsPage(){
       body:'Apply directly to jobs posted by employers and businesses.'
     })}
     <div class="container">
+      ${showDirectHireCreateJob ? `
+        <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+          <button class="btn btn-blue" onclick="goToDirectHireJobCreator()">Create Job</button>
+        </div>
+      ` : ''}
       <div class="card form-card" style="margin-bottom:16px">
         <div class="row">
           <div class="field"><label for="directJobsSearchInput">Search jobs</label><input id="directJobsSearchInput" value="${esc(directJobsSearchQuery)}" placeholder="Title, company, location, or keyword" oninput="updateDirectJobsSearch(this.value)"></div>
