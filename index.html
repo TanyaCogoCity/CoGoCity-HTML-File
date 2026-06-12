@@ -3547,6 +3547,13 @@ function normalizePostRecord(post){
   normalized.images = [...normalized.entity_images];
   if (!normalized.video_url && normalized.videoLink) normalized.video_url = normalized.videoLink;
   applyVideoState(normalized, getRenderableVideoUrl(normalized) || normalized.video_url || '');
+  if (normalized.isJob) {
+    const status = String(normalized.status || 'open').trim().toLowerCase();
+    normalized.status = ['closed','completed','in_progress','project_started'].includes(status) ? 'closed' : 'open';
+  } else {
+    delete normalized.status;
+    delete normalized.application_count;
+  }
   return normalized;
 }
 function getPosts(){
@@ -13507,10 +13514,30 @@ async function persistCommunityJobDerivedState(postId='', applications=getApplic
   if (!post) return true;
   const nextCount = getCommunityFeedApplicationCount(post.id, applications);
   const nextStatus = getCommunityJobDerivedStatus(post, applications);
-  const changed = Number(post.application_count || 0) !== nextCount || String(post.status || 'open') !== nextStatus;
+  const currentStatus = ['closed','completed','in_progress','project_started'].includes(String(post.status || 'open').toLowerCase()) ? 'closed' : String(post.status || 'open').toLowerCase();
+  const changed = Number(post.application_count || 0) !== nextCount || currentStatus !== nextStatus;
   post.application_count = nextCount;
   post.status = nextStatus;
   if (!changed) return true;
+  return await persistCommunityPostsPermanently(posts, failureMessage, { skipImageSync:true });
+}
+async function closeCommunityFeedPostForProject(project={}, failureMessage='Backend job completion update failed. Please try again so this project completion is saved for everyone.'){
+  const postIds = [
+    project.postId,
+    project.post_id,
+    project.job_id,
+    project.jobId,
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  if (!postIds.length) return true;
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    await loadBackendCommunityPosts({ rerender:false, force:true });
+  }
+  const posts = getPosts();
+  const post = posts.find(item => postIds.includes(String(item.id || '')) && item.isJob);
+  if (!post) return true;
+  post.status = 'closed';
+  post.updatedAt = new Date().toISOString();
+  post.application_count = getCommunityFeedApplicationCount(post.id);
   return await persistCommunityPostsPermanently(posts, failureMessage, { skipImageSync:true });
 }
 function getCommunityFeedStatusLabel(post){
@@ -17594,15 +17621,10 @@ async function approveFinalInvoice(projectId, buttonEl=null){
     resetApprovalButton();
     return;
   }
-  const posts = getPosts();
-  const post = posts.find(x => x.id === p.postId || x.id === p.job_id);
-  if (post) {
-    post.status = 'completed';
-    if (!await persistCommunityPostsPermanently(posts, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.', { skipImageSync:true })) {
-      restoreProjectState();
-      resetApprovalButton();
-      return;
-    }
+  if (!await closeCommunityFeedPostForProject(p, 'Backend job completion update failed. Please try again so this project completion is saved for everyone.')) {
+    restoreProjectState();
+    resetApprovalButton();
+    return;
   }
   if (!await persistTransactionsPermanently(transactions, 'Backend transaction save failed. Please try again so this payment release is saved for everyone.')) {
     restoreProjectState();

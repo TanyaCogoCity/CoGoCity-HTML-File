@@ -573,7 +573,7 @@ async function mirrorWorkshopRecordsToCoreTable(normalized = [], req) {
 }
 
 function countableApplicationStatus(value = '') {
-  return ['pending', 'applied', 'offer_sent', 'offer_pending'].includes(String(value || '').toLowerCase());
+  return !['withdrawn', 'removed', 'deleted'].includes(String(value || '').toLowerCase());
 }
 
 async function refreshCommunityPostApplicationCounts(postIds = []) {
@@ -590,6 +590,24 @@ async function refreshCommunityPostApplicationCounts(postIds = []) {
     map.set(postId, (map.get(postId) || 0) + 1);
     return map;
   }, new Map());
+  const projectRows = await prisma.syncRecord.findMany({
+    where: { entity: 'projects', deletedAt: null },
+    select: { payload: true },
+  });
+  projectRows.forEach((row) => {
+    const payload = row.payload || {};
+    const postId = String(payload.postId || payload.post_id || payload.job_id || payload.jobId || '').trim();
+    if (!ids.includes(postId)) return;
+    const existingApplicationId = String(payload.applicationId || payload.application_id || '').trim();
+    if (existingApplicationId) {
+      const hasApplication = rows.some((appRow) => {
+        const app = appRow.payload || {};
+        return String(app.id || app.record_id || '').trim() === existingApplicationId;
+      });
+      if (hasApplication) return;
+    }
+    counts.set(postId, (counts.get(postId) || 0) + 1);
+  });
   let updatedCount = 0;
   for (const postId of ids) {
     const post = await prisma.communityPost.findUnique({ where: { id: postId } });

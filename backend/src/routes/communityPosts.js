@@ -26,6 +26,14 @@ function normalizePostRecord(record = {}) {
     comments: Array.isArray(record.comments) ? record.comments : [],
     shares: Number(record.shares || 0),
   };
+  if (payload.isJob) {
+    const status = String(record.status || 'open').trim().toLowerCase();
+    payload.status = ['closed', 'completed', 'in_progress', 'project_started'].includes(status) ? 'closed' : 'open';
+    payload.application_count = Number(record.application_count || 0) || 0;
+  } else {
+    delete payload.status;
+    delete payload.application_count;
+  }
   return payload;
 }
 
@@ -61,7 +69,7 @@ function serializeCommunityPost(row) {
 }
 
 function countableApplicationStatus(value = '') {
-  return ['pending', 'applied', 'offer_sent', 'offer_pending'].includes(String(value || '').toLowerCase());
+  return !['withdrawn', 'removed', 'deleted'].includes(String(value || '').toLowerCase());
 }
 
 function isUuid(value = '') {
@@ -75,13 +83,32 @@ async function applicationCountsForPosts(postIds = []) {
     where: { entity: 'applications', deletedAt: null },
     select: { payload: true },
   });
-  return rows.reduce((map, row) => {
+  const counts = rows.reduce((map, row) => {
     const payload = row.payload || {};
     const postId = String(payload.postId || payload.post_id || '').trim();
     if (!ids.includes(postId) || !countableApplicationStatus(payload.status || 'pending')) return map;
     map.set(postId, (map.get(postId) || 0) + 1);
     return map;
   }, new Map());
+  const projectRows = await prisma.syncRecord.findMany({
+    where: { entity: 'projects', deletedAt: null },
+    select: { payload: true },
+  });
+  projectRows.forEach((row) => {
+    const payload = row.payload || {};
+    const postId = String(payload.postId || payload.post_id || payload.job_id || payload.jobId || '').trim();
+    if (!ids.includes(postId)) return;
+    const existingApplicationId = String(payload.applicationId || payload.application_id || '').trim();
+    if (existingApplicationId) {
+      const hasApplication = rows.some((appRow) => {
+        const app = appRow.payload || {};
+        return String(app.id || app.record_id || '').trim() === existingApplicationId;
+      });
+      if (hasApplication) return;
+    }
+    counts.set(postId, (counts.get(postId) || 0) + 1);
+  });
+  return counts;
 }
 
 router.get('/community-posts', async (_req, res) => {
