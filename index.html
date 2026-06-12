@@ -1159,7 +1159,13 @@ const DEFAULT_COMMUNITY_JOB_PLACEHOLDERS = {
   jobDescription: '',
   rate: '$20/hr',
   hours: '2',
-  location: 'San Francisco, Remote'
+  location: 'San Francisco, Remote',
+  imageLabel: 'Post Image (Optional)',
+  imageHelper: 'Recommended image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly in the feed.',
+  videoLinkLabel: 'Post a YouTube/Vimeo Link (Optional)',
+  videoLinkHelper: '',
+  videoUploadLabel: 'Upload Video (Optional)',
+  videoUploadHelper: 'MP4 or WebM, Max. file size: 15 MB'
 };
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
@@ -1248,7 +1254,13 @@ function normalizeCommunityJobPlaceholderConfig(config={}){
     jobDescription: String(source.job_description_placeholder ?? source.jobDescriptionPlaceholder ?? source.jobDescription ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.jobDescription),
     rate: String(source.rate_placeholder ?? source.ratePlaceholder ?? source.rate ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.rate),
     hours: String(source.hours_placeholder ?? source.hoursPlaceholder ?? source.hours ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.hours),
-    location: String(source.location_placeholder ?? source.locationPlaceholder ?? source.location ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.location)
+    location: String(source.location_placeholder ?? source.locationPlaceholder ?? source.location ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.location),
+    imageLabel: String(source.image_label ?? source.imageLabel ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.imageLabel),
+    imageHelper: String(source.image_helper ?? source.imageHelper ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.imageHelper),
+    videoLinkLabel: String(source.video_link_label ?? source.videoLinkLabel ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.videoLinkLabel),
+    videoLinkHelper: String(source.video_link_helper ?? source.videoLinkHelper ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.videoLinkHelper),
+    videoUploadLabel: String(source.video_upload_label ?? source.videoUploadLabel ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.videoUploadLabel),
+    videoUploadHelper: String(source.video_upload_helper ?? source.videoUploadHelper ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.videoUploadHelper)
   };
 }
 function getCommunityJobPlaceholders(){
@@ -1271,6 +1283,19 @@ function applyCommunityJobPlaceholdersToOpenForms(){
     const el = document.getElementById(id);
     if (!el) return;
     el.setAttribute('placeholder', placeholder || '');
+  });
+  [
+    ['image-label', placeholders.imageLabel],
+    ['image-helper', placeholders.imageHelper],
+    ['video-link-label', placeholders.videoLinkLabel],
+    ['video-link-helper', placeholders.videoLinkHelper],
+    ['video-upload-label', placeholders.videoUploadLabel],
+    ['video-upload-helper', placeholders.videoUploadHelper]
+  ].forEach(([key, value]) => {
+    document.querySelectorAll(`[data-community-form-copy="${key}"]`).forEach((el) => {
+      el.textContent = value || '';
+      el.classList.toggle('hidden', !value);
+    });
   });
 }
 async function ensureCommunityJobPlaceholderConfigLoaded(options={}){
@@ -13732,8 +13757,6 @@ function getPostComposerDraft(){
   applyVideoState(draft, getRenderableVideoUrl(draft) || draft.video_url || '');
   return draft;
 }
-const COMMUNITY_POST_IMAGE_HELP = 'Recommended image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly in the feed.';
-const COMMUNITY_POST_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link, or upload a short video. MP4 or WebM under 15 MB works best.';
 const COMMUNITY_VIDEO_UPLOAD_MAX_BYTES = 15 * 1024 * 1024;
 function renderCommunityPostImages(images=[]){
   const safe = ensureArray(images).slice(0, 1);
@@ -13883,14 +13906,14 @@ function togglePostComposer(){
         <div class="small muted" style="margin-top:8px">${esc(communityComposerHelp)}</div>
       </div>
       <div class="field">
-        <label>Post Image (optional, one image)</label>
+        <label data-community-form-copy="image-label">${esc(placeholders.imageLabel)}</label>
         <input type="file" accept="image/*" onchange="handlePostComposerImagesUpload(this)">
-        <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
+        <div class="small muted ${placeholders.imageHelper ? '' : 'hidden'}" data-community-form-copy="image-helper" style="margin-top:8px">${esc(placeholders.imageHelper)}</div>
         <input type="hidden" id="postImagesValue" value="${esc(JSON.stringify(singleImageList(draft.entity_images || [])))}">
       </div>
       <div id="post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(draft.entity_images || [])}</div>
-      <div class="field"><label>Post Video Link or Upload (optional)</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handlePostComposerVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removePostComposerVideo()">Remove video</button></div></div>
+      <div class="field"><label data-community-form-copy="video-link-label">${esc(placeholders.videoLinkLabel)}</label><input id="postVideoUrl" value="${esc(getEditableVideoInputValue(draft))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewPostComposerVideo(this.value)"><div class="small muted ${placeholders.videoLinkHelper ? '' : 'hidden'}" data-community-form-copy="video-link-helper" style="margin-top:8px">${esc(placeholders.videoLinkHelper)}</div></div>
+      <div class="field"><label data-community-form-copy="video-upload-label">${esc(placeholders.videoUploadLabel)}</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handlePostComposerVideoUpload(this)"><div class="small muted ${placeholders.videoUploadHelper ? '' : 'hidden'}" data-community-form-copy="video-upload-helper" style="margin-top:8px">${esc(placeholders.videoUploadHelper)}</div><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removePostComposerVideo()">Remove video</button></div></div>
       <div id="post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(draft) ? renderCommunityVideoComposerPreview(getRenderableVideoUrl(draft), 'postVideoUrl', 'post-video-preview', 'removePostComposerVideo()') : `<div class="small muted">No video link added yet.</div>`}</div>
       ${canCreateJobPost ? `
         <div class="field">
@@ -14160,17 +14183,18 @@ async function toggleLike(postId){
 function editPost(postId){
   const p = getPosts().find(x => x.id === postId);
   if (!p) return;
+  const placeholders = getCommunityJobPlaceholders();
   openModal('Edit Post', `
     <div class="field"><label>Post</label><textarea id="editPostContent">${esc(p.content)}</textarea></div>
     <div class="field">
-      <label>Post Image (optional, one image)</label>
+      <label data-community-form-copy="image-label">${esc(placeholders.imageLabel)}</label>
       <input type="file" accept="image/*" onchange="handleEditPostImagesUpload(this)">
-      <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
+      <div class="small muted ${placeholders.imageHelper ? '' : 'hidden'}" data-community-form-copy="image-helper" style="margin-top:8px">${esc(placeholders.imageHelper)}</div>
       <input type="hidden" id="editPostImagesValue" value="${esc(JSON.stringify(singleImageList(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [])))}">
     </div>
     <div id="edit-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview(((p.entity_images && p.entity_images.length) ? p.entity_images : p.images) || [], 'removeEditPostImage')}</div>
-    <div class="field"><label>Post Video Link or Upload (optional)</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-    <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEditPostVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEditPostVideo()">Remove video</button></div></div>
+    <div class="field"><label data-community-form-copy="video-link-label">${esc(placeholders.videoLinkLabel)}</label><input id="editPostVideoUrl" value="${esc(getEditableVideoInputValue(p))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEditPostVideo(this.value)"><div class="small muted ${placeholders.videoLinkHelper ? '' : 'hidden'}" data-community-form-copy="video-link-helper" style="margin-top:8px">${esc(placeholders.videoLinkHelper)}</div></div>
+    <div class="field"><label data-community-form-copy="video-upload-label">${esc(placeholders.videoUploadLabel)}</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEditPostVideoUpload(this)"><div class="small muted ${placeholders.videoUploadHelper ? '' : 'hidden'}" data-community-form-copy="video-upload-helper" style="margin-top:8px">${esc(placeholders.videoUploadHelper)}</div><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEditPostVideo()">Remove video</button></div></div>
     <div id="edit-post-video-preview" style="margin-bottom:12px">${getRenderableVideoUrl(p) ? renderCommunityVideoComposerPreview(getRenderableVideoUrl(p), 'editPostVideoUrl', 'edit-post-video-preview', 'removeEditPostVideo()') : `<div class="small muted">No video link added yet.</div>`}</div>
     ${p.isJob ? `
       <div class="field"><label>Job Title</label><input id="editJobTitle" value="${esc(p.jobTitle || '')}"></div>
@@ -16038,14 +16062,14 @@ function renderEmployerCommunityJobs(el){
     <div class="card form-card">
       <div class="field"><label>Post to community</label><textarea id="empPostContent" placeholder="Share something or create a job opportunity..." oninput="syncJobDescriptionFromPost()"></textarea></div>
       <div class="field">
-        <label>Post Image (optional, one image)</label>
+        <label data-community-form-copy="image-label">${esc(placeholders.imageLabel)}</label>
         <input type="file" accept="image/*" onchange="handleEmpPostImagesUpload(this)">
-        <div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_IMAGE_HELP)}</div>
+        <div class="small muted ${placeholders.imageHelper ? '' : 'hidden'}" data-community-form-copy="image-helper" style="margin-top:8px">${esc(placeholders.imageHelper)}</div>
         <input type="hidden" id="empPostImagesValue" value="[]">
       </div>
       <div id="emp-post-images-preview" style="margin-bottom:12px">${renderPostComposerImagePreview([])}</div>
-      <div class="field"><label>Post Video Link or Upload (optional)</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted" style="margin-top:8px">${esc(COMMUNITY_POST_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Post Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEmpPostVideo()">Remove video</button></div></div>
+      <div class="field"><label data-community-form-copy="video-link-label">${esc(placeholders.videoLinkLabel)}</label><input id="empPostVideoUrl" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmpPostVideo(this.value)"><div class="small muted ${placeholders.videoLinkHelper ? '' : 'hidden'}" data-community-form-copy="video-link-helper" style="margin-top:8px">${esc(placeholders.videoLinkHelper)}</div></div>
+      <div class="field"><label data-community-form-copy="video-upload-label">${esc(placeholders.videoUploadLabel)}</label><input type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv" onchange="handleEmpPostVideoUpload(this)"><div class="small muted ${placeholders.videoUploadHelper ? '' : 'hidden'}" data-community-form-copy="video-upload-helper" style="margin-top:8px">${esc(placeholders.videoUploadHelper)}</div><div style="margin-top:10px"><button class="btn btn-outline btn-sm" type="button" onclick="removeEmpPostVideo()">Remove video</button></div></div>
       <div id="emp-post-video-preview" style="margin-bottom:12px"><div class="small muted">No video link added yet.</div></div>
       <div class="field">
         <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>

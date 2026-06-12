@@ -21,6 +21,12 @@ const DEFAULT_FORM_CONFIGS = {
     rate_placeholder: '$20/hr',
     hours_placeholder: '2',
     location_placeholder: 'San Francisco, Remote',
+    image_label: 'Post Image (Optional)',
+    image_helper: 'Recommended image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly in the feed.',
+    video_link_label: 'Post a YouTube/Vimeo Link (Optional)',
+    video_link_helper: '',
+    video_upload_label: 'Upload Video (Optional)',
+    video_upload_helper: 'MP4 or WebM, Max. file size: 15 MB',
   },
 };
 
@@ -636,6 +642,12 @@ function normalizeCommunityJobPostingConfig(config = {}) {
     rate_placeholder: String(source.rate_placeholder ?? source.ratePlaceholder ?? defaults.rate_placeholder),
     hours_placeholder: String(source.hours_placeholder ?? source.hoursPlaceholder ?? defaults.hours_placeholder),
     location_placeholder: String(source.location_placeholder ?? source.locationPlaceholder ?? defaults.location_placeholder),
+    image_label: String(source.image_label ?? source.imageLabel ?? defaults.image_label),
+    image_helper: String(source.image_helper ?? source.imageHelper ?? defaults.image_helper),
+    video_link_label: String(source.video_link_label ?? source.videoLinkLabel ?? defaults.video_link_label),
+    video_link_helper: String(source.video_link_helper ?? source.videoLinkHelper ?? defaults.video_link_helper),
+    video_upload_label: String(source.video_upload_label ?? source.videoUploadLabel ?? defaults.video_upload_label),
+    video_upload_helper: String(source.video_upload_helper ?? source.videoUploadHelper ?? defaults.video_upload_helper),
   };
 }
 
