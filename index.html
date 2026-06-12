@@ -1153,6 +1153,14 @@ const BACKEND_DEDICATED_ROUTE_ENTITIES = new Set([
 ]);
 const BACKEND_PENDING_SYNC_STORAGE_KEY = 'cogo_pending_backend_syncs';
 const BACKEND_SYNC_RETRY_DELAY_MS = 5000;
+const POST_COMPOSER_DRAFT_STORAGE_PREFIX = 'cogo_draft_post';
+const DEFAULT_COMMUNITY_JOB_PLACEHOLDERS = {
+  jobTitle: 'Marketing Support, Dog Walker, Office Help',
+  jobDescription: '',
+  rate: '$20/hr',
+  hours: '2',
+  location: 'San Francisco, Remote'
+};
 let backendSyncInFlight = 0;
 let backendLastSyncError = '';
 let backendSyncRetryTimer = null;
@@ -1181,6 +1189,9 @@ let backendProjectsLoading = false;
 let backendProjectsLoaded = false;
 let backendProjectsError = '';
 let backendProjectsLoadedAt = 0;
+let communityJobPlaceholderConfig = Object.assign({}, DEFAULT_COMMUNITY_JOB_PLACEHOLDERS);
+let communityJobPlaceholderConfigLoaded = false;
+let communityJobPlaceholderConfigPromise = null;
 let backendSyncedProjectsLoading = false;
 let backendSyncedProjectsLoaded = false;
 let backendSyncedProjectsError = '';
@@ -1229,6 +1240,66 @@ async function backendRequest(path, options={}){
   } finally {
     clearTimeout(timeout);
   }
+}
+function normalizeCommunityJobPlaceholderConfig(config={}){
+  const source = config && typeof config === 'object' ? config : {};
+  return {
+    jobTitle: String(source.job_title_placeholder ?? source.jobTitlePlaceholder ?? source.jobTitle ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.jobTitle),
+    jobDescription: String(source.job_description_placeholder ?? source.jobDescriptionPlaceholder ?? source.jobDescription ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.jobDescription),
+    rate: String(source.rate_placeholder ?? source.ratePlaceholder ?? source.rate ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.rate),
+    hours: String(source.hours_placeholder ?? source.hoursPlaceholder ?? source.hours ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.hours),
+    location: String(source.location_placeholder ?? source.locationPlaceholder ?? source.location ?? DEFAULT_COMMUNITY_JOB_PLACEHOLDERS.location)
+  };
+}
+function getCommunityJobPlaceholders(){
+  return Object.assign({}, DEFAULT_COMMUNITY_JOB_PLACEHOLDERS, communityJobPlaceholderConfig || {});
+}
+function applyCommunityJobPlaceholdersToOpenForms(){
+  const placeholders = getCommunityJobPlaceholders();
+  [
+    ['jobTitle', placeholders.jobTitle],
+    ['jobDescription', placeholders.jobDescription],
+    ['jobRate', placeholders.rate],
+    ['jobHours', placeholders.hours],
+    ['jobLocation', placeholders.location],
+    ['empJobTitle', placeholders.jobTitle],
+    ['empJobDescription', placeholders.jobDescription],
+    ['empJobRate', placeholders.rate],
+    ['empJobHours', placeholders.hours],
+    ['empJobLocation', placeholders.location]
+  ].forEach(([id, placeholder]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.setAttribute('placeholder', placeholder || '');
+  });
+}
+async function ensureCommunityJobPlaceholderConfigLoaded(options={}){
+  if (!BACKEND_MIGRATION.enabled) {
+    communityJobPlaceholderConfig = Object.assign({}, DEFAULT_COMMUNITY_JOB_PLACEHOLDERS);
+    communityJobPlaceholderConfigLoaded = true;
+    return communityJobPlaceholderConfig;
+  }
+  if (communityJobPlaceholderConfigLoaded && !options.force) return communityJobPlaceholderConfig;
+  if (communityJobPlaceholderConfigPromise && !options.force) return communityJobPlaceholderConfigPromise;
+  communityJobPlaceholderConfigPromise = backendRequest('/sync/form-config/community-job-posting', {
+    method: 'GET',
+    auth: false,
+    cache: 'no-store'
+  }).then(result => {
+    const data = result && result.ok ? (result.data && result.data.data ? result.data.data : result.data) : null;
+    communityJobPlaceholderConfig = normalizeCommunityJobPlaceholderConfig((data && data.placeholders) || {});
+    communityJobPlaceholderConfigLoaded = true;
+    applyCommunityJobPlaceholdersToOpenForms();
+    return communityJobPlaceholderConfig;
+  }).catch(error => {
+    console.warn('Community job placeholder config unavailable', error);
+    communityJobPlaceholderConfig = Object.assign({}, DEFAULT_COMMUNITY_JOB_PLACEHOLDERS);
+    communityJobPlaceholderConfigLoaded = true;
+    return communityJobPlaceholderConfig;
+  }).finally(() => {
+    communityJobPlaceholderConfigPromise = null;
+  });
+  return communityJobPlaceholderConfigPromise;
 }
 window.CoGoBackend = {
   config: BACKEND_MIGRATION,
@@ -1510,6 +1581,7 @@ function ensureBackendApplicationsLoaded(options={}){
 }
 function ensureBackendPersistentStateLoaded(options={}){
   if (!BACKEND_MIGRATION.enabled) return;
+  ensureCommunityJobPlaceholderConfigLoaded(options);
   ensureBackendArraySettingLoaded('images', 'cogo_images', options);
   // Blog posts need seeded WordPress articles merged with backend edits; use the
   // dedicated loader instead of overwriting local seeded content with sync rows.
@@ -1554,11 +1626,10 @@ function clearStorageQuotaCaches(){
     'cogo_backend_projects',
     'cogo_backend_synced_projects',
     'cogo_backend_messages',
-    'cogo_draft_post',
     'cogo_modal_drafts'
   ]);
   Object.keys(localStorage)
-    .filter(key => removableExact.has(key) || key.startsWith('cogo_backend_notifs_') || key.startsWith('cogo_notifs_'))
+    .filter(key => removableExact.has(key) || key === POST_COMPOSER_DRAFT_STORAGE_PREFIX || key.startsWith(`${POST_COMPOSER_DRAFT_STORAGE_PREFIX}:`) || key.startsWith('cogo_backend_notifs_') || key.startsWith('cogo_notifs_'))
     .forEach(key => {
       try { localStorage.removeItem(key); } catch (error) {}
       delete transientStorageFallback[key];
@@ -13582,6 +13653,23 @@ function scrollToSharedCommunityPost(){
     }
   }, 60);
 }
+function currentPostComposerDraftStorageKey(){
+  const userKey = String((currentUser && (currentUser.id || currentUser.email)) || 'guest')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'guest';
+  return `${POST_COMPOSER_DRAFT_STORAGE_PREFIX}:${userKey}`;
+}
+function getStoredPostComposerDraft(){
+  try { localStorage.removeItem(POST_COMPOSER_DRAFT_STORAGE_PREFIX); } catch (error) {}
+  delete transientStorageFallback[POST_COMPOSER_DRAFT_STORAGE_PREFIX];
+  return ls(currentPostComposerDraftStorageKey()) || {};
+}
+function clearPostComposerDraft(){
+  ls(currentPostComposerDraftStorageKey(), null);
+  ls(POST_COMPOSER_DRAFT_STORAGE_PREFIX, null);
+}
 function getPostComposerDraft(){
   const draft = Object.assign({
     content: '',
@@ -13595,7 +13683,7 @@ function getPostComposerDraft(){
     video_url: '',
     video_type: '',
     video_id: ''
-  }, ls('cogo_draft_post') || {});
+  }, getStoredPostComposerDraft());
   const rawImages = ensureArray(draft.entity_images).length ? draft.entity_images : ensureArray(draft.images);
   draft.entity_images = upsertImageRecords(rawImages, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,1);
   draft.images = [...draft.entity_images];
@@ -13736,11 +13824,12 @@ function handlePostComposerVideoUpload(input){
 function togglePostComposer(){
   const wrap = document.getElementById('post-composer-wrap');
   if (wrap.innerHTML.trim()){
-    ls('cogo_draft_post', null);
+    clearPostComposerDraft();
     wrap.innerHTML = '';
     return;
   }
   const draft = getPostComposerDraft();
+  const placeholders = getCommunityJobPlaceholders();
   const canCreateJobPost = isEmployerAccount(currentUser);
   const communityComposerHelp = canCreateJobPost
     ? "Share your thoughts, ideas, or questions with the community. If you're looking to hire a student, check the box below to turn this post into a job opportunity."
@@ -13766,13 +13855,13 @@ function togglePostComposer(){
           <label><input type="checkbox" id="postIsJob" onchange="toggleJobFields();savePostComposerDraft()" style="width:auto;margin-right:8px" ${draft.isJob ? 'checked' : ''}>This is a Job Opportunity</label>
         </div>
         <div id="jobFields" class="${draft.isJob ? '' : 'hidden'}">
-          <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="e.g. Event Helper This Saturday" value="${esc(draft.jobTitle || '')}" oninput="savePostComposerDraft()"></div>
-          <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="Describe the work clearly..." oninput="savePostComposerDraft()">${esc(draft.description || '')}</textarea></div>
+          <div class="field"><label>Job Title</label><input id="jobTitle" placeholder="${esc(placeholders.jobTitle)}" value="${esc(draft.jobTitle || '')}" oninput="savePostComposerDraft()"></div>
+          <div class="field"><label>Job Description</label><textarea id="jobDescription" placeholder="${esc(placeholders.jobDescription)}" oninput="savePostComposerDraft()">${esc(draft.description || '')}</textarea></div>
           <div class="row">
-            <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="20" value="${esc(draft.rate || '')}" oninput="savePostComposerDraft()"></div>
-            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="5" value="${esc(draft.hoursNeeded || '')}" oninput="savePostComposerDraft()"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
+            <div class="field"><label>Rate ($/hr)</label><input id="jobRate" type="number" min="1" placeholder="${esc(placeholders.rate)}" value="${esc(draft.rate || '')}" oninput="savePostComposerDraft()"></div>
+            <div class="field"><label>Hours needed</label><input id="jobHours" type="number" min="1" placeholder="${esc(placeholders.hours)}" value="${esc(draft.hoursNeeded || '')}" oninput="savePostComposerDraft()"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
           </div>
-          <div class="field"><label>Location</label><input id="jobLocation" placeholder="Danville, CA" value="${esc(draft.location || '')}" oninput="savePostComposerDraft()"></div>
+          <div class="field"><label>Location</label><input id="jobLocation" placeholder="${esc(placeholders.location)}" value="${esc(draft.location || '')}" oninput="savePostComposerDraft()"></div>
         </div>
       ` : ''}
       <div class="warning" style="margin:10px 0">For everyone’s safety, please keep all communication within CoGo City and avoid sharing personal contact information. Our secure messaging system helps protect both students and employers.</div>
@@ -13798,7 +13887,7 @@ function savePostComposerDraft(){
     video_type: videoState.video_type || '',
     video_id: videoState.video_id || ''
   };
-  ls('cogo_draft_post', draft);
+  ls(currentPostComposerDraftStorageKey(), draft);
 }
 function toggleJobFields(){
   document.getElementById('jobFields').classList.toggle('hidden', !document.getElementById('postIsJob').checked);
@@ -13874,7 +13963,7 @@ async function submitPost(){
     trackCogoEvent('community_job_posted', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
     trackCogoEvent('job_published', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
   }
-  ls('cogo_draft_post', null);
+  clearPostComposerDraft();
   toast('Posted successfully.');
   renderCommunity();
 }
@@ -15901,6 +15990,7 @@ async function submitFinalInvoice(projectId){
 }
 
 function renderEmployerCommunityJobs(el){
+  const placeholders = getCommunityJobPlaceholders();
   el.innerHTML = `
     <div class="section-title">Community & Jobs</div>
     <div class="card form-card">
@@ -15919,13 +16009,13 @@ function renderEmployerCommunityJobs(el){
         <label><input type="checkbox" id="empIsJob" onchange="toggleEmpJobFields()" style="width:auto;margin-right:8px">This is a Job Opportunity</label>
       </div>
       <div id="empJobFields" class="hidden">
-        <div class="field"><label>Job Title</label><input id="empJobTitle"></div>
-        <div class="field"><label>Description</label><textarea id="empJobDescription"></textarea></div>
+        <div class="field"><label>Job Title</label><input id="empJobTitle" placeholder="${esc(placeholders.jobTitle)}"></div>
+        <div class="field"><label>Description</label><textarea id="empJobDescription" placeholder="${esc(placeholders.jobDescription)}"></textarea></div>
         <div class="row">
-          <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1"></div>
-          <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
+          <div class="field"><label>Rate ($/hr)</label><input id="empJobRate" type="number" min="1" placeholder="${esc(placeholders.rate)}"></div>
+          <div class="field"><label>Hours needed</label><input id="empJobHours" type="number" min="1" placeholder="${esc(placeholders.hours)}"><div class="small muted" style="margin-top:6px">Estimated hours. Final hours confirmed at completion.</div></div>
         </div>
-        <div class="field"><label>Location</label><input id="empJobLocation"></div>
+        <div class="field"><label>Location</label><input id="empJobLocation" placeholder="${esc(placeholders.location)}"></div>
       </div>
       <div class="warning" style="margin:10px 0">Contact info is blocked until work is confirmed.</div>
       <button class="btn btn-blue" onclick="submitEmployerDashboardPost()">Post to Feed</button>

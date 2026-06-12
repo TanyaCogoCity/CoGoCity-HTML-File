@@ -14,6 +14,16 @@ const { notificationType } = require('../lib/compat');
 const router = express.Router();
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 
+const DEFAULT_FORM_CONFIGS = {
+  'community-job-posting': {
+    job_title_placeholder: 'Marketing Support, Dog Walker, Office Help',
+    job_description_placeholder: '',
+    rate_placeholder: '$20/hr',
+    hours_placeholder: '2',
+    location_placeholder: 'San Francisco, Remote',
+  },
+};
+
 const ALLOWED_ENTITIES = new Set([
   'users',
   'students',
@@ -598,6 +608,41 @@ function requireReadAccess(req, res, next) {
   if (PUBLIC_READ_ENTITIES.has(entity)) return next();
   return requireAuth(req, res, next);
 }
+
+function normalizeCommunityJobPostingConfig(config = {}) {
+  const defaults = DEFAULT_FORM_CONFIGS['community-job-posting'];
+  const source = config && typeof config === 'object' ? config : {};
+  return {
+    job_title_placeholder: String(source.job_title_placeholder ?? source.jobTitlePlaceholder ?? defaults.job_title_placeholder),
+    job_description_placeholder: String(source.job_description_placeholder ?? source.jobDescriptionPlaceholder ?? defaults.job_description_placeholder),
+    rate_placeholder: String(source.rate_placeholder ?? source.ratePlaceholder ?? defaults.rate_placeholder),
+    hours_placeholder: String(source.hours_placeholder ?? source.hoursPlaceholder ?? defaults.hours_placeholder),
+    location_placeholder: String(source.location_placeholder ?? source.locationPlaceholder ?? defaults.location_placeholder),
+  };
+}
+
+router.get('/form-config/:key', async (req, res) => {
+  const key = String(req.params.key || '').trim().toLowerCase();
+  if (key !== 'community-job-posting') return fail(res, 404, 'Unknown form configuration');
+  try {
+    const row = await prisma.syncRecord.findFirst({
+      where: { entity: 'site_settings', recordId: 'site_settings', deletedAt: null },
+      select: { payload: true },
+    });
+    const formConfigs = row?.payload?.form_configs || row?.payload?.formConfigs || {};
+    const configured = formConfigs[key] || formConfigs.community_job_posting || {};
+    return ok(res, {
+      key,
+      placeholders: normalizeCommunityJobPostingConfig(configured),
+    });
+  } catch (error) {
+    return ok(res, {
+      key,
+      placeholders: normalizeCommunityJobPostingConfig(),
+      fallback: true,
+    });
+  }
+});
 
 function requireTestimonialsWriteAccess(req, res, records = [], replace = false) {
   if (req.user.role === 'admin') return true;
