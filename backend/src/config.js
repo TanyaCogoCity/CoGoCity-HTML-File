@@ -32,4 +32,11 @@ module.exports = {
   emailNotificationsEnabled: process.env.EMAIL_NOTIFICATIONS_ENABLED === 'true',
 
   strictStatusTransitions: process.env.STRICT_STATUS_TRANSITIONS === 'true',
+
+  spacesKey: process.env.DO_SPACES_KEY || '',
+  spacesSecret: process.env.DO_SPACES_SECRET || '',
+  spacesBucket: process.env.DO_SPACES_BUCKET || '',
+  spacesRegion: process.env.DO_SPACES_REGION || 'sfo3',
+  spacesEndpoint: process.env.DO_SPACES_ENDPOINT || '',
+  spacesCdnUrl: process.env.DO_SPACES_CDN_URL || '',
 };

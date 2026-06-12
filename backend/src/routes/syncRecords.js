@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const Stripe = require('stripe');
 
 const { prisma } = require('../lib/prisma');
@@ -13,6 +14,7 @@ const { notificationType } = require('../lib/compat');
 
 const router = express.Router();
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
+const SPACES_VARIANTS = ['thumb', 'medium', 'full'];
 
 const DEFAULT_FORM_CONFIGS = {
   'community-job-posting': {
@@ -386,6 +388,212 @@ function serializeImageSummary(row) {
   return record;
 }
 
+function spacesEnabled() {
+  return !!(config.spacesKey && config.spacesSecret && config.spacesBucket && config.spacesRegion && config.spacesEndpoint);
+}
+
+function normalizeSpacesEndpoint() {
+  const explicit = String(config.spacesEndpoint || '').replace(/\/+$/, '');
+  if (explicit) return explicit;
+  return `https://${config.spacesRegion}.digitaloceanspaces.com`;
+}
+
+function normalizeSpacesUploadBase() {
+  const endpoint = new URL(normalizeSpacesEndpoint());
+  if (!endpoint.hostname.startsWith(`${config.spacesBucket}.`)) {
+    endpoint.hostname = `${config.spacesBucket}.${endpoint.hostname}`;
+  }
+  return endpoint.toString().replace(/\/+$/, '');
+}
+
+function normalizeSpacesPublicBase() {
+  return String(config.spacesCdnUrl || `https://${config.spacesBucket}.${config.spacesRegion}.digitaloceanspaces.com`).replace(/\/+$/, '');
+}
+
+function hmac(key, value, encoding) {
+  return crypto.createHmac('sha256', key).update(value, 'utf8').digest(encoding);
+}
+
+function sha256Hex(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function getSpacesSigningKey(dateStamp) {
+  const kDate = hmac(`AWS4${config.spacesSecret}`, dateStamp);
+  const kRegion = hmac(kDate, config.spacesRegion);
+  const kService = hmac(kRegion, 's3');
+  return hmac(kService, 'aws4_request');
+}
+
+function encodeSpacesKey(key = '') {
+  return String(key || '')
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+}
+
+function dataUrlToUpload(dataUrl = '') {
+  const match = String(dataUrl || '').match(/^data:([a-z0-9.+/-]+);base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const contentType = match[1].toLowerCase();
+  if (!/^image\/(webp|jpeg|jpg|png|gif)$/i.test(contentType)) return null;
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > 8 * 1024 * 1024) return null;
+  return { contentType: contentType === 'image/jpg' ? 'image/jpeg' : contentType, buffer };
+}
+
+async function putSpacesObject(objectKey = '', body, contentType = 'image/webp') {
+  if (!spacesEnabled()) throw new Error('DigitalOcean Spaces is not configured');
+  const endpoint = normalizeSpacesUploadBase();
+  const host = new URL(endpoint).host;
+  const encodedKey = encodeSpacesKey(objectKey);
+  const path = `/${encodedKey}`;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = sha256Hex(body);
+  const cacheControl = 'public, max-age=31536000, immutable';
+  const canonicalHeaders = [
+    `cache-control:${cacheControl}`,
+    `content-type:${contentType}`,
+    `host:${host}`,
+    `x-amz-acl:public-read`,
+    `x-amz-content-sha256:${payloadHash}`,
+    `x-amz-date:${amzDate}`,
+    '',
+  ].join('\n');
+  const signedHeaders = 'cache-control;content-type;host;x-amz-acl;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = [
+    'PUT',
+    path,
+    '',
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n');
+  const credentialScope = `${dateStamp}/${config.spacesRegion}/s3/aws4_request`;
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest),
+  ].join('\n');
+  const signature = hmac(getSpacesSigningKey(dateStamp), stringToSign, 'hex');
+  const authorization = `AWS4-HMAC-SHA256 Credential=${config.spacesKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  const response = await fetch(`${endpoint}${path}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: authorization,
+      'Content-Type': contentType,
+      'Cache-Control': cacheControl,
+      'x-amz-acl': 'public-read',
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+    },
+    body,
+  });
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(`Spaces upload failed (${response.status}) ${message}`.trim());
+  }
+  return `${normalizeSpacesPublicBase()}/${encodedKey}`;
+}
+
+function uploadedImagePath(recordId = '', variant = 'full', contentType = 'image/webp') {
+  const cleanId = String(recordId || '').replace(/[^a-zA-Z0-9_-]/g, '') || crypto.randomUUID();
+  const cleanVariant = SPACES_VARIANTS.includes(variant) ? variant : 'full';
+  const extension = contentType === 'image/png'
+    ? 'png'
+    : contentType === 'image/gif'
+      ? 'gif'
+      : contentType === 'image/jpeg'
+        ? 'jpg'
+        : 'webp';
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  return `uploads/images/${year}/${month}/${cleanId}-${cleanVariant}.${extension}`;
+}
+
+function imageUploadRecordPayload(req, recordId = '', metadata = {}, urls = {}, files = {}) {
+  const ownerId = req.user.role === 'admin'
+    ? String(metadata.owner_id || metadata.ownerId || req.user.id || '').trim()
+    : String(req.user.id || '').trim();
+  return {
+    id: recordId,
+    record_id: recordId,
+    url: urls.full || urls.medium || urls.thumb || '',
+    thumbnail_url: urls.thumb || urls.medium || urls.full || '',
+    thumb_url: urls.thumb || '',
+    medium_url: urls.medium || '',
+    full_url: urls.full || '',
+    spaces_bucket: config.spacesBucket,
+    spaces_region: config.spacesRegion,
+    spaces_keys: files,
+    storage_provider: 'digitalocean_spaces',
+    embedded_image_omitted: false,
+    source: String(metadata.source || 'upload'),
+    entity_type: String(metadata.entity_type || metadata.entityType || ''),
+    entity_id: String(metadata.entity_id || metadata.entityId || ''),
+    owner_id: ownerId,
+    ownerId,
+    alt: String(metadata.alt || ''),
+    fingerprint: String(metadata.fingerprint || ''),
+    original_name: String(metadata.original_name || metadata.originalName || ''),
+    original_type: String(metadata.original_type || metadata.originalType || ''),
+    original_size: Number(metadata.original_size || metadata.originalSize || 0) || 0,
+    uploaded_at: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function hasSpacesImageUrl(payload = {}) {
+  const provider = String(payload.storage_provider || payload.storageProvider || '').toLowerCase();
+  const url = String(payload.full_url || payload.fullUrl || payload.url || '').trim();
+  return provider === 'digitalocean_spaces' && /^https?:\/\//i.test(url);
+}
+
+function imageVariantDataUrl(payload = {}, variant = 'full') {
+  const variants = payload.variants && typeof payload.variants === 'object' ? payload.variants : {};
+  const variantPayload = variants[variant] && typeof variants[variant] === 'object' ? variants[variant] : {};
+  return String(
+    variantPayload.data_url
+      || variantPayload.dataUrl
+      || payload[`${variant}_data_url`]
+      || payload[`${variant}DataUrl`]
+      || ''
+  ).trim();
+}
+
+async function uploadImagePayloadToSpaces(req, payload = {}, fallbackRecordId = '') {
+  if (!spacesEnabled() || hasSpacesImageUrl(payload)) return payload;
+  const recordId = String(payload.id || payload.record_id || fallbackRecordId || `img_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim();
+  if (!recordId) return payload;
+
+  const sourceUrl = String(payload.url || payload.full_url || payload.fullUrl || payload.thumbnail_url || payload.thumb_url || '').trim();
+  const fallbackUpload = dataUrlToUpload(sourceUrl);
+  const urls = {};
+  const files = {};
+
+  for (const variant of SPACES_VARIANTS) {
+    const explicitDataUrl = imageVariantDataUrl(payload, variant);
+    const upload = dataUrlToUpload(explicitDataUrl) || fallbackUpload;
+    if (!upload) continue;
+    const key = uploadedImagePath(recordId, variant, upload.contentType);
+    urls[variant] = await putSpacesObject(key, upload.buffer, upload.contentType);
+    files[variant] = key;
+  }
+
+  if (!urls.full && !urls.medium && !urls.thumb) return payload;
+  return imageUploadRecordPayload(req, recordId, payload, urls, files);
+}
+
+async function uploadImageRecordToSpaces(req, record) {
+  if (!record || !record.payload) return record;
+  record.payload = await uploadImagePayloadToSpaces(req, record.payload, record.id);
+  return record;
+}
+
 function parseEmbeddedImage(dataUrl = '') {
   const match = String(dataUrl || '').match(/^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i);
   if (!match) return null;
@@ -696,6 +904,54 @@ router.get('/form-config/:key', async (req, res) => {
   }
 });
 
+router.post('/images/upload', requireAuth, async (req, res) => {
+  if (!spacesEnabled()) return fail(res, 503, 'DigitalOcean Spaces is not configured');
+  try {
+    const body = req.body || {};
+    const recordId = String(body.id || body.record_id || `img_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim();
+    const metadata = body.metadata && typeof body.metadata === 'object' ? body.metadata : {};
+    const payload = {
+      ...metadata,
+      id: recordId,
+      record_id: recordId,
+      variants: body.variants && typeof body.variants === 'object' ? body.variants : {},
+      url: body.url || metadata.url || '',
+      thumbnail_url: body.thumbnail_url || metadata.thumbnail_url || '',
+    };
+    const normalized = [{ id: recordId, payload }];
+    const imageWriteAllowed = await requireImageWriteAccess(req, res, normalized);
+    if (!imageWriteAllowed) return null;
+    const storedPayload = await uploadImagePayloadToSpaces(req, normalized[0].payload, recordId);
+    if (!hasSpacesImageUrl(storedPayload)) return fail(res, 400, 'No valid image payload was provided');
+    await prisma.syncRecord.upsert({
+      where: { entity_recordId: { entity: 'images', recordId } },
+      create: {
+        entity: 'images',
+        recordId,
+        payload: storedPayload,
+      },
+      update: {
+        payload: storedPayload,
+        deletedAt: null,
+      },
+    });
+    await writeAuditLog({
+      userId: req.user.id,
+      action: 'sync.images.upload',
+      entityType: 'sync_record',
+      entityId: recordId,
+      payload: {
+        storage_provider: storedPayload.storage_provider,
+        spaces_bucket: storedPayload.spaces_bucket,
+        spaces_keys: storedPayload.spaces_keys,
+      },
+    });
+    return ok(res, { image: storedPayload });
+  } catch (error) {
+    return fail(res, 400, 'Could not upload image', error.message);
+  }
+});
+
 function requireTestimonialsWriteAccess(req, res, records = [], replace = false) {
   if (req.user.role === 'admin') return true;
   if (replace) return fail(res, 403, 'Admin access required');
@@ -785,6 +1041,9 @@ router.post('/:entity', requireAuth, async (req, res) => {
     if (entity === 'images') {
       const imageWriteAllowed = await requireImageWriteAccess(req, res, normalized);
       if (!imageWriteAllowed) return null;
+      for (const record of normalized) {
+        await uploadImageRecordToSpaces(req, record);
+      }
     }
     if (entity === 'workshops') {
       const payoutReady = await requireSyncedWorkshopPayoutReady(req, res, normalized);

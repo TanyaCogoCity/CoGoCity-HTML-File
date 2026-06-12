@@ -2978,6 +2978,9 @@ function normalizeImageRecord(image){
     id: uid('img'),
     url: '',
     thumbnail_url: '',
+    thumb_url: '',
+    medium_url: '',
+    full_url: '',
     alt: '',
     fingerprint: '',
     original_name: '',
@@ -2993,7 +2996,11 @@ function normalizeImageRecord(image){
   }, image || {});
   normalized.id = String(normalized.id || uid('img'));
   normalized.url = String(normalized.url || '').trim();
-  normalized.thumbnail_url = String(normalized.thumbnail_url || normalized.thumb_url || normalized.url || '').trim() || normalized.url;
+  normalized.thumb_url = String(normalized.thumb_url || normalized.thumbUrl || normalized.thumbnail_url || normalized.thumbnailUrl || '').trim();
+  normalized.medium_url = String(normalized.medium_url || normalized.mediumUrl || '').trim();
+  normalized.full_url = String(normalized.full_url || normalized.fullUrl || normalized.url || '').trim();
+  normalized.url = String(normalized.url || normalized.full_url || normalized.medium_url || normalized.thumb_url || '').trim();
+  normalized.thumbnail_url = String(normalized.thumbnail_url || normalized.thumbnailUrl || normalized.thumb_url || normalized.medium_url || normalized.url || '').trim() || normalized.url;
   normalized.alt = String(normalized.alt || '').trim();
   normalized.fingerprint = String(normalized.fingerprint || '').trim();
   normalized.original_name = String(normalized.original_name || '').trim();
@@ -3251,12 +3258,95 @@ function optimizeImageDataUrlForStorage(dataUrl='', file=null){
     img.src = raw;
   });
 }
+function imageVariantFromDataUrl(dataUrl='', options={}){
+  const raw = String(dataUrl || '');
+  const maxDimension = Number(options.maxDimension || 900) || 900;
+  const quality = Number(options.quality || 0.78) || 0.78;
+  return new Promise(resolve => {
+    if (!raw || !/^data:image\//i.test(raw) || /^data:image\/(gif|svg\+xml)/i.test(raw) || typeof document === 'undefined') {
+      return resolve({ data_url: raw, mime: (raw.match(/^data:([^;]+);/i) || [,'image/jpeg'])[1], width: 0, height: 0 });
+    }
+    const img = new Image();
+    img.onload = () => {
+      const width = img.naturalWidth || img.width || 0;
+      const height = img.naturalHeight || img.height || 0;
+      if (!width || !height) return resolve({ data_url: raw, mime: (raw.match(/^data:([^;]+);/i) || [,'image/jpeg'])[1], width, height });
+      const scale = Math.min(1, maxDimension / Math.max(width, height));
+      const targetWidth = Math.max(1, Math.round(width * scale));
+      const targetHeight = Math.max(1, Math.round(height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve({ data_url: raw, mime: (raw.match(/^data:([^;]+);/i) || [,'image/jpeg'])[1], width, height });
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      let next = '';
+      let mime = 'image/webp';
+      try {
+        next = canvas.toDataURL('image/webp', quality);
+        if (!next || !/^data:image\/webp/i.test(next)) {
+          mime = 'image/jpeg';
+          next = canvas.toDataURL('image/jpeg', quality);
+        }
+      } catch (error) {
+        mime = 'image/jpeg';
+        try { next = canvas.toDataURL('image/jpeg', quality); } catch (fallbackError) { next = raw; }
+      }
+      resolve({ data_url: next || raw, mime, width: targetWidth, height: targetHeight });
+    };
+    img.onerror = () => resolve({ data_url: raw, mime: (raw.match(/^data:([^;]+);/i) || [,'image/jpeg'])[1], width: 0, height: 0 });
+    img.src = raw;
+  });
+}
+async function createUploadedImageVariants(file){
+  const raw = await readFileAsDataUrl(file);
+  const [thumb, medium, full] = await Promise.all([
+    imageVariantFromDataUrl(raw, { maxDimension: 400, quality: 0.72 }),
+    imageVariantFromDataUrl(raw, { maxDimension: 900, quality: 0.78 }),
+    imageVariantFromDataUrl(raw, { maxDimension: 1600, quality: 0.82 })
+  ]);
+  return { thumb, medium, full };
+}
+async function uploadImageRecordToBackend(file, meta={}, fingerprint=''){
+  const imageId = uid('img');
+  const variants = await createUploadedImageVariants(file);
+  const metadata = Object.assign({
+    fingerprint,
+    original_name: file.name || '',
+    original_type: file.type || '',
+    original_size: Number(file.size || 0) || 0
+  }, meta);
+  const data = await backendAuthRequest('/sync/images/upload', {
+    method: 'POST',
+    body: JSON.stringify({ id: imageId, variants, metadata }),
+    timeoutMs: 30000
+  });
+  const image = normalizeImageRecord(data && data.image ? data.image : {});
+  if (!image.id || !image.url) throw new Error('Backend did not return a saved image record.');
+  const images = getImages().filter(item => String(item.id) !== String(image.id));
+  images.unshift(image);
+  ls('cogo_images', images.map(normalizeImageRecord));
+  return image.id;
+}
 function prepareUploadedImageRecord(file, meta={}){
   if (!file) return Promise.resolve('');
   const fingerprint = buildUploadedImageFingerprint(file);
   const forceNew = meta && meta.forceNew === true;
   const existing = forceNew ? null : findImageByFingerprint(fingerprint);
   if (existing) return Promise.resolve(existing.id);
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    return uploadImageRecordToBackend(file, meta, fingerprint).catch(error => {
+      console.warn('Backend image upload failed; falling back to regular image sync.', error);
+      return readFileAsDataUrl(file)
+        .then(dataUrl => optimizeImageDataUrlForStorage(dataUrl, file))
+        .then(dataUrl => upsertImageRecord(dataUrl, Object.assign({
+          fingerprint,
+          original_name: file.name || '',
+          original_type: file.type || '',
+          original_size: Number(file.size || 0) || 0
+        }, meta)));
+    });
+  }
   return readFileAsDataUrl(file)
     .then(dataUrl => optimizeImageDataUrlForStorage(dataUrl, file))
     .then(dataUrl => upsertImageRecord(dataUrl, Object.assign({
@@ -3306,9 +3396,11 @@ function getImageView(source='', variant='full'){
   const stored = isImageRecordId(raw) ? getImageById(raw) : null;
   if (stored) {
     const assetUrl = backendImageAssetUrl(stored.id || raw);
-    const fullUrl = assetUrl || stored.url || '';
-    const thumbUrl = assetUrl || stored.thumbnail_url || fullUrl;
-    return Object.assign({}, stored, { url: variant === 'thumb' ? (thumbUrl || fullUrl) : fullUrl, thumbnail_url: thumbUrl });
+    const fullUrl = stored.full_url || stored.fullUrl || stored.url || stored.medium_url || stored.thumb_url || stored.thumbnail_url || assetUrl || '';
+    const mediumUrl = stored.medium_url || stored.mediumUrl || fullUrl;
+    const thumbUrl = stored.thumb_url || stored.thumbUrl || stored.thumbnail_url || stored.thumbnailUrl || mediumUrl || fullUrl;
+    const selectedUrl = variant === 'thumb' ? thumbUrl : variant === 'medium' ? mediumUrl : fullUrl;
+    return Object.assign({}, stored, { url: selectedUrl || fullUrl || assetUrl, thumbnail_url: thumbUrl || selectedUrl || fullUrl || assetUrl });
   }
   if (looksLikeImageSource(raw)) return { id:'', url: raw, thumbnail_url: raw, alt:'' };
   return null;

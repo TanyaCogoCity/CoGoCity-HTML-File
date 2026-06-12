@@ -133,10 +133,14 @@ const checks = [
       && /if \(notificationRows\.length\) await createNotifications/.test(messagesRoute),
   },
   {
-    name: 'Blog images load through backend asset URLs instead of local embedded cache',
+    name: 'Images load through backend-owned CDN variants instead of local embedded cache',
     test: () => /function backendImageAssetUrl\(imageId=''\)/.test(indexHtml)
       && /BACKEND_MIGRATION\.baseUrl}\/sync\/images\/\$\{encodeURIComponent\(cleanId\)\}\/file/.test(indexHtml)
-      && /const fullUrl = assetUrl \|\| stored\.url \|\| '';/.test(indexHtml)
+      && /const fullUrl = stored\.full_url \|\| stored\.fullUrl \|\| stored\.url/.test(indexHtml)
+      && /const mediumUrl = stored\.medium_url \|\| stored\.mediumUrl \|\| fullUrl;/.test(indexHtml)
+      && /const thumbUrl = stored\.thumb_url \|\| stored\.thumbUrl \|\| stored\.thumbnail_url/.test(indexHtml)
+      && /storage_provider: 'digitalocean_spaces'/.test(syncRecordsRoute)
+      && /router\.post\('\/images\/upload'/.test(syncRecordsRoute)
       && /router\.get\('\/images\/:id\/file'/.test(syncRecordsRoute)
       && /record\.backend_asset_url = publicImageUrl;/.test(syncRecordsRoute)
       && /record\.embedded_image_omitted = false;/.test(syncRecordsRoute)
