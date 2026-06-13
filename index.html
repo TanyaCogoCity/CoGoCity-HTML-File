@@ -3403,10 +3403,11 @@ function getImageView(source='', variant='full'){
 function getImageViews(values=[], variant='full'){
   return (Array.isArray(values) ? values : []).map(value => getImageView(value, variant)).filter(Boolean);
 }
-function renderManagedImage(source='', alt='', style='', variant='full', extraAttrs='loading="lazy"'){
+function renderManagedImage(source='', alt='', style='', variant='full', extraAttrs='loading="lazy" decoding="async"'){
   const image = getImageView(source, variant);
   if (!image || !image.url) return '';
-  return `<img src="${esc(image.url)}" alt="${esc(alt)}" style="${style}" ${extraAttrs}>`;
+  const attrs = /\bdecoding=/i.test(String(extraAttrs || '')) ? extraAttrs : `${extraAttrs} decoding="async"`;
+  return `<img src="${esc(image.url)}" alt="${esc(alt)}" style="${style}" ${attrs}>`;
 }
 function addImageIdToList(list=[], imageId='', limit=1){
   const cleanId = String(imageId || '').trim();
@@ -10140,11 +10141,11 @@ function renderBlogThumbnail(post, variant='card'){
   const image = getBlogThumbnailView(post, variant === 'featured' ? 'full' : 'thumb');
   if (variant === 'featured') {
     return image
-      ? `<div class="blog-featured-media"><img src="${esc(image.url)}" alt="${esc(post.title)}" loading="lazy"></div>`
+      ? `<div class="blog-featured-media"><img src="${esc(image.url)}" alt="${esc(post.title)}" loading="lazy" decoding="async" width="900" height="506"></div>`
       : `<div class="blog-featured-media" style="display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:800">CoGo Blog</div>`;
   }
   return image
-    ? `<div class="blog-card-media"><img src="${esc(image.url)}" alt="${esc(post.title)}" class="blog-card-image" loading="lazy"></div>`
+    ? `<div class="blog-card-media"><img src="${esc(image.url)}" alt="${esc(post.title)}" class="blog-card-image" loading="lazy" decoding="async" width="400" height="225"></div>`
     : `<div class="blog-card-media" style="display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.8rem;font-weight:800">CoGo Blog</div>`;
 }
 function renderBlogCard(post){
@@ -12421,7 +12422,7 @@ function renderStudentAvatar(student, size=54, extraStyle=''){
 function renderMediaThumbs(images=[], max=3, size=72, emptyHtml=''){
   const imageViews = getImageViews(images, 'thumb');
   if (!imageViews.length) return emptyHtml;
-  return `<div style="display:flex;gap:10px;flex-wrap:wrap">${imageViews.slice(0, max).map(image => `<img src="${esc(image.url)}" loading="lazy" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">`).join('')}</div>`;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap">${imageViews.slice(0, max).map(image => `<img src="${esc(image.url)}" loading="lazy" decoding="async" style="width:${size}px;height:${size}px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">`).join('')}</div>`;
 }
 function updateMediaCarousel(carouselId){
   const state = mediaCarouselState[carouselId];
@@ -12456,7 +12457,7 @@ function renderMediaCarousel(images=[], size=84){
   return `
     <div style="max-width:420px">
       <div style="position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#F9FAFB">
-        <img id="${carouselId}_image" src="${esc(imageViews[0].url)}" loading="lazy" style="width:100%;height:${height}px;object-fit:cover;display:block">
+        <img id="${carouselId}_image" src="${esc(imageViews[0].url)}" loading="lazy" decoding="async" style="width:100%;height:${height}px;object-fit:cover;display:block">
         <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', -1)" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">\u2039</button>
         <button class="btn btn-outline btn-sm" type="button" onclick="shiftMediaCarousel('${carouselId}', 1)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.92)">\u203A</button>
       </div>
@@ -12528,7 +12529,7 @@ function renderSignupSelectedImagePreview(imageId='', alt='Image', removeAction=
   const cleanPreviewUrl = String(previewUrl || '').trim();
   const imageStyle = `width:${size}px;height:${size}px;border-radius:14px;object-fit:cover;border:1px solid var(--border)`;
   const imageHtml = cleanPreviewUrl
-    ? `<img src="${esc(cleanPreviewUrl)}" alt="${esc(alt)}" style="${imageStyle}" loading="eager">`
+    ? `<img src="${esc(cleanPreviewUrl)}" alt="${esc(alt)}" style="${imageStyle}" loading="eager" decoding="async">`
     : renderManagedImage(cleanId, alt, imageStyle, 'thumb', 'loading="eager"');
   const selectedName = getSignupImageDisplayName(cleanId, fallbackName);
   const fallbackHtml = `

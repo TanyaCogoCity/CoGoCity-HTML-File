@@ -15,6 +15,8 @@ const routes = [
   '#/accessibility',
 ];
 
+const baseUrl = (process.env.ACCESSIBILITY_BASE_URL || process.env.BASE_URL || 'http://127.0.0.1:4177').replace(/\/+$/, '');
+
 const browser = await chromium.launch({
   headless: true,
   executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -23,7 +25,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 const results = [];
 
 for (const route of routes) {
-  await page.goto(`http://127.0.0.1:4177/${route}`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${baseUrl}/${route}`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(700);
   const result = await page.evaluate(() => {
     const visible = el => {
