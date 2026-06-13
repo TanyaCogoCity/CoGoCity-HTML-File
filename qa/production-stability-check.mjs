@@ -109,7 +109,7 @@ const checks = [
       && /max-height:5\.1em;overflow:hidden/.test(indexHtml)
       && /See less/.test(indexHtml)
       && /See more/.test(indexHtml)
-      && /renderCollapsibleLongText\(p\.content \|\| '', `community_post_content_\$\{p\.id\}`\)/.test(indexHtml)
+      && /\$\{p\.isJob \? '' : `<div style="margin-bottom:10px">\$\{renderCollapsibleLongText\(p\.content \|\| '', `community_post_content_\$\{p\.id\}`\)\}<\/div>`\}/.test(indexHtml)
       && /renderCollapsibleLongText\(p\.description \|\| '', `community_post_description_\$\{p\.id\}`, \{ small:true \}\)/.test(indexHtml)
       && /renderCollapsibleLongText\(displayDescription, `student_app_description_\$\{a\.id\}`, \{ small:true \}\)/.test(indexHtml)
       && /renderCollapsibleLongText\(a\.jobDescription \|\| a\.message \|\| '', `employer_app_description_\$\{a\.id\}`, \{ small:true \}\)/.test(indexHtml),

@@ -14228,7 +14228,7 @@ function renderPost(p){
           <div class="muted small">${timeAgo(p.createdAt)}</div>
         </div>
       </div>
-      <div style="margin-bottom:10px">${renderCollapsibleLongText(p.content || '', `community_post_content_${p.id}`)}</div>
+      ${p.isJob ? '' : `<div style="margin-bottom:10px">${renderCollapsibleLongText(p.content || '', `community_post_content_${p.id}`)}</div>`}
       ${mediaHtml}
       ${p.isJob ? `
         <div class="card" style="padding:14px;background:#F9FAFB;border-color:#E5E7EB">
