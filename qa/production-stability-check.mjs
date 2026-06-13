@@ -11,6 +11,8 @@ const messagesRoutePath = path.join(rootDir, 'backend/src/routes/messages.js');
 const messagesRoute = fs.existsSync(messagesRoutePath) ? fs.readFileSync(messagesRoutePath, 'utf8') : '';
 const syncRecordsRoutePath = path.join(rootDir, 'backend/src/routes/syncRecords.js');
 const syncRecordsRoute = fs.existsSync(syncRecordsRoutePath) ? fs.readFileSync(syncRecordsRoutePath, 'utf8') : '';
+const transactionsRoutePath = path.join(rootDir, 'backend/src/routes/transactions.js');
+const transactionsRoute = fs.existsSync(transactionsRoutePath) ? fs.readFileSync(transactionsRoutePath, 'utf8') : '';
 
 function sliceBetween(startNeedle, endNeedle) {
   const start = indexHtml.indexOf(startNeedle);
@@ -136,6 +138,14 @@ const checks = [
       && /manual-project:\$\{req\.user\.id\}:\$\{projectPaymentKey\}:\$\{amountTotal\}:intent:v3:connect/.test(fs.readFileSync(path.join(rootDir, 'backend/src/routes/stripe.js'), 'utf8'))
       && /function dedupeSyncedProjectsByApplication/.test(syncRecordsRoute)
       && /normalized = await dedupeSyncedProjectsByApplication\(normalized\);/.test(syncRecordsRoute),
+  },
+  {
+    name: 'Completed booking transactions dedupe by Stripe, project, and logical booking identity',
+    test: () => /function transactionDedupeKeys\(tx=\{\}\)/.test(indexHtml)
+      && /logical:\$\{studentId\}:\$\{employerId\}:\$\{title\}:\$\{day\}:\$\{rate\}:\$\{hours\}:\$\{workTotal\}:\$\{totalAmount\}:\$\{payoutAmount\}/.test(indexHtml)
+      && /const existingIndex = keys\.map\(key => seen\.get\(key\)\)\.find\(index => index !== undefined\);/.test(indexHtml)
+      && /function transactionDedupeKeys\(tx = \{\}\)/.test(transactionsRoute)
+      && /dedupeTransactionRows\(projectTransactions[\s\S]*\.concat\(manualTransactions, jobListingTransactions, workshopTransactions\)\)/.test(transactionsRoute),
   },
   {
     name: 'Message notifications dedupe to one unread conversation notice',

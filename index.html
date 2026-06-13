@@ -20639,31 +20639,72 @@ function formatTransactionDate(value){
   if (!value) return '\u2014';
   return new Date(value).toLocaleDateString('en-US', { month:'short', day:'numeric' });
 }
+function transactionDayKey(value=''){
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+}
+function normalizeTransactionKeyText(value=''){
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+function transactionDedupeKeys(tx={}){
+  const keys = [];
+  const stripeId = String(tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id || '').trim();
+  if (stripeId) keys.push(`stripe:${stripeId}`);
+  const projectId = String(tx.project_id || tx.projectId || '').trim();
+  if (projectId) keys.push(`project:${projectId}`);
+  const studentId = String(getTransactionStudentId(tx) || '').trim();
+  const employerId = String(getTransactionEmployerId(tx) || '').trim();
+  const title = normalizeTransactionKeyText(tx.job_title || tx.jobTitle || tx.title || '');
+  const day = transactionDayKey(tx.date_paid || tx.paid_at || tx.date_completed || tx.completed_at || tx.date_charged || tx.created_at || '');
+  const rate = Number(Number(tx.hourly_rate || tx.hourlyRate || tx.rate || 0).toFixed(2));
+  const hours = Number(Number(tx.hours_worked || tx.hoursWorked || tx.actual_hours || tx.actualHours || 0).toFixed(2));
+  const workTotal = Number(Number(tx.work_total || tx.workTotal || 0).toFixed(2));
+  const totalAmount = Number(Number(tx.total_amount || tx.amount_total || tx.amountTotal || 0).toFixed(2));
+  const payoutAmount = Number(Number(tx.payout_amount || tx.student_payout || tx.studentPayout || 0).toFixed(2));
+  if (studentId && employerId && title && day && (workTotal || totalAmount || payoutAmount)) {
+    keys.push(`logical:${studentId}:${employerId}:${title}:${day}:${rate}:${hours}:${workTotal}:${totalAmount}:${payoutAmount}`);
+  }
+  if (!keys.length) keys.push(`tx:${tx.id || tx.transaction_id || Math.random()}`);
+  return keys;
+}
+function transactionCompletenessScore(tx={}){
+  let score = 0;
+  if (tx.stripe_payment_intent_id || tx.payment_intent_id || tx.payment_id) score += 50;
+  if (tx.stripe_charge_id || tx.charge_id) score += 10;
+  if (tx.stripe_transfer_id) score += 10;
+  if (tx.project_id || tx.projectId) score += 8;
+  if (String(tx.status || '').toLowerCase() === 'paid') score += 5;
+  ['total_amount','work_total','payout_amount','platform_fee_total','date_paid'].forEach(field => {
+    if (tx[field] !== undefined && tx[field] !== null && tx[field] !== '') score += 1;
+  });
+  return score;
+}
 function dedupeTransactionRows(rows=[]){
   const seen = new Map();
   const mergedRows = [];
   (Array.isArray(rows) ? rows : []).forEach(tx => {
     if (!tx) return false;
-    const key = tx.stripe_payment_intent_id
-      ? `stripe:${tx.stripe_payment_intent_id}`
-      : (tx.project_id || tx.job_id)
-        ? `project:${tx.project_id || tx.job_id}:${tx.employer_id || ''}:${tx.student_id || ''}:${tx.total_amount || tx.amount_total || tx.work_total || ''}`
-        : `tx:${tx.id || tx.transaction_id || Math.random()}`;
-    if (!seen.has(key)) {
-      seen.set(key, mergedRows.length);
+    const keys = transactionDedupeKeys(tx);
+    const existingIndex = keys.map(key => seen.get(key)).find(index => index !== undefined);
+    if (existingIndex === undefined) {
+      keys.forEach(key => seen.set(key, mergedRows.length));
       mergedRows.push(tx);
       return;
     }
-    const existing = mergedRows[seen.get(key)] || {};
-    const merged = Object.assign({}, existing);
-    Object.keys(tx).forEach(field => {
+    const existing = mergedRows[existingIndex] || {};
+    const primary = transactionCompletenessScore(tx) > transactionCompletenessScore(existing) ? tx : existing;
+    const secondary = primary === tx ? existing : tx;
+    const merged = Object.assign({}, secondary);
+    Object.keys(primary).forEach(field => {
       const current = merged[field];
-      const next = tx[field];
+      const next = primary[field];
       const currentMissing = current === undefined || current === null || current === '' || (typeof current === 'number' && current === 0);
       const nextPresent = next !== undefined && next !== null && next !== '' && !(typeof next === 'number' && next === 0);
       if (currentMissing && nextPresent) merged[field] = next;
     });
-    mergedRows[seen.get(key)] = normalizeTransactionRecord(merged);
+    mergedRows[existingIndex] = normalizeTransactionRecord(merged);
+    keys.forEach(key => seen.set(key, existingIndex));
   });
   return mergedRows;
 }

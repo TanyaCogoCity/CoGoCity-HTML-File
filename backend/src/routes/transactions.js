@@ -253,6 +253,72 @@ function normalizeManualTransaction(row, userMap = new Map(), feeSettings = {}, 
   };
 }
 
+function transactionDayKey(value = '') {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeTransactionText(value = '') {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function transactionDedupeKeys(tx = {}) {
+  const keys = [];
+  const stripeId = String(firstValue(tx.stripe_payment_intent_id, tx.stripePaymentIntentId, '') || '').trim();
+  if (stripeId) keys.push(`stripe:${stripeId}`);
+  const projectId = String(firstValue(tx.project_id, tx.projectId, '') || '').trim();
+  if (projectId) keys.push(`project:${projectId}`);
+  const studentId = String(firstValue(tx.student_id, tx.studentId, tx.payee_id, tx.payeeId, '') || '').trim();
+  const employerId = String(firstValue(tx.employer_id, tx.employerId, tx.payer_id, tx.payerId, '') || '').trim();
+  const title = normalizeTransactionText(firstValue(tx.job_title, tx.jobTitle, tx.title, ''));
+  const day = transactionDayKey(firstValue(tx.date_paid, tx.paid_at, tx.date_completed, tx.completed_at, tx.date_charged, tx.created_at, ''));
+  const rate = money(firstValue(tx.hourly_rate, tx.hourlyRate, tx.rate, 0));
+  const hours = money(firstValue(tx.hours_worked, tx.hoursWorked, tx.actual_hours, tx.actualHours, 0));
+  const workTotal = money(firstValue(tx.work_total, tx.workTotal, 0));
+  const totalAmount = money(firstValue(tx.total_amount, tx.amount_total, tx.amountTotal, 0));
+  const payoutAmount = money(firstValue(tx.payout_amount, tx.student_payout, tx.studentPayout, 0));
+  if (studentId && employerId && title && day && (workTotal || totalAmount || payoutAmount)) {
+    keys.push(`logical:${studentId}:${employerId}:${title}:${day}:${rate}:${hours}:${workTotal}:${totalAmount}:${payoutAmount}`);
+  }
+  if (!keys.length) keys.push(`tx:${firstValue(tx.id, tx.transaction_id, Math.random())}`);
+  return keys;
+}
+
+function transactionCompletenessScore(tx = {}) {
+  let score = 0;
+  if (tx.stripe_payment_intent_id || tx.stripePaymentIntentId) score += 50;
+  if (tx.stripe_charge_id || tx.stripeChargeId) score += 10;
+  if (tx.stripe_transfer_id || tx.stripeTransferId) score += 10;
+  if (tx.project_id || tx.projectId) score += 8;
+  if (String(tx.status || '').toLowerCase() === 'paid') score += 5;
+  ['total_amount', 'work_total', 'payout_amount', 'platform_fee_total', 'date_paid'].forEach((field) => {
+    if (tx[field] !== undefined && tx[field] !== null && tx[field] !== '') score += 1;
+  });
+  return score;
+}
+
+function dedupeTransactionRows(rows = []) {
+  const merged = [];
+  const seen = new Map();
+  for (const tx of Array.isArray(rows) ? rows : []) {
+    if (!tx) continue;
+    const keys = transactionDedupeKeys(tx);
+    const existingIndex = keys.map((key) => seen.get(key)).find((index) => index !== undefined);
+    if (existingIndex === undefined) {
+      keys.forEach((key) => seen.set(key, merged.length));
+      merged.push(tx);
+      continue;
+    }
+    const existing = merged[existingIndex] || {};
+    const primary = transactionCompletenessScore(tx) > transactionCompletenessScore(existing) ? tx : existing;
+    const secondary = primary === tx ? existing : tx;
+    merged[existingIndex] = { ...secondary, ...primary };
+    keys.forEach((key) => seen.set(key, existingIndex));
+  }
+  return merged;
+}
+
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res) => {
@@ -530,8 +596,8 @@ router.get('/', requireAuth, async (req, res) => {
       return true;
     });
 
-  const data = projectTransactions
-    .concat(manualTransactions, jobListingTransactions, workshopTransactions)
+  const data = dedupeTransactionRows(projectTransactions
+    .concat(manualTransactions, jobListingTransactions, workshopTransactions))
     .sort((a, b) => new Date(b.date_paid || b.date_charged || b.created_at || 0) - new Date(a.date_paid || a.date_charged || a.created_at || 0))
     .slice(0, 500);
 
