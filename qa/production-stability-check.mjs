@@ -161,6 +161,15 @@ const checks = [
       && !/res\.redirect\(302, source\)/.test(syncRecordsRoute),
   },
   {
+    name: 'Community optional image upload never relies on stale draft or local fallback',
+    test: () => /let postComposerImageTouched = false;/.test(indexHtml)
+      && /const postImages = postComposerImageTouched[\s\S]*\? optionalCommunityPostImages/.test(indexHtml)
+      && /entity_images: postComposerImageTouched \? parseJsonArray/.test(indexHtml)
+      && /postComposerImageTouched = false;[\s\S]*clearPostComposerDraft\(\);/.test(indexHtml)
+      && /console\.warn\('Backend image upload failed', error\);[\s\S]*throw error;/.test(indexHtml)
+      && !/falling back to regular image sync/.test(indexHtml),
+  },
+  {
     name: 'Blog image uploads persist backend image ids and confirm asset URL before blog save',
     test: () => /function imageReferenceForPersistence\(value=''\)/.test(indexHtml)
       && /function imageIdFromBackendAssetUrl\(value=''\)/.test(indexHtml)

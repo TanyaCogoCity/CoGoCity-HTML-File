@@ -822,6 +822,7 @@ let mediaCarouselState = {};
 let openPostCommentId = '';
 let communitySearchQuery = '';
 let communityPostTypeFilter = 'all';
+let postComposerImageTouched = false;
 let workshopPayoutProcessorStarted = false;
 let connectivityHandlersAttached = false;
 let studentProfileImagesBuffer = [];
@@ -3337,15 +3338,8 @@ function prepareUploadedImageRecord(file, meta={}){
   if (existing) return Promise.resolve(existing.id);
   if (backendAuthEnabled() && getBackendAccessToken()) {
     return uploadImageRecordToBackend(file, meta, fingerprint).catch(error => {
-      console.warn('Backend image upload failed; falling back to regular image sync.', error);
-      return readFileAsDataUrl(file)
-        .then(dataUrl => optimizeImageDataUrlForStorage(dataUrl, file))
-        .then(dataUrl => upsertImageRecord(dataUrl, Object.assign({
-          fingerprint,
-          original_name: file.name || '',
-          original_type: file.type || '',
-          original_size: Number(file.size || 0) || 0
-        }, meta)));
+      console.warn('Backend image upload failed', error);
+      throw error;
     });
   }
   return readFileAsDataUrl(file)
@@ -13909,7 +13903,9 @@ function getPostComposerDraft(){
     video_type: '',
     video_id: ''
   }, getStoredPostComposerDraft());
-  const rawImages = ensureArray(draft.entity_images).length ? draft.entity_images : ensureArray(draft.images);
+  const rawImages = postComposerImageTouched
+    ? (ensureArray(draft.entity_images).length ? draft.entity_images : ensureArray(draft.images))
+    : [];
   draft.entity_images = upsertImageRecords(rawImages, { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' }).slice(0,1);
   draft.images = [...draft.entity_images];
   applyVideoState(draft, getRenderableVideoUrl(draft) || draft.video_url || '');
@@ -13972,6 +13968,7 @@ function setHiddenSingleImage(inputId='', imageId=''){
   return list;
 }
 function removePostComposerImage(){
+  postComposerImageTouched = true;
   setHiddenSingleImage('postImagesValue', '');
   const preview = document.getElementById('post-images-preview');
   if (preview) preview.innerHTML = renderPostComposerImagePreview([]);
@@ -14005,6 +14002,7 @@ function removeEmpPostVideo(){
 }
 function handlePostComposerImagesUpload(input){
   readImagesToDataUrls(input, (images) => {
+    postComposerImageTouched = !!images.length;
     const uploaded = upsertImageRecords(images.slice(0, 1), { source:'community_post', entity_type:'post', owner_id: currentUser ? currentUser.id : '' });
     const next = setHiddenSingleImage('postImagesValue', uploaded[0] || '');
     const preview = document.getElementById('post-images-preview');
@@ -14056,10 +14054,12 @@ function handlePostComposerVideoUpload(input){
 function togglePostComposer(){
   const wrap = document.getElementById('post-composer-wrap');
   if (wrap.innerHTML.trim()){
+    postComposerImageTouched = false;
     clearPostComposerDraft();
     wrap.innerHTML = '';
     return;
   }
+  postComposerImageTouched = false;
   const draft = getPostComposerDraft();
   const placeholders = getCommunityJobPlaceholders();
   const canCreateJobPost = isEmployerAccount(currentUser);
@@ -14114,7 +14114,7 @@ function savePostComposerDraft(){
     rate: String((document.getElementById('jobRate') || {}).value || ''),
     hoursNeeded: String((document.getElementById('jobHours') || {}).value || ''),
     location: String((document.getElementById('jobLocation') || {}).value || ''),
-    entity_images: parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]'),
+    entity_images: postComposerImageTouched ? parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]') : [],
     video_url: videoState.media_url || '',
     video_type: videoState.video_type || '',
     video_id: videoState.video_id || ''
@@ -14143,7 +14143,9 @@ async function submitPost(){
     return openLoginModal();
   }
   const content = (document.getElementById('postContent').value || '').trim();
-  const postImages = optionalCommunityPostImages(parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]'));
+  const postImages = postComposerImageTouched
+    ? optionalCommunityPostImages(parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]'))
+    : [];
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
   const isJob = isEmployerAccount(currentUser) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
   if (toastRequiredFields({ Post:content })) return;
@@ -14180,9 +14182,7 @@ async function submitPost(){
     }
     if (!blockTextCheck(post.description)) return;
   }
-  const posts = getPosts();
-  posts.unshift(post);
-  const nextPosts = posts.map(normalizePostRecord);
+  const nextPosts = [post, ...getPosts()].map(normalizePostRecord);
   try {
     const imageSync = await syncReferencedImagesBeforeCommunityPosts(nextPosts);
     if (imageSync && imageSync.ok === false) return toast('Could not publish the post image. Please try uploading the image again before posting.');
@@ -14196,6 +14196,7 @@ async function submitPost(){
     trackCogoEvent('job_published', { source: 'community_feed', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
   }
   clearPostComposerDraft();
+  postComposerImageTouched = false;
   toast('Posted successfully.');
   renderCommunity();
 }
