@@ -175,6 +175,112 @@ function isStartedProjectStatus(value = '') {
   return ['in_progress', 'project_started', 'funded'].includes(String(value || '').trim().toLowerCase());
 }
 
+function syncedProjectApplicationId(payload = {}) {
+  return String(payload.applicationId || payload.application_id || '').trim();
+}
+
+function projectStatusRank(value = '') {
+  const status = String(value || '').trim().toLowerCase();
+  if (['completed', 'paid', 'released'].includes(status)) return 5;
+  if (['awaiting_employer_approval', 'awaiting_approval'].includes(status)) return 4;
+  if (['in_progress', 'project_started', 'funded'].includes(status)) return 3;
+  if (['accepted'].includes(status)) return 2;
+  if (['pending'].includes(status)) return 1;
+  return 0;
+}
+
+function projectPaymentStatusRank(value = '') {
+  const status = String(value || '').trim().toLowerCase();
+  if (['completed', 'paid', 'released', 'succeeded', 'captured'].includes(status)) return 4;
+  if (['held', 'funded', 'requires_capture', 'authorized'].includes(status)) return 3;
+  if (['pending', 'pending_completion'].includes(status)) return 2;
+  if (['failed', 'canceled', 'cancelled'].includes(status)) return 1;
+  return 0;
+}
+
+function mergeDuplicateProjectPayload(existingPayload = {}, incomingPayload = {}, canonicalId = '') {
+  const merged = { ...existingPayload, ...incomingPayload };
+  merged.id = canonicalId || existingPayload.id || incomingPayload.id;
+  merged.project_id = merged.id;
+  merged.projectId = merged.id;
+
+  const existingStatusRank = projectStatusRank(existingPayload.status);
+  const incomingStatusRank = projectStatusRank(incomingPayload.status);
+  if (existingStatusRank > incomingStatusRank) merged.status = existingPayload.status;
+
+  const existingPaymentRank = projectPaymentStatusRank(existingPayload.payment_status || existingPayload.paymentStatus);
+  const incomingPaymentRank = projectPaymentStatusRank(incomingPayload.payment_status || incomingPayload.paymentStatus);
+  if (existingPaymentRank > incomingPaymentRank) {
+    merged.payment_status = existingPayload.payment_status || existingPayload.paymentStatus || merged.payment_status;
+    merged.paymentStatus = merged.payment_status;
+  }
+
+  const existingIntent = existingPayload.stripe_payment_intent_id || existingPayload.stripePaymentIntentId || '';
+  const incomingIntent = incomingPayload.stripe_payment_intent_id || incomingPayload.stripePaymentIntentId || '';
+  if (existingIntent && incomingIntent && existingIntent !== incomingIntent) {
+    merged.stripe_payment_intent_id = existingIntent;
+    merged.stripePaymentIntentId = existingIntent;
+  }
+
+  const existingCreatedAt = existingPayload.createdAt || existingPayload.created_at || '';
+  const incomingCreatedAt = incomingPayload.createdAt || incomingPayload.created_at || '';
+  if (existingCreatedAt && incomingCreatedAt) {
+    const existingTime = Date.parse(existingCreatedAt);
+    const incomingTime = Date.parse(incomingCreatedAt);
+    if (Number.isFinite(existingTime) && Number.isFinite(incomingTime) && existingTime <= incomingTime) {
+      merged.createdAt = existingCreatedAt;
+      merged.created_at = existingCreatedAt;
+    }
+  }
+
+  return merged;
+}
+
+async function dedupeSyncedProjectsByApplication(normalized = []) {
+  if (!Array.isArray(normalized) || !normalized.length) return normalized;
+  const appIds = [...new Set(normalized.map((record) => syncedProjectApplicationId(record.payload)).filter(Boolean))];
+  if (!appIds.length) return normalized;
+
+  const existingRows = await prisma.syncRecord.findMany({
+    where: { entity: 'projects', deletedAt: null },
+    select: { recordId: true, payload: true },
+  });
+  const existingByApplication = new Map();
+  for (const row of existingRows) {
+    const payload = row.payload || {};
+    const appId = syncedProjectApplicationId(payload);
+    if (!appId || !appIds.includes(appId)) continue;
+    const current = existingByApplication.get(appId);
+    if (!current || projectStatusRank(payload.status) > projectStatusRank(current.payload?.status)) {
+      existingByApplication.set(appId, row);
+    }
+  }
+
+  const prepared = [];
+  const incomingByApplication = new Map();
+  for (const record of normalized) {
+    const appId = syncedProjectApplicationId(record.payload);
+    if (!appId) {
+      prepared.push(record);
+      continue;
+    }
+
+    const existing = existingByApplication.get(appId);
+    const priorIncoming = incomingByApplication.get(appId);
+    const canonicalId = existing?.recordId || priorIncoming?.id || record.id;
+    const basePayload = existing?.payload || priorIncoming?.payload || {};
+    const payload = mergeDuplicateProjectPayload(basePayload, record.payload, canonicalId);
+    const canonical = { id: canonicalId, payload };
+    incomingByApplication.set(appId, canonical);
+    if (!prepared.some((item) => item.id === canonicalId)) prepared.push(canonical);
+    else {
+      const index = prepared.findIndex((item) => item.id === canonicalId);
+      prepared[index] = canonical;
+    }
+  }
+  return prepared;
+}
+
 async function createSyncedApplicationOfferNotifications(normalized = [], req) {
   if (!Array.isArray(normalized) || !normalized.length) return 0;
   let created = 0;
@@ -1033,7 +1139,7 @@ router.post('/:entity', requireAuth, async (req, res) => {
 
   try {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
-    const normalized = records.map((record) => normalizeRecord(record, entity)).filter(Boolean).slice(0, 1000);
+    let normalized = records.map((record) => normalizeRecord(record, entity)).filter(Boolean).slice(0, 1000);
     if (entity === 'testimonials') {
       const testimonialsWriteAllowed = requireTestimonialsWriteAccess(req, res, normalized, !!req.body?.replace);
       if (testimonialsWriteAllowed !== true) return null;
@@ -1048,6 +1154,9 @@ router.post('/:entity', requireAuth, async (req, res) => {
     if (entity === 'workshops') {
       const payoutReady = await requireSyncedWorkshopPayoutReady(req, res, normalized);
       if (!payoutReady) return null;
+    }
+    if (entity === 'projects') {
+      normalized = await dedupeSyncedProjectsByApplication(normalized);
     }
     const operations = normalized.map((record) => prisma.syncRecord.upsert({
       where: { entity_recordId: { entity, recordId: record.id } },

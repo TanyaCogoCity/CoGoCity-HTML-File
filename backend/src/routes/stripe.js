@@ -2148,6 +2148,7 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
   const hourlyRate = Number(req.body?.hourly_rate ?? req.body?.hourlyRate ?? 0);
   const hoursWorked = Number(req.body?.hours_worked ?? req.body?.hoursWorked ?? 0);
   const projectId = String(req.body?.project_id || req.body?.projectId || '').trim();
+  const applicationId = String(req.body?.application_id || req.body?.applicationId || '').trim();
   const studentUserId = String(req.body?.student_user_id || req.body?.studentUserId || req.body?.payee_id || req.body?.payeeId || '').trim();
   const jobTitle = String(req.body?.job_title || req.body?.jobTitle || 'CoGo City project').trim();
   if (!Number.isFinite(amountTotal) || amountTotal <= 0) return fail(res, 400, 'amount_total must be greater than 0');
@@ -2176,9 +2177,11 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
       type: 'project_escrow_test',
     });
     marketplace.data.metadata.job_title = jobTitle.slice(0, 450);
+    if (applicationId) marketplace.data.metadata.application_id = applicationId;
     marketplace.data.metadata.work_total = String(workTotal || '');
     marketplace.data.metadata.hourly_rate = String(hourlyRate || '');
     marketplace.data.metadata.hours_worked = String(hoursWorked || '');
+    const projectPaymentKey = applicationId || projectId || jobTitle;
 
     const paymentIntent = await stripe.paymentIntents.create(
       {
@@ -2192,7 +2195,7 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
         description: `CoGo City project escrow: ${jobTitle}`,
         ...marketplace.data,
       },
-      { idempotencyKey: `manual-project:${req.user.id}:${projectId || jobTitle}:${amountTotal}:intent:v2:connect` }
+      { idempotencyKey: `manual-project:${req.user.id}:${projectPaymentKey}:${amountTotal}:intent:v3:connect` }
     );
 
     await upsertManualProjectTransaction(paymentIntent, {
@@ -2228,7 +2231,7 @@ router.post('/manual-project-payment-intent', requireAuth, async (req, res) => {
       }
     }
 
-    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.create', entityType: 'stripe_payment_intent', entityId: paymentIntent.id, payload: { amountTotal, projectId, studentUserId } });
+    await writeAuditLog({ userId: req.user.id, action: 'payment.manual_project.intent.create', entityType: 'stripe_payment_intent', entityId: paymentIntent.id, payload: { amountTotal, projectId, applicationId, studentUserId } });
     return ok(res, {
       payment_intent_id: paymentIntent.id,
       client_secret: paymentIntent.client_secret,

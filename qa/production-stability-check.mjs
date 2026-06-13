@@ -125,6 +125,19 @@ const checks = [
       && /dedupeNotificationRows\(rows\)\.map/.test(notificationsRoute),
   },
   {
+    name: 'Community project start is idempotent by application before Stripe and sync writes',
+    test: () => /const communityProjectStartLocks = new Set\(\);/.test(indexHtml)
+      && /communityProjectStartLocks\.has\(startLockKey\)/.test(indexHtml)
+      && /await refreshBackendDashboardData\(\{ rerender:false \}\);/.test(indexHtml)
+      && /application_id: project\.applicationId \|\| project\.application_id \|\| ''/.test(indexHtml)
+      && /applicationId: a\.id/.test(indexHtml)
+      && /const applicationId = String\(req\.body\?\.application_id \|\| req\.body\?\.applicationId \|\| ''\)\.trim\(\);/.test(fs.readFileSync(path.join(rootDir, 'backend/src/routes/stripe.js'), 'utf8'))
+      && /const projectPaymentKey = applicationId \|\| projectId \|\| jobTitle;/.test(fs.readFileSync(path.join(rootDir, 'backend/src/routes/stripe.js'), 'utf8'))
+      && /manual-project:\$\{req\.user\.id\}:\$\{projectPaymentKey\}:\$\{amountTotal\}:intent:v3:connect/.test(fs.readFileSync(path.join(rootDir, 'backend/src/routes/stripe.js'), 'utf8'))
+      && /function dedupeSyncedProjectsByApplication/.test(syncRecordsRoute)
+      && /normalized = await dedupeSyncedProjectsByApplication\(normalized\);/.test(syncRecordsRoute),
+  },
+  {
     name: 'Message notifications dedupe to one unread conversation notice',
     test: () => /paymentTitle\.startsWith\("you've got a message from "\)/.test(indexHtml)
       && /title\.startsWith\("you've got a message from "\)/.test(notificationsRoute)

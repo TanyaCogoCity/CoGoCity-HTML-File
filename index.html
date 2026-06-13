@@ -2086,6 +2086,7 @@ async function createManualProjectStripePayment(project={}, breakdown={}){
     method:'POST',
     body: JSON.stringify({
       project_id: project.id || project.project_id || '',
+      application_id: project.applicationId || project.application_id || '',
       job_title: project.jobTitle || project.title || 'CoGo City project',
       student_user_id: project.studentUserId || project.student_id || '',
       work_total: breakdown.workTotal,
@@ -17328,6 +17329,7 @@ async function confirmSendOffer(appId){
 function normalizedApplicationStatus(value=''){
   return String(value || '').trim().toLowerCase();
 }
+const communityProjectStartLocks = new Set();
 async function startProject(appId, expectedStatus=''){
   if (requireBackendWriteSession('start this project')) return;
   if (!requireEmployerPaymentSetup('start a project')) return;
@@ -17341,6 +17343,13 @@ async function startProject(appId, expectedStatus=''){
       return toast('Student must accept first.');
     }
   }
+  const startLockKey = String(a.id || appId || '').trim();
+  if (startLockKey && communityProjectStartLocks.has(startLockKey)) {
+    return toast('Project start is already saving. Please wait a moment.');
+  }
+  if (startLockKey) communityProjectStartLocks.add(startLockKey);
+  try {
+  if (backendAuthEnabled() && getBackendAccessToken()) await refreshBackendDashboardData({ rerender:false });
   trackCogoEvent('project_start_click', { source: 'application' });
   const projects = getProjects();
   if (projects.some(p => p.applicationId === appId)) {
@@ -17363,6 +17372,7 @@ async function startProject(appId, expectedStatus=''){
     try {
       const stripePayment = await createManualProjectStripePayment({
         id: projectId,
+        applicationId: a.id,
         jobTitle: a.jobTitle,
         studentUserId: a.studentUserId
       }, estimatedBreakdown);
@@ -17476,6 +17486,9 @@ async function startProject(appId, expectedStatus=''){
   employerTab = 'projects';
   toast('Project started successfully');
   renderDashboard();
+  } finally {
+    if (startLockKey) communityProjectStartLocks.delete(startLockKey);
+  }
 }
 function renderEmployerProjectCard(p, listIndex=0){
   const actions = [];
