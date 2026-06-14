@@ -706,6 +706,18 @@
       .msg-compose{gap:8px;align-items:stretch}
       .msg-compose input{min-width:0}
       .msg-compose .btn{width:auto;flex-shrink:0}
+      body.has-admin-contact-widget #app{padding-bottom:96px}
+      body.has-admin-contact-widget.admin-contact-is-open #app{padding-bottom:360px}
+      .admin-contact-widget{
+        left:12px;
+        right:12px;
+        bottom:max(12px, env(safe-area-inset-bottom));
+        width:auto;
+        max-width:none;
+        z-index:70;
+      }
+      .admin-contact-toggle{min-height:52px;border-radius:12px;padding:10px 12px}
+      .admin-contact-panel{max-height:min(68vh,360px);overflow:auto;-webkit-overflow-scrolling:touch}
       .blog-featured-media{min-height:190px}
       .blog-article-content iframe,.blog-article-content video{min-height:230px}
       .workshop-detail-info{grid-template-columns:1fr;gap:10px;padding:12px;border-radius:14px}
@@ -7301,12 +7313,15 @@ function closeMobileNav(){
 function removeAdminContactWidget(){
   const existing = document.getElementById('adminContactWidget');
   if (existing) existing.remove();
+  document.body.classList.remove('has-admin-contact-widget', 'admin-contact-is-open');
 }
 function renderAdminContactWidget(){
   if (!currentUser || currentUser.role === 'admin' || isAdminImpersonating()) {
     removeAdminContactWidget();
     return;
   }
+  document.body.classList.add('has-admin-contact-widget');
+  document.body.classList.toggle('admin-contact-is-open', !!adminContactExpanded);
   let widget = document.getElementById('adminContactWidget');
   if (!widget) {
     widget = document.createElement('div');
