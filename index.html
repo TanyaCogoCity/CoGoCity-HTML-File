@@ -7869,6 +7869,7 @@ const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}',
 const ONBOARDING_PROFILE_IMAGE_HELP = 'Recommended profile photo: square 800 x 800 px. JPG or PNG works best.';
 const ONBOARDING_SERVICE_IMAGE_HELP = 'Recommended service or business image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly.';
 const ONBOARDING_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link, or upload a short video. 16:9 video at 720p or 1080p under 60 seconds and under 15 MB works best.';
+const ONBOARDING_PROFILE_VIDEO_UPLOAD_HELP = 'Upload a short video: 16:9 video at 720p or 1080p, under 60 seconds, and under 15 MB works best.';
 const ONBOARDING_SERVICE_VIDEO_LINK_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link';
 const ONBOARDING_SERVICE_VIDEO_UPLOAD_HELP = 'Upload a short video. 16:9 video at 720p or 1080p under 60 seconds and under 15 MB works best.';
 function createDefaultStudentSignupDraft(){
@@ -8088,8 +8089,8 @@ function renderStudentSignupStepContent(){
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px">
         ${d.photo ? renderManagedImage(d.photo, 'Profile preview', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : d.avatar ? `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar)}</div>` : `<div class="small muted">A photo or avatar is required before you can continue.</div>`}
       </div>
-      <div class="field" style="margin-top:16px"><label>Profile Video Link or Upload (optional)</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupProfileVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Profile Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupProfileVideoUpload(this)"></div>
+      <div class="field" style="margin-top:16px"><label>Profile Video Link (Optional)</label><input id="studentFlowProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="Paste a YouTube/Vimeo link" oninput="previewStudentSignupProfileVideo(this.value)"></div>
+      <div class="field"><label>Upload Profile Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupProfileVideoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_PROFILE_VIDEO_UPLOAD_HELP)}</div></div>
       <div id="student-profile-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video preview')}</div>
     </div>
   `;
