@@ -7868,7 +7868,8 @@ async function submitPasswordResetConfirm(token=''){
 const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}','\u{1F3B5}','\u26BD','\u{1F9E0}','\u{1F6B2}','\u{1F4F7}','\u{1F6E0}\uFE0F','\u{1F31F}','\u{1F3AC}','\u{1F9D1}\u200D\u{1F373}','\u{1F9EA}'];
 const ONBOARDING_PROFILE_IMAGE_HELP = 'Recommended profile photo: square 800 x 800 px. JPG or PNG works best.';
 const ONBOARDING_SERVICE_IMAGE_HELP = 'Recommended service or business image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly.';
-const ONBOARDING_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link, or upload a short video. 16:9 video at 720p or 1080p under 60 seconds and under 15 MB works best.';
+const ONBOARDING_SERVICE_VIDEO_LINK_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link';
+const ONBOARDING_SERVICE_VIDEO_UPLOAD_HELP = 'Upload a short video. 16:9 video at 720p or 1080p under 60 seconds and under 15 MB works best.';
 function createDefaultStudentSignupDraft(){
   return {
     name:'',
@@ -8125,8 +8126,8 @@ function renderStudentSignupStepContent(){
       <div class="field"><label>Service Image (optional, one image)</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleStudentSignupServiceImagesUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('addStudentSignupServiceImageFromLibrary')}</div>` : ''}
       ${renderEditableSingleImage(((d.serviceForm || {}).images || [])[0] || '', 'Service image', 'removeStudentSignupServiceImage()', 120, 'No service image added yet.')}
-      <div class="field"><label>Service Video Link or Upload (optional)</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_VIDEO_HELP)}</div></div>
-      <div class="field"><label>Upload Service Video (optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupServiceVideoUpload(this)"></div>
+      <div class="field"><label>Service Video Link (Optional)</label><input id="studentFlowServiceVideoLink" value="${esc(getEditableVideoInputValue(d.serviceForm || {}))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewStudentSignupServiceVideo(this.value)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_VIDEO_LINK_HELP)}</div></div>
+      <div class="field"><label>Upload Service Video (Optional)</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleStudentSignupServiceVideoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_VIDEO_UPLOAD_HELP)}</div></div>
       <div id="student-service-video-preview">${renderVideoPreviewHtml(getRenderableVideoUrl(d.serviceForm || {}), 'Service video preview')}</div>
       <div class="row">
         <div class="field"><label>Rate</label><input id="studentFlowServiceRate" type="number" min="1" autocomplete="off" value="${esc((d.serviceForm || {}).rate || '')}" placeholder="20" oninput="syncStudentSignupServiceForm()"></div>
