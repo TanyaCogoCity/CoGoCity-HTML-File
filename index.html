@@ -2225,23 +2225,19 @@ function openPostSignupStripeOnboardingPrompt(kind){
   `, '620px');
 }
 function openStripeConnectBeforeYouStartModal(){
-  openModal('Before You Start Stripe Setup', `
+  openModal('Before You Continue', `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">
-        Stripe will ask for business details so CoGo City can securely send payouts for services.
-      </div>
-      <div class="small muted" style="line-height:1.6;margin-bottom:12px">
-        Please keep the prefilled <strong>Business details</strong> as CoGo City unless Stripe specifically asks you to correct something. Do not replace the business website or product description with personal information.
-      </div>
-      <div class="small muted" style="line-height:1.6;margin-bottom:12px">
-        When Stripe asks for a <strong>Business website</strong>, keep the CoGo City website that is already filled in:
-        <strong>${esc(location.origin || 'https://cogocity.com')}</strong>.
-      </div>
-      <div class="small muted" style="line-height:1.6;margin-bottom:12px">
-        You do not need to create your own website for this step. Stripe may still ask for your legal name, address, date of birth, bank details, and tax information. Those details are collected by Stripe, not stored by CoGo City.
+      <div class="warning" style="font-weight:900;margin-bottom:14px">
+        Before You Continue
       </div>
       <div class="small muted" style="line-height:1.6;margin-bottom:16px">
-        For business type, most individual users can continue with <strong>Individual or sole proprietorship</strong> unless they have their own registered company.
+        <ul style="margin:0 0 12px 20px;padding:0">
+          <li>Leave Business Type as <strong>"Individual or Sole Proprietorship"</strong></li>
+          <li>Do NOT change any Professional Details</li>
+          <li>Do NOT edit the Business Website or Product Description</li>
+          <li>Only enter or update your personal information when prompted</li>
+        </ul>
+        <div><strong>Important:</strong> Changing the Business Type or Professional Details may cause issues with your account setup. Please leave them as they are.</div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Back</button>
@@ -3847,7 +3843,7 @@ async function persistCommunityPostsPermanently(v, failureMessage='Backend post 
     if (requireBackendWriteSession('save this post change')) return false;
     try {
       if (!options.skipImageSync) {
-        const imageSync = await syncReferencedImagesBeforeCommunityPosts(payload);
+        const imageSync = await syncReferencedImagesBeforeCommunityPosts(options.imageSyncPosts || payload);
         if (imageSync && imageSync.ok === false) {
           toast('Could not publish the post image. Please try uploading the image again before saving.');
           return false;
@@ -14203,7 +14199,7 @@ async function submitPost(){
   }
   const nextPosts = [post, ...getPosts()].map(normalizePostRecord);
   try {
-    const imageSync = await syncReferencedImagesBeforeCommunityPosts(nextPosts);
+    const imageSync = await syncReferencedImagesBeforeCommunityPosts([post]);
     if (imageSync && imageSync.ok === false) return toast('Could not publish the post image. Please try uploading the image again before posting.');
     await syncCommunityPostsToBackend(nextPosts);
   } catch (error) {
@@ -14446,7 +14442,7 @@ async function savePostEdit(postId){
   p.updatedAt = new Date().toISOString();
   const nextPosts = posts.map(normalizePostRecord);
   try {
-    const imageSync = await syncReferencedImagesBeforeCommunityPosts(nextPosts);
+    const imageSync = await syncReferencedImagesBeforeCommunityPosts([p]);
     if (imageSync && imageSync.ok === false) return toast('Could not publish the post image. Please try uploading the image again before saving.');
     await syncCommunityPostsToBackend(nextPosts);
   } catch (error) {
@@ -16363,7 +16359,7 @@ async function submitEmployerDashboardPost(){
   }
   const posts = getPosts();
   posts.unshift(post);
-  if (!await persistCommunityPostsPermanently(posts, isJob ? 'Backend job post save failed. Please try again so this job is saved for everyone.' : 'Backend post save failed. Please try again so this post is saved for everyone.')) return;
+  if (!await persistCommunityPostsPermanently(posts, isJob ? 'Backend job post save failed. Please try again so this job is saved for everyone.' : 'Backend post save failed. Please try again so this post is saved for everyone.', { imageSyncPosts:[post] })) return;
   if (isJob) {
     trackCogoEvent('community_job_posted', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
     trackCogoEvent('job_published', { source: 'employer_dashboard', value: Number(post.rate || 0) * Number(post.hoursNeeded || 0), currency: 'USD' });
