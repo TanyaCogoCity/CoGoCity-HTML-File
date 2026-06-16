@@ -3076,7 +3076,10 @@ function optionalCommunityPostImages(imageIds=[]){
     const cleanId = String(imageId || '').trim();
     if (!cleanId) return false;
     if (!isImageRecordId(cleanId)) return true;
-    return images.some(image => String(image.id) === cleanId && image.url);
+    return images.some(image => {
+      if (String(image.id) !== cleanId || !image.url) return false;
+      return image.embedded_image_omitted || !isInlineImageDataSource(image.url);
+    });
   });
 }
 async function syncReferencedImagesBeforeBlogPosts(posts=[]){
@@ -13976,6 +13979,12 @@ function renderPostComposerImagePreview(images=[], removeAction='removePostCompo
     </div>
   `;
 }
+function getVisibleComposerImageIds(inputId='', previewId=''){
+  const hidden = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  if (!hidden || !preview || !preview.querySelector('img')) return [];
+  return optionalCommunityPostImages(parseJsonArray(hidden.value || '[]'));
+}
 function setHiddenSingleImage(inputId='', imageId=''){
   const hidden = document.getElementById(inputId);
   const list = replaceWithSingleImage(imageId);
@@ -14159,7 +14168,7 @@ async function submitPost(){
   }
   const content = (document.getElementById('postContent').value || '').trim();
   const postImages = postComposerImageTouched
-    ? optionalCommunityPostImages(parseJsonArray((document.getElementById('postImagesValue') || {}).value || '[]'))
+    ? getVisibleComposerImageIds('postImagesValue', 'post-images-preview')
     : [];
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('postVideoUrl') || {}).value || '').trim());
   const isJob = isEmployerAccount(currentUser) && !!(document.getElementById('postIsJob') && document.getElementById('postIsJob').checked);
@@ -14422,7 +14431,7 @@ async function savePostEdit(postId){
   const content = (document.getElementById('editPostContent').value || '').trim();
   if (!content || !blockTextCheck(content)) return;
   p.content = content;
-  const postImages = optionalCommunityPostImages(parseJsonArray((document.getElementById('editPostImagesValue') || {}).value || '[]'));
+  const postImages = getVisibleComposerImageIds('editPostImagesValue', 'edit-post-images-preview');
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('editPostVideoUrl') || {}).value || '').trim());
   p.entity_images = [...postImages];
   p.images = [...postImages];
@@ -16320,7 +16329,7 @@ function syncJobDescriptionFromPost(force=false){
 async function submitEmployerDashboardPost(){
   if (requireBackendWriteSession('save this post')) return;
   const content = (document.getElementById('empPostContent').value || '').trim();
-  const postImages = optionalCommunityPostImages(parseJsonArray((document.getElementById('empPostImagesValue') || {}).value || '[]'));
+  const postImages = getVisibleComposerImageIds('empPostImagesValue', 'emp-post-images-preview');
   const postVideoState = normalizeVideoInputValue(String((document.getElementById('empPostVideoUrl') || {}).value || '').trim());
   const isJobToggle = document.getElementById('empIsJob');
   const isJob = ['employer','neighbor'].includes(currentUser.role) && !!(isJobToggle && isJobToggle.checked);

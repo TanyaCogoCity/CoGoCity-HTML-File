@@ -173,10 +173,15 @@ const checks = [
   {
     name: 'Community optional image upload never relies on stale draft or local fallback',
     test: () => /let postComposerImageTouched = false;/.test(indexHtml)
-      && /const postImages = postComposerImageTouched[\s\S]*\? optionalCommunityPostImages/.test(indexHtml)
+      && /function getVisibleComposerImageIds\(inputId='', previewId=''\)/.test(indexHtml)
+      && /if \(!hidden \|\| !preview \|\| !preview\.querySelector\('img'\)\) return \[\];/.test(indexHtml)
+      && /const postImages = postComposerImageTouched[\s\S]*\? getVisibleComposerImageIds\('postImagesValue', 'post-images-preview'\)/.test(indexHtml)
+      && /getVisibleComposerImageIds\('editPostImagesValue', 'edit-post-images-preview'\)/.test(indexHtml)
+      && /getVisibleComposerImageIds\('empPostImagesValue', 'emp-post-images-preview'\)/.test(indexHtml)
       && /entity_images: postComposerImageTouched \? parseJsonArray/.test(indexHtml)
       && /postComposerImageTouched = false;[\s\S]*clearPostComposerDraft\(\);/.test(indexHtml)
       && /console\.warn\('Backend image upload failed', error\);[\s\S]*throw error;/.test(indexHtml)
+      && /return image\.embedded_image_omitted \|\| !isInlineImageDataSource\(image\.url\);/.test(indexHtml)
       && !/falling back to regular image sync/.test(indexHtml),
   },
   {
