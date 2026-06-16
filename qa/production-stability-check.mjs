@@ -181,6 +181,10 @@ const checks = [
       && /entity_images: postComposerImageTouched \? parseJsonArray/.test(indexHtml)
       && /postComposerImageTouched = false;[\s\S]*clearPostComposerDraft\(\);/.test(indexHtml)
       && /console\.warn\('Backend image upload failed', error\);[\s\S]*throw error;/.test(indexHtml)
+      && /const existingIsBackendSafe = existing && existing\.url && \(existing\.embedded_image_omitted \|\| !isInlineImageDataSource\(existing\.url\)\);/.test(indexHtml)
+      && /if \(existing && \(!backendAuthEnabled\(\) \|\| !getBackendAccessToken\(\) \|\| existingIsBackendSafe\)\) return Promise\.resolve\(existing\.id\);/.test(indexHtml)
+      && /await loadBackendArraySetting\('images', 'cogo_images', \{ ids: missing, full:true, force:true \}\);/.test(indexHtml)
+      && /const referencedImages = images\.filter\(image => referencedIds\.has\(String\(image\.id\)\) && image\.url && !image\.embedded_image_omitted && isInlineImageDataSource\(image\.url\)\);/.test(indexHtml)
       && /return image\.embedded_image_omitted \|\| !isInlineImageDataSource\(image\.url\);/.test(indexHtml)
       && !/falling back to regular image sync/.test(indexHtml),
   },

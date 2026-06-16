@@ -3062,10 +3062,18 @@ async function syncReferencedImagesBeforeCommunityPosts(posts=[]){
     });
   });
   if (!referencedIds.size || !backendAuthEnabled()) return { ok:true, skipped:true };
-  const images = getImages();
-  const referencedImages = images.filter(image => referencedIds.has(String(image.id)));
-  if (!referencedImages.length) return { ok:true, skipped:true };
-  const result = await syncEntityToBackend('images', referencedImages, { replace:false });
+  let images = getImages();
+  let missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
+  if (missing.length && BACKEND_MIGRATION.enabled) {
+    await loadBackendArraySetting('images', 'cogo_images', { ids: missing, full:true, force:true });
+    images = getImages();
+    missing = Array.from(referencedIds).filter(id => !images.some(image => String(image.id) === id && (image.url || image.embedded_image_omitted)));
+  }
+  if (missing.length) return { ok:false, error:`Missing uploaded image record: ${missing[0]}` };
+  const referencedImages = images.filter(image => referencedIds.has(String(image.id)) && image.url && !image.embedded_image_omitted && isInlineImageDataSource(image.url));
+  const result = referencedImages.length
+    ? await syncEntityToBackend('images', referencedImages, { replace:false, skipQueue:true })
+    : { ok:true };
   if (result && result.reason === 'missing_backend_token') return { ok:false, reason:'missing_backend_token' };
   if (!result || result.ok === false) return { ok:false, reason:(result && (result.reason || result.error || result.status)) || 'image_sync_failed' };
   return { ok:true };
@@ -3346,7 +3354,8 @@ function prepareUploadedImageRecord(file, meta={}){
   const fingerprint = buildUploadedImageFingerprint(file);
   const forceNew = meta && meta.forceNew === true;
   const existing = forceNew ? null : findImageByFingerprint(fingerprint);
-  if (existing) return Promise.resolve(existing.id);
+  const existingIsBackendSafe = existing && existing.url && (existing.embedded_image_omitted || !isInlineImageDataSource(existing.url));
+  if (existing && (!backendAuthEnabled() || !getBackendAccessToken() || existingIsBackendSafe)) return Promise.resolve(existing.id);
   if (backendAuthEnabled() && getBackendAccessToken()) {
     return uploadImageRecordToBackend(file, meta, fingerprint).catch(error => {
       console.warn('Backend image upload failed', error);
