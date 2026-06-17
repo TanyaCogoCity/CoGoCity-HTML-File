@@ -31,7 +31,11 @@ function frontendNotificationReceiptId(userId = '', item = {}) {
 function notificationVisibleDedupeKey(row = {}) {
   const title = String(row.title || '').toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
   if (title.includes("you've been paid") && title.includes('my transactions')) return `student_payment:${title}`;
+  if (title.startsWith('you paid $') && title.includes('my transactions')) return `employer_payment:${title}`;
+  if (title === 'project payment completed') return `project_payment_completed:${row.link || ''}`;
+  if (title.startsWith('leave a review for ')) return `review_request:${title}`;
   if (title.startsWith("you've got a message from ")) return `message_thread:${title}:${row.link || ''}`;
+  if (title.includes(' applied to "') && !title.includes('resume') && !String(row.link || '').includes('my_jobs')) return `community_application:${title}`;
   return '';
 }
 
@@ -177,7 +181,19 @@ router.post('/sync', requireAuth, async (req, res) => {
     const action = item.action && typeof item.action === 'object' ? item.action : {};
     const body = String(item.body || item.message || title).trim();
     const link = frontendNotificationLink(item);
-    const recentDuplicate = await prisma.notification.findFirst({
+    const visibleKey = notificationVisibleDedupeKey({ title, link });
+    const recentRows = visibleKey ? await prisma.notification.findMany({
+      where: {
+        userId,
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    }) : [];
+    const visibleDuplicate = visibleKey
+      ? recentRows.find((row) => notificationVisibleDedupeKey(row) === visibleKey)
+      : null;
+    const recentDuplicate = visibleDuplicate || await prisma.notification.findFirst({
       where: {
         userId,
         title,

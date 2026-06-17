@@ -4844,7 +4844,7 @@ function getNotifications(id){
     : [];
   const byKey = new Map();
   [...backend, ...local].forEach(item => {
-    const key = item.dedupeKey || item.id || [item.title, item.link, item.createdAt].join('|');
+    const key = notificationVisibleDedupeKey(item) || item.dedupeKey || item.id || [item.title, item.link, item.createdAt].join('|');
     if (!byKey.has(key)) byKey.set(key, item);
   });
   return Array.from(byKey.values()).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -7533,6 +7533,24 @@ function notificationActionLabel(notification={}){
   if (text.includes('resume') && (text.includes('direct hire') || text.includes('my_jobs'))) return 'See Resumes';
   return 'Open CoGoCity';
 }
+function normalizeNotificationTitleForDedupe(value=''){
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function notificationVisibleDedupeKey(item={}){
+  const title = normalizeNotificationTitleForDedupe(item.title || item.body || '');
+  if (!title) return '';
+  if (title.includes("you've been paid") && title.includes('my transactions')) return `student_payment:${title}`;
+  if (title.startsWith('you paid $') && title.includes('my transactions')) return `employer_payment:${title}`;
+  if (title === 'project payment completed') return `project_payment_completed:${item.link || ''}`;
+  if (title.startsWith('leave a review for ')) return `review_request:${title}`;
+  if (title.startsWith("you've got a message from ")) return `message_thread:${title}:${item.link || ''}`;
+  if (title.includes(' applied to "') && !(title.includes('resume') || String(item.link || '').includes('my_jobs'))) return `community_application:${title}`;
+  return '';
+}
 function dedupeVisibleNotifications(items=[]){
   const seen = new Map();
   return (Array.isArray(items) ? items : []).filter(item => {
@@ -7544,20 +7562,10 @@ function dedupeVisibleNotifications(items=[]){
     }
     const action = item.action || {};
     const normalizedTitle = String(item.title || '').trim().toLowerCase();
-    const paymentTitle = normalizedTitle
-      .replace(/[’']/g, "'")
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (paymentTitle.includes("you've been paid") && paymentTitle.includes('my transactions')) {
-      const paymentKey = paymentTitle.replace(/\b\d+\s*(?:sec|secs|second|seconds|min|mins|minute|minutes|hr|hrs|hour|hours|day|days)\s+ago\b/g, '');
-      if (seen.has(paymentKey)) return false;
-      seen.set(paymentKey, item.createdAt || Date.now());
-      return true;
-    }
-    if (paymentTitle.startsWith("you've got a message from ")) {
-      const messageKey = `message_thread:${paymentTitle}:${item.link || ''}`;
-      if (seen.has(messageKey)) return false;
-      seen.set(messageKey, item.createdAt || Date.now());
+    const visibleKey = notificationVisibleDedupeKey(item);
+    if (visibleKey) {
+      if (seen.has(visibleKey)) return false;
+      seen.set(visibleKey, item.createdAt || Date.now());
       return true;
     }
     const isCommunityApplicationNotice = normalizedTitle.includes(' applied to "') && !(normalizedTitle.includes('resume') || String(item.link || '').includes('my_jobs'));

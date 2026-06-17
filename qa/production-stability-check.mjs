@@ -118,10 +118,18 @@ const checks = [
   },
   {
     name: 'Payment notifications dedupe across frontend and backend sync',
-    test: () => /paymentTitle\.includes\("you've been paid"\) && paymentTitle\.includes\('my transactions'\)/.test(indexHtml)
+    test: () => /function notificationVisibleDedupeKey\(item=\{\}\)/.test(indexHtml)
+      && /title\.includes\("you've been paid"\) && title\.includes\('my transactions'\)/.test(indexHtml)
+      && /title\.startsWith\('you paid \$'\) && title\.includes\('my transactions'\)/.test(indexHtml)
+      && /title\.startsWith\('leave a review for '\)/.test(indexHtml)
+      && /const key = notificationVisibleDedupeKey\(item\) \|\| item\.dedupeKey/.test(indexHtml)
       && /function frontendNotificationReceiptId\(userId = '', item = \{\}\)/.test(notificationsRoute)
       && /`\$\{userId\}:dedupe:\$\{dedupeKey\}`/.test(notificationsRoute)
-      && /const recentDuplicate = await prisma\.notification\.findFirst/.test(notificationsRoute)
+      && /title\.startsWith\('you paid \$'\) && title\.includes\('my transactions'\)/.test(notificationsRoute)
+      && /title\.startsWith\('leave a review for '\)/.test(notificationsRoute)
+      && /const visibleKey = notificationVisibleDedupeKey\(\{ title, link \}\);/.test(notificationsRoute)
+      && /const visibleDuplicate = visibleKey/.test(notificationsRoute)
+      && /const recentDuplicate = visibleDuplicate \|\| await prisma\.notification\.findFirst/.test(notificationsRoute)
       && /reused_existing: true/.test(notificationsRoute)
       && /function dedupeNotificationRows\(rows = \[\]\)/.test(notificationsRoute)
       && /dedupeNotificationRows\(rows\)\.map/.test(notificationsRoute),
@@ -149,7 +157,7 @@ const checks = [
   },
   {
     name: 'Message notifications dedupe to one unread conversation notice',
-    test: () => /paymentTitle\.startsWith\("you've got a message from "\)/.test(indexHtml)
+    test: () => /title\.startsWith\("you've got a message from "\)/.test(indexHtml)
       && /title\.startsWith\("you've got a message from "\)/.test(notificationsRoute)
       && /existingUnreadMessageNotice/.test(messagesRoute)
       && /isRead: false/.test(messagesRoute)
