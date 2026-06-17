@@ -698,7 +698,7 @@
       .modal-bg{align-items:flex-end;padding:0}
       .modal{max-width:100%;max-height:92vh;border-radius:18px 18px 0 0}
       .modal-header{padding:16px 16px 0}
-      .modal-body{padding:14px 16px 18px}
+      .modal-body{padding:14px 16px max(28px, calc(env(safe-area-inset-bottom) + 18px))}
       .msg-shell{gap:10px}
       .thread-view{min-height:340px}
       .messages{max-height:360px;padding:12px}
@@ -718,6 +718,9 @@
       }
       .admin-contact-toggle{min-height:52px;border-radius:12px;padding:10px 12px}
       .admin-contact-panel{max-height:min(68vh,360px);overflow:auto;-webkit-overflow-scrolling:touch}
+      body.modal-open .admin-contact-widget{display:none}
+      body.modal-open.has-admin-contact-widget #app,
+      body.modal-open.has-admin-contact-widget.admin-contact-is-open #app{padding-bottom:0}
       .blog-featured-media{min-height:190px}
       .blog-article-content iframe,.blog-article-content video{min-height:230px}
       .workshop-detail-info{grid-template-columns:1fr;gap:10px;padding:12px;border-radius:14px}
@@ -6051,6 +6054,9 @@ function validateFullName(value='', label='Name'){
 function userFacingBackendError(error, fallback='Something went wrong. Please check the form and try again.'){
   const message = String((error && error.message) || '').trim();
   if (!message) return fallback;
+  if (/validation.*email|invalid_string.*email|Invalid email/i.test(message)) return 'Please enter a valid email address.';
+  if (/Invalid credentials|Incorrect email|wrong password/i.test(message)) return 'Incorrect email or password. Please check your email and password and try again.';
+  if (/Invalid login payload/i.test(message)) return 'Please enter a valid email address and password.';
   if (/Invalid register payload/i.test(message)) return 'Please check the signup form. Make sure first name, last name, email, phone, address, and password are complete.';
   if (/deleted CoGo City account|reactivate your account/i.test(message)) return 'This email already exists from a deleted account. Please reset your password to reactivate your account.';
   if (/account has been suspended/i.test(message)) return 'This account has been suspended. Please contact support@cogocity.com for help.';
@@ -6783,6 +6789,7 @@ function openModal(title, bodyHtml, width='760px'){
   activeModalDraftKey = modalDraftKey(title);
   modalTriggerElement = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
   const modalTitleId = `modal-title-${Date.now()}`;
+  document.body.classList.add('modal-open');
   document.getElementById('modal-root').innerHTML = `
     <div class="modal-bg" onmousedown="window._modalBackdropDown=(event.target===this)" onclick="if(event.target===this && window._modalBackdropDown) closeModal(true)">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="${modalTitleId}" tabindex="-1" style="max-width:${width}" onmousedown="window._modalBackdropDown=false" onkeydown="handleModalKeydown(event)">
@@ -6802,6 +6809,7 @@ function closeModal(preserveDraft=false){
   if (preserveDraft) saveActiveModalDraft();
   else clearActiveModalDraft();
   document.getElementById('modal-root').innerHTML = '';
+  document.body.classList.remove('modal-open');
   activeModalDraftKey = null;
   const trigger = modalTriggerElement;
   modalTriggerElement = null;
@@ -7756,7 +7764,7 @@ async function doLogin(){
       renderPage();
       return;
     } catch (error) {
-      toast(error.message || 'Backend sign in failed.');
+      toast(userFacingBackendError(error, 'Incorrect email or password. Please check your email and password and try again.'));
       return;
     }
   }

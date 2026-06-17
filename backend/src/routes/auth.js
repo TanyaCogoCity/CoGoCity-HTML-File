@@ -559,7 +559,8 @@ router.post('/login', async (req, res) => {
       refresh_token: refreshToken,
     });
   } catch (error) {
-    return fail(res, 400, 'Invalid login payload', error.message);
+    const friendlyMessage = registerPayloadErrorMessage(error) || 'Please enter a valid email address and password.';
+    return fail(res, 400, friendlyMessage, error.message);
   }
 });
 
