@@ -3420,6 +3420,10 @@ function getImageView(source='', variant='full'){
     const selectedUrl = variant === 'thumb' ? thumbUrl : variant === 'medium' ? mediumUrl : fullUrl;
     return Object.assign({}, stored, { url: selectedUrl || fullUrl || assetUrl, thumbnail_url: thumbUrl || selectedUrl || fullUrl || assetUrl });
   }
+  if (isImageRecordId(raw)) {
+    const assetUrl = backendImageAssetUrl(raw);
+    if (assetUrl) return { id: raw, url: assetUrl, thumbnail_url: assetUrl, alt: '' };
+  }
   if (looksLikeImageSource(raw)) return { id:'', url: raw, thumbnail_url: raw, alt:'' };
   return null;
 }
@@ -15671,14 +15675,26 @@ async function saveStudentProfileForm(profileId=''){
   toast('Profile updated.');
   renderDashboard();
 }
-function handleStudentProfileImagesUpload(input){
-  readImagesToDataUrls(input, (images) => {
-    studentProfileImagesBuffer = replaceWithSingleImage(images[0] || '');
+async function handleStudentProfileImagesUpload(input){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  try {
+    const imageId = await prepareUploadedImageRecord(file, {
+      source:'profile_gallery',
+      entity_type:'student_profile',
+      owner_id: currentUser ? currentUser.id : '',
+      forceNew:true
+    });
+    studentProfileImagesBuffer = replaceWithSingleImage(imageId || '');
     if (studentProfileDraft) studentProfileDraft.profileImages = [...studentProfileImagesBuffer];
     const el = document.getElementById('student-profile-images-preview');
     if (el) el.innerHTML = renderEditableSingleImage(studentProfileImagesBuffer[0] || '', 'Profile image', 'removeStudentProfileImage()', 120, 'No profile image uploaded yet.');
+  } catch (error) {
+    console.error('Profile image upload failed', error);
+    toast(`Profile image upload failed: ${(error && error.message) || 'Please try again.'}`);
+  } finally {
     if (input) input.value = '';
-  }, 1, { source:'profile_gallery', entity_type:'student_profile', owner_id: currentUser ? currentUser.id : '' });
+  }
 }
 function addStudentProfileImageFromLibrary(imageId){
   syncStudentProfileDraftFromForm();

@@ -26,7 +26,39 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-app.use(helmet());
+const imageSources = ["'self'", 'data:', 'blob:', 'https:'];
+if (config.spacesCdnUrl) imageSources.push(config.spacesCdnUrl.replace(/\/+$/, ''));
+if (config.spacesBucket && config.spacesRegion) {
+  imageSources.push(`https://${config.spacesBucket}.${config.spacesRegion}.digitaloceanspaces.com`);
+}
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        fontSrc: ["'self'", 'https:', 'data:'],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+        imgSrc: imageSources,
+        mediaSrc: imageSources,
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
+        connectSrc: ["'self'", 'https:'],
+        frameSrc: [
+          "'self'",
+          'https://js.stripe.com',
+          'https://hooks.stripe.com',
+          'https://www.youtube.com',
+          'https://www.youtube-nocookie.com',
+          'https://player.vimeo.com',
+        ],
+      },
+    },
+  })
+);
 app.use(
   cors({
     origin: (origin, cb) => {
