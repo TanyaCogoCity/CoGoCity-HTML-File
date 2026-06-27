@@ -4,7 +4,7 @@ const { prisma } = require('../lib/prisma');
 const { ok, fail } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { getDirectJobPackage, applyDirectJobPackagePricing } = require('../lib/directJobPackages');
-const { calculateHourlyProjectFees, calculateJobPlacementFees } = require('../lib/platformFees');
+const { calculateHourlyProjectFees, calculateJobPlacementFees, getPlatformFeeSettings } = require('../lib/platformFees');
 const config = require('../config');
 const { writeAuditLog } = require('../lib/audit');
 const { createNotification, createNotifications } = require('../lib/notifications');
@@ -2017,7 +2017,8 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
     const finalWorkTotal = project.actualHours != null && project.hourlyRate != null
       ? Number((Number(project.actualHours || 0) * Number(project.hourlyRate || 0)).toFixed(2))
       : null;
-    const recalculatedFees = finalWorkTotal != null ? calculateHourlyProjectFees(finalWorkTotal) : null;
+    const feeSettings = finalWorkTotal != null ? await getPlatformFeeSettings(prisma) : null;
+    const recalculatedFees = finalWorkTotal != null ? calculateHourlyProjectFees(finalWorkTotal, feeSettings) : null;
     const finalAmounts = marketplaceAmounts(tx, {
       amountTotal: requestedFinalTotal,
       studentPayout: req.body?.student_payout ?? req.body?.studentPayout ?? recalculatedFees?.studentPayout,
