@@ -860,14 +860,16 @@ const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const COGO_HOSTNAME = typeof window !== 'undefined' ? window.location.hostname : '';
 const COGO_IS_STAGING = COGO_HOSTNAME === 'staging.cogocity.com';
-const COGO_PRODUCTION_HOSTNAMES = ['cogocity.com', 'www.cogocity.com', 'cogocity-production-s7i3m.ondigitalocean.app'];
+const COGO_TEMP_PRODUCTION_TEST_HOSTNAME = 'cogocity-production-s7i3m.ondigitalocean.app';
+const COGO_IS_TEMP_PRODUCTION_TEST = COGO_HOSTNAME === COGO_TEMP_PRODUCTION_TEST_HOSTNAME;
+const COGO_PRODUCTION_HOSTNAMES = ['cogocity.com', 'www.cogocity.com', COGO_TEMP_PRODUCTION_TEST_HOSTNAME];
 const COGO_IS_PRODUCTION = COGO_PRODUCTION_HOSTNAMES.includes(COGO_HOSTNAME);
 const COGO_IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(COGO_HOSTNAME);
 const COGO_BACKEND_ENABLED = COGO_IS_STAGING || COGO_IS_PRODUCTION;
 const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
 const PAYMENT_PROVIDER_MODE = COGO_IS_STAGING ? 'mock_stripe_ready' : 'stripe_manual_capture';
 const STRIPE_STAGING_PUBLISHABLE_KEY = 'pk_test_51TCSvbIGDb9LYiIhFx8UwBFDVG4riDKKJwiqejiGzjrtDzc7lWzIiQGJ6tBczfPGQzBPKqJMwlDEJW9Wer2Piv5L00apSTPPNZ';
-const STRIPE_PUBLISHABLE_KEY = COGO_IS_STAGING
+const STRIPE_PUBLISHABLE_KEY = (COGO_IS_STAGING || COGO_IS_TEMP_PRODUCTION_TEST)
   ? STRIPE_STAGING_PUBLISHABLE_KEY
   : ((typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || '');
 const STRIPE_ENABLED = COGO_IS_STAGING || (COGO_IS_PRODUCTION && !!STRIPE_PUBLISHABLE_KEY);
