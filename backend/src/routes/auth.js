@@ -17,6 +17,8 @@ const router = express.Router();
 
 const US_ONLY_SIGNUP_MESSAGE = 'Thanks for your interest in CoGo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
 const DELETED_ACCOUNT_REACTIVATION_MESSAGE = 'This email is connected to a deleted CoGo City account. Please reset your password to reactivate your account.';
+const EMAIL_VERIFICATION_REQUIRED_MESSAGE = 'Please verify your email before signing in. Check your inbox for the CoGo City confirmation link.';
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const US_STATES = new Set([
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
   'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
@@ -204,6 +206,78 @@ function passwordResetEmailHtml({ displayName, resetUrl }) {
   `;
 }
 
+function emailVerificationEmailHtml({ displayName, verificationUrl }) {
+  const safeName = String(displayName || 'there').replace(/[<>&"']/g, '');
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#18212f;max-width:600px;margin:0 auto;padding:24px">
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Confirm your CoGo City email</div>
+      <h2 style="margin:0 0 12px;color:#18212f">Confirm your CoGo City email</h2>
+      <p style="margin:0 0 16px">Hi ${safeName},</p>
+      <p style="margin:0 0 20px">Please confirm this email address before signing in to CoGo City. This link expires in 24 hours.</p>
+      <p style="margin:0 0 24px">
+        <a href="${verificationUrl}" style="display:inline-block;background:#2251ff;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">Confirm Email</a>
+      </p>
+      <p style="font-size:13px;color:#667085;margin:0 0 12px">If you did not create a CoGo City account, you can ignore this email.</p>
+      <p style="font-size:12px;color:#667085;word-break:break-all;margin-top:24px">${verificationUrl}</p>
+    </div>
+  `;
+}
+
+function isEmailVerified(user = {}) {
+  return Boolean(user.emailVerifiedAt || user.emailVerificationStatus === 'verified');
+}
+
+async function createEmailVerificationToken(tx, userId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+  const tokenRecord = await tx.emailVerificationToken.create({ data: { userId, tokenHash, expiresAt } });
+  return { token, tokenRecord, expiresAt };
+}
+
+async function sendEmailVerificationEmail({ user, token, tokenRecord, expiresAt }) {
+  const verificationUrl = buildAppLink(`/#/verify-email?token=${encodeURIComponent(token)}`);
+  const displayName = userDisplayName(user) || nameFromEmail(user.email);
+  const subject = 'Confirm your CoGo City email';
+  const emailResult = await sendEmail({
+    to: { email: user.email, name: displayName },
+    subject,
+    htmlContent: emailVerificationEmailHtml({ displayName, verificationUrl }),
+    textContent: `Confirm your CoGo City email\n\nOpen this link before signing in. It expires in 24 hours:\n${verificationUrl}\n\nIf you did not create this account, ignore this email.`,
+  });
+
+  await prisma.syncRecord.create({
+    data: {
+      entity: 'email_verification_email',
+      recordId: tokenRecord.id,
+      payload: {
+        user_id: user.id,
+        email: user.email,
+        subject,
+        status: emailResult?.skipped ? 'skipped' : 'sent',
+        result: emailResult || null,
+        requested_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      },
+    },
+  }).catch((error) => console.error('email_verification_email_receipt_failed', error.message));
+
+  return emailResult;
+}
+
+async function issueAuthSession(user) {
+  const accessToken = signAccessToken(user);
+  const refreshToken = signRefreshToken(user);
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+  return { accessToken, refreshToken };
+}
+
 function buildUserProfileData(userId, payload = {}) {
   const profile = payload.profile || {};
   const business = payload.businessProfile || profile.businessProfile || {};
@@ -377,6 +451,9 @@ function serializeUser(user, extras = {}) {
     phone: user.phone,
     status: user.status,
     role: user.role,
+    email_verified: isEmailVerified(user),
+    email_verified_at: user.emailVerifiedAt || null,
+    email_verification_status: user.emailVerificationStatus || (user.emailVerifiedAt ? 'verified' : 'pending'),
     city: user.city,
     profile: extras.userProfile || null,
     student_profile: extras.studentProfile || null,
@@ -439,6 +516,8 @@ router.post('/register', async (req, res) => {
           city: payload.city,
           dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
           passwordHash,
+          emailVerifiedAt: null,
+          emailVerificationStatus: 'pending',
           reactivationEmailHash: null,
         },
       });
@@ -481,28 +560,24 @@ router.post('/register', async (req, res) => {
         }
       }
 
-      return { user, userProfile, studentProfile, services };
+      const verificationToken = await createEmailVerificationToken(tx, user.id);
+      return { user, userProfile, studentProfile, services, verificationToken };
     });
 
     const user = createdRecords.user;
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
-    await prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashToken(refreshToken),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
+    const emailResult = await sendEmailVerificationEmail({
+      user,
+      token: createdRecords.verificationToken.token,
+      tokenRecord: createdRecords.verificationToken.tokenRecord,
+      expiresAt: createdRecords.verificationToken.expiresAt,
     });
-
-    await writeAuditLog({ userId: user.id, action: 'auth.register', entityType: 'user', entityId: user.id });
-    await notifyAdminNewUser(user);
-    await maybeSendOnboardingWelcomeEmail(user);
+    await writeAuditLog({ userId: user.id, action: 'auth.register_pending_email_verification', entityType: 'user', entityId: user.id });
+    if (emailResult?.skipped) return fail(res, 503, 'Email verification is not configured. Please contact support@cogocity.com for help.');
 
     return created(res, {
-      user: serializeUser(user, createdRecords),
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      verification_required: true,
+      email: user.email,
+      message: 'Account created. Please check your email and confirm it before signing in.',
     });
   } catch (error) {
     const friendlyMessage = registerPayloadErrorMessage(error) || 'Please check the highlighted signup fields and try again.';
@@ -538,19 +613,13 @@ router.post('/login', async (req, res) => {
 
     const valid = await comparePassword(payload.password, user.passwordHash);
     if (!valid) return fail(res, 401, 'Invalid credentials');
+    if (!isEmailVerified(user)) {
+      return fail(res, 403, EMAIL_VERIFICATION_REQUIRED_MESSAGE, { code: 'email_not_verified', email: user.email });
+    }
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = signRefreshToken(user);
-
-    await prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: hashToken(refreshToken),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
+    const { accessToken, refreshToken } = await issueAuthSession(user);
 
     const studentProfile = user.studentProfiles?.[0] || null;
     return ok(res, {
@@ -561,6 +630,76 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     const friendlyMessage = registerPayloadErrorMessage(error) || 'Please enter a valid email address and password.';
     return fail(res, 400, friendlyMessage, error.message);
+  }
+});
+
+
+router.post('/email-verification/resend', async (req, res) => {
+  try {
+    const schema = z.object({ email: z.string().email() });
+    const payload = schema.parse(req.body || {});
+    const email = normalizeEmail(payload.email);
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Always return a generic success for missing, deleted, suspended, or already verified accounts.
+    if (!user || user.deletedAt || user.status !== 'active' || isEmailVerified(user)) return ok(res, { requested: true });
+
+    const verificationToken = await prisma.$transaction(async (tx) => {
+      await tx.emailVerificationToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: new Date() } });
+      return createEmailVerificationToken(tx, user.id);
+    });
+
+    const emailResult = await sendEmailVerificationEmail({
+      user,
+      token: verificationToken.token,
+      tokenRecord: verificationToken.tokenRecord,
+      expiresAt: verificationToken.expiresAt,
+    });
+    if (emailResult?.skipped) return fail(res, 503, 'Email verification is not configured');
+    await writeAuditLog({ userId: user.id, action: 'auth.email_verification_resent', entityType: 'user', entityId: user.id });
+    return ok(res, { requested: true });
+  } catch (error) {
+    return fail(res, 400, 'Invalid email verification request', error.message);
+  }
+});
+
+router.post('/email-verification/confirm', async (req, res) => {
+  try {
+    const schema = z.object({ token: z.string().min(32) });
+    const payload = schema.parse(req.body || {});
+    const tokenHash = hashToken(payload.token);
+    const verificationToken = await prisma.emailVerificationToken.findUnique({
+      where: { tokenHash },
+      include: { user: { include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } } } },
+    });
+    if (!verificationToken || verificationToken.usedAt || verificationToken.expiresAt <= new Date()) return fail(res, 400, 'This email confirmation link is invalid or expired');
+    if (!verificationToken.user || verificationToken.user.deletedAt || verificationToken.user.status !== 'active') return fail(res, 400, 'This email confirmation link is invalid or expired');
+
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      const verifiedAt = new Date();
+      await tx.emailVerificationToken.update({ where: { id: verificationToken.id }, data: { usedAt: verifiedAt } });
+      await tx.emailVerificationToken.updateMany({ where: { userId: verificationToken.userId, usedAt: null, id: { not: verificationToken.id } }, data: { usedAt: verifiedAt } });
+      return tx.user.update({
+        where: { id: verificationToken.userId },
+        data: { emailVerifiedAt: verifiedAt, emailVerificationStatus: 'verified', lastLogin: verifiedAt },
+        include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
+      });
+    });
+
+    await writeAuditLog({ userId: updatedUser.id, action: 'auth.email_verified', entityType: 'user', entityId: updatedUser.id });
+    await notifyAdminNewUser(updatedUser);
+    await maybeSendOnboardingWelcomeEmail(updatedUser);
+
+    const { accessToken, refreshToken } = await issueAuthSession(updatedUser);
+    const studentProfile = updatedUser.studentProfiles?.[0] || null;
+    return ok(res, {
+      verified: true,
+      user: serializeUser(updatedUser, { userProfile: updatedUser.userProfile, studentProfile, services: studentProfile?.services || [] }),
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+  } catch (error) {
+    return fail(res, 400, 'Invalid email verification confirmation', error.message);
   }
 });
 
@@ -652,6 +791,8 @@ router.post('/password-reset/confirm', async (req, res) => {
           passwordHash,
           status: 'active',
           deletedAt: null,
+          emailVerifiedAt: new Date(),
+          emailVerificationStatus: 'verified',
           reactivationEmailHash: null,
         },
         include: { userProfile: true, studentProfiles: { where: { deletedAt: null }, include: { services: { where: { deletedAt: null } } } } },
@@ -680,15 +821,7 @@ router.post('/password-reset/confirm', async (req, res) => {
       });
     });
     await writeAuditLog({ userId: resetToken.userId, action: wasDeleted ? 'auth.user.reactivated' : 'auth.password_reset_completed', entityType: 'user', entityId: resetToken.userId });
-    const accessToken = signAccessToken(updatedUser);
-    const refreshToken = signRefreshToken(updatedUser);
-    await prisma.refreshToken.create({
-      data: {
-        userId: updatedUser.id,
-        tokenHash: hashToken(refreshToken),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
+    const { accessToken, refreshToken } = await issueAuthSession(updatedUser);
     return ok(res, {
       updated: true,
       reactivated: wasDeleted,
@@ -802,6 +935,8 @@ router.post('/admin/users', requireAuth, requireRoles(['admin']), async (req, re
           role: payload.role,
           city: null,
           passwordHash,
+          emailVerifiedAt: new Date(),
+          emailVerificationStatus: 'verified',
         },
       });
       await tx.userProfile.create({

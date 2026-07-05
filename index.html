@@ -913,6 +913,7 @@ const COGO_PRIVATE_NOINDEX_PATHS = [
   '/settings',
   '/admin',
   '/reset-password',
+  '/verify-email',
   '/guardian',
   '/guardians',
   '/guardian-information',
@@ -2963,6 +2964,9 @@ function mapBackendUser(apiUser={}, fallback={}){
     businessProfile,
     stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
     onboarding_requirements: apiUser.onboarding_requirements || apiUser.onboardingRequirements || fallback.onboarding_requirements || null,
+    emailVerified: apiUser.email_verified ?? apiUser.emailVerified ?? fallback.emailVerified ?? false,
+    emailVerifiedAt: apiUser.email_verified_at || apiUser.emailVerifiedAt || fallback.emailVerifiedAt || null,
+    emailVerificationStatus: apiUser.email_verification_status || apiUser.emailVerificationStatus || fallback.emailVerificationStatus || '',
     createdAt: apiUser.created_at || apiUser.createdAt || fallback.createdAt || null,
     lastLogin: apiUser.last_login || apiUser.lastLogin || fallback.lastLogin || null,
     backendAuth:true
@@ -7683,7 +7687,10 @@ function openLoginModal(tab='signin'){
           <button class="btn btn-blue" style="flex:1 1 240px" onclick="doLogin()">Sign In</button>
           ${COGO_DEMO_MODE ? `<button class="btn btn-outline" style="flex:1 1 240px" onclick="resetDemoData()">Reset Demo Data</button>` : ''}
         </div>
-        <div style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="openPasswordResetModal()">Forgot Password?</button></div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="openPasswordResetModal()">Forgot Password?</button>
+          <button class="btn btn-outline btn-sm" onclick="openEmailVerificationResendModal()">Resend verification email</button>
+        </div>
         ${COGO_DEMO_MODE ? `<div class="small muted" style="margin-top:10px">Reset restores local demo data for this browser.</div>` : ''}
       </div>
       <div style="height:14px"></div>
@@ -7894,6 +7901,107 @@ async function submitPasswordResetConfirm(token=''){
     openLoginModal('signin');
   } catch (error) {
     toast(error.message || 'Password reset failed. Please request a new link.');
+  }
+}
+function getEmailVerificationTokenFromHash(){
+  const route = String(location.hash || '');
+  const marker = '#/verify-email';
+  if (!route.startsWith(marker)) return '';
+  const queryStart = route.indexOf('?');
+  if (queryStart < 0) return '';
+  const params = new URLSearchParams(route.slice(queryStart + 1));
+  return params.get('token') || '';
+}
+function openEmailVerificationResendModal(email=''){
+  openModal('Resend Verification Email', `
+    <div class="card form-card">
+      <div class="small muted" style="margin-bottom:10px">Enter the email you used to sign up. If it still needs verification, we’ll send a new confirmation link.</div>
+      <div class="field"><label>Email</label><input id="verificationResendEmail" type="email" placeholder="you@example.com" autocomplete="email" value="${esc(String(email || '').trim().toLowerCase())}"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openLoginModal('signin')">Back to Sign In</button>
+        <button class="btn btn-blue" onclick="submitEmailVerificationResend()">Send Link</button>
+      </div>
+    </div>
+  `, '620px');
+}
+function openEmailVerificationPendingModal(email=''){
+  openModal('Check Your Email', `
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:8px">Confirm your email before signing in</div>
+      <div class="small muted" style="margin-bottom:14px">We sent a CoGo City confirmation link to ${esc(email || 'your email address')}. Click that link, then you can sign in and continue setup.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" onclick="openEmailVerificationResendModal('${esc(email)}')">Resend Email</button>
+        <button class="btn btn-blue" onclick="openLoginModal('signin')">Back to Sign In</button>
+      </div>
+    </div>
+  `, '620px');
+}
+function completeSignupPendingEmailVerification(email=''){
+  clearBackendAuthSession();
+  currentUser = null;
+  activeThreadUserId = null;
+  localStorage.removeItem('cogo_current_user');
+  localStorage.removeItem('cogo_admin_impersonation');
+  renderNav();
+  location.hash = '#/';
+  renderPage();
+  toast('Please check your email to confirm your CoGo City account before signing in.');
+  openEmailVerificationPendingModal(email);
+}
+async function submitEmailVerificationResend(){
+  const email = String((document.getElementById('verificationResendEmail') || {}).value || '').trim().toLowerCase();
+  if (toastRequiredFields({ Email:email })) return;
+  try {
+    await backendAuthRequest('/auth/email-verification/resend', {
+      method:'POST',
+      body: JSON.stringify({ email }),
+      retryOnAuthFailure:false
+    });
+    toast('If that account still needs verification, a new confirmation email has been sent.');
+    openLoginModal('signin');
+    const loginEmail = document.getElementById('loginEmail');
+    if (loginEmail) loginEmail.value = email;
+  } catch (error) {
+    toast(error.message || 'Could not send verification email.');
+  }
+}
+function openEmailVerificationConfirmModal(token=''){
+  if (!token) return openLoginModal('signin');
+  openModal('Confirming Email', `
+    <div class="card form-card">
+      <div style="font-weight:800;margin-bottom:8px">Confirming your email...</div>
+      <div class="small muted">Please wait while CoGo City verifies your confirmation link.</div>
+    </div>
+  `, '620px');
+  submitEmailVerificationConfirm(token);
+}
+async function submitEmailVerificationConfirm(token=''){
+  try {
+    const data = await backendAuthRequest('/auth/email-verification/confirm', {
+      method:'POST',
+      body: JSON.stringify({ token }),
+      retryOnAuthFailure:false
+    });
+    saveBackendAuthSession(data);
+    const users = getUsers();
+    const existing = users.find(u => String(u.email || '').toLowerCase() === String(data.user.email || '').toLowerCase() || u.backendUserId === data.user.id || u.id === data.user.id);
+    const user = mapBackendUser(data.user, existing || { email:data.user.email });
+    user.lastLogin = new Date().toISOString();
+    const nextUsers = existing ? users.map(u => (u.id === existing.id ? user : u)) : users.concat(user);
+    saveUsers(nextUsers);
+    localStorage.removeItem('cogo_admin_impersonation');
+    setCurrentUser(user);
+    closeModal();
+    dashSection = 'profile';
+    location.hash = '#/dashboard';
+    toast('Email confirmed. Welcome to CoGo City.');
+    renderPage();
+  } catch (error) {
+    clearBackendAuthSession();
+    currentUser = null;
+    localStorage.removeItem('cogo_current_user');
+    toast(error.message || 'Email confirmation failed. Please request a new link.');
+    openEmailVerificationResendModal();
   }
 }
 const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}','\u{1F3B5}','\u26BD','\u{1F9E0}','\u{1F6B2}','\u{1F4F7}','\u{1F6E0}\uFE0F','\u{1F31F}','\u{1F3AC}','\u{1F9D1}\u200D\u{1F373}','\u{1F9EA}'];
@@ -8650,6 +8758,13 @@ async function publishStudentSignupProfile(){
           }))
         })
       });
+      if (data.verification_required) {
+        studentSignupDraft = null;
+        studentSignupEditingServiceIndex = null;
+        closeModal();
+        completeSignupPendingEmailVerification(data.email || d.email);
+        return;
+      }
       saveBackendAuthSession(data);
       backendUser = data.user || null;
       const imageSync = await syncReferencedImagesBeforeProfileSave([{
@@ -9363,6 +9478,13 @@ async function publishEmployerSignupProfile(){
           } : null
         })
       });
+      if (data.verification_required) {
+        employerSignupDraft = null;
+        employerSignupStep = 1;
+        closeModal();
+        completeSignupPendingEmailVerification(data.email || d.email);
+        return;
+      }
       saveBackendAuthSession(data);
       backendUser = data.user || null;
       const imageSync = await syncReferencedImagesBeforeProfileSave([{
@@ -9433,7 +9555,7 @@ async function publishEmployerSignupProfile(){
   employerSignupDraft = null;
   employerSignupStep = 1;
   closeModal();
-  toast('Verification email skipped in test mode. Redirected to profile.');
+  toast('Profile created. Redirected to profile.');
   dashSection = 'profile';
   location.hash = '#/dashboard';
   renderPage();
@@ -9735,7 +9857,7 @@ function normalizeRenderedPageAccessibility(route=''){
   app.querySelectorAll('button:not([type])').forEach(button => button.setAttribute('type', 'button'));
   const title = (app.querySelector('h1') || {}).textContent || document.title || 'CoGo City';
   announceToAssistiveTech(`${title} loaded`);
-  if (route && !route.startsWith('#/reset-password')) {
+  if (route && !route.startsWith('#/reset-password') && !route.startsWith('#/verify-email')) {
     setTimeout(() => {
       try { app.focus({ preventScroll:true }); } catch (_) { app.focus(); }
     }, 0);
@@ -9752,6 +9874,10 @@ function renderPage(){
     if (route.startsWith('#/reset-password')) {
       renderNav();
       return openPasswordResetConfirmModal(getPasswordResetTokenFromHash());
+    }
+    if (route.startsWith('#/verify-email')) {
+      renderNav();
+      return openEmailVerificationConfirmModal(getEmailVerificationTokenFromHash());
     }
     if (currentUser && needsMigrationOnboarding() && route !== '#/dashboard') {
       dashSection = 'profile';

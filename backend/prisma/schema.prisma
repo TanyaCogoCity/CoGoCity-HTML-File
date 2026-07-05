@@ -114,6 +114,8 @@ model User {
   stripeChargesEnabled          Boolean    @default(false) @map("stripe_charges_enabled")
   stripePayoutsEnabled          Boolean    @default(false) @map("stripe_payouts_enabled")
   stripeDetailsSubmitted        Boolean    @default(false) @map("stripe_details_submitted")
+  emailVerifiedAt               DateTime?  @map("email_verified_at")
+  emailVerificationStatus       String     @default("pending") @map("email_verification_status")
   createdAt                     DateTime   @default(now()) @map("created_at")
   updatedAt                     DateTime   @updatedAt @map("updated_at")
   lastLogin                     DateTime?  @map("last_login")
@@ -138,6 +140,7 @@ model User {
   conversationParticipants ConversationParticipant[]
   refreshTokens            RefreshToken[]
   passwordResetTokens      PasswordResetToken[]
+  emailVerificationTokens  EmailVerificationToken[]
   auditLogs                AuditLog[]
 
   @@map("users")
@@ -520,6 +523,21 @@ model PasswordResetToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("email_verification_tokens")
 }
 
 model AuditLog {
