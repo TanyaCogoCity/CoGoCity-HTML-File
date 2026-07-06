@@ -993,8 +993,11 @@ function resolveLocalCleanPublicPath(path=''){
   const rootSlug = cleanPath.match(/^\/([^/]+)$/)?.[1] || '';
   if (!rootSlug) return null;
   const targetSlug = COGO_LEGACY_BLOG_SLUGS[rootSlug] || rootSlug;
-  const post = ensureArray(typeof BLOG_POSTS === 'undefined' ? [] : BLOG_POSTS).find(item => String(item.slug || '') === targetSlug);
-  return post ? { hash: `#/blog/${targetSlug}`, path: `/blog/${targetSlug}` } : null;
+  const blogPosts = ensureArray(typeof BLOG_POSTS === 'undefined' ? [] : BLOG_POSTS);
+  const post = blogPosts.find(item => String(item.slug || '') === targetSlug)
+    || blogPosts.find(item => String(item.slug || '') === rootSlug);
+  const resolvedSlug = String(post?.slug || targetSlug || '').trim();
+  return resolvedSlug ? { hash: `#/blog/${resolvedSlug}`, path: `/blog/${resolvedSlug}` } : null;
 }
 function cogoCleanUrlSlug(parts=[], id=''){
   const base = String(ensureArray(parts).filter(Boolean).join(' ') || '')
