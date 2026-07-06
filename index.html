@@ -2717,6 +2717,9 @@ function mapBackendStudentProfile(row={}){
   const avatarValue = String(profile.avatar || '').trim();
   const metadataPhoto = profile.metadata?.photo || profile.photo || profile.profile_photo || '';
   const profilePhoto = metadataPhoto || (looksLikeImageSource(avatarValue) ? avatarValue : '');
+  const avatarEmoji = (looksLikeImageSource(avatarValue) || /^https?:\/\//i.test(avatarValue))
+    ? '\u{1F393}'
+    : (avatarValue || '\u{1F393}');
   const services = ensureArray(row.services).map((service, index) => ({
     id: service.id || `backend_service_${row.id || userId}_${index}`,
     profile_id: service.profile_id || service.profileId || row.id || '',
@@ -2754,7 +2757,7 @@ function mapBackendStudentProfile(row={}){
     profile_image_id: profilePhoto,
     profileImages: profile.metadata?.profile_images || [],
     video_url: profile.metadata?.video_url || '',
-    emoji: looksLikeImageSource(avatarValue) ? '\u{1F393}' : (avatarValue || '\u{1F393}'),
+    emoji: avatarEmoji,
     title: row.title || primaryService.title || 'Student Service',
     tags: [],
     services,
@@ -3066,11 +3069,28 @@ function mapBackendUser(apiUser={}, fallback={}){
 function looksLikeImageSource(value=''){
   const raw = String(value || '').trim();
   if (!raw) return false;
+  if (isLegacyWordPressUploadSource(raw)) return false;
   return /^data:image\//i.test(raw)
     || /^blob:/i.test(raw)
     || /^https?:\/\//i.test(raw)
     || /^\/\//.test(raw)
     || /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(raw);
+}
+function isLegacyWordPressUploadSource(value=''){
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (/^\/wp-content\/uploads\//i.test(raw)) return true;
+  try {
+    const url = new URL(raw, window.location.origin);
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    return host === 'cogocity.com' && /^\/wp-content\/uploads\//i.test(url.pathname);
+  } catch (error) {
+    return false;
+  }
+}
+function usableImageSource(value=''){
+  const raw = String(value || '').trim();
+  return raw && !isLegacyWordPressUploadSource(raw) ? raw : '';
 }
 function isImageRecordId(value=''){
   return /^img_/i.test(String(value || '').trim());
@@ -3496,24 +3516,38 @@ function getImageView(source='', variant='full'){
   if (!source) return null;
   if (typeof source === 'object' && source.url) {
     const image = normalizeImageRecord(source);
-    return Object.assign({}, image, { url: variant === 'thumb' ? (image.thumbnail_url || image.url) : image.url });
+    const url = usableImageSource(variant === 'thumb' ? (image.thumbnail_url || image.url) : image.url);
+    if (!url) return null;
+    return Object.assign({}, image, { url });
   }
   const raw = String(source || '').trim();
   if (!raw) return null;
   const stored = isImageRecordId(raw) ? getImageById(raw) : null;
   if (stored) {
     const assetUrl = backendImageAssetUrl(stored.id || raw);
-    const fullUrl = stored.full_url || stored.fullUrl || stored.url || stored.medium_url || stored.thumb_url || stored.thumbnail_url || assetUrl || '';
-    const mediumUrl = stored.medium_url || stored.mediumUrl || fullUrl;
-    const thumbUrl = stored.thumb_url || stored.thumbUrl || stored.thumbnail_url || stored.thumbnailUrl || mediumUrl || fullUrl;
+    const hasLegacyOnlySource = [stored.full_url, stored.fullUrl, stored.url, stored.medium_url, stored.mediumUrl, stored.thumb_url, stored.thumbUrl, stored.thumbnail_url, stored.thumbnailUrl]
+      .some(isLegacyWordPressUploadSource);
+    const fullUrl = usableImageSource(stored.full_url || stored.fullUrl)
+      || usableImageSource(stored.url)
+      || usableImageSource(stored.medium_url || stored.mediumUrl)
+      || usableImageSource(stored.thumb_url || stored.thumbUrl)
+      || usableImageSource(stored.thumbnail_url || stored.thumbnailUrl)
+      || (hasLegacyOnlySource ? '' : assetUrl)
+      || '';
+    const mediumUrl = usableImageSource(stored.medium_url || stored.mediumUrl) || fullUrl;
+    const thumbUrl = usableImageSource(stored.thumb_url || stored.thumbUrl) || usableImageSource(stored.thumbnail_url || stored.thumbnailUrl) || mediumUrl || fullUrl;
     const selectedUrl = variant === 'thumb' ? thumbUrl : variant === 'medium' ? mediumUrl : fullUrl;
+    if (!selectedUrl) return null;
     return Object.assign({}, stored, { url: selectedUrl || fullUrl || assetUrl, thumbnail_url: thumbUrl || selectedUrl || fullUrl || assetUrl });
   }
   if (isImageRecordId(raw)) {
     const assetUrl = backendImageAssetUrl(raw);
     if (assetUrl) return { id: raw, url: assetUrl, thumbnail_url: assetUrl, alt: '' };
   }
-  if (looksLikeImageSource(raw)) return { id:'', url: raw, thumbnail_url: raw, alt:'' };
+  if (looksLikeImageSource(raw)) {
+    const url = usableImageSource(raw);
+    if (url) return { id:'', url, thumbnail_url: url, alt:'' };
+  }
   return null;
 }
 function getImageViews(values=[], variant='full'){
