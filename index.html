@@ -985,11 +985,30 @@ function resolveLocalCleanPublicPath(path=''){
   if (staticHash) return { hash: staticHash, path: cleanPath };
   const blogMatch = cleanPath.match(/^\/blog\/([^/]+)$/);
   if (blogMatch) return { hash: `#/blog/${blogMatch[1]}`, path: `/blog/${blogMatch[1]}` };
+  const studentMatch = cleanPath.match(/^\/student\/([^/]+)$/);
+  if (studentMatch) {
+    const student = getStudents().find(profile => cogoStudentCleanUrlSlug(profile) === studentMatch[1]);
+    if (student?.userId) return { hash: `#/profile/${encodeURIComponent(student.userId)}`, path: cleanPath };
+  }
   const rootSlug = cleanPath.match(/^\/([^/]+)$/)?.[1] || '';
   if (!rootSlug) return null;
   const targetSlug = COGO_LEGACY_BLOG_SLUGS[rootSlug] || rootSlug;
   const post = ensureArray(typeof BLOG_POSTS === 'undefined' ? [] : BLOG_POSTS).find(item => String(item.slug || '') === targetSlug);
   return post ? { hash: `#/blog/${targetSlug}`, path: `/blog/${targetSlug}` } : null;
+}
+function cogoCleanUrlSlug(parts=[], id=''){
+  const base = ensureArray(parts).map(part => slugifyBlogTitle(part)).filter(Boolean).join('-').replace(/-+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);
+  const suffix = String(id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase();
+  return [base, suffix].filter(Boolean).join('-') || 'cogocity';
+}
+function cogoStudentCleanUrlSlug(profile={}){
+  const user = getUserById(profile.userId) || {};
+  const service = ensureArray(profile.services)[0] || {};
+  return cogoCleanUrlSlug([
+    user.displayName || user.publicName || profile.name,
+    service.title || profile.title,
+    user.city || service.location
+  ], profile.userId || profile.id);
 }
 function isPrivateNoindexRoute(value=''){
   const path = normalizeSeoRoutePath(value);
@@ -22149,8 +22168,8 @@ function attachConnectivityHandlers(){
 
 function initializePrototype(){
   try {
-    resolveCleanPublicPath();
     seedData();
+    resolveCleanPublicPath();
     loadCurrentUser();
     flushPendingBackendSyncs();
     handleStripeReturnParams();
