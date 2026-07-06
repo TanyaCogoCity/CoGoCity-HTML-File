@@ -18998,18 +18998,10 @@ function sendSystemMessage(toId, toName, content, projectId=null){
 }
 
 function renderAdminPanel(el){
-  const archivedProfiles = getStudents().filter(s => s.status === 'archived');
-  const archivedUsers = getUsers().filter(u => u.archived);
-  const finance = getFinance();
   const paymentSettings = getPaymentSettings();
   const directJobPackages = getDirectJobPackages();
   el.innerHTML = `
     <div class="section-title">Admin Panel</div>
-    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:18px">
-      <div class="card form-card"><div class="small muted">Archived Profiles</div><div style="font-size:1.5rem;font-weight:800">${archivedProfiles.length}</div></div>
-      <div class="card form-card"><div class="small muted">Archived Users</div><div style="font-size:1.5rem;font-weight:800">${archivedUsers.length}</div></div>
-      <div class="card form-card"><div class="small muted">Platform Revenue</div><div style="font-size:1.5rem;font-weight:800">$${money(finance.cogoCommission || 0)}</div></div>
-    </div>
     <div class="card form-card" style="margin-bottom:18px">
       <div style="font-weight:800;margin-bottom:12px">Payments</div>
       <div class="row">
