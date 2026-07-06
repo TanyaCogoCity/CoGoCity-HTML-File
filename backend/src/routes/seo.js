@@ -31,6 +31,40 @@ const STATIC_PAGES = [
   { path: '/disclaimer', title: 'Disclaimer | CoGo City', description: 'Read the CoGo City marketplace disclaimer, user responsibilities, and platform limitations.' },
 ];
 
+const LEGACY_STATIC_REDIRECTS = new Map([
+  ['/about', '/about-us'],
+  ['/contact', '/'],
+  ['/pages/about-us', '/about-us'],
+  ['/pages/contact-us', '/'],
+  ['/pages/privacy-policy', '/privacy-policy'],
+  ['/pages/terms-conditions', '/terms-and-conditions'],
+  ['/pages/faq', '/faq-safety-legal'],
+  ['/blog', '/blog'],
+  ['/jobs', '/jobs'],
+  ['/resumes', '/students'],
+  ['/resumes-with-sidebar-search', '/students'],
+  ['/submit-resume', '/'],
+  ['/candidate-dashboard', '/dashboard'],
+  ['/job-dashboard', '/dashboard'],
+  ['/company-dashboard', '/dashboard'],
+  ['/post-job', '/community'],
+  ['/offered-job', '/dashboard'],
+  ['/my-job-offer', '/dashboard'],
+  ['/neighbors', '/community'],
+  ['/neighbors-list', '/community'],
+  ['/neighbors-profiles', '/community'],
+  ['/disclaimer', '/disclaimer'],
+  ['/privacy-policy', '/privacy-policy'],
+]);
+
+const LEGACY_BLOG_SLUG_REDIRECTS = new Map([
+  ['kash-wason', 'how-kash-wason-started-his-first-business-at-15'],
+  ['how-peter-consos-built-a-thriving-detailing-business-at-a-young-age', 'how-peter-consos-built-a-car-detailing-business'],
+  ['how-to-become-a-successful-tutor-and-earn-extra-cash', 'how-caden-built-a-successful-tutoring-business'],
+  ['youth-labor-law-in-ca', 'understanding-californias-child-and-minor-labor-laws'],
+  ['youth-labor-law-in-ca-2', 'understanding-californias-child-and-minor-labor-laws'],
+]);
+
 function isStagingRequest(req) {
   const host = String(req.get('x-forwarded-host') || req.get('host') || '').toLowerCase();
   return host.includes('staging.') || host.includes('localhost') || host.includes('127.0.0.1');
@@ -161,6 +195,11 @@ function blogIndexable(row) {
   const publishRequested = payload.publishRequested !== false;
   const date = payload.date ? new Date(payload.date).getTime() : Date.now();
   return publishRequested && status !== 'draft' && date <= Date.now();
+}
+
+function legacyRedirectPath(path = '/') {
+  const cleanPath = normalizeSeoPath(path);
+  return LEGACY_STATIC_REDIRECTS.get(cleanPath) || '';
 }
 
 async function getPublicStudents() {
@@ -340,11 +379,22 @@ function blogMeta(row) {
 async function findMetaByPath(path = '/') {
   const cleanPath = normalizeSeoPath(path);
   if (isPrivateNoindexPath(cleanPath)) return privateNoindexMeta(cleanPath);
+  const legacyStaticPath = legacyRedirectPath(cleanPath);
+  if (legacyStaticPath && legacyStaticPath !== cleanPath) return findMetaByPath(legacyStaticPath);
   const staticPage = STATIC_PAGES.find(page => page.path === cleanPath);
   if (staticPage) return withDefaults({ ...staticPage, hash: cleanPath === '/' || cleanPath === '/students' ? '#/' : `#${cleanPath}` });
 
   const [, section, slug] = cleanPath.match(/^\/([^/]+)\/(.+)$/) || [];
-  if (!section || !slug) return null;
+  if (!section || !slug) {
+    const legacySlug = cleanPath.replace(/^\/+|\/+$/g, '');
+    if (legacySlug) {
+      const rows = await getPublicBlogPosts();
+      const targetSlug = LEGACY_BLOG_SLUG_REDIRECTS.get(legacySlug) || legacySlug;
+      const match = rows.find(row => blogSlug(row) === targetSlug);
+      return match ? blogMeta(match) : null;
+    }
+    return null;
+  }
   if (section === 'student') {
     const rows = await getPublicStudents();
     const match = rows.find(row => studentSlug(row) === slug);
@@ -416,9 +466,10 @@ router.get('/seo/meta', async (req, res) => {
 
 router.get('/seo/resolve', async (req, res) => {
   try {
-    const meta = await findMetaByPath(String(req.query.path || '/'));
+    const requestedPath = String(req.query.path || '/');
+    const meta = await findMetaByPath(requestedPath);
     if (!meta) return fail(res, 404, 'SEO page not found');
-    return ok(res, { path: meta.path, canonical: meta.canonical, hash: meta.hash });
+    return ok(res, { path: meta.path, canonical: meta.canonical, hash: meta.hash, redirect: meta.path !== normalizeSeoPath(requestedPath) });
   } catch (error) {
     return fail(res, 500, 'Could not resolve SEO URL', error.message);
   }

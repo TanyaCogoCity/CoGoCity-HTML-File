@@ -1032,11 +1032,14 @@ async function applySeoForCurrentRoute(route=''){
 function resolveCleanPublicPath(){
   if (!COGO_BACKEND_ENABLED || location.hash) return;
   const path = String(location.pathname || '/');
-  if (!/^\/(student|employer|jobs|community|blog)\//.test(path)) return;
+  if (path === '/' || path === '/index.html') return;
   backendRequest(`/seo/resolve?path=${encodeURIComponent(path)}`, { method:'GET', auth:false })
     .then(result => {
       const resolved = result?.data || result;
       if (resolved && resolved.hash) {
+        if (resolved.redirect && resolved.path && resolved.path !== path) {
+          window.history.replaceState({}, '', `${resolved.path}${location.search || ''}`);
+        }
         cogoResolvedCleanHash = resolved.hash;
         renderPage();
       }
