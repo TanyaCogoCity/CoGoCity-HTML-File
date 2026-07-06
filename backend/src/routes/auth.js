@@ -223,6 +223,23 @@ function emailVerificationEmailHtml({ displayName, verificationUrl }) {
   `;
 }
 
+function accountDeletedEmailHtml({ displayName, signupUrl }) {
+  const safeName = String(displayName || 'there').replace(/[<>&"']/g, '');
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#18212f;max-width:600px;margin:0 auto;padding:24px">
+      <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Your CoGo City profile was deleted</div>
+      <h2 style="margin:0 0 12px;color:#18212f">Your CoGo City profile was deleted</h2>
+      <p style="margin:0 0 16px">Hi ${safeName},</p>
+      <p style="margin:0 0 16px">This confirms that your CoGo City profile has been deleted.</p>
+      <p style="margin:0 0 20px">If you decide to come back, you can sign up again at any time.</p>
+      <p style="margin:0 0 24px">
+        <a href="${signupUrl}" style="display:inline-block;background:#2251ff;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">Visit CoGo City</a>
+      </p>
+      <p style="font-size:13px;color:#667085;margin:0">If you did not delete your profile, please contact CoGo City support.</p>
+    </div>
+  `;
+}
+
 function isEmailVerified(user = {}) {
   return Boolean(user.emailVerifiedAt || user.emailVerificationStatus === 'verified');
 }
@@ -261,6 +278,47 @@ async function sendEmailVerificationEmail({ user, token, tokenRecord, expiresAt 
       },
     },
   }).catch((error) => console.error('email_verification_email_receipt_failed', error.message));
+
+  return emailResult;
+}
+
+async function sendAccountDeletedEmail(user) {
+  const displayName = userDisplayName(user) || nameFromEmail(user.email);
+  const signupUrl = buildAppLink('/#/');
+  const subject = 'Your CoGo City profile was deleted';
+  const emailResult = await sendEmail({
+    to: { email: user.email, name: displayName },
+    subject,
+    htmlContent: accountDeletedEmailHtml({ displayName, signupUrl }),
+    textContent: `Your CoGo City profile was deleted\n\nThis confirms that your CoGo City profile has been deleted. If you decide to come back, you can sign up again at any time:\n${signupUrl}\n\nIf you did not delete your profile, please contact CoGo City support.`,
+  });
+
+  await prisma.syncRecord.upsert({
+    where: { entity_recordId: { entity: 'account_deleted_email', recordId: user.id } },
+    create: {
+      entity: 'account_deleted_email',
+      recordId: user.id,
+      payload: {
+        user_id: user.id,
+        email: user.email,
+        subject,
+        status: emailResult?.skipped ? 'skipped' : 'sent',
+        result: emailResult || null,
+        requested_at: new Date().toISOString(),
+      },
+    },
+    update: {
+      payload: {
+        user_id: user.id,
+        email: user.email,
+        subject,
+        status: emailResult?.skipped ? 'skipped' : 'sent',
+        result: emailResult || null,
+        requested_at: new Date().toISOString(),
+      },
+      deletedAt: null,
+    },
+  }).catch((error) => console.error('account_deleted_email_receipt_failed', error.message));
 
   return emailResult;
 }
@@ -1510,6 +1568,7 @@ router.delete('/me', requireAuth, async (req, res) => {
       });
     });
 
+    await sendAccountDeletedEmail(user).catch((error) => console.error('account_deleted_email_failed', error.message));
     await writeAuditLog({ userId: user.id, action: 'auth.user.delete', entityType: 'user', entityId: user.id });
     return ok(res, { deleted: true });
   } catch (error) {
