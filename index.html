@@ -919,6 +919,30 @@ const COGO_PRIVATE_NOINDEX_PATHS = [
   '/guardians',
   '/guardian-information',
 ];
+const COGO_STATIC_CLEAN_PATH_HASHES = {
+  '/about': '#/about-us',
+  '/about-us': '#/about-us',
+  '/blog': '#/blog',
+  '/community': '#/community',
+  '/disclaimer': '#/disclaimer',
+  '/faq-safety-legal': '#/faq-safety-legal',
+  '/jobs': '#/jobs',
+  '/pages/about-us': '#/about-us',
+  '/pages/faq': '#/faq-safety-legal',
+  '/pages/privacy-policy': '#/privacy-policy',
+  '/pages/terms-conditions': '#/terms-and-conditions',
+  '/privacy-policy': '#/privacy-policy',
+  '/students': '#/',
+  '/terms-and-conditions': '#/terms-and-conditions',
+  '/accessibility': '#/accessibility'
+};
+const COGO_LEGACY_BLOG_SLUGS = {
+  'kash-wason': 'how-kash-wason-started-his-first-business-at-15',
+  'how-peter-consos-built-a-thriving-detailing-business-at-a-young-age': 'how-peter-consos-built-a-car-detailing-business',
+  'how-to-become-a-successful-tutor-and-earn-extra-cash': 'how-caden-built-a-successful-tutoring-business',
+  'youth-labor-law-in-ca': 'understanding-californias-child-and-minor-labor-laws',
+  'youth-labor-law-in-ca-2': 'understanding-californias-child-and-minor-labor-laws'
+};
 function getCogoAnalyticsEnvironment(){
   return COGO_IS_STAGING ? 'staging' : (COGO_IS_LOCAL_DEV ? 'local' : 'production');
 }
@@ -954,6 +978,18 @@ function normalizeSeoRoutePath(value=''){
   const hashRoute = raw.includes('#') ? raw.slice(raw.indexOf('#') + 1) : raw;
   const pathOnly = hashRoute.split('?')[0].replace(/^https?:\/\/[^/]+/i, '') || '/';
   return (`/${pathOnly.replace(/^\/+/, '')}`).replace(/\/+$/, '').toLowerCase() || '/';
+}
+function resolveLocalCleanPublicPath(path=''){
+  const cleanPath = normalizeSeoRoutePath(path);
+  const staticHash = COGO_STATIC_CLEAN_PATH_HASHES[cleanPath];
+  if (staticHash) return { hash: staticHash, path: cleanPath };
+  const blogMatch = cleanPath.match(/^\/blog\/([^/]+)$/);
+  if (blogMatch) return { hash: `#/blog/${blogMatch[1]}`, path: `/blog/${blogMatch[1]}` };
+  const rootSlug = cleanPath.match(/^\/([^/]+)$/)?.[1] || '';
+  if (!rootSlug) return null;
+  const targetSlug = COGO_LEGACY_BLOG_SLUGS[rootSlug] || rootSlug;
+  const post = ensureArray(typeof BLOG_POSTS === 'undefined' ? [] : BLOG_POSTS).find(item => String(item.slug || '') === targetSlug);
+  return post ? { hash: `#/blog/${targetSlug}`, path: `/blog/${targetSlug}` } : null;
 }
 function isPrivateNoindexRoute(value=''){
   const path = normalizeSeoRoutePath(value);
@@ -1030,9 +1066,18 @@ async function applySeoForCurrentRoute(route=''){
   }
 }
 function resolveCleanPublicPath(){
-  if (!COGO_BACKEND_ENABLED || location.hash) return;
+  if (location.hash) return;
   const path = String(location.pathname || '/');
   if (path === '/' || path === '/index.html') return;
+  const localResolved = resolveLocalCleanPublicPath(path);
+  if (localResolved?.hash) {
+    if (localResolved.path && normalizeSeoRoutePath(localResolved.path) !== normalizeSeoRoutePath(path)) {
+      window.history.replaceState({}, '', `${localResolved.path}${location.search || ''}`);
+    }
+    cogoResolvedCleanHash = localResolved.hash;
+    return;
+  }
+  if (!COGO_BACKEND_ENABLED) return;
   backendRequest(`/seo/resolve?path=${encodeURIComponent(path)}`, { method:'GET', auth:false })
     .then(result => {
       const resolved = result?.data || result;
