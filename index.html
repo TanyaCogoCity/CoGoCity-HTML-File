@@ -997,9 +997,16 @@ function resolveLocalCleanPublicPath(path=''){
   return post ? { hash: `#/blog/${targetSlug}`, path: `/blog/${targetSlug}` } : null;
 }
 function cogoCleanUrlSlug(parts=[], id=''){
-  const base = ensureArray(parts).map(part => slugifyBlogTitle(part)).filter(Boolean).join('-').replace(/-+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);
+  const base = String(ensureArray(parts).filter(Boolean).join(' ') || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'cogocity';
   const suffix = String(id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase();
-  return [base, suffix].filter(Boolean).join('-') || 'cogocity';
+  return suffix ? `${base}-${suffix}` : base;
 }
 function cogoStudentCleanUrlSlug(profile={}){
   const user = getUserById(profile.userId) || {};
