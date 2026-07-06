@@ -4793,6 +4793,7 @@ function getUnreadMessageCountForUser(userId=''){
   let localUnreadMessages = 0;
   getMessages().forEach(message => {
     if (String(message.toId || '') !== me || message.read) return;
+    if (!isDirectUserMessageRecord(message)) return;
     const threadId = String(message.thread_id || message.conversation_id || getDirectThreadId(message.fromId, message.toId));
     const explicitCount = Math.max(0, Number(message.unread_count ?? message.unreadCount ?? 0) || 0);
     if (message.backendSource && isBackendConversationId(threadId)) {
@@ -4802,6 +4803,46 @@ function getUnreadMessageCountForUser(userId=''){
     }
   });
   return localUnreadMessages + Array.from(unreadThreadCounts.values()).reduce((sum, count) => sum + count, 0);
+}
+function isDirectUserMessageRecord(message={}){
+  const type = String(message.message_type || message.messageType || 'user').toLowerCase();
+  if (type === 'system') return false;
+  if (String(message.fromId || '') === 'system_cogo' || String(message.toId || '') === 'system_cogo') return false;
+  const threadId = String(message.thread_id || message.conversation_id || '');
+  if (threadId.startsWith('system:')) return false;
+  return true;
+}
+function getDirectMessageThreadSummariesForCurrentUser(){
+  if (!currentUser) return [];
+  const me = String(currentUser.id || '');
+  const threads = {};
+  getMessages().filter(isDirectUserMessageRecord).forEach(message => {
+    const isMine = String(message.fromId || '') === me;
+    const isToMe = String(message.toId || '') === me;
+    if (!isMine && !isToMe) return;
+    const partnerId = isMine ? message.toId : message.fromId;
+    if (!partnerId) return;
+    const threadId = String(message.thread_id || message.conversation_id || getUnifiedUserThreadId(me, partnerId));
+    const threadKey = `${partnerId}::${threadId.startsWith('dm:') ? getUnifiedUserThreadId(me, partnerId) : threadId}`;
+    const createdAt = message.createdAt || new Date().toISOString();
+    const current = threads[threadKey];
+    if (!current || new Date(createdAt) > new Date(current.createdAt || 0)) {
+      threads[threadKey] = {
+        threadKey,
+        partnerId,
+        threadId,
+        partnerName: isMine ? message.toName : message.fromName,
+        preview: message.content || '',
+        createdAt,
+        unread: current?.unread || 0
+      };
+    }
+    if (isToMe && !message.read) {
+      const explicitCount = Math.max(0, Number(message.unread_count ?? message.unreadCount ?? 0) || 0);
+      threads[threadKey].unread = Math.max(threads[threadKey].unread || 0, explicitCount || 1);
+    }
+  });
+  return Object.values(threads).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 }
 function saveMessages(v){
   const payload = ensureArray(v).map(normalizeMessageRecord);
@@ -4837,6 +4878,7 @@ function normalizeNotificationItem(item={}, source='local'){
   const isRead = raw.read !== undefined ? !!raw.read : !!(raw.is_read || raw.isRead);
   const notification = {
     id,
+    type: String(raw.type || raw.notification_type || raw.notificationType || ''),
     title: String(raw.title || raw.body || 'Notification'),
     body: String(raw.body || raw.message || ''),
     action: raw.action || '',
@@ -4847,6 +4889,14 @@ function normalizeNotificationItem(item={}, source='local'){
   };
   if (source === 'backend') notification.backendSource = true;
   return notification;
+}
+function isDirectMessageNotification(item={}){
+  const title = normalizeNotificationTitleForDedupe(item.title || item.body || '');
+  const link = String(item.link || '').toLowerCase();
+  const type = String(item.type || '').toLowerCase();
+  if (type === 'message' && link.includes('section=messages')) return true;
+  if (link.includes('section=messages') && (title.includes('message from') || title.includes('sent you a message') || title.includes('admin support request'))) return true;
+  return false;
 }
 function getNotifications(id){
   if (backendSharedDataIsAuthoritative() && currentUser && String(id) === String(currentUser.id) && !backendNotificationsLoaded) {
@@ -7457,7 +7507,7 @@ function renderNav(){
   if (backendAuthEnabled() && getBackendAccessToken() && !backendMessagesLoaded && !backendMessagesLoading) refreshBackendMessages({ renderNav:true });
   if (backendAuthEnabled() && getBackendAccessToken() && backendNotificationsNeedRefresh(15000) && !backendNotificationsLoading) refreshBackendNotifications({ renderNav:true });
   const unreadMsgs = getUnreadMessageCountForUser(currentUser.id);
-  const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && (!n.action || n.action.type !== 'thread')).length;
+  const unreadNotifs = getNotifications(currentUser.id).filter(n => !n.read && !isDirectMessageNotification(n) && (!n.action || n.action.type !== 'thread')).length;
   const settings = getSiteSettings();
   const btnLabels = settings.nav_primary_buttons || {};
   const neighborPrimaryLabel = !btnLabels.neighbor || btnLabels.neighbor === 'Post to Community' ? 'Post or Create a Job' : btnLabels.neighbor;
@@ -7515,7 +7565,7 @@ function renderNav(){
     <button class="btn btn-outline btn-sm" type="button" aria-label="${unreadNotifs ? `Open notifications, ${unreadNotifs} unread` : 'Open notifications'}" onclick="openNotifications()">
       <span aria-hidden="true">\u{1F514}</span>${unreadNotifs ? ` (${unreadNotifs})` : ''}
     </button>
-    <button class="btn btn-outline btn-sm" type="button" aria-label="${unreadMsgs ? `Open messages, ${unreadMsgs} unread` : 'Open messages'}" onclick="dashSection='messages';goDashboard()">
+    <button class="btn btn-outline btn-sm" type="button" aria-label="${unreadMsgs ? `Open messages, ${unreadMsgs} unread` : 'Open messages'}" onclick="openMessageInboxPanel()">
       <span aria-hidden="true">\u2709\uFE0F</span>${unreadMsgs ? ` (${unreadMsgs})` : ''}
     </button>
     <div style="position:relative" data-user-menu>
@@ -7605,7 +7655,7 @@ async function openNotifications(){
     await refreshBackendNotifications({ renderNav:true });
   }
   const allItems = getNotifications(currentUser.id);
-  const items = dedupeVisibleNotifications(allItems.filter(n => !n.action || n.action.type !== 'thread'));
+  const items = dedupeVisibleNotifications(allItems.filter(n => !isDirectMessageNotification(n) && (!n.action || n.action.type !== 'thread')));
   const html = items.length ? items.map(n => `
     <div class="item-card card">
       <div class="split">
@@ -7618,13 +7668,47 @@ async function openNotifications(){
     </div>
   `).join('') : `<div class="muted">No notifications yet.</div>`;
   openModal('Notifications', html, '620px');
+  const visibleNotificationIds = new Set(items.map(item => String(item.id || '')));
   allItems.forEach(n => {
+    if (!visibleNotificationIds.has(String(n.id || ''))) return;
     if (!n.read) markBackendNotificationRead(n);
     n.read = true;
   });
   saveNotifications(currentUser.id, allItems);
   saveBackendNotifications(currentUser.id, allItems.filter(n => n.backendSource));
   renderNav();
+}
+async function openMessageInboxPanel(){
+  if (!currentUser) return openLoginModal();
+  if (backendAuthEnabled() && getBackendAccessToken() && !backendMessagesLoading) {
+    await refreshBackendMessages({ renderNav:true });
+  }
+  const threads = getDirectMessageThreadSummariesForCurrentUser();
+  const html = threads.length ? `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${threads.map(thread => `
+        <button class="thread ${thread.unread ? 'unread' : ''}" style="width:100%;text-align:left;border:1px solid var(--border);background:#fff" onclick="openMessageThreadFromInbox('${esc(thread.threadKey)}')">
+          <div class="thread-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:800">
+            <span>${esc(getMessagePartnerDisplayName(thread.partnerId, thread.partnerName))}</span>
+            ${thread.unread ? `<span class="thread-unread-badge">${thread.unread}</span>` : ''}
+          </div>
+          <div class="thread-preview muted small" style="margin-top:5px">${esc(String(thread.preview || '').slice(0, 100))}</div>
+          <div class="muted small" style="margin-top:5px">${timeAgo(thread.createdAt)}</div>
+        </button>
+      `).join('')}
+      <button class="btn btn-outline btn-sm" style="align-self:flex-start" onclick="closeModal();dashSection='messages';goDashboard()">Open All Messages</button>
+    </div>
+  ` : `
+    <div class="muted" style="margin-bottom:14px">No direct messages yet.</div>
+    <button class="btn btn-outline btn-sm" onclick="closeModal();dashSection='messages';goDashboard()">Open Messages</button>
+  `;
+  openModal('Messages', html, '560px');
+}
+function openMessageThreadFromInbox(threadKey=''){
+  activeThreadUserId = threadKey;
+  closeModal();
+  dashSection = 'messages';
+  goDashboard();
 }
 function runNotifAction(id){
   const items = getNotifications(currentUser.id);

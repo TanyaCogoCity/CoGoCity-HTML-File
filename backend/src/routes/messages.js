@@ -6,7 +6,7 @@ const { normalizeMessagePayload, serializeMessage, notificationType } = require(
 const { ensureConversationBetweenUsers } = require('../lib/messaging');
 const { writeAuditLog } = require('../lib/audit');
 const { requirePlatformReady } = require('../lib/onboardingGate');
-const { createNotification, createNotifications } = require('../lib/notifications');
+const { createNotifications } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -145,16 +145,6 @@ router.post('/contact-admin', requireAuth, async (req, res) => {
       data: { lastReadAt: new Date() },
     });
 
-    await createNotification({
-      data: {
-        userId: admin.id,
-        type: notificationType('message'),
-        title: `Admin support request from ${req.user.displayName || 'a CoGo City user'}`,
-        body: messageText.slice(0, 180),
-        link: `/dashboard?section=messages&thread=${conversation.id}`,
-      },
-    });
-
     await writeAuditLog({ userId: req.user.id, action: 'message.contact_admin', entityType: 'message', entityId: msg.id, payload: { conversationId: conversation.id } });
 
     return created(res, {
@@ -215,30 +205,16 @@ router.post('/', requireAuth, async (req, res) => {
       where: { conversationId, userId: { not: req.user.id } },
     });
 
-    if (recipients.length) {
-      const senderName = isSystem ? 'CoGoCity' : (req.user.displayName || 'a CoGoCity user');
+    if (isSystem && recipients.length) {
       const notificationRows = [];
       for (const r of recipients) {
         const row = {
           userId: r.userId,
           type: notificationType('message'),
-          title: isSystem ? 'CoGoCity team update' : `You've got a message from ${senderName}`,
-          body: isSystem ? payload.messageText.slice(0, 180) : `${senderName} sent you a message. Open your dashboard to reply.`,
+          title: 'CoGoCity team update',
+          body: payload.messageText.slice(0, 180),
           link: `/dashboard?section=messages&thread=${conversationId}`,
         };
-        if (!isSystem) {
-          const existingUnreadMessageNotice = await prisma.notification.findFirst({
-            where: {
-              userId: row.userId,
-              type: row.type,
-              title: row.title,
-              link: row.link,
-              isRead: false,
-            },
-            select: { id: true },
-          });
-          if (existingUnreadMessageNotice) continue;
-        }
         notificationRows.push(row);
       }
       if (notificationRows.length) await createNotifications({ data: notificationRows });
