@@ -72,7 +72,7 @@
       --color-border:#E5E7EB;
       --color-input-border:#D1D5DB;
       --color-placeholder:#9CA3AF;
-      --color-success:#22C55E;
+      --color-success:#15803D;
       --color-bg:#FFFFFF;
       --color-bg-light:#F9FAFB;
       --color-link:#1D4ED8;
@@ -129,7 +129,7 @@
     .nav-toggle{display:none;background:#fff;border:1px solid var(--color-border);border-radius:10px;color:var(--color-text-main);font-weight:900;line-height:1;padding:9px 11px;cursor:pointer}
     .nav-toggle:hover{background:var(--color-bg-light)}
     .nav-links{display:flex;gap:18px;flex:1}
-    .nav-links a{text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem;text-underline-offset:6px}
+    .nav-links a{display:inline-flex;align-items:center;min-height:24px;text-decoration:none;color:var(--gray);font-weight:600;font-size:.95rem;text-underline-offset:6px}
     .nav-links a.active,.nav-links a:hover{color:var(--color-text-main);text-decoration:underline;text-decoration-thickness:3px;text-decoration-color:var(--color-primary)}
     .nav-actions{display:flex;gap:10px;align-items:center}
     .btn{
@@ -146,7 +146,7 @@
     .btn-outline{background:var(--color-bg);border:1px solid var(--color-border);color:var(--color-text-main)}
     .btn-outline:hover{background:var(--color-bg-light)}
     .btn-danger{background:#fff;border:1.5px solid #991B1B;color:#991B1B}
-    .link-btn{background:none;border:none;padding:0;color:var(--color-link);font:inherit;font-weight:800;cursor:pointer;text-decoration:underline}
+    .link-btn{background:none;border:none;padding:0;color:var(--color-link);font:inherit;font-weight:800;cursor:pointer;text-decoration:underline;display:inline-flex;align-items:center;min-height:24px}
     .link-btn:hover{color:var(--color-link-hover)}
     main{min-height:calc(100vh - 64px)}
     .hero{
@@ -527,6 +527,9 @@
       gap:8px;
     }
     .footer-links a{
+      display:inline-flex;
+      align-items:center;
+      min-height:24px;
       color:#E5E7EB;
       text-decoration:none;
       font-size:.92rem;
