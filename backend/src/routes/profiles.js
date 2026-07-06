@@ -62,6 +62,93 @@ function serializeStudentProfile(profile) {
   };
 }
 
+function syncedProjectStudentId(payload = {}) {
+  return String(payload.studentUserId || payload.student_user_id || payload.studentId || payload.student_id || '').trim();
+}
+
+function syncedProjectServiceId(payload = {}) {
+  return String(payload.studentServiceId || payload.student_service_id || payload.serviceId || payload.service_id || '').trim();
+}
+
+function serializeSyncedProjectReview(review = {}, project = {}) {
+  return {
+    id: review.id || `${project.id || project.recordId || 'project'}:${review.reviewerId || review.reviewer_id || review.reviewerName || review.reviewer_name || 'review'}:${review.createdAt || review.created_at || review.comment || ''}`,
+    project_id: project.id || project.recordId || '',
+    projectId: project.id || project.recordId || '',
+    reviewer_id: review.reviewerId || review.reviewer_id || '',
+    reviewerId: review.reviewerId || review.reviewer_id || '',
+    reviewer_name: review.reviewerName || review.reviewer_name || '',
+    reviewerName: review.reviewerName || review.reviewer_name || '',
+    student_id: syncedProjectStudentId(project),
+    studentId: syncedProjectStudentId(project),
+    service_id: review.serviceId || review.service_id || syncedProjectServiceId(project) || '',
+    serviceId: review.serviceId || review.service_id || syncedProjectServiceId(project) || '',
+    rating: review.rating,
+    comment: review.comment || '',
+    created_at: review.createdAt || review.created_at || project.updatedAt || project.updated_at || '',
+    createdAt: review.createdAt || review.created_at || project.updatedAt || project.updated_at || '',
+  };
+}
+
+function reviewKey(review = {}) {
+  return [
+    review.id || '',
+    review.projectId || review.project_id || '',
+    review.reviewerId || review.reviewer_id || review.reviewerName || review.reviewer_name || '',
+    review.createdAt || review.created_at || '',
+    review.comment || '',
+  ].map(value => String(value || '').trim().toLowerCase()).join('|');
+}
+
+function mergeSyncedProjectReviews(profileRows = [], syncedRows = []) {
+  const reviewsByStudentId = new Map();
+  for (const row of syncedRows) {
+    const project = { ...(row.payload || {}), id: row.recordId, recordId: row.recordId };
+    const studentId = syncedProjectStudentId(project);
+    const reviews = Array.isArray(project.reviews) ? project.reviews : [];
+    if (!studentId || !reviews.length) continue;
+    const serialized = reviews.map(review => serializeSyncedProjectReview(review, project)).filter(review => review.reviewerName && review.comment);
+    if (!serialized.length) continue;
+    reviewsByStudentId.set(studentId, [...(reviewsByStudentId.get(studentId) || []), ...serialized]);
+  }
+
+  return profileRows.map((profile) => {
+    const serialized = serializeStudentProfile(profile);
+    const syncedReviews = reviewsByStudentId.get(profile.userId) || [];
+    if (!syncedReviews.length) return serialized;
+
+    const seenProfileReviews = new Set((serialized.reviews || []).map(reviewKey));
+    const profileAdditions = syncedReviews.filter(review => !seenProfileReviews.has(reviewKey(review)));
+    serialized.reviews = [...(serialized.reviews || []), ...profileAdditions]
+      .sort((a, b) => Date.parse(b.createdAt || b.created_at || 0) - Date.parse(a.createdAt || a.created_at || 0));
+
+    serialized.services = (serialized.services || []).map((service, index) => {
+      const serviceId = String(service.id || '').trim();
+      const serviceReviews = syncedReviews.filter(review => {
+        const reviewServiceId = String(review.serviceId || review.service_id || '').trim();
+        return reviewServiceId ? reviewServiceId === serviceId : index === 0;
+      });
+      if (!serviceReviews.length) return service;
+      const seenServiceReviews = new Set((service.reviews || []).map(reviewKey));
+      const additions = serviceReviews.filter(review => !seenServiceReviews.has(reviewKey(review)));
+      const reviews = [...(service.reviews || []), ...additions]
+        .sort((a, b) => Date.parse(b.createdAt || b.created_at || 0) - Date.parse(a.createdAt || a.created_at || 0));
+      const reviewCount = reviews.length;
+      const averageRating = reviewCount ? Number((reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount).toFixed(2)) : 0;
+      return {
+        ...service,
+        reviews,
+        review_count: reviewCount,
+        reviewCount,
+        average_rating: averageRating,
+        averageRating,
+      };
+    });
+
+    return serialized;
+  });
+}
+
 router.get('/student-profiles', async (req, res) => {
   const userId = String(req.query.user_id || req.query.userId || '').trim();
   const where = { deletedAt: null, isActive: true };
@@ -80,7 +167,15 @@ router.get('/student-profiles', async (req, res) => {
     orderBy: { createdAt: 'desc' },
   });
 
-  return ok(res, rows.map(serializeStudentProfile));
+  const studentIds = rows.map(row => row.userId).filter(Boolean);
+  const syncedRows = studentIds.length
+    ? await prisma.syncRecord.findMany({
+        where: { entity: 'projects', deletedAt: null },
+        select: { recordId: true, payload: true },
+      })
+    : [];
+
+  return ok(res, mergeSyncedProjectReviews(rows, syncedRows));
 });
 
 router.patch('/user-profile/me', requireAuth, async (req, res) => {
