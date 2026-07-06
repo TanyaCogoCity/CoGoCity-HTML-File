@@ -18998,6 +18998,7 @@ function sendSystemMessage(toId, toName, content, projectId=null){
 }
 
 function renderAdminPanel(el){
+  const archivedProfiles = getStudents().filter(s => s.status === 'archived');
   const paymentSettings = getPaymentSettings();
   const directJobPackages = getDirectJobPackages();
   el.innerHTML = `
