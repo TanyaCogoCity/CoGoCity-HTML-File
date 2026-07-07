@@ -12791,7 +12791,13 @@ function processWorkshopPayouts(){
 
 function renderStudentAvatar(student, size=54, extraStyle=''){
   const image = student.profile_image_id || student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
-  if (image) return renderManagedImage(image, student.name || 'Student', `width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}`, 'thumb');
+  if (image) {
+    if (isImageRecordId(image) && !getImageById(image)) {
+      return `<div class="avatar" style="width:${size}px;height:${size}px;${extraStyle}">${esc(student.emoji || '\u{1F464}')}</div>`;
+    }
+    const avatar = renderManagedImage(image, student.name || 'Student', `width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}`, 'thumb');
+    if (avatar) return avatar;
+  }
   return `<div class="avatar" style="width:${size}px;height:${size}px;${extraStyle}">${esc(student.emoji || '\u{1F464}')}</div>`;
 }
 function renderMediaThumbs(images=[], max=3, size=72, emptyHtml=''){
