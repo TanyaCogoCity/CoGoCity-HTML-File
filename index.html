@@ -3532,7 +3532,7 @@ function getImageView(source='', variant='full'){
       || usableImageSource(stored.medium_url || stored.mediumUrl)
       || usableImageSource(stored.thumb_url || stored.thumbUrl)
       || usableImageSource(stored.thumbnail_url || stored.thumbnailUrl)
-      || (hasLegacyOnlySource ? '' : assetUrl)
+      || assetUrl
       || '';
     const mediumUrl = usableImageSource(stored.medium_url || stored.mediumUrl) || fullUrl;
     const thumbUrl = usableImageSource(stored.thumb_url || stored.thumbUrl) || usableImageSource(stored.thumbnail_url || stored.thumbnailUrl) || mediumUrl || fullUrl;

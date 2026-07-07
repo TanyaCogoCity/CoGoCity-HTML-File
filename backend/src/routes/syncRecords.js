@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const https = require('https');
 const Stripe = require('stripe');
 
 const { prisma } = require('../lib/prisma');
@@ -15,6 +16,8 @@ const { notificationType } = require('../lib/compat');
 const router = express.Router();
 const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
 const SPACES_VARIANTS = ['thumb', 'medium', 'full'];
+const LEGACY_WORDPRESS_MEDIA_IP = process.env.LEGACY_WORDPRESS_MEDIA_IP || '206.189.191.246';
+const LEGACY_WORDPRESS_MEDIA_HOST = process.env.LEGACY_WORDPRESS_MEDIA_HOST || 'cogocity.com';
 
 const DEFAULT_FORM_CONFIGS = {
   'community-job-posting': {
@@ -1072,6 +1075,52 @@ function requireTestimonialsWriteAccess(req, res, records = [], replace = false)
   return true;
 }
 
+function parseLegacyWordPressUploadUrl(source = '') {
+  const raw = String(source || '').trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, `https://${LEGACY_WORDPRESS_MEDIA_HOST}`);
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host !== LEGACY_WORDPRESS_MEDIA_HOST) return null;
+    if (!/^\/wp-content\/uploads\//i.test(url.pathname)) return null;
+    return url;
+  } catch (error) {
+    return null;
+  }
+}
+
+function fetchLegacyWordPressUpload(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: LEGACY_WORDPRESS_MEDIA_IP,
+      servername: LEGACY_WORDPRESS_MEDIA_HOST,
+      path: `${url.pathname}${url.search || ''}`,
+      method: 'GET',
+      headers: { Host: LEGACY_WORDPRESS_MEDIA_HOST },
+      timeout: 12000,
+    }, (upstream) => {
+      const chunks = [];
+      upstream.on('data', (chunk) => chunks.push(chunk));
+      upstream.on('end', () => {
+        const statusCode = Number(upstream.statusCode || 0);
+        const contentType = String(upstream.headers['content-type'] || '');
+        if (statusCode < 200 || statusCode >= 300 || !/^image\//i.test(contentType)) {
+          return reject(new Error('Legacy image data not found'));
+        }
+        return resolve({
+          buffer: Buffer.concat(chunks),
+          contentType,
+          lastModified: upstream.headers['last-modified'] || '',
+          etag: upstream.headers.etag || '',
+        });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Legacy image request timed out')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 router.get('/images/:id/file', async (req, res) => {
   const imageId = String(req.params.id || '').trim();
   if (!imageId) return fail(res, 404, 'Image not found');
@@ -1082,11 +1131,25 @@ router.get('/images/:id/file', async (req, res) => {
   if (!row) return fail(res, 404, 'Image not found');
   const payload = row.payload || {};
   const source = String(payload.url || payload.thumbnail_url || payload.thumb_url || '').trim();
+  const legacyWordPressUrl = parseLegacyWordPressUploadUrl(source);
+  if (legacyWordPressUrl) {
+    try {
+      const legacyImage = await fetchLegacyWordPressUpload(legacyWordPressUrl);
+      res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+      if (legacyImage.lastModified) res.setHeader('Last-Modified', legacyImage.lastModified);
+      else res.setHeader('Last-Modified', row.updatedAt.toUTCString());
+      if (legacyImage.etag) res.setHeader('ETag', legacyImage.etag);
+      res.type(legacyImage.contentType);
+      return res.send(legacyImage.buffer);
+    } catch (error) {
+      return fail(res, 404, 'Image data not found');
+    }
+  }
   if (/^https?:\/\//i.test(source)) {
     try {
       const upstream = await fetch(source);
-      if (!upstream.ok) return fail(res, 404, 'Image data not found');
       const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+      if (!upstream.ok || !/^image\//i.test(contentType)) return fail(res, 404, 'Image data not found');
       const buffer = Buffer.from(await upstream.arrayBuffer());
       res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
       res.setHeader('Last-Modified', row.updatedAt.toUTCString());
