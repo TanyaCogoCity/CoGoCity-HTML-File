@@ -281,7 +281,11 @@ function isDisconnectedConnectError(error) {
     || message.includes('does not have access')
     || message.includes('not connected')
     || message.includes('has been disconnected')
-    || message.includes('application does not have required permissions');
+    || message.includes('application does not have required permissions')
+    || message.includes('created with a testmode key')
+    || message.includes('can only be used with testmode keys')
+    || message.includes('created with a livemode key')
+    || message.includes('can only be used with livemode keys');
 }
 
 async function prefillStudentConnectAccount(user, origin) {
@@ -1243,6 +1247,12 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
 router.use(express.json({ limit: '1mb' }));
 
+router.get('/config', (req, res) => {
+  return ok(res, {
+    enabled: Boolean(stripe && config.stripePublishableKey),
+    publishable_key: config.stripePublishableKey || '',
+  });
+});
 
 router.get('/onboarding/status', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');

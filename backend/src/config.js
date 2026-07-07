@@ -23,6 +23,7 @@ module.exports = {
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || '30d',
 
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.COGO_STRIPE_PUBLISHABLE_KEY || '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   stripePlatformFeeBps: Number(process.env.STRIPE_PLATFORM_FEE_BPS || 1000),
 

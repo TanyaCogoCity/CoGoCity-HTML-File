@@ -873,10 +873,10 @@ const COGO_BACKEND_ENABLED = COGO_IS_STAGING || COGO_IS_PRODUCTION;
 const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
 const PAYMENT_PROVIDER_MODE = COGO_IS_STAGING ? 'mock_stripe_ready' : 'stripe_manual_capture';
 const STRIPE_STAGING_PUBLISHABLE_KEY = 'pk_test_51TCSvbIGDb9LYiIhFx8UwBFDVG4riDKKJwiqejiGzjrtDzc7lWzIiQGJ6tBczfPGQzBPKqJMwlDEJW9Wer2Piv5L00apSTPPNZ';
-const STRIPE_PUBLISHABLE_KEY = (COGO_IS_STAGING || COGO_IS_TEMP_PRODUCTION_TEST)
+let STRIPE_PUBLISHABLE_KEY = (COGO_IS_STAGING || COGO_IS_TEMP_PRODUCTION_TEST)
   ? STRIPE_STAGING_PUBLISHABLE_KEY
   : ((typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || '');
-const STRIPE_ENABLED = COGO_IS_STAGING || (COGO_IS_PRODUCTION && !!STRIPE_PUBLISHABLE_KEY);
+let STRIPE_ENABLED = COGO_IS_STAGING || (COGO_IS_PRODUCTION && !!STRIPE_PUBLISHABLE_KEY);
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = COGO_IS_STAGING || COGO_IS_LOCAL_DEV;
 const BACKEND_MIGRATION = {
   enabled: COGO_BACKEND_ENABLED,
@@ -888,6 +888,23 @@ const BACKEND_AUTH = {
   baseUrl: '/api',
   timeoutMs: 10000
 };
+function applyStripePublicConfig(publishableKey=''){
+  const normalizedKey = String(publishableKey || '').trim();
+  if (normalizedKey) STRIPE_PUBLISHABLE_KEY = normalizedKey;
+  STRIPE_ENABLED = COGO_IS_STAGING || (COGO_IS_PRODUCTION && !!STRIPE_PUBLISHABLE_KEY);
+  if (stripeClient && normalizedKey) stripeClient = null;
+}
+async function loadStripePublicConfig(){
+  if (!COGO_IS_PRODUCTION || STRIPE_PUBLISHABLE_KEY) return;
+  try {
+    const response = await fetch(`${BACKEND_AUTH.baseUrl}/stripe/config`, { headers:{ 'accept':'application/json' } });
+    const payload = await response.json().catch(() => null);
+    const data = payload && payload.ok !== false ? (payload.data || payload) : {};
+    applyStripePublicConfig(data.publishable_key || data.publishableKey || '');
+  } catch (error) {
+    console.warn('Stripe public config unavailable', error);
+  }
+}
 const BACKEND_SIGNUP_TIMEOUT_MS = 45000;
 const GOOGLE_MAPS_API_KEY = (typeof window !== 'undefined' && (window.COGO_GOOGLE_MAPS_API_KEY || localStorage.getItem('cogo_google_maps_api_key'))) || '';
 const GOOGLE_ADDRESS_ENABLED = !!GOOGLE_MAPS_API_KEY;
@@ -22236,10 +22253,11 @@ function attachConnectivityHandlers(){
   });
 }
 
-function initializePrototype(){
+async function initializePrototype(){
   try {
     seedData();
     resolveCleanPublicPath();
+    await loadStripePublicConfig();
     loadCurrentUser();
     flushPendingBackendSyncs();
     handleStripeReturnParams();
@@ -22253,6 +22271,7 @@ function initializePrototype(){
       clearPrototypeDataStores();
       resetPrototypeRuntimeState();
       seedData();
+      await loadStripePublicConfig();
       loadCurrentUser();
       handleStripeReturnParams();
       startWorkshopPayoutProcessor();
