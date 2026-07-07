@@ -12791,14 +12791,15 @@ function processWorkshopPayouts(){
 
 function renderStudentAvatar(student, size=54, extraStyle=''){
   const image = student.profile_image_id || student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
+  const fallbackIcon = student.emoji || '\u{1F464}';
+  const fallbackStyle = `width:${size}px;height:${size}px;${extraStyle}`;
+  const fallbackHtml = `<div class="avatar" style="${fallbackStyle}">${esc(fallbackIcon)}</div>`;
   if (image) {
-    if (isImageRecordId(image) && !getImageById(image)) {
-      return `<div class="avatar" style="width:${size}px;height:${size}px;${extraStyle}">${esc(student.emoji || '\u{1F464}')}</div>`;
-    }
-    const avatar = renderManagedImage(image, student.name || 'Student', `width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}`, 'thumb');
+    const fallbackAttrs = `loading="lazy" decoding="async" data-avatar-fallback="${esc(fallbackIcon)}" data-avatar-style="${esc(fallbackStyle)}" onerror="this.onerror=null;const d=document.createElement('div');d.className='avatar';d.style.cssText=this.dataset.avatarStyle||'';d.textContent=this.dataset.avatarFallback||'\u{1F464}';this.replaceWith(d)"`;
+    const avatar = renderManagedImage(image, student.name || 'Student', `width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;flex-shrink:0;${extraStyle}`, 'thumb', fallbackAttrs);
     if (avatar) return avatar;
   }
-  return `<div class="avatar" style="width:${size}px;height:${size}px;${extraStyle}">${esc(student.emoji || '\u{1F464}')}</div>`;
+  return fallbackHtml;
 }
 function renderMediaThumbs(images=[], max=3, size=72, emptyHtml=''){
   const imageViews = getImageViews(images, 'thumb');
