@@ -3088,6 +3088,18 @@ function isLegacyWordPressUploadSource(value=''){
     return false;
   }
 }
+function legacyWordPressMediaProxyUrl(value=''){
+  const raw = String(value || '').trim();
+  if (!raw || !BACKEND_MIGRATION.enabled) return '';
+  try {
+    const url = new URL(raw, window.location.origin);
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host !== 'cogocity.com' || !/^\/wp-content\/uploads\//i.test(url.pathname)) return '';
+    return `${BACKEND_MIGRATION.baseUrl}/sync/legacy-wordpress-media${url.pathname}${url.search || ''}`;
+  } catch (error) {
+    return '';
+  }
+}
 function usableImageSource(value=''){
   const raw = String(value || '').trim();
   return raw && !isLegacyWordPressUploadSource(raw) ? raw : '';
@@ -3516,12 +3528,15 @@ function getImageView(source='', variant='full'){
   if (!source) return null;
   if (typeof source === 'object' && source.url) {
     const image = normalizeImageRecord(source);
-    const url = usableImageSource(variant === 'thumb' ? (image.thumbnail_url || image.url) : image.url);
+    const rawUrl = variant === 'thumb' ? (image.thumbnail_url || image.url) : image.url;
+    const url = usableImageSource(rawUrl) || legacyWordPressMediaProxyUrl(rawUrl);
     if (!url) return null;
     return Object.assign({}, image, { url });
   }
   const raw = String(source || '').trim();
   if (!raw) return null;
+  const legacyProxyUrl = legacyWordPressMediaProxyUrl(raw);
+  if (legacyProxyUrl) return { id:'', url: legacyProxyUrl, thumbnail_url: legacyProxyUrl, alt:'' };
   const stored = isImageRecordId(raw) ? getImageById(raw) : null;
   if (stored) {
     const assetUrl = backendImageAssetUrl(stored.id || raw);
