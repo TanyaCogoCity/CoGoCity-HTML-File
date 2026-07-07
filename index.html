@@ -6576,7 +6576,12 @@ function pushNotif(userId, title, action=''){
     : '/dashboard?section=notifications';
   const dedupeKey = action && typeof action === 'object' ? String(action.dedupeKey || '').trim() : '';
   const notificationId = action && typeof action === 'object' ? String(action.notificationId || '').trim() : '';
-  const existingItem = dedupeKey ? items.find(item => item && item.dedupeKey === dedupeKey) : null;
+  const candidateVisibleKey = notificationVisibleDedupeKey({ title, link, action });
+  const existingItem = items.find(item => {
+    if (!item) return false;
+    if (dedupeKey && item.dedupeKey === dedupeKey) return true;
+    return candidateVisibleKey && notificationVisibleDedupeKey(item) === candidateVisibleKey;
+  });
   if (existingItem) {
     const backendUserId = resolveBackendNotificationUserId(userId);
     const canSyncDirectly = currentUser && backendAuthEnabled() && getBackendAccessToken() && backendUserId;
@@ -7805,6 +7810,8 @@ function notificationVisibleDedupeKey(item={}){
   if (declinedOfferMatch) return `offer_declined_title:${declinedOfferMatch[1]}`;
   if (title.includes("you've been paid") && title.includes('my transactions')) return `student_payment:${title}`;
   if (title.startsWith('you paid $') && title.includes('my transactions')) return `employer_payment:${title}`;
+  const finalHoursMatch = title.match(/^.+? submitted final hours for "(.+?)"\./);
+  if (finalHoursMatch) return `final_hours_submitted:${finalHoursMatch[1]}`;
   if (title === 'project payment completed') return `project_payment_completed:${item.link || ''}`;
   if (title.startsWith('leave a review for ')) return `review_request:${title}`;
   if (title.startsWith("you've got a message from ")) return `message_thread:${title}:${item.link || ''}`;
@@ -16745,8 +16752,8 @@ async function submitFinalInvoice(projectId){
     type:'dashboard',
     section:'applicants_projects',
     employerTab:'projects',
-    projectId: p.id,
-    dedupeKey:`final_hours:${p.id}:${p.employerId}`
+    projectId: getProjectBackendId(p) || p.id,
+    dedupeKey:`final_hours:${getProjectBackendId(p) || p.id}:${p.employerId}`
   });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, ${platformSupportFeeLabel(breakdown.employerCommissionPct)} $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
   sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after ${platformSupportFeeLabel(breakdown.studentCommissionPct)}: $${money(studentPayout)}.`, p.id);
