@@ -214,6 +214,7 @@ router.post('/', requireAuth, async (req, res) => {
           title: 'CoGoCity team update',
           body: payload.messageText.slice(0, 180),
           link: `/dashboard?section=messages&thread=${conversationId}`,
+          dedupeKey: `system_message:${msg.id}:${r.userId}`,
         };
         notificationRows.push(row);
       }

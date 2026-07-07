@@ -11281,7 +11281,14 @@ async function submitDirectJobApplication(jobId=''){
       thread_id: `direct_job:${job.id}`,
       thread_label: `Direct Hire Job: ${job.job_title}`
     });
-    pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications', jobId:job.id });
+    pushNotif(job.employer_id, `${currentUser.publicName || currentUser.name} applied to "${job.job_title}" with a resume.`, {
+      type:'dashboard',
+      section:'my_jobs',
+      employerMyJobsTab:'applications',
+      jobId:job.id,
+      applicationId: application.id,
+      dedupeKey:`direct_hire_apply:${application.id}:${job.employer_id}`
+    });
   }
   directJobApplyDraft = null;
   closeModal();
@@ -12035,7 +12042,11 @@ async function completeWorkshopRegistration(workshopId=''){
     thread_id: `workshop:${workshop.id}`,
     thread_label: `Workshop: ${workshop.title}`
   });
-  pushNotif(workshop.host_id, `${currentUser.publicName || currentUser.name} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for "${workshop.title}".`, { type:'dashboard', section:'workshops' });
+  pushNotif(workshop.host_id, `${currentUser.publicName || currentUser.name} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for "${workshop.title}".`, {
+    type:'dashboard',
+    section:'workshops',
+    dedupeKey:`workshop_registration:${workshop.id}:${currentUser.id}:${quantity}`
+  });
   closeModal();
   toast('Registration successful. Payment verified and funds held for this class.');
   renderPage();
@@ -12164,7 +12175,11 @@ function notifyWorkshopRefundParticipants(workshop, registration, refundAmount){
       `${studentName} requested a refund for "${workshop.title}". ${refundText} has been refunded to ${studentName}.`,
       workshop.id
     );
-    pushNotif(owner.id, `${studentName} requested a workshop refund. ${refundText} was refunded.`, { type:'dashboard', section:'workshops' });
+    pushNotif(owner.id, `${studentName} requested a workshop refund. ${refundText} was refunded.`, {
+      type:'dashboard',
+      section:'workshops',
+      dedupeKey:`workshop_refund:${registration.id}:${owner.id}`
+    });
   }
   if (student) {
     sendSystemMessage(
@@ -12173,7 +12188,11 @@ function notifyWorkshopRefundParticipants(workshop, registration, refundAmount){
       `Your refund for "${workshop.title}" has been processed. ${refundText} was returned to your card.`,
       workshop.id
     );
-    pushNotif(student.id, `Refund processed: ${refundText} returned for "${workshop.title}".`, { type:'dashboard', section:'workshops' });
+    pushNotif(student.id, `Refund processed: ${refundText} returned for "${workshop.title}".`, {
+      type:'dashboard',
+      section:'workshops',
+      dedupeKey:`workshop_refund:${registration.id}:${student.id}`
+    });
   }
   if (studentEmail) {
     queueSystemEmail(
@@ -12209,7 +12228,11 @@ function notifyWorkshopRefundParticipants(workshop, registration, refundAmount){
       `Admin alert: ${studentName} requested a refund for "${workshop.title}". ${refundText} was returned to ${studentName}.`,
       workshop.id
     );
-    pushNotif(admin.id, `Workshop refund processed for "${workshop.title}".`, { type:'dashboard', section:'workshops' });
+    pushNotif(admin.id, `Workshop refund processed for "${workshop.title}".`, {
+      type:'dashboard',
+      section:'workshops',
+      dedupeKey:`workshop_refund:${registration.id}:${admin.id}`
+    });
   });
 }
 function openWorkshopInstructorThread(workshopId=''){
@@ -14990,7 +15013,13 @@ async function submitApplication(postId){
   if (!await persistCommunityJobDerivedState(postId, apps, 'Backend applicant count update failed. Please try again so the application is saved for everyone.')) return;
   trackCogoEvent('application_submitted', { source: 'community_feed' });
   if (!backendAuthEnabled() || !getBackendAccessToken()) {
-    pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
+    pushNotif(p.authorId, `${currentUser.name} applied to "${p.jobTitle}"`, {
+      type:'dashboard',
+      section:'applicants_projects',
+      employerTab:'applicants',
+      applicationId: apps[apps.length - 1]?.id || '',
+      dedupeKey:`community_application:${apps[apps.length - 1]?.id || postId}:${p.authorId}`
+    });
   }
   closeModal();
   toast('Application submitted. Check Dashboard \u2192 My Community Gigs.');
@@ -16483,7 +16512,14 @@ async function withdrawStudentDirectJobApplication(applicationId=''){
       { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' },
       { thread_id: `direct_job:${app.job_id}`, thread_label: `Direct Hire Job: ${jobTitle}`, message_type:'system', system_category:'application' }
     );
-    pushNotif(app.employer_id, `Student ${studentName} withdrew their application for "${jobTitle}".`, { type:'dashboard', section:'my_jobs', employerMyJobsTab:'applications' });
+    pushNotif(app.employer_id, `Student ${studentName} withdrew their application for "${jobTitle}".`, {
+      type:'dashboard',
+      section:'my_jobs',
+      employerMyJobsTab:'applications',
+      applicationId: app.id,
+      jobId: app.job_id,
+      dedupeKey:`direct_hire_withdraw:${app.id}:${app.employer_id}`
+    });
   }
   toast('Application withdrawn.');
   renderDashboard();
@@ -16705,7 +16741,13 @@ async function submitFinalInvoice(projectId){
   }
   if (!await persistProjectsPermanently(pList, 'Backend project completion failed. Please try again so the final invoice is saved permanently.')) return;
   await refreshBackendDashboardData();
-  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. ${platformSupportFeeLabel(breakdown.employerCommissionPct)}: $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, { type:'dashboard', section:'applicants_projects', employerTab:'projects' });
+  pushNotif(p.employerId, `${currentUser.name} submitted final hours for "${p.jobTitle}". Work Total: $${subtotal.toFixed(2)}. ${platformSupportFeeLabel(breakdown.employerCommissionPct)}: $${breakdown.employerCommissionAmount.toFixed(2)}. Total Payment: $${totalDue.toFixed(2)}.`, {
+    type:'dashboard',
+    section:'applicants_projects',
+    employerTab:'projects',
+    projectId: p.id,
+    dedupeKey:`final_hours:${p.id}:${p.employerId}`
+  });
   sendSystemMessage(p.employerId, p.employerName, `Final invoice submitted for "${p.jobTitle}": Work Total $${subtotal.toFixed(2)}, ${platformSupportFeeLabel(breakdown.employerCommissionPct)} $${breakdown.employerCommissionAmount.toFixed(2)}, Total Payment $${totalDue.toFixed(2)}.`, p.id);
   sendSystemMessage(p.studentUserId, p.studentName, `Project completed and awaiting approval for "${p.jobTitle}". Hours submitted: ${actualHours}. Estimated payout after ${platformSupportFeeLabel(breakdown.studentCommissionPct)}: $${money(studentPayout)}.`, p.id);
 
@@ -17242,7 +17284,13 @@ async function updateDirectJobApplicationStatus(applicationId='', status='new'){
   }
   saveDirectJobApplications(items);
   if (['shortlisted','hired','rejected','reviewing'].includes(status) && !app.backendSource) {
-    pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, { type:'dashboard', section:'direct_hire', applicationId: app.id, jobId: job.id });
+    pushNotif(app.student_id, `Your "${job.job_title}" application is now ${String(status).replaceAll('_', ' ')}.`, {
+      type:'dashboard',
+      section:'direct_hire',
+      applicationId: app.id,
+      jobId: job.id,
+      dedupeKey:`direct_hire_status:${app.id}:${status}:${app.student_id}`
+    });
     sendInboxMessage(app.student_id, app.student_name || 'Student', `Direct Hire update for "${job.job_title}": your application is ${String(status).replaceAll('_', ' ')}.`, null, { id:'system_cogo', name:'CoGo Team', publicName:'CoGo Team' }, {
       thread_id: `direct_job:${job.id}`,
       thread_label: `Direct Hire Job: ${job.job_title}`,
@@ -17360,7 +17408,12 @@ async function submitDirectHireReview(applicationId=''){
   app.review_comment = comment;
   app.updated_at = new Date().toISOString();
   saveDirectJobApplications(apps);
-  if (!backendReview) pushNotif(app.student_id, `${currentUser.publicName || currentUser.name} left you a ${rating}/5 review.`, { type:'dashboard', section:'profile' });
+  if (!backendReview) pushNotif(app.student_id, `${currentUser.publicName || currentUser.name} left you a ${rating}/5 review.`, {
+    type:'dashboard',
+    section:'profile',
+    applicationId: app.id,
+    dedupeKey:`direct_hire_review:${app.id}:${currentUser.id}`
+  });
   await refreshBackendDashboardData();
   closeModal();
   toast('Review submitted.');
@@ -17986,7 +18039,14 @@ async function startProject(appId, expectedStatus=''){
   await refreshBackendDashboardData();
   attachMessagesToProject(projectId, a.employerId, a.studentUserId);
   if (!backendAuthEnabled() || currentUser.role === 'admin' || String(currentUser.id) === String(a.studentUserId)) {
-    pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+    pushNotif(a.studentUserId, `Project started for "${a.jobTitle}". Work total: $${money(estimatedSubtotal)}. Your estimated payout after the ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentPayout)}.`, {
+      type:'dashboard',
+      section:'jobs_bookings',
+      studentJobsTab:'projects',
+      applicationId: a.id,
+      projectId,
+      dedupeKey:`project_started:${projectId}:${a.studentUserId}`
+    });
   }
   sendSystemMessage(a.employerId, a.employerName, `Funds secured in escrow for "${a.jobTitle}". Service cost: $${money(estimatedSubtotal)}. ${platformSupportFeeLabel(estimatedBreakdown.employerCommissionPct)}: $${money(estimatedBreakdown.employerCommissionAmount)}. Total charged: $${money(estimatedEmployerTotal)}.`, projectId);
   sendSystemMessage(a.studentUserId, a.studentName, `Project started: work total $${money(estimatedSubtotal)}, your ${platformSupportFeeLabel(estimatedBreakdown.studentCommissionPct)} is $${money(estimatedBreakdown.studentCommissionAmount)}, and you receive an estimated $${money(estimatedBreakdown.studentPayout)}.`, projectId);
@@ -18069,7 +18129,13 @@ async function activateProject(projectId){
   await refreshBackendDashboardData();
 
   if (!backendAuthEnabled() || currentUser.role === 'admin' || String(currentUser.id) === String(p.studentUserId)) {
-    pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+    pushNotif(p.studentUserId, `Project started for "${p.jobTitle}"`, {
+      type:'dashboard',
+      section:'jobs_bookings',
+      studentJobsTab:'projects',
+      projectId: p.id,
+      dedupeKey:`project_started:${p.id}:${p.studentUserId}`
+    });
   }
   trackCogoEvent('project_started', { source: 'existing_project', value: Number(p.escrowAmount || p.estimatedEmployerTotal || 0), currency: 'USD' });
   employerTab = 'projects';
@@ -18405,7 +18471,13 @@ async function submitProjectChangeRequest(projectId){
   }
   if (!await persistProjectsPermanently(projects, 'Backend change request failed. Please try again so this change is saved permanently.')) return;
   await refreshBackendDashboardData();
-  pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, { type:'dashboard', section:'jobs_bookings', studentJobsTab:'projects' });
+  pushNotif(p.studentUserId, `${p.employerName} requested changes on "${p.jobTitle}"`, {
+    type:'dashboard',
+    section:'jobs_bookings',
+    studentJobsTab:'projects',
+    projectId: p.id,
+    dedupeKey:`project_changes:${p.id}:${p.studentUserId}`
+  });
   sendSystemMessage(p.studentUserId, p.studentName, `Please update the final invoice for "${p.jobTitle}".${note ? ' Note: ' + note : ''}`, p.id);
   closeModal();
   toast('Change request sent to student.');
@@ -19560,7 +19632,11 @@ async function sendAdminMessageToUser(userId){
     read: false
   });
   if (!await persistMessagesPermanently(msgs, 'Backend admin message save failed. Please try again so this message is saved for everyone.')) return;
-  pushNotif(user.id, 'Admin sent you a message.', { type:'dashboard', section:'messages' });
+  pushNotif(user.id, 'Admin sent you a message.', {
+    type:'dashboard',
+    section:'messages',
+    dedupeKey:`admin_message:${user.id}:${Date.now()}`
+  });
   logAdminAction('message_sent', { targetUserId: user.id, targetUserName: user.name });
   closeModal();
   toast('Message sent.');

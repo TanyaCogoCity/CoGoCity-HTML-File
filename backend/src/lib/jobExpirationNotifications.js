@@ -39,6 +39,7 @@ async function createDirectJobExpiryReminder(job, daysLeft) {
       title,
       body: `"${job.title}" expires on ${formatDate(job.expiresAt)} and will be removed from the job board unless extended.`,
       link,
+      dedupeKey: `job_expiration:${job.id}:${daysLeft}`,
     },
   });
   return true;

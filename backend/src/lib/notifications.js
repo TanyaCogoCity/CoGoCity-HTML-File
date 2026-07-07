@@ -46,23 +46,103 @@ async function emailNotification(data, { required = false } = {}) {
 }
 
 function withDefaultLink(row = {}) {
-  return Object.assign({ link: '/dashboard?section=notifications' }, row, {
-    link: row.link || '/dashboard?section=notifications',
+  const { dedupeKey, dedupe_key: dedupeKeySnake, ...safeRow } = row || {};
+  return Object.assign({ link: '/dashboard?section=notifications' }, safeRow, {
+    link: safeRow.link || '/dashboard?section=notifications',
   });
 }
 
-async function createNotification({ data, emailRequired = false }) {
+function notificationReceiptId(userId = '', dedupeKey = '') {
+  return `${userId}:notification:${dedupeKey}`;
+}
+
+async function recordNotificationReceipt({ userId, dedupeKey, notification, reusedExisting = false }) {
+  if (!userId || !dedupeKey || !notification?.id) return;
+  await prisma.syncRecord.upsert({
+    where: { entity_recordId: { entity: 'notification_dedupe_receipts', recordId: notificationReceiptId(userId, dedupeKey) } },
+    create: {
+      entity: 'notification_dedupe_receipts',
+      recordId: notificationReceiptId(userId, dedupeKey),
+      payload: {
+        user_id: userId,
+        dedupe_key: dedupeKey,
+        backend_notification_id: notification.id,
+        title: notification.title,
+        reused_existing: reusedExisting,
+      },
+    },
+    update: {
+      deletedAt: null,
+      payload: {
+        user_id: userId,
+        dedupe_key: dedupeKey,
+        backend_notification_id: notification.id,
+        title: notification.title,
+        reused_existing: reusedExisting,
+      },
+    },
+  });
+}
+
+async function createNotificationRaw({ data, emailRequired = false }) {
   const payload = withDefaultLink(data);
   const notification = await prisma.notification.create({ data: payload });
   const email = await emailNotification(payload, { required: emailRequired });
   return Object.assign(notification, { email });
 }
 
-async function createNotifications({ data }) {
-  const rows = (Array.isArray(data) ? data : []).map(withDefaultLink);
-  const result = await prisma.notification.createMany({ data: rows });
-  await Promise.all(rows.map((row) => emailNotification(row)));
-  return result;
+async function createNotification({ data, emailRequired = false }) {
+  const key = String(data?.dedupeKey || data?.dedupe_key || '').trim();
+  if (key) return createNotificationOnce({ data, emailRequired, dedupeKey: key });
+  return createNotificationRaw({ data, emailRequired });
 }
 
-module.exports = { createNotification, createNotifications };
+async function createNotificationOnce({ data, emailRequired = false, dedupeKey = '' }) {
+  const key = String(dedupeKey || data?.dedupeKey || data?.dedupe_key || '').trim();
+  if (!key) return createNotificationRaw({ data, emailRequired });
+
+  const payload = withDefaultLink(data);
+  const receiptId = notificationReceiptId(payload.userId, key);
+  const existingReceipt = await prisma.syncRecord.findUnique({
+    where: { entity_recordId: { entity: 'notification_dedupe_receipts', recordId: receiptId } },
+  });
+  const existingNotificationId = existingReceipt && !existingReceipt.deletedAt
+    ? String(existingReceipt.payload?.backend_notification_id || '').trim()
+    : '';
+  if (existingNotificationId) {
+    const existingNotification = await prisma.notification.findUnique({ where: { id: existingNotificationId } });
+    if (existingNotification) return Object.assign(existingNotification, { email: { skipped: true, reason: 'duplicate_notification' } });
+  }
+
+  const recentDuplicate = await prisma.notification.findFirst({
+    where: {
+      userId: payload.userId,
+      title: payload.title,
+      body: payload.body,
+      link: payload.link,
+      createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (recentDuplicate) {
+    await recordNotificationReceipt({ userId: payload.userId, dedupeKey: key, notification: recentDuplicate, reusedExisting: true });
+    return Object.assign(recentDuplicate, { email: { skipped: true, reason: 'duplicate_notification' } });
+  }
+
+  const notification = await createNotificationRaw({ data: payload, emailRequired });
+  await recordNotificationReceipt({ userId: payload.userId, dedupeKey: key, notification });
+  return notification;
+}
+
+async function createNotifications({ data }) {
+  const rows = Array.isArray(data) ? data : [];
+  const results = await Promise.all(rows.map((row) => {
+    const dedupeKey = String(row?.dedupeKey || row?.dedupe_key || '').trim();
+    return dedupeKey
+      ? createNotificationOnce({ data: row, dedupeKey })
+      : createNotification({ data: row });
+  }));
+  return { count: results.length, notifications: results };
+}
+
+module.exports = { createNotification, createNotificationOnce, createNotifications };

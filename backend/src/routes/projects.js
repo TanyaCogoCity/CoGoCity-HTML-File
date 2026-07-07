@@ -149,6 +149,7 @@ router.post('/start', requireAuth, async (req, res) => {
         link: directHireProject
           ? `/dashboard?section=direct_hire&job=${app.jobId}`
           : `/dashboard?section=jobs_bookings&project=${project.id}`,
+        dedupeKey: `project_start:${project.id}:${project.studentId}`,
       },
     ];
     if (!directHireProject) {
@@ -158,6 +159,7 @@ router.post('/start', requireAuth, async (req, res) => {
         title: 'Project funding required',
         body: `Fund project payment for ${app.job.title}. Open your dashboard to complete payment setup.`,
         link: `/dashboard?section=transactions&project=${project.id}`,
+        dedupeKey: `project_funding_required:${project.id}:${project.employerId}`,
       });
     }
     await createNotifications({ data: notifications });
@@ -219,6 +221,7 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
       title: 'Project completed by student',
       body: 'The student marked the job complete. Open your dashboard to review the work and approve payment.',
       link: `/dashboard?section=applicants_projects&project=${project.id}`,
+      dedupeKey: `project_complete_submitted:${project.id}:${project.employerId}`,
     },
   });
 
@@ -274,6 +277,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
           title: 'Payment approved',
           body: 'Your payout has been approved by the employer. Open your dashboard to view the transaction.',
           link: `/dashboard?section=transactions&project=${project.id}`,
+          dedupeKey: `project_payment_approved:${project.id}:${project.studentId}`,
         },
         {
           userId: project.employerId,
@@ -281,6 +285,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
           title: 'Project approved',
           body: 'Payment release was initiated. Please leave a review for the student from your dashboard.',
           link: `/dashboard?section=transactions&project=${project.id}`,
+          dedupeKey: `project_approved:${project.id}:${project.employerId}`,
         },
         {
           userId: project.employerId,
@@ -288,6 +293,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
           title: 'Leave a review',
           body: 'The job is done. Please leave a review so future CoGoCity users can learn from your experience.',
           link: `/dashboard?section=applicants_projects&project=${project.id}`,
+          dedupeKey: `project_review_request:${project.id}:${project.employerId}`,
         },
         {
           userId: project.studentId,
@@ -295,6 +301,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
           title: 'Leave a review',
           body: 'The job is done. Please leave a review for your CoGoCity experience.',
           link: `/dashboard?section=jobs_bookings&project=${project.id}`,
+          dedupeKey: `project_review_request:${project.id}:${project.studentId}`,
         },
       ],
     });
@@ -306,6 +313,7 @@ router.patch('/:id/approve', requireAuth, async (req, res) => {
         title: 'Project changes requested',
         body: req.body?.note || 'Employer requested changes before approval. Open your dashboard to review the request.',
         link: `/dashboard?section=jobs_bookings&project=${project.id}`,
+        dedupeKey: `project_changes_requested:${project.id}:${project.studentId}`,
       },
     });
   }

@@ -296,6 +296,7 @@ router.patch('/applications/:applicationId', requireAuth, async (req, res) => {
       title: statusLabels[nextStatus] || 'Application updated',
       body: `${app.job.title} application is now ${nextStatus}. Open your dashboard for details.`,
       link: dashboardLink,
+      dedupeKey: `direct_hire_status:${app.id}:${nextStatus}:${notifyUserId}`,
     },
   });
   if (isOwner && ['reviewing', 'shortlisted', 'hired', 'rejected'].includes(nextStatus)) {
@@ -374,6 +375,7 @@ router.post('/:id/apply', requireAuth, async (req, res) => {
         title: `${applicantName} applied to "${job.title}" with a resume.`,
         body: `${applicantName} applied to ${job.title}. Open your dashboard to review the resume.`,
         link: `/dashboard?section=my_jobs&employerMyJobsTab=applications&job=${job.id}`,
+        dedupeKey: `direct_hire_apply:${app.id}:${job.createdBy}`,
       },
     });
 

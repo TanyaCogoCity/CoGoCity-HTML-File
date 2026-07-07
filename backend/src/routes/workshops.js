@@ -156,6 +156,7 @@ router.post('/:id/enroll', requireAuth, async (req, res) => {
       title: 'New workshop registration',
       body: `${req.user.displayName} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for ${workshop.title}`,
       link: `/dashboard?section=workshops&id=${workshop.id}`,
+      dedupeKey: `workshop_registration:${enrollment.id}:${workshop.createdBy}`,
     },
   });
 

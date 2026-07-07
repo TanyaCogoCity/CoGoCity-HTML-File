@@ -120,6 +120,7 @@ async function notifyManualProjectPaymentCaptured({ paymentIntent, finalAmounts 
       title: 'Payment released',
       body: `Payment for ${jobTitle} has been released.${studentPayout ? ` Estimated student payout: $${Number(studentPayout).toFixed(2)}.` : ''}`,
       link: manualProjectDashboardLink(projectId),
+      dedupeKey: `manual_payment_released:${paymentIntent.id}:${studentUserId}`,
     });
   }
   if (payerUserId) {
@@ -129,6 +130,7 @@ async function notifyManualProjectPaymentCaptured({ paymentIntent, finalAmounts 
       title: 'Project payment completed',
       body: `Your payment for ${jobTitle} is complete. Total paid: $${Number(amountTotal || 0).toFixed(2)}.`,
       link: manualProjectDashboardLink(projectId),
+      dedupeKey: `manual_payment_completed:${paymentIntent.id}:${payerUserId}`,
     });
   }
   if (rows.length) await createNotifications({ data: rows });
@@ -147,6 +149,7 @@ async function notifyManualProjectTransferSent({ paymentIntent, transferAmount }
       title: 'Payout sent',
       body: `Your payout for ${jobTitle} has been sent to Stripe.${transferAmount ? ` Amount: $${Number(transferAmount).toFixed(2)}.` : ''}`,
       link: manualProjectDashboardLink(projectId),
+      dedupeKey: `manual_payout_sent:${paymentIntent.id}:${studentUserId}`,
     },
   });
 }
@@ -572,6 +575,7 @@ async function createPaymentIssueNotification({ userId, title, body, link, type 
       title,
       body,
       link: safeLink,
+      dedupeKey: `payment_issue:${userId}:${type}:${safeLink}:${title}`,
     },
   });
 }
@@ -1027,6 +1031,7 @@ async function completeWorkshopCheckoutSession(session) {
         title: 'New workshop registration',
         body: `${updated.user?.displayName || 'Someone'} registered ${quantity} ticket${quantity === 1 ? '' : 's'} for ${updated.workshop.title}`,
         link: `/dashboard?section=workshops&id=${updated.workshop.id}`,
+        dedupeKey: `workshop_registration:${updated.id}:${updated.workshop.createdBy}`,
       },
     });
     if (Number(updated.platformFee || 0) > 0) {
@@ -1095,6 +1100,7 @@ async function completeJobCheckoutSession(session) {
         title: 'Job listing payment received',
         body: `${job.title} is now active on CoGo City.`,
         link: `/dashboard?section=transactions&job=${job.id}`,
+        dedupeKey: `job_listing_paid:${job.id}:${job.createdBy}`,
       },
     });
   }
@@ -1212,6 +1218,7 @@ async function completeJobExtensionCheckoutSession(session) {
         title: 'Job listing extension payment received',
         body: `${job.title} was extended through ${nextExpiry.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`,
         link: `/dashboard?section=transactions&job=${job.id}`,
+        dedupeKey: `job_listing_extended:${job.id}:${job.createdBy}:${nextExpiry.toISOString().slice(0, 10)}`,
       },
     });
   }
@@ -1743,6 +1750,7 @@ router.post('/request-workshop-refund', requireAuth, async (req, res) => {
           title: 'Workshop refund processed',
           body: `${enrollment.user?.displayName || 'A registrant'} requested a refund for ${enrollment.workshop.title}.`,
           link: `/dashboard?section=workshops&id=${enrollment.workshop.id}`,
+          dedupeKey: `workshop_refund:${enrollment.id}:${enrollment.workshop.createdBy}`,
         },
         {
           userId: enrollment.userId,
@@ -1750,6 +1758,7 @@ router.post('/request-workshop-refund', requireAuth, async (req, res) => {
           title: 'Workshop refund processed',
           body: `Your refund for ${enrollment.workshop.title} has been processed.`,
           link: '/dashboard?section=workshops',
+          dedupeKey: `workshop_refund:${enrollment.id}:${enrollment.userId}`,
         },
       ],
     });
@@ -1813,6 +1822,7 @@ router.post('/cancel-workshop', requireAuth, async (req, res) => {
       title: 'Workshop canceled',
       body: `${workshop.title} was canceled. Any paid registration has been refunded. Host message: ${reason}`,
       link: '/dashboard?section=workshops',
+      dedupeKey: `workshop_canceled:${workshop.id}:${enrollment.userId}`,
     }));
     if (notificationRows.length) await createNotifications({ data: notificationRows });
 
@@ -2208,7 +2218,7 @@ router.post('/capture-payment-intent', requireAuth, async (req, res) => {
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { amountTotal: finalAmounts.amountTotal, platformFee: finalAmounts.platformFee, studentPayout: finalAmounts.studentPayout, status: synced?.status || 'paid' } });
     await prisma.project.update({ where: { id: project.id }, data: { status: 'completed', completedAt: new Date(), totalAmount: finalWorkTotal ?? project.totalAmount } });
-    await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}` } });
+    await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payment released', body: 'Project payment has been released.', link: `/dashboard?section=transactions&project=${project.id}`, dedupeKey: `project_payment_released:${project.id}:${project.studentId}` } });
     await notifyAdminProjectCommission({
       payer: project.employer,
       payee: project.student,
@@ -2729,7 +2739,7 @@ router.post('/transfer-payout', requireAuth, async (req, res) => {
     );
 
     await prisma.transaction.update({ where: { id: tx.id }, data: { stripeTransferId: transfer.id } });
-    await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payout sent', body: 'Your project payout has been sent to Stripe.', link: `/dashboard?section=transactions&project=${project.id}` } });
+    await createNotification({ data: { userId: project.studentId, type: notificationType('payout'), title: 'Payout sent', body: 'Your project payout has been sent to Stripe.', link: `/dashboard?section=transactions&project=${project.id}`, dedupeKey: `project_payout_sent:${project.id}:${project.studentId}` } });
     await writeAuditLog({ userId: req.user.id, action: 'payment.transfer.create', entityType: 'transaction', entityId: tx.id, payload: { transferId: transfer.id, amount: fromCents(transferAmount), sourceTransaction: sourceTransaction || null } });
 
     return ok(res, { transfer_id: transfer.id, amount: transfer.amount, status: 'paid', project_id: project.id });
