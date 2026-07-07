@@ -27,13 +27,13 @@
       if (robots && host === 'staging.cogocity.com') robots.setAttribute('content', 'noindex,nofollow');
     })();
   </script>
-  <!-- Google Tag Manager + Consent Mode: privacy-first default before any Google tag loads. -->
+  <!-- Google Tag Manager + Consent Mode. Staging is analytics-off; production sends to the live GA4 property. -->
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     var cogoAnalyticsHostname = window.location && window.location.hostname;
     var cogoAnalyticsIsStaging = cogoAnalyticsHostname === 'staging.cogocity.com';
-    var cogoAnalyticsStorageDefault = cogoAnalyticsIsStaging ? 'granted' : 'denied';
+    var cogoAnalyticsStorageDefault = cogoAnalyticsIsStaging ? 'denied' : 'granted';
     gtag('consent', 'default', {
       ad_storage: 'denied',
       ad_user_data: 'denied',
@@ -47,8 +47,7 @@
     (function(w,d,s,l,i){
       var hostname = w.location && w.location.hostname;
       var isStaging = hostname === 'staging.cogocity.com';
-      var stagingGtmExplicitlyDisabled = w.COGO_ENABLE_STAGING_GTM === false;
-      if (isStaging && stagingGtmExplicitlyDisabled) {
+      if (isStaging) {
         w[l].push({ event: 'cogo_gtm_blocked_for_staging', environment: 'staging', hostname: hostname });
         return;
       }
@@ -744,8 +743,6 @@
   </style>
 </head>
 <body>
-  <!-- Google Tag Manager noscript fallback. Staging routes through the staging GA4 stream in GTM. -->
-  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TMHS95ZD" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   <a class="skip-link" href="#app">Skip to main content</a>
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="a11y-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -912,9 +909,12 @@ let googleMapsPlacesLoading = false;
 let googleMapsPlacesReady = false;
 let googleMapsPlacesPromise = null;
 const COGO_GTM_CONTAINER_ID = 'GTM-TMHS95ZD';
-const COGO_GA4_STAGING_MEASUREMENT_ID = 'G-DDZV99NNSX';
-const COGO_GA4_MEASUREMENT_ID = (typeof window !== 'undefined' && window.COGO_GA4_MEASUREMENT_ID) || (COGO_IS_STAGING ? COGO_GA4_STAGING_MEASUREMENT_ID : '');
-const COGO_DIRECT_GA4_ENABLED = !COGO_IS_STAGING && !!COGO_GA4_MEASUREMENT_ID;
+const COGO_GA4_PRODUCTION_MEASUREMENT_ID = 'G-6JYL2QKV1B';
+const COGO_ANALYTICS_ENABLED = !COGO_IS_STAGING;
+const COGO_GA4_MEASUREMENT_ID = COGO_ANALYTICS_ENABLED
+  ? ((typeof window !== 'undefined' && window.COGO_GA4_MEASUREMENT_ID) || COGO_GA4_PRODUCTION_MEASUREMENT_ID)
+  : '';
+const COGO_DIRECT_GA4_ENABLED = COGO_ANALYTICS_ENABLED && !!COGO_GA4_MEASUREMENT_ID;
 let cogoAnalyticsInitialized = false;
 let cogoGa4Initialized = false;
 let cogoAnalyticsSearchTimer = null;
@@ -1189,7 +1189,7 @@ function sendCogoGa4Event(eventName='', payload={}){
   window.gtag('event', eventName, gaPayload);
 }
 function initCogoAnalytics(){
-  if (typeof window === 'undefined' || cogoAnalyticsInitialized) return;
+  if (typeof window === 'undefined' || cogoAnalyticsInitialized || !COGO_ANALYTICS_ENABLED) return;
   cogoAnalyticsInitialized = true;
   window.dataLayer = window.dataLayer || [];
   window.dataLayer.push({
@@ -1202,7 +1202,7 @@ function initCogoAnalytics(){
   initCogoGa4();
 }
 function trackCogoEvent(eventName='', params={}){
-  if (typeof window === 'undefined' || !eventName) return;
+  if (typeof window === 'undefined' || !eventName || !COGO_ANALYTICS_ENABLED) return;
   initCogoAnalytics();
   const payload = sanitizeCogoAnalyticsParams(Object.assign({
     environment: getCogoAnalyticsEnvironment(),
