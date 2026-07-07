@@ -7786,12 +7786,23 @@ function notificationVisibleDedupeKey(item={}){
   const link = String(item.link || '');
   const applicationId = String(action.applicationId || action.application_id || '').trim()
     || ((link.match(/[?&]application=([^&#]+)/) || [])[1] ? decodeURIComponent((link.match(/[?&]application=([^&#]+)/) || [])[1]) : '');
-  if (applicationId && (title.includes('you have an offer for "') || title.includes('you received an offer from '))) {
+  if (applicationId && (
+    title.includes('you have an offer for "')
+    || title.includes('you received an offer from ')
+    || title.includes(' accepted your offer for "')
+    || title.includes(' declined your offer for "')
+  )) {
+    if (title.includes(' accepted your offer for "')) return `offer_accepted:${applicationId}`;
+    if (title.includes(' declined your offer for "')) return `offer_declined:${applicationId}`;
     return `offer:${applicationId}`;
   }
   const directOfferMatch = title.match(/^you received an offer from .+?:\s*"(.+)"$/);
   const offerMatch = title.match(/^you have an offer for "(.+)"$/);
   if (directOfferMatch || offerMatch) return `offer_title:${directOfferMatch?.[1] || offerMatch?.[1] || title}`;
+  const acceptedOfferMatch = title.match(/^.+? accepted your offer for "(.+)"$/);
+  const declinedOfferMatch = title.match(/^.+? declined your offer for "(.+)"$/);
+  if (acceptedOfferMatch) return `offer_accepted_title:${acceptedOfferMatch[1]}`;
+  if (declinedOfferMatch) return `offer_declined_title:${declinedOfferMatch[1]}`;
   if (title.includes("you've been paid") && title.includes('my transactions')) return `student_payment:${title}`;
   if (title.startsWith('you paid $') && title.includes('my transactions')) return `employer_payment:${title}`;
   if (title === 'project payment completed') return `project_payment_completed:${item.link || ''}`;
@@ -16512,7 +16523,14 @@ async function acceptOffer(appId){
   a.status = 'accepted';
   if (!await persistApplicationsPermanently(apps, 'Backend offer acceptance failed. Please try again so this change is saved for everyone.')) return;
   if (!await persistCommunityJobDerivedState(a.postId, apps, 'Backend job status update failed. Please try again so this change is saved for everyone.')) return;
-  pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
+  pushNotif(a.employerId, `${currentUser.name} accepted your offer for "${a.jobTitle}"`, {
+    type:'dashboard',
+    section:'applicants_projects',
+    employerTab:'applicants',
+    applicationId: a.id,
+    notificationId: `${a.id}:offer_accepted`,
+    dedupeKey:`offer_accepted:${a.id}:${a.employerId}`
+  });
   openModal('Offer Accepted', `
     <div class="warning">You can\u2019t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to \u201CIn Progress\u201D once confirmed.</div>
     <div style="margin-top:16px;display:flex;justify-content:flex-end">
@@ -16527,7 +16545,14 @@ async function declineOffer(appId){
   a.status = 'declined';
   if (!await persistApplicationsPermanently(apps, 'Backend offer decline failed. Please try again so this change is saved for everyone.')) return;
   if (!await persistCommunityJobDerivedState(a.postId, apps, 'Backend job status update failed. Please try again so this change is saved for everyone.')) return;
-  pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, { type:'dashboard', section:'applicants_projects', employerTab:'applicants' });
+  pushNotif(a.employerId, `${currentUser.name} declined your offer for "${a.jobTitle}"`, {
+    type:'dashboard',
+    section:'applicants_projects',
+    employerTab:'applicants',
+    applicationId: a.id,
+    notificationId: `${a.id}:offer_declined`,
+    dedupeKey:`offer_declined:${a.id}:${a.employerId}`
+  });
   toast('Offer declined.');
   renderDashboard();
 }

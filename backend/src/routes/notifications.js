@@ -36,6 +36,10 @@ function notificationVisibleDedupeKey(row = {}) {
   if (title.startsWith('leave a review for ')) return `review_request:${title}`;
   if (title.startsWith("you've got a message from ")) return `message_thread:${title}:${row.link || ''}`;
   if (title.includes(' applied to "') && !title.includes('resume') && !String(row.link || '').includes('my_jobs')) return `community_application:${title}`;
+  const acceptedOfferMatch = title.match(/^.+? accepted your offer for "(.+)"$/);
+  const declinedOfferMatch = title.match(/^.+? declined your offer for "(.+)"$/);
+  if (acceptedOfferMatch) return `offer_accepted_title:${acceptedOfferMatch[1]}`;
+  if (declinedOfferMatch) return `offer_declined_title:${declinedOfferMatch[1]}`;
   return '';
 }
 
