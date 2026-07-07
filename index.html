@@ -1334,6 +1334,7 @@ let backendMessageThreadsLoading = {};
 let backendMessageThreadsLoaded = {};
 let backendCurrentProfileLoading = false;
 let backendCurrentProfileLoadedFor = '';
+let stripeOnboardingStatusLoadedFor = '';
 let backendBlogPostsLoading = false;
 let backendBlogPostsLoaded = false;
 let backendWorkshopsLoading = false;
@@ -2255,6 +2256,22 @@ let stripeConnectOpening = false;
 function stripeOnboardingEnabled(){
   return !!(STRIPE_ENABLED && backendAuthEnabled() && getBackendAccessToken());
 }
+async function ensureStripeOnboardingAvailable(setupLabel='payment setup'){
+  if (!STRIPE_ENABLED) await loadStripePublicConfig();
+  if (!STRIPE_ENABLED) {
+    toast(`Secure ${setupLabel} is not configured yet. Please contact CoGo City support.`);
+    return false;
+  }
+  if (!backendAuthEnabled()) {
+    toast(`Secure ${setupLabel} requires backend sign-in.`);
+    return false;
+  }
+  if (!getBackendAccessToken()) {
+    toast(`Please sign in again before updating secure ${setupLabel}.`);
+    return false;
+  }
+  return true;
+}
 function requireStagingStripePayments(actionLabel='continue'){
   if (!STRIPE_ENABLED) return true;
   if (backendAuthEnabled() && getBackendAccessToken()) return true;
@@ -2286,6 +2303,7 @@ async function refreshStripeOnboardingStatus(options={}){
   if (!stripeOnboardingEnabled()) return null;
   try {
     const status = await backendAuthRequest('/stripe/onboarding/status');
+    stripeOnboardingStatusLoadedFor = currentUser?.id || '';
     syncCurrentUserStripeOnboarding(status);
     if (options.rerender) renderDashboard();
     return status;
@@ -2487,7 +2505,7 @@ function renderUnder18StudentSafetyNotice(){
   `;
 }
 async function openPayerStripeSetupModal(){
-  if (!stripeOnboardingEnabled()) return toast('Secure payment setup is available on staging after sign-in.');
+  if (!await ensureStripeOnboardingAvailable('payment setup')) return;
   if (!STRIPE_PUBLISHABLE_KEY) return toast('Secure payment setup is not configured.');
   openModal('Add Payment Method', `
     <div class="card form-card">
@@ -2548,9 +2566,9 @@ async function submitPayerStripeSetup(){
   }
 }
 async function startStripeConnectOnboarding(options={}){
-  if (!stripeOnboardingEnabled()) {
+  if (!await ensureStripeOnboardingAvailable('payout setup')) {
     stripeConnectOpening = false;
-    return toast('Secure payout setup is available on staging after sign-in.');
+    return;
   }
   if (!options.confirmed) return openStripeConnectBeforeYouStartModal();
   if (stripeConnectOpening && !options.keepOpeningState) return;
@@ -6832,6 +6850,10 @@ function attachMessagesToProject(projectId, employerId, studentUserId){
 }
 function openPaymentMethodModal(retryAppId=''){
   if (!canViewBillingDetails()) return toast('Billing details are hidden while viewing as a user.');
+  if (backendAuthEnabled()) {
+    openPayerStripeSetupModal();
+    return;
+  }
   const paymentMethod = getEmployerPaymentMethod(currentUser.id) || {};
   openModal('Update Payment Method', `
     <div class="warning" style="margin-bottom:14px">Employers sign up with a payment method on file. Update the saved billing details here if needed.</div>
@@ -15080,7 +15102,7 @@ function renderDashboard(){
   if (backendAuthEnabled() && getBackendAccessToken() && backendCurrentProfileLoadedFor !== currentUser.id) {
     refreshBackendCurrentProfile({ rerender:true });
   }
-  if (stripeOnboardingEnabled() && !currentUser.stripe_onboarding) {
+  if (stripeOnboardingEnabled() && stripeOnboardingStatusLoadedFor !== currentUser.id) {
     refreshStripeOnboardingStatus({ rerender:true, toast:false });
   }
 
@@ -22155,7 +22177,12 @@ function renderTransactionsSection(el){
   renderTransactionsPanel();
 }
 function renderSettings(el){
-  const paymentMethod = getEmployerPaymentMethod(currentUser.id);
+  const payerStatus = userStripeOnboarding(currentUser).payer || {};
+  const localPaymentMethod = getEmployerPaymentMethod(currentUser.id);
+  const paymentLabel = payerStatus.ready
+    ? 'Stripe payment method saved'
+    : (localPaymentMethod && !backendAuthEnabled() ? `${localPaymentMethod.brand || 'Card'} \u2022\u2022\u2022\u2022 ${localPaymentMethod.last4 || 'saved'}` : 'No live payment method on file');
+  const paymentButtonLabel = payerStatus.ready ? 'Update Payment Method' : 'Add Payment Method';
   el.innerHTML = `
     <div class="section-title">Settings</div>
     <div class="card form-card" style="margin-top:18px;max-width:720px">
@@ -22170,8 +22197,8 @@ function renderSettings(el){
       <div class="warning" style="margin-bottom:14px">If you delete your profile, your profile and all associated services will be permanently removed and will no longer be visible to other users.</div>
       ${isEmployerAccount(currentUser) ? (canViewBillingDetails() ? `
         <div class="small muted" style="margin-bottom:8px">Payment Method</div>
-        <div class="field"><input value="${paymentMethod ? esc(paymentMethod.brand + ' \u2022\u2022\u2022\u2022 ' + paymentMethod.last4) : 'No payment method on file'}" readonly></div>
-        <button class="btn btn-outline" onclick="openPayerStripeSetupModal()">Update Payment Method</button>
+        <div class="field"><input value="${esc(paymentLabel)}" readonly></div>
+        <button class="btn btn-outline" onclick="openPayerStripeSetupModal()">${paymentButtonLabel}</button>
       ` : `<div class="warning">Billing details are hidden while Admin is viewing as this user.</div>`) : ''}
     </div>
   `;

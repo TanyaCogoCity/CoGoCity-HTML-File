@@ -377,14 +377,92 @@ function onboardingStatusForUser(user) {
   };
 }
 
+function isExpiredCardPaymentMethod(paymentMethod) {
+  const card = paymentMethod?.card;
+  if (!card?.exp_month || !card?.exp_year) return false;
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth() + 1;
+  return Number(card.exp_year) < currentYear || (Number(card.exp_year) === currentYear && Number(card.exp_month) < currentMonth);
+}
+
+async function clearStalePayerPaymentMethod(user, error, source = 'stripe.payer_payment_method.auto_heal') {
+  if (!user?.id) return user;
+  const staleCustomerId = user.stripeCustomerId || null;
+  const stalePaymentMethodId = user.stripeDefaultPaymentMethodId || null;
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      stripeCustomerId: null,
+      stripeDefaultPaymentMethodId: null,
+      stripePaymentSetupStatus: 'not_started',
+    },
+  });
+  await writeAuditLog({
+    userId: user.id,
+    action: source,
+    entityType: 'user',
+    entityId: user.id,
+    payload: {
+      staleCustomerId,
+      stalePaymentMethodId,
+      reason: error?.message || 'Saved Stripe payer record is inaccessible, expired, or invalid for the configured platform key',
+      stripeCode: error?.code || null,
+      stripeParam: error?.param || null,
+    },
+  });
+  return updated;
+}
+
+async function syncPayerPaymentMethod(user) {
+  if (!user?.stripeCustomerId) return user;
+  try {
+    const customer = await stripe.customers.retrieve(user.stripeCustomerId);
+    if (!customer || customer.deleted) {
+      return clearStalePayerPaymentMethod(user, new Error('Saved Stripe customer was deleted'), 'stripe.payer_customer.deleted');
+    }
+    const defaultPaymentMethodId = user.stripeDefaultPaymentMethodId || (
+      typeof customer.invoice_settings?.default_payment_method === 'string'
+        ? customer.invoice_settings.default_payment_method
+        : customer.invoice_settings?.default_payment_method?.id
+    );
+    if (!defaultPaymentMethodId) {
+      return clearStalePayerPaymentMethod(user, new Error('Saved Stripe customer has no default payment method'), 'stripe.payer_payment_method.missing');
+    }
+    const paymentMethod = await stripe.paymentMethods.retrieve(defaultPaymentMethodId);
+    if (!paymentMethod || isExpiredCardPaymentMethod(paymentMethod)) {
+      return clearStalePayerPaymentMethod(user, new Error('Saved Stripe payment method is expired or invalid'), 'stripe.payer_payment_method.invalid');
+    }
+    if (user.stripeDefaultPaymentMethodId !== defaultPaymentMethodId || user.stripePaymentSetupStatus !== 'complete') {
+      return prisma.user.update({
+        where: { id: user.id },
+        data: {
+          stripeDefaultPaymentMethodId: defaultPaymentMethodId,
+          stripePaymentSetupStatus: 'complete',
+        },
+      });
+    }
+    return user;
+  } catch (error) {
+    const missingOrInvalid = error?.code === 'resource_missing'
+      || error?.type === 'StripeInvalidRequestError'
+      || isDisconnectedConnectError(error);
+    if (missingOrInvalid) return clearStalePayerPaymentMethod(user, error);
+    throw error;
+  }
+}
+
 async function ensureStripeCustomer(user) {
   if (user.stripeCustomerId) {
     try {
       const existingCustomer = await stripe.customers.retrieve(user.stripeCustomerId);
       if (existingCustomer && !existingCustomer.deleted) return user.stripeCustomerId;
     } catch (error) {
-      const isMissingCustomer = error?.code === 'resource_missing' || error?.type === 'StripeInvalidRequestError';
+      const isMissingCustomer = error?.code === 'resource_missing'
+        || error?.type === 'StripeInvalidRequestError'
+        || isDisconnectedConnectError(error);
       if (!isMissingCustomer) throw error;
+      await clearStalePayerPaymentMethod(user, error, 'stripe.payer_customer.auto_heal');
     }
   }
 
@@ -1257,7 +1335,9 @@ router.get('/config', (req, res) => {
 router.get('/onboarding/status', requireAuth, async (req, res) => {
   if (!stripe) return fail(res, 503, 'Stripe is not configured');
   try {
-    const user = req.user.stripeAccountId ? await syncConnectAccount(req.user) : req.user;
+    let user = req.user;
+    if (['employer', 'neighbor', 'admin'].includes(user.role)) user = await syncPayerPaymentMethod(user);
+    if (user.stripeAccountId) user = await syncConnectAccount(user);
     return ok(res, onboardingStatusForUser(user));
   } catch (error) {
     return fail(res, 400, 'Failed to load Stripe onboarding status', error.message);
