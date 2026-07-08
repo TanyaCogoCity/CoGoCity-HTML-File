@@ -18881,7 +18881,7 @@ function openMessagePartnerProfile(userId){
   openUserProfile(userId);
 }
 function renderUserNameLink(userId, name, compact=false){
-  if (!userId || !getUserById(userId)) return `<span>${esc(name || 'User')}</span>`;
+  if (!userId) return `<span>${esc(name || 'User')}</span>`;
   return `<a class="link-btn" style="font-weight:${compact ? 800 : 700};text-align:left" href="${getProfileUrl(userId)}" onclick="event.stopPropagation()">${esc(name || 'User')}</a>`;
 }
 function renderBusinessNameLink(userId, name, compact=false){
