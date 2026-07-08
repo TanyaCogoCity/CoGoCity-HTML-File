@@ -3575,13 +3575,15 @@ function getImageView(source='', variant='full'){
   const stored = isImageRecordId(raw) ? getImageById(raw) : null;
   if (stored) {
     const assetUrl = backendImageAssetUrl(stored.id || raw);
-    const hasLegacyOnlySource = [stored.full_url, stored.fullUrl, stored.url, stored.medium_url, stored.mediumUrl, stored.thumb_url, stored.thumbUrl, stored.thumbnail_url, stored.thumbnailUrl]
-      .some(isLegacyWordPressUploadSource);
+    const legacySource = [stored.full_url, stored.fullUrl, stored.url, stored.medium_url, stored.mediumUrl, stored.thumb_url, stored.thumbUrl, stored.thumbnail_url, stored.thumbnailUrl]
+      .find(isLegacyWordPressUploadSource);
+    const legacyProxyUrl = legacyWordPressMediaProxyUrl(legacySource || '');
     const fullUrl = usableImageSource(stored.full_url || stored.fullUrl)
       || usableImageSource(stored.url)
       || usableImageSource(stored.medium_url || stored.mediumUrl)
       || usableImageSource(stored.thumb_url || stored.thumbUrl)
       || usableImageSource(stored.thumbnail_url || stored.thumbnailUrl)
+      || legacyProxyUrl
       || assetUrl
       || '';
     const mediumUrl = usableImageSource(stored.medium_url || stored.mediumUrl) || fullUrl;
