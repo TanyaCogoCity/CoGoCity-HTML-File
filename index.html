@@ -2340,7 +2340,7 @@ function openPostSignupStripeOnboardingPrompt(kind){
     <div class="card form-card">
       <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Add payment method' : 'Get ready to receive payouts'}</div>
       <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Add a secure payment method before messaging, booking, or registering for classes. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect setup. Stripe collects and stores tax identity, SSN/TIN, bank, and IRS reporting details; CoGo City stores only onboarding status.'}</div>
-      <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled for this staging environment.</div>
+      <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled. Payment details are handled by Stripe, not stored in CoGo City.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Later</button>
         <button class="btn btn-blue" onclick="${isPayer ? 'closeModal();openPayerStripeSetupModal()' : 'closeModal();startStripeConnectOnboarding()'}">${isPayer ? 'Add Card' : 'Set Up Payouts'}</button>
@@ -2450,7 +2450,7 @@ function requireEmployerPaymentSetup(actionLabel='interact with students'){
   return requirePayerPaymentSetup(actionLabel);
 }
 function renderStripeOnboardingCard(){
-  if (!stripeOnboardingEnabled()) return '';
+  if (!backendAuthEnabled() || !getBackendAccessToken() || (!COGO_IS_PRODUCTION && !STRIPE_ENABLED)) return '';
   const status = userStripeOnboarding();
   const isPayer = ['employer','neighbor'].includes(currentUser.role);
   const isPayout = currentUser.role === 'student';
@@ -2486,8 +2486,8 @@ function renderStripeOnboardingCard(){
   `);
   if (!blocks.length) return '';
   const setupCopy = isPayout
-    ? 'Payout setup is enabled for this staging environment. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.'
-    : 'Payment setup is enabled for this staging environment. Card details are handled securely by Stripe, not stored in CoGo City.';
+    ? 'Payout setup is enabled. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.'
+    : 'Payment setup is enabled. Card details are handled securely by Stripe, not stored in CoGo City.';
   return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">${setupCopy}</div>${blocks.join('')}${renderUnder18StudentSafetyNotice()}</div>`;
 }
 function renderUnder18StudentSafetyNotice(){
@@ -15845,6 +15845,14 @@ function renderPaymentMethodRequired(el){
 function renderProfileCompletionRequired(el){
   el.innerHTML = `
     ${renderRequiredAccountChecklist(currentUser)}
+    ${isEmployerLikeUser(currentUser) && needsRequiredPaymentMethod() ? `
+      <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
+        <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
+        <div class="warning" style="margin:0 0 14px">You can add or update your payment method before finishing the remaining profile fields. CoGo City never stores card numbers.</div>
+        ${COGO_IS_PRODUCTION && !COGO_IS_TEMP_PRODUCTION_TEST ? `<div class="small muted" style="margin:0 0 12px">This is the live CoGo City site, so Stripe only accepts real payment cards here.</div>` : ''}
+        ${renderStripeOnboardingCard()}
+      </div>
+    ` : ''}
   `;
 }
 function renderPayoutSetupRequired(el){
