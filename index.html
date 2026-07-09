@@ -364,6 +364,14 @@
     .bubble.mine{background:var(--color-link);color:#fff;align-self:flex-end}
     .bubble.theirs{background:#F3F4F6;color:var(--dark);align-self:flex-start}
     .bubble.new-message{border:2px solid var(--color-link);box-shadow:0 0 0 2px rgba(59,130,246,.15);font-weight:700}
+    .bubble .formatted-long-text{color:inherit;line-height:1.5;font-size:inherit}
+    .bubble .formatted-long-text p{margin:.25rem 0 .65rem}
+    .bubble .formatted-long-text p:last-child{margin-bottom:0}
+    .bubble .formatted-long-text ul,.bubble .formatted-long-text ol{margin:.35rem 0 .65rem;padding-left:1.15rem}
+    .bubble .formatted-long-text li{margin:.25rem 0}
+    .bubble .formatted-long-text a{font-weight:800;text-decoration:underline;text-underline-offset:2px}
+    .bubble.mine .formatted-long-text a{color:#fff}
+    .bubble.theirs .formatted-long-text a{color:var(--color-link)}
     .msg-compose{display:flex;gap:10px;padding:12px;border-top:1px solid var(--border)}
     .msg-compose input{flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px}
     .admin-contact-widget{position:fixed;right:18px;bottom:18px;z-index:80;width:min(340px,calc(100vw - 28px));box-shadow:0 18px 45px rgba(15,23,42,.18)}
@@ -6051,6 +6059,15 @@ function renderFormattedInlineMarkdown(value=''){
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) => {
     const index = placeholders.push(`<a href="${esc(url)}" target="_blank" rel="noopener">${label}</a>`) - 1;
     return `@@LINK_${index}@@`;
+  });
+  html = html.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<>"']+)/g, (match, prefix, rawUrl) => {
+    const trailing = rawUrl.match(/[.,!?;:)]+$/);
+    const suffix = trailing ? trailing[0] : '';
+    const displayUrl = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
+    if (!displayUrl) return match;
+    const href = displayUrl.startsWith('www.') ? `https://${displayUrl}` : displayUrl;
+    const index = placeholders.push(`<a href="${esc(href)}" target="_blank" rel="noopener">${esc(displayUrl)}</a>`) - 1;
+    return `${prefix}@@LINK_${index}@@${suffix}`;
   });
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
@@ -19023,6 +19040,9 @@ function getMessagePartnerDisplayName(userId, fallback='User'){
 function renderMessagePartnerName(userId, name, compact=false){
   return renderUserNameLink(userId, getMessagePartnerDisplayName(userId, name), compact);
 }
+function renderMessageBody(content=''){
+  return renderFormattedLongText(content || '', { small:true, emptyHtml:'' });
+}
 function getDirectThreadId(userA='', userB=''){
   const parts = [String(userA || '').trim(), String(userB || '').trim()].filter(Boolean).sort();
   return `dm:${parts.join(':')}`;
@@ -19189,7 +19209,7 @@ function renderThreadView(userId){
         ${msgs.length ? msgs.map(m => `
           <div class="bubble ${(String(m.fromId) === String(currentUser.id)) ? 'mine' : 'theirs'}">
             <div class="small muted" style="margin-bottom:6px">${esc(m.fromName || (getUserById(m.fromId) || {}).name || 'User')}</div>
-            ${esc(m.content)}
+            ${renderMessageBody(m.content)}
             <div style="font-size:.7rem;opacity:.7;margin-top:6px">${timeAgo(m.createdAt)}</div>
           </div>
         `).join('') : `<div class="muted small">No messages in this thread.</div>`}
@@ -19274,7 +19294,7 @@ function renderThreadView(userId){
     <div class="messages" id="messages-box">
       ${msgs.length ? msgs.map(m => `
         <div class="bubble ${m.fromId === currentUser.id ? 'mine' : 'theirs'} ${unreadBeforeOpen.has(String(m.id)) ? 'new-message' : ''}">
-          ${esc(m.content)}
+          ${renderMessageBody(m.content)}
           <div style="font-size:.7rem;opacity:.7;margin-top:6px">${unreadBeforeOpen.has(String(m.id)) ? 'NEW \u00B7 ' : ''}${timeAgo(m.createdAt)}</div>
         </div>
       `).join('') : `<div class="muted small">No messages yet. Say hello.</div>`}
