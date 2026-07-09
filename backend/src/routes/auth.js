@@ -342,6 +342,7 @@ function buildUserProfileData(userId, payload = {}) {
   const birthDate = profile.birthDate || profile.birth_date || profile.birthday || payload.dateOfBirth || payload.date_of_birth || '';
   const metadata = {
     photo: profile.photo || payload.photo || '',
+    business_logo: business.logo || business.business_logo || payload.businessLogo || payload.business_logo || '',
     profile_images: profile.profileImages || [],
     video_url: profile.video_url || profile.videoUrl || '',
     video_type: profile.video_type || profile.videoType || '',
@@ -367,6 +368,20 @@ function buildUserProfileData(userId, payload = {}) {
     businessTin: null,
     metadata,
   };
+}
+
+function validateRequiredProfileSignup(payload = {}, normalizedPayload = {}) {
+  const role = String(normalizedPayload.role || payload.role || '').toLowerCase();
+  if (!['student', 'employer', 'neighbor'].includes(role)) return '';
+  const profile = payload.profile || {};
+  const business = payload.businessProfile || profile.businessProfile || {};
+  if (!String(profile.about || payload.about || '').trim()) return 'Please add an About section before creating your account.';
+  if (!String(profile.photo || payload.photo || profile.avatar || payload.avatar || '').trim()) return 'Please upload a profile photo or choose an avatar before creating your account.';
+  if (role === 'employer') {
+    if (!String(business.about || payload.businessAbout || '').trim()) return 'Please add an About Business section before creating your account.';
+    if (!String(business.logo || business.business_logo || payload.businessLogo || payload.business_logo || '').trim()) return 'Please add a business logo before creating your account.';
+  }
+  return '';
 }
 
 function registerPayloadErrorMessage(error) {
@@ -545,6 +560,8 @@ router.post('/register', async (req, res) => {
     if (payload.role === 'admin') return fail(res, 403, 'Admin accounts cannot be created through public registration');
     const usOnlySignupProblem = validateUsOnlySignup(req.body || {}, payload);
     if (usOnlySignupProblem) return fail(res, 400, usOnlySignupProblem);
+    const requiredProfileProblem = validateRequiredProfileSignup(req.body || {}, payload);
+    if (requiredProfileProblem) return fail(res, 400, requiredProfileProblem);
     const emailHash = reactivationEmailHash(payload.email);
     const exists = await prisma.user.findUnique({ where: { email: payload.email } });
     const deletedByHash = !exists && emailHash

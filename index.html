@@ -9495,7 +9495,7 @@ function renderEmployerSignupStepContent(){
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupPhotoFromLibrary')}</div>` : ''}
       <div class="field"><label>Or choose an avatar emoji</label>${renderEmployerAvatarPicker()}</div>
       <div style="display:flex;gap:14px;align-items:center;margin:12px 0">${d.photo ? renderSignupSelectedImagePreview(d.photo, 'Profile photo', 'removeEmployerSignupPhoto()', 82, 'No profile photo selected yet.', d.photoFileName || '', d.photoPreviewUrl || '') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(d.avatar || '\u{1F3E0}')}</div>`}<div class="small muted">Public display will show ${esc((d.firstName || 'First Name') + ' ' + ((d.lastName || 'L').slice(0,1) || 'L') + '.')}</div></div>
-      <div class="field"><label>About me (optional)</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
+      <div class="field"><label>About me</label><textarea id="employerSignupAbout" placeholder="Tell people a little about yourself..." oninput="syncEmployerSignupPersonalDraft()">${esc(d.about)}</textarea></div>
       <div class="field"><label data-employer-onboarding-copy="profile-video-link-label">${esc(onboardingCopy.profileVideoLinkLabel)}</label><input id="employerSignupProfileVideoLink" value="${esc(getEditableVideoInputValue(d))}" placeholder="https://youtube.com/... or https://vimeo.com/... or https://.../video.mp4" oninput="previewEmployerSignupProfileVideo(this.value)"><div class="small muted ${onboardingCopy.profileVideoLinkHelper ? '' : 'hidden'}" data-employer-onboarding-copy="profile-video-link-helper" style="margin-top:6px">${esc(onboardingCopy.profileVideoLinkHelper)}</div></div>
       <div class="field"><label data-employer-onboarding-copy="profile-video-upload-label">${esc(onboardingCopy.profileVideoUploadLabel)}</label><input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v,video/*" onchange="handleEmployerSignupProfileVideoUpload(this)"><div class="small muted ${onboardingCopy.profileVideoUploadHelper ? '' : 'hidden'}" data-employer-onboarding-copy="profile-video-upload-helper" style="margin-top:6px">${esc(onboardingCopy.profileVideoUploadHelper)}</div></div>
       <div id="employer-profile-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl(d), 'Profile video')}</div>
@@ -9507,7 +9507,7 @@ function renderEmployerSignupStepContent(){
   if (employerSignupMode === 'employer' && employerSignupStep === 2) return `
     <div class="card form-card">
       <div class="field"><label>Business Name</label><input id="employerBusinessName" value="${esc(d.businessName)}" placeholder="Business name" oninput="syncEmployerSignupBusinessDraft()"></div>
-      <div class="field"><label>Business Logo (optional)</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleEmployerSignupBusinessLogoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
+      <div class="field"><label>Business Logo</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleEmployerSignupBusinessLogoUpload(this)"><div class="small muted" style="margin-top:6px">${esc(ONBOARDING_SERVICE_IMAGE_HELP)}</div></div>
       ${canUseImageLibrary() ? `<div style="margin:-6px 0 14px">${renderImageLibraryButton('selectEmployerSignupBusinessLogoFromLibrary')}</div>` : ''}
       <div style="margin-bottom:14px">${renderEditableSingleImage(d.businessLogo || '', 'Business logo', 'removeEmployerSignupBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>About Business</label><textarea id="employerBusinessAbout" placeholder="Tell people about your business..." oninput="syncEmployerSignupBusinessDraft()">${esc(d.businessAbout)}</textarea></div>
@@ -9571,7 +9571,7 @@ async function saveEmployerSignupStep(step){
   if (!employerSignupDraft) employerSignupDraft = createDefaultEmployerSignupDraft(employerSignupMode || 'neighbor');
   if (step === 1) {
     syncEmployerSignupPersonalDraft();
-    if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, Address:employerSignupDraft.address }, 'Personal profile')) return false;
+    if (toastRequiredFields({ 'First name':employerSignupDraft.firstName, 'Last name':employerSignupDraft.lastName, 'Photo or avatar':(employerSignupDraft.photo || employerSignupDraft.avatar), 'About me':employerSignupDraft.about, Email:employerSignupDraft.email, Phone:employerSignupDraft.phone, Address:employerSignupDraft.address }, 'Personal profile')) return false;
     if (String(employerSignupDraft.firstName || '').trim().length < 2) return toast('Please enter your full first name.'), false;
     if (String(employerSignupDraft.lastName || '').trim().length < 2) return toast('Please enter your full last name.'), false;
     if (!isValidUsPhoneNumber(employerSignupDraft.phone)) return toast('Please enter a valid 10-digit U.S. phone number.'), false;
@@ -9586,7 +9586,7 @@ async function saveEmployerSignupStep(step){
   }
   if (employerSignupMode === 'employer' && step === 2) {
     syncEmployerSignupBusinessDraft();
-    if (toastRequiredFields({ 'Business name':employerSignupDraft.businessName, 'Business description':employerSignupDraft.businessAbout, 'Business phone':employerSignupDraft.businessPhone, 'Business address':employerSignupDraft.businessAddress }, 'Business profile')) return false;
+    if (toastRequiredFields({ 'Business name':employerSignupDraft.businessName, 'Business logo':employerSignupDraft.businessLogo, 'Business description':employerSignupDraft.businessAbout, 'Business phone':employerSignupDraft.businessPhone, 'Business address':employerSignupDraft.businessAddress }, 'Business profile')) return false;
     if (!isValidUsPhoneNumber(employerSignupDraft.businessPhone)) return toast('Please enter a valid 10-digit U.S. business phone number.'), false;
     employerSignupDraft.businessPhone = formatUsPhoneNumber(employerSignupDraft.businessPhone);
     const businessAddressCheck = await validateAddressExists(employerSignupDraft.businessAddress, 'employerBusinessAddress', 'business address');
@@ -15312,16 +15312,28 @@ function needsRequiredPaymentMethod(user=currentUser){
   const req = user.onboarding_requirements || {};
   return Boolean(req.payment_method_required) && !payerPaymentSetupReady(user);
 }
+function hasRequiredProfileVisual(user=currentUser, profile=null){
+  return !!(user && (user.photo || user.profile_image_id || user.emoji || user.avatar || profile?.photo || profile?.profile_image_id || profile?.emoji || profile?.avatar));
+}
+function hasRequiredProfileAbout(user=currentUser, profile=null){
+  const profileAbout = Array.isArray(profile?.about) ? profile.about[0] : profile?.about;
+  return !!String(user?.about || profileAbout || profile?.bio || '').trim();
+}
 function needsRequiredProfileFields(user=currentUser){
-  if (!user || user.role === 'admin' || user.role === 'student') return false;
+  if (!user || user.role === 'admin') return false;
   const req = user.onboarding_requirements || {};
   if (req.profile_required_fields_complete === false) return true;
   if (Array.isArray(req.profile_required_fields_missing) && req.profile_required_fields_missing.length) return true;
+  const profile = user.role === 'student' ? currentStudentProfile() : null;
+  if (!hasRequiredProfileVisual(user, profile)) return true;
+  if (!hasRequiredProfileAbout(user, profile)) return true;
   if (!String(user.phone || '').trim()) return true;
   if (!String(user.address || '').trim()) return true;
   if (user.role === 'employer') {
     const business = user.businessProfile || {};
     if (!String(business.name || user.company || '').trim()) return true;
+    if (!String(business.about || '').trim()) return true;
+    if (!String(business.logo || business.image_id || '').trim()) return true;
     if (!String(business.address || '').trim()) return true;
   }
   return false;
@@ -15440,6 +15452,12 @@ function buildRequiredAccountChecklist(user=currentUser, options={}){
   if (needsMigrationOnboarding(user)) {
     items.push({ label:'Profile review is required', action:"focusRequiredReviewField('migFirstName')", cta:'Review profile' });
   }
+  if (!hasRequiredProfileVisual(user, profile)) {
+    items.push({ label:'Profile image/avatar is missing', action:"focusRequiredReviewField('migAvatar')", cta:'Update profile' });
+  }
+  if (!hasRequiredProfileAbout(user, profile)) {
+    items.push({ label:'About is missing', action:"focusRequiredReviewField('migAbout')", cta:'Update about' });
+  }
   if (!String(user.phone || profile?.phone || '').trim()) {
     items.push({ label:'Phone is missing', action:"focusRequiredReviewField('migPhone')", cta:'Update phone' });
   }
@@ -15457,6 +15475,8 @@ function buildRequiredAccountChecklist(user=currentUser, options={}){
     if (!options.hidePaymentMethod && needsRequiredPaymentMethod(user)) items.push({ label:'CC is missing', action:'openRequiredPaymentMethodFromChecklist()', cta:'Add card' });
     if (user.role === 'employer') {
       if (!String(business.name || user.company || '').trim()) items.push({ label:'Business name is missing', action:"focusRequiredReviewField('migBusinessName')", cta:'Update business' });
+      if (!String(business.logo || business.image_id || '').trim()) items.push({ label:'Business logo is missing', action:"focusRequiredReviewField('migBusinessLogo')", cta:'Update business' });
+      if (!String(business.about || '').trim()) items.push({ label:'Business about is missing', action:"focusRequiredReviewField('migBusinessAbout')", cta:'Update business' });
       if (!String(business.address || '').trim()) items.push({ label:'Business address is missing', action:"focusRequiredReviewField('migBusinessAddress')", cta:'Update business' });
     }
   }
@@ -15560,6 +15580,59 @@ function migrationAddressValidationMessage(value='', label='home address'){
 function renderMigrationRequiredList(items=[]){
   return `<ul class="small" style="margin:8px 0 0 18px;color:#475569">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`;
 }
+function renderMigrationAvatarPicker(inputId='migAvatar', selected=''){
+  const options = Array.from(new Set([...(EMPLOYER_AVATAR_OPTIONS || []), ...(STUDENT_AVATAR_OPTIONS || [])])).slice(0, 14);
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${options.map(emoji => `<button type="button" class="pill ${emoji === (selected || '') ? 'active' : ''}" data-migration-avatar-option="${esc(emoji)}" onclick="setMigrationAvatar('${inputId}','${emoji}');return false;">${emoji}</button>`).join('')}</div>`;
+}
+function setMigrationAvatar(inputId='migAvatar', emoji=''){
+  const input = document.getElementById(inputId);
+  if (input) input.value = emoji || '';
+  document.querySelectorAll('[data-migration-avatar-option]').forEach(button => {
+    button.classList.toggle('active', button.getAttribute('data-migration-avatar-option') === emoji);
+  });
+}
+function renderMigrationProfileVisual(user={}, profile=null){
+  const photo = user.photo || user.profile_image_id || profile?.photo || profile?.profile_image_id || '';
+  const avatar = user.emoji || user.avatar || profile?.emoji || profile?.avatar || '\u{1F3E0}';
+  return `
+    <input type="hidden" id="migPhoto" value="${esc(photo)}">
+    <input type="hidden" id="migAvatar" value="${esc(avatar)}">
+    <div class="field">
+      <label>Profile image/avatar *</label>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">
+        ${photo ? renderManagedImage(photo, 'Profile photo', 'width:82px;height:82px;border-radius:50%;object-fit:cover;border:3px solid #E0F2FE', 'thumb', 'loading="eager"') : `<div class="avatar" style="width:82px;height:82px;font-size:2rem">${esc(avatar)}</div>`}
+        <div class="small muted">A profile photo or avatar is required so public profiles never appear empty.</div>
+      </div>
+      ${renderMigrationAvatarPicker('migAvatar', avatar)}
+    </div>
+  `;
+}
+function handleMigrationBusinessLogoUpload(input){
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (!validateSignupImageFile(file, 'business logo')) {
+    if (input) input.value = '';
+    return;
+  }
+  prepareUploadedImageRecord(file, { source:'business_logo', entity_type:'business_profile' })
+    .then(imageId => {
+      const field = document.getElementById('migBusinessLogo');
+      if (field) field.value = imageId || '';
+      const preview = document.getElementById('mig-business-logo-preview');
+      if (preview) preview.innerHTML = renderEditableSingleImage(imageId || '', 'Business logo', 'removeMigrationBusinessLogo()', 88, 'No business logo added yet.');
+      if (input) input.value = '';
+    })
+    .catch(error => {
+      console.error('Business logo upload failed', error);
+      toast(`Image upload failed: ${(error && error.message) || 'Unknown error'}`);
+    });
+}
+function removeMigrationBusinessLogo(){
+  const field = document.getElementById('migBusinessLogo');
+  if (field) field.value = '';
+  const preview = document.getElementById('mig-business-logo-preview');
+  if (preview) preview.innerHTML = renderEditableSingleImage('', 'Business logo', 'removeMigrationBusinessLogo()', 88, 'No business logo added yet.');
+}
 function renderMigrationOnboarding(el){
   const user = getUserById(currentUser.id) || currentUser;
   const isStudent = user.role === 'student';
@@ -15599,6 +15672,7 @@ function renderStudentMigrationOnboardingForm(profile){
       <div style="font-weight:800;margin-bottom:12px">Profile information</div>
       <div class="small muted" style="margin-bottom:12px">All fields marked required must be completed before the rest of the dashboard unlocks.</div>
       <div class="row"><div class="field"><label>Name *</label><input id="migStudentName" value="${esc(profile.name || currentUser.name || '')}"></div><div class="field"><label>Age *</label><input id="migStudentAge" type="number" min="13" max="25" value="${esc(profile.age || '')}"></div></div>
+      ${renderMigrationProfileVisual(currentUser, profile)}
       <div class="field"><label>School(s) *</label><input id="migStudentSchool" value="${esc(profile.school || '')}"></div>
       <div class="row"><div class="field"><label>Email (private) *</label><input id="migStudentEmail" type="email" value="${esc(profile.privateEmail || currentUser.email || '')}"></div><div class="field"><label>Phone (private) *</label><input id="migStudentPhone" type="tel" placeholder="(555) 555-5555" value="${esc(profile.phone || currentUser.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div></div>
       <div class="field"><label>Home Address *</label><input id="migStudentAddress" value="${esc(profile.address || currentUser.address || '')}" placeholder="123 Main St, Danville, CA 94526" onfocus="attachGoogleAddressAutocomplete('migStudentAddress')"><div class="small muted" style="margin-top:6px">Your full address is kept private and secure. Only your city will be visible publicly on your profile. Choose the correct Google suggestion when available.</div></div>
@@ -15626,12 +15700,14 @@ async function submitStudentMigrationOnboarding(){
   let address = String(document.getElementById('migStudentAddress')?.value || '').trim();
   const about = String(document.getElementById('migStudentAbout')?.value || '').trim();
   const experience = String(document.getElementById('migStudentExperience')?.value || '').trim();
+  const photo = String(document.getElementById('migPhoto')?.value || '').trim();
+  const avatar = String(document.getElementById('migAvatar')?.value || '').trim();
   const serviceTitle = String(document.getElementById('migServiceTitle')?.value || '').trim();
   const serviceDescription = String(document.getElementById('migServiceDescription')?.value || '').trim();
   const serviceRate = Number(document.getElementById('migServiceRate')?.value || 0) || 0;
   const serviceAvailability = String(document.getElementById('migServiceAvailability')?.value || '').trim();
   const serviceLocation = String(document.getElementById('migServiceLocation')?.value || '').trim();
-  if (toastRequiredFields({ Name:name, School:school, Email:email, Phone:phone, 'Home Address':address, 'About me':about, Experience:experience }, 'Student profile')) return;
+  if (toastRequiredFields({ Name:name, 'Profile image/avatar':(photo || avatar), School:school, Email:email, Phone:phone, 'Home Address':address, 'About me':about, Experience:experience }, 'Student profile')) return;
   if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return toast('Please enter a valid 10-digit U.S. phone number.');
   const studentAddressCheck = await validateAddressExists(address, 'migStudentAddress', 'home address');
@@ -15643,7 +15719,7 @@ async function submitStudentMigrationOnboarding(){
   phone = migrationFormatUsPhone(phone);
   const students = getStudents();
   const idx = students.findIndex(s => String(s.id) === String(profile.id));
-  const updatedProfile = Object.assign({}, profile, { name, age, school, location: city.includes(',') ? city : `${city}, CA`, address, phone, phoneVerified:false, privateEmail: email, about:[about], highlights:[experience], updatedAt:new Date().toISOString() });
+  const updatedProfile = Object.assign({}, profile, { name, age, school, location: city.includes(',') ? city : `${city}, CA`, address, phone, phoneVerified:false, privateEmail: email, photo, profile_image_id:photo, emoji:avatar || profile.emoji || '', about:[about], highlights:[experience], updatedAt:new Date().toISOString() });
   const services = getRenderableStudentServices(updatedProfile);
   const updatedService = Object.assign({}, services[0] || {}, { id:(services[0] || {}).id || uid('svc'), title:serviceTitle, description:serviceDescription, rate:serviceRate, availability:serviceAvailability, location:serviceLocation });
   updatedProfile.services = [updatedService].concat(services.slice(1));
@@ -15651,10 +15727,10 @@ async function submitStudentMigrationOnboarding(){
   saveStudents(students);
   const users = getUsers();
   const user = users.find(u => String(u.id) === String(currentUser.id));
-  if (user) { user.name = name; user.publicName = name; user.phone = phone; user.phoneVerified = false; user.address = address; user.city = city; saveUsers(users); setCurrentUser(user); }
+  if (user) { user.name = name; user.publicName = name; user.phone = phone; user.phoneVerified = false; user.address = address; user.city = city; user.photo = photo; user.profile_image_id = photo; user.emoji = avatar || user.emoji || ''; saveUsers(users); setCurrentUser(user); }
   if (backendAuthEnabled() && getBackendAccessToken() && updatedProfile.backendSource && updatedProfile.backendProfileId) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, phoneVerified:false, city, address, profile:{ age, school, address, about, type:'student' }, migrationOnboardingCompleted:true }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ displayName:name, phone, phoneVerified:false, city, address, profile:{ age, school, address, about, photo, avatar, type:'student' }, migrationOnboardingCompleted:true }) });
       await backendAuthRequest(`/student-profiles/${encodeURIComponent(updatedProfile.backendProfileId)}`, { method:'PATCH', body: JSON.stringify({ title:serviceTitle, bio:about, experience, is_active:true }) });
     } catch (error) { return toast(error.message || 'Could not save profile to backend.'); }
   }
@@ -15672,6 +15748,7 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div style="font-weight:800;margin-bottom:12px">Personal information</div>
       <div class="small muted" style="margin-bottom:12px">All fields marked required must be completed before the rest of the dashboard unlocks.</div>
       <div class="row"><div class="field"><label>First name *</label><input id="migFirstName" value="${esc(user.firstName || firstName(user.name) || '')}"></div><div class="field"><label>Last name *</label><input id="migLastName" value="${esc(user.lastName || '')}"></div></div>
+      ${renderMigrationProfileVisual(user, null)}
       <div class="field"><label>Email *</label><input id="migEmail" type="email" value="${esc(user.email || '')}"></div>
       <div class="field"><label>Phone *</label><input id="migPhone" type="tel" placeholder="(555) 555-5555" value="${esc(user.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
       <div class="field"><label>Home address *</label><input id="migAddress" value="${esc(user.address || '')}" placeholder="Street, City, State ZIP — e.g. 123 Main St, Danville, CA 94526" onfocus="attachGoogleAddressAutocomplete('migAddress')" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. If you type something like “123 Main St Danville CA 94526,” we’ll format it for you.</div></div>
@@ -15681,6 +15758,9 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div style="font-weight:800;margin-bottom:12px">Business information</div>
       <div class="small muted" style="margin-bottom:12px">Employer accounts must also complete all required business fields before posting jobs.</div>
       <div class="field"><label>Business name *</label><input id="migBusinessName" value="${esc(business.name || user.company || '')}"></div>
+      <input type="hidden" id="migBusinessLogo" value="${esc(business.logo || business.image_id || '')}">
+      <div class="field"><label>Business logo *</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleMigrationBusinessLogoUpload(this)"></div>
+      <div id="mig-business-logo-preview" style="margin-bottom:12px">${renderEditableSingleImage(business.logo || business.image_id || '', 'Business logo', 'removeMigrationBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>Business description *</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
       <div class="field"><label>Business phone *</label><input id="migBusinessPhone" type="tel" placeholder="(555) 555-5555" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
       <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="Street, City, State ZIP — e.g. 456 Business Ave, Walnut Creek, CA 94596" onfocus="attachGoogleAddressAutocomplete('migBusinessAddress')" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. We’ll clean up common formatting automatically.</div></div>
@@ -15697,8 +15777,10 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   let address = migrationFormatUsAddress(document.getElementById('migAddress')?.value || '');
   const addressInput = document.getElementById('migAddress');
   if (addressInput) addressInput.value = address;
+  const photo = String(document.getElementById('migPhoto')?.value || '').trim();
+  const avatar = String(document.getElementById('migAvatar')?.value || '').trim();
   const about = String(document.getElementById('migAbout')?.value || '').trim();
-  const missingPersonal = requiredFieldsMessage({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile');
+  const missingPersonal = requiredFieldsMessage({ 'First name':first, 'Last name':last, 'Profile image/avatar':(photo || avatar), Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile');
   if (missingPersonal) return showMigrationFormError(missingPersonal);
   if (!migrationIsValidEmailAddress(email)) return showMigrationFormError('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. phone number.');
@@ -15711,11 +15793,12 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   if (isEmployer) {
     business = {
       name:String(document.getElementById('migBusinessName')?.value || '').trim(),
+      logo:String(document.getElementById('migBusinessLogo')?.value || '').trim(),
       about:String(document.getElementById('migBusinessAbout')?.value || '').trim(),
       phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
       address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || '')
     };
-    const missingBusiness = requiredFieldsMessage({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile');
+    const missingBusiness = requiredFieldsMessage({ 'Business name':business.name, 'Business logo':business.logo, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile');
     if (missingBusiness) return showMigrationFormError(missingBusiness);
     if (!migrationIsValidUsPhone(business.phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. business phone number.');
     const businessAddressInput = document.getElementById('migBusinessAddress');
@@ -15730,13 +15813,13 @@ async function submitEmployerMigrationOnboarding(isEmployer=false){
   const users = getUsers();
   const user = users.find(u => String(u.id) === String(currentUser.id));
   if (user) {
-    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, address, about, city:extractCity(address) });
+    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, address, about, photo, profile_image_id:photo, emoji:avatar || user.emoji || '', city:extractCity(address) });
     if (isEmployer) { user.company = business.name; user.businessProfile = Object.assign({}, user.businessProfile || {}, business); }
     saveUsers(users); setCurrentUser(user);
   }
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, businessName: business?.name, businessAbout: business?.about, businessPhone: business?.phone, businessAddress: business?.address, businessCity: business?.city, migrationOnboardingCompleted:true }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, photo, avatar, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, businessName: business?.name, businessAbout: business?.about, businessPhone: business?.phone, businessAddress: business?.address, businessCity: business?.city, migrationOnboardingCompleted:true }) });
     } catch (error) { return showMigrationFormError(error.message || 'Could not save profile to backend.'); }
   }
   markMigrationOnboardingComplete();
@@ -15842,8 +15925,10 @@ async function submitEmployerProfileEdit(isEmployer=false){
   let address = migrationFormatUsAddress(document.getElementById('migAddress')?.value || '');
   const addressInput = document.getElementById('migAddress');
   if (addressInput) addressInput.value = address;
+  const photo = String(document.getElementById('migPhoto')?.value || '').trim();
+  const avatar = String(document.getElementById('migAvatar')?.value || '').trim();
   const about = String(document.getElementById('migAbout')?.value || '').trim();
-  const missingPersonal = requiredFieldsMessage({ 'First name':first, 'Last name':last, Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile');
+  const missingPersonal = requiredFieldsMessage({ 'First name':first, 'Last name':last, 'Profile image/avatar':(photo || avatar), Email:email, Phone:phone, 'Home address':address, 'About me':about }, 'Personal profile');
   if (missingPersonal) return showMigrationFormError(missingPersonal);
   if (!migrationIsValidEmailAddress(email)) return showMigrationFormError('Please enter a valid email address.');
   if (!migrationIsValidUsPhone(phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. phone number.');
@@ -15856,11 +15941,12 @@ async function submitEmployerProfileEdit(isEmployer=false){
   if (isEmployer) {
     business = {
       name:String(document.getElementById('migBusinessName')?.value || '').trim(),
+      logo:String(document.getElementById('migBusinessLogo')?.value || '').trim(),
       about:String(document.getElementById('migBusinessAbout')?.value || '').trim(),
       phone:String(document.getElementById('migBusinessPhone')?.value || '').trim(),
       address:migrationFormatUsAddress(document.getElementById('migBusinessAddress')?.value || '')
     };
-    const missingBusiness = requiredFieldsMessage({ 'Business name':business.name, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile');
+    const missingBusiness = requiredFieldsMessage({ 'Business name':business.name, 'Business logo':business.logo, 'Business description':business.about, 'Business phone':business.phone, 'Business address':business.address }, 'Business profile');
     if (missingBusiness) return showMigrationFormError(missingBusiness);
     if (!migrationIsValidUsPhone(business.phone)) return showMigrationFormError('Please enter a valid 10-digit U.S. business phone number.');
     const businessAddressInput = document.getElementById('migBusinessAddress');
@@ -15875,13 +15961,13 @@ async function submitEmployerProfileEdit(isEmployer=false){
   const users = getUsers();
   const user = users.find(u => String(u.id) === String(currentUser.id));
   if (user) {
-    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, address, about, city:extractCity(address) });
+    Object.assign(user, { firstName:first, lastName:last, name:`${first} ${last}`, publicName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, address, about, photo, profile_image_id:photo, emoji:avatar || user.emoji || '', city:extractCity(address) });
     if (isEmployer) { user.company = business.name; user.businessProfile = Object.assign({}, user.businessProfile || {}, business); }
     saveUsers(users); setCurrentUser(user);
   }
   if (backendAuthEnabled() && getBackendAccessToken()) {
     try {
-      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, businessName: business?.name, businessAbout: business?.about, businessPhone: business?.phone, businessAddress: business?.address, businessCity: business?.city }) });
+      await backendAuthRequest('/user-profile/me', { method:'PATCH', body: JSON.stringify({ firstName:first, lastName:last, displayName:`${first} ${last.slice(0,1).toUpperCase()}.`, phone, phoneVerified:false, city:extractCity(address), address, profile:{ about, address, photo, avatar, type:isEmployer ? 'business' : 'neighbor' }, businessProfile: business, businessName: business?.name, businessAbout: business?.about, businessPhone: business?.phone, businessAddress: business?.address, businessCity: business?.city }) });
     } catch (error) { return showMigrationFormError(error.message || 'Could not save profile to backend.'); }
   }
   closeModal();

@@ -23,13 +23,18 @@ function present(value) {
 function profileCompletenessRequirements(user = {}, profile = null) {
   const missing = [];
   const role = String(user.role || '').toLowerCase();
-  if (!['employer', 'neighbor'].includes(role)) return { complete: true, missing };
+  if (!['student', 'employer', 'neighbor'].includes(role)) return { complete: true, missing };
+  const metadata = userProfileMetadata(profile);
 
+  if (!present(profile?.about)) missing.push('about');
+  if (!present(metadata.photo) && !present(profile?.avatar)) missing.push('profile_image');
   if (!present(user.phone)) missing.push('phone');
   if (!present(profile?.address)) missing.push('address');
 
   if (role === 'employer') {
     if (!present(profile?.businessName)) missing.push('business_name');
+    if (!present(profile?.businessAbout)) missing.push('business_about');
+    if (!present(metadata.business_logo)) missing.push('business_logo');
     if (!present(profile?.businessAddress)) missing.push('business_address');
   }
 
