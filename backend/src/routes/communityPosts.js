@@ -68,6 +68,30 @@ function serializeCommunityPost(row) {
   };
 }
 
+function publicAuthorSnapshot(user = {}) {
+  if (!user || !user.id) return null;
+  const profile = user.userProfile || {};
+  const metadata = profile.metadata && typeof profile.metadata === 'object' ? profile.metadata : {};
+  return {
+    id: user.id,
+    display_name: displayNameForUser(user),
+    role: user.role,
+    city: user.city || profile.businessCity || '',
+    profile: {
+      type: profile.type || (user.role === 'employer' ? 'business' : user.role),
+      about: profile.about || '',
+      avatar: profile.avatar || '',
+      businessName: profile.businessName || '',
+      businessAbout: profile.businessAbout || '',
+      businessCity: profile.businessCity || '',
+      metadata: {
+        photo: metadata.photo || '',
+        business_logo: metadata.business_logo || '',
+      },
+    },
+  };
+}
+
 function countableApplicationStatus(value = '') {
   return !['withdrawn', 'removed', 'deleted'].includes(String(value || '').toLowerCase());
 }
@@ -122,10 +146,11 @@ router.get('/community-posts', async (_req, res) => {
     const activeAuthors = authorIds.length
       ? await prisma.user.findMany({
           where: { id: { in: authorIds }, deletedAt: null, status: 'active' },
-          select: { id: true },
+          include: { userProfile: true },
         })
       : [];
     const activeAuthorIds = new Set(activeAuthors.map((user) => user.id));
+    const authorSnapshots = new Map(activeAuthors.map((user) => [user.id, publicAuthorSnapshot(user)]));
     const visibleRows = rows.filter((row) => !row.authorId || activeAuthorIds.has(row.authorId));
     const counts = await applicationCountsForPosts(visibleRows.map((row) => row.id));
     res.json({
@@ -133,6 +158,8 @@ router.get('/community-posts', async (_req, res) => {
       data: {
         posts: visibleRows.map((row) => {
           const post = serializeCommunityPost(row);
+          const author = authorSnapshots.get(row.authorId);
+          if (author) post.author_user = author;
           if (post.isJob) post.application_count = counts.get(row.id) || 0;
           return post;
         }),
@@ -192,7 +219,7 @@ router.post('/sync/posts', requireAuth, async (req, res) => {
     const records = Array.isArray(req.body?.records) ? req.body.records : [];
     const includesJobPost = records.some((record) => record && record.isJob);
     if (includesJobPost) {
-      const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true });
+      const gate = await requirePlatformReady({ prisma, user: req.user, requirePayment: true, requirePaymentStrict: true });
       if (!gate.ok) return fail(res, gate.status, gate.message, gate.requirements);
     }
     const canCreateJobs = ['employer', 'neighbor', 'admin'].includes(req.user.role);

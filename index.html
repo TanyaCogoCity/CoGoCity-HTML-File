@@ -3966,6 +3966,15 @@ async function loadBackendCommunityPosts(options={}){
     const data = await publicBackendRequest('/community-posts', { method:'GET', timeoutMs:15000 });
     const rawPosts = getCommunityPostResponseList(data);
     if (!rawPosts) throw new Error('Community posts response did not include a posts list');
+    const authorUsers = ensureArray(rawPosts)
+      .map(post => post && (post.author_user || post.authorUser))
+      .filter(author => author && author.id)
+      .map(author => mapBackendUser(author, { role:author.role || 'neighbor', status:'active' }));
+    if (authorUsers.length) {
+      const byId = new Map(getBackendBrowseUsers().map(user => [String(user.id), user]));
+      authorUsers.forEach(user => byId.set(String(user.id), Object.assign({}, byId.get(String(user.id)) || {}, user)));
+      saveBackendBrowseUsers(Array.from(byId.values()));
+    }
     const backendPosts = ensureArray(rawPosts).map(normalizePostRecord);
     const nextPosts = backendPosts;
     ls('cogo_posts', nextPosts);
@@ -15221,19 +15230,21 @@ function renderDashboard(){
   `;
 
   const el = document.getElementById('dash-main');
-  if ((needsMigrationOnboarding() || needsRequiredPaymentMethod() || needsRequiredPayoutSetup()) && currentUser.role !== 'admin' && dashSection !== 'messages') {
+  if ((needsMigrationOnboarding() || needsRequiredProfileFields() || needsRequiredPaymentMethod() || needsRequiredPayoutSetup()) && currentUser.role !== 'admin' && dashSection !== 'messages') {
     const sidebar = document.querySelector('.dashboard .sidebar');
     const payoutRequired = needsRequiredPayoutSetup();
+    const profileFieldsRequired = needsRequiredProfileFields();
     const profileReviewRequired = needsMigrationOnboarding();
     if (sidebar) {
-      sidebar.innerHTML = profileReviewRequired || payoutRequired ? `
+      sidebar.innerHTML = profileReviewRequired || profileFieldsRequired || payoutRequired ? `
         <div class="card" style="padding:14px;background:#f8fbff;border:2px solid #bfdbfe">
-          <div style="font-weight:800;margin-bottom:6px">${profileReviewRequired ? 'Profile review required' : 'Payout setup required'}</div>
-          <div class="small muted">${profileReviewRequired ? 'Please finish this review first. Other dashboard tabs and site pages unlock after you confirm your profile.' : 'Please complete Stripe Connect before receiving payouts for services.'}</div>
+          <div style="font-weight:800;margin-bottom:6px">${profileReviewRequired || profileFieldsRequired ? 'Profile completion required' : 'Payout setup required'}</div>
+          <div class="small muted">${profileReviewRequired || profileFieldsRequired ? 'Please finish the required profile information first. Other dashboard tabs and site pages unlock after your profile is complete.' : 'Please complete Stripe Connect before receiving payouts for services.'}</div>
         </div>
       ` : '';
     }
     if (needsMigrationOnboarding()) return renderMigrationOnboarding(el);
+    if (profileFieldsRequired) return renderProfileCompletionRequired(el);
     if (payoutRequired) return renderPayoutSetupRequired(el);
     return renderPaymentMethodRequired(el);
   }
@@ -15301,6 +15312,20 @@ function needsRequiredPaymentMethod(user=currentUser){
   const req = user.onboarding_requirements || {};
   return Boolean(req.payment_method_required) && !payerPaymentSetupReady(user);
 }
+function needsRequiredProfileFields(user=currentUser){
+  if (!user || user.role === 'admin' || user.role === 'student') return false;
+  const req = user.onboarding_requirements || {};
+  if (req.profile_required_fields_complete === false) return true;
+  if (Array.isArray(req.profile_required_fields_missing) && req.profile_required_fields_missing.length) return true;
+  if (!String(user.phone || '').trim()) return true;
+  if (!String(user.address || '').trim()) return true;
+  if (user.role === 'employer') {
+    const business = user.businessProfile || {};
+    if (!String(business.name || user.company || '').trim()) return true;
+    if (!String(business.address || '').trim()) return true;
+  }
+  return false;
+}
 function needsRequiredPayoutSetup(user=currentUser){
   if (!user || user.role !== 'student') return false;
   const req = user.onboarding_requirements || {};
@@ -15341,7 +15366,7 @@ function markMigrationOnboardingComplete(user=currentUser){
   }
 }
 function routeToMigrationOnboardingIfNeeded(){
-  if (!needsMigrationOnboarding() && !needsRequiredPaymentMethod() && !needsRequiredPayoutSetup()) return false;
+  if (!needsMigrationOnboarding() && !needsRequiredProfileFields() && !needsRequiredPaymentMethod() && !needsRequiredPayoutSetup()) return false;
   dashSection = 'profile';
   if (getRoute() !== '#/dashboard') {
     location.hash = '#/dashboard';
@@ -15732,6 +15757,11 @@ function renderPaymentMethodRequired(el){
       <div class="warning" style="margin:0 0 14px">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
       ${renderStripeOnboardingCard()}
     </div>
+  `;
+}
+function renderProfileCompletionRequired(el){
+  el.innerHTML = `
+    ${renderRequiredAccountChecklist(currentUser)}
   `;
 }
 function renderPayoutSetupRequired(el){
