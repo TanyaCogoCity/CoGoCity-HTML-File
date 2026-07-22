@@ -927,6 +927,8 @@ let cogoAnalyticsInitialized = false;
 let cogoGa4Initialized = false;
 let cogoAnalyticsSearchTimer = null;
 let cogoAnalyticsLastPage = '';
+let cogoAnalyticsPageListenersAttached = false;
+let cogoCleanPathListenersAttached = false;
 let backendCommunityPostsLoaded = false;
 let backendCommunityPostsLoading = false;
 let backendCommunityPostsLoadedAt = 0;
@@ -1049,6 +1051,36 @@ function cogoStudentCleanUrlSlug(profile={}){
     user.city || service.location
   ], profile.userId || profile.id);
 }
+function resolveCleanPublicPathFromHashRoute(route=''){
+  const rawRoute = String(route || window.location.hash || cogoResolvedCleanHash || '#/').trim();
+  const routePath = rawRoute.startsWith('#') ? rawRoute.slice(1) : rawRoute;
+  if (!routePath || routePath === '/' || routePath === '/students') return '/';
+  const blogMatch = routePath.match(/^\/blog\/([^/?#]+)/);
+  if (blogMatch) return `/blog/${blogMatch[1]}`;
+  const profileMatch = routePath.match(/^\/profile\/([^/?#]+)/);
+  if (!profileMatch) return '';
+  const profileId = decodeURIComponent(profileMatch[1] || '');
+  const student = getStudents().find(profile => String(profile.userId || profile.id || '') === profileId);
+  return student ? `/student/${cogoStudentCleanUrlSlug(student)}` : '';
+}
+function syncCleanPublicPathForHashRoute(route=''){
+  if (typeof window === 'undefined') return;
+  const cleanPath = resolveCleanPublicPathFromHashRoute(route);
+  if (!cleanPath) return;
+  const nextHash = String(route || window.location.hash || cogoResolvedCleanHash || '#/').trim() || '#/';
+  const targetUrl = `${cleanPath}${window.location.search || ''}${nextHash.startsWith('#') ? nextHash : `#${nextHash}`}`;
+  const currentUrl = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`;
+  if (currentUrl === targetUrl) return;
+  window.history.replaceState({}, '', targetUrl);
+}
+function attachCleanPublicPathSync(){
+  if (typeof window === 'undefined' || cogoCleanPathListenersAttached) return;
+  cogoCleanPathListenersAttached = true;
+  const syncRoute = () => syncCleanPublicPathForHashRoute(window.location.hash || cogoResolvedCleanHash || '#/');
+  window.addEventListener('hashchange', syncRoute);
+  window.addEventListener('popstate', syncRoute);
+  window.setTimeout(syncRoute, 0);
+}
 function isPrivateNoindexRoute(value=''){
   const path = normalizeSeoRoutePath(value);
   if (COGO_PRIVATE_NOINDEX_PATHS.some(privatePath => path === privatePath || path.startsWith(`${privatePath}/`))) return true;
@@ -1057,6 +1089,8 @@ function isPrivateNoindexRoute(value=''){
 function currentSeoPathFromRoute(route=''){
   const path = String(window.location.pathname || '/');
   if (path !== '/' && path !== '/index.html') return path;
+  const cleanPublicPath = resolveCleanPublicPathFromHashRoute(route);
+  if (cleanPublicPath) return cleanPublicPath;
   const cleanRoute = String(route || '#/').replace(/^#/, '');
   if (cleanRoute === '/' || cleanRoute === '/students') return '/';
   if (cleanRoute.startsWith('/profile/')) return '';
@@ -1196,6 +1230,17 @@ function sendCogoGa4Event(eventName='', payload={}){
   }
   window.gtag('event', eventName, gaPayload);
 }
+function attachCogoAnalyticsPageTracking(){
+  if (typeof window === 'undefined' || cogoAnalyticsPageListenersAttached || !COGO_ANALYTICS_ENABLED) return;
+  cogoAnalyticsPageListenersAttached = true;
+  const emitPageView = () => {
+    const route = window.location.hash || cogoResolvedCleanHash || '#/';
+    trackCogoPageView(route);
+  };
+  window.addEventListener('hashchange', emitPageView);
+  window.addEventListener('popstate', emitPageView);
+  window.setTimeout(emitPageView, 0);
+}
 function initCogoAnalytics(){
   if (typeof window === 'undefined' || cogoAnalyticsInitialized || !COGO_ANALYTICS_ENABLED) return;
   cogoAnalyticsInitialized = true;
@@ -1208,6 +1253,7 @@ function initCogoAnalytics(){
     hostname: window.location.hostname
   });
   initCogoGa4();
+  attachCogoAnalyticsPageTracking();
 }
 function trackCogoEvent(eventName='', params={}){
   if (typeof window === 'undefined' || !eventName || !COGO_ANALYTICS_ENABLED) return;
@@ -16861,6 +16907,7 @@ async function initializePrototype(){
   try {
     seedData();
     resolveCleanPublicPath();
+    attachCleanPublicPathSync();
     await loadStripePublicConfig();
     loadCurrentUser();
     flushPendingBackendSyncs();
@@ -16875,6 +16922,7 @@ async function initializePrototype(){
       clearPrototypeDataStores();
       resetPrototypeRuntimeState();
       seedData();
+      attachCleanPublicPathSync();
       await loadStripePublicConfig();
       loadCurrentUser();
       handleStripeReturnParams();
