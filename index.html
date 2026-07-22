@@ -1051,6 +1051,15 @@ function cogoStudentCleanUrlSlug(profile={}){
     user.city || service.location
   ], profile.userId || profile.id);
 }
+function findStudentByProfileRouteId(profileId=''){
+  const key = String(profileId || '').trim();
+  if (!key) return null;
+  return getStudents().find(profile => (
+    String(profile.userId || '') === key
+    || String(profile.id || '') === key
+    || String(profile.backendProfileId || '') === key
+  )) || null;
+}
 function resolveCleanPublicPathFromHashRoute(route=''){
   const rawRoute = String(route || window.location.hash || cogoResolvedCleanHash || '#/').trim();
   const routePath = rawRoute.startsWith('#') ? rawRoute.slice(1) : rawRoute;
@@ -1060,8 +1069,17 @@ function resolveCleanPublicPathFromHashRoute(route=''){
   const profileMatch = routePath.match(/^\/profile\/([^/?#]+)/);
   if (!profileMatch) return '';
   const profileId = decodeURIComponent(profileMatch[1] || '');
-  const student = getStudents().find(profile => String(profile.userId || profile.id || '') === profileId);
+  const student = findStudentByProfileRouteId(profileId);
   return student ? `/student/${cogoStudentCleanUrlSlug(student)}` : '';
+}
+function syncCleanPublicPathForStudent(student, route=''){
+  if (typeof window === 'undefined' || !student) return;
+  const cleanPath = `/student/${cogoStudentCleanUrlSlug(student)}`;
+  const nextHash = String(route || window.location.hash || cogoResolvedCleanHash || '#/').trim() || '#/';
+  const targetUrl = `${cleanPath}${window.location.search || ''}${nextHash.startsWith('#') ? nextHash : `#${nextHash}`}`;
+  const currentUrl = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`;
+  if (currentUrl === targetUrl) return;
+  window.history.replaceState({}, '', targetUrl);
 }
 function syncCleanPublicPathForHashRoute(route=''){
   if (typeof window === 'undefined') return;
@@ -13212,7 +13230,7 @@ function renderPublicProfileNotFound(title='Profile not found'){
   `;
 }
 function renderPublicStudentProfilePage(student){
-  syncCleanPublicPathForHashRoute(getRoute());
+  syncCleanPublicPathForStudent(student, getRoute());
   applySeoForCurrentRoute(getRoute());
   const user = getUserById(student.userId) || {};
   const services = getRenderableStudentServices(student);
