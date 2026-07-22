@@ -997,6 +997,22 @@ function setCanonicalUrl(url=''){
   const canonical = ensureHeadTag('link[rel="canonical"]', 'link', { rel:'canonical' });
   canonical.setAttribute('href', url || 'https://cogocity.com/');
 }
+function getPublicSiteOrigin(){
+  if (typeof window !== 'undefined' && (COGO_IS_STAGING || COGO_IS_LOCAL_DEV)) return window.location.origin;
+  return 'https://cogocity.com';
+}
+function normalizePublicMetaUrl(url=''){
+  const fallback = `${getPublicSiteOrigin()}/`;
+  const raw = String(url || '').trim();
+  if (!raw) return fallback;
+  try {
+    const parsed = new URL(raw, fallback);
+    if (COGO_IS_STAGING || COGO_IS_LOCAL_DEV) return `${getPublicSiteOrigin()}${parsed.pathname}${parsed.search}${parsed.hash}`;
+    return parsed.href;
+  } catch (error) {
+    return raw.startsWith('/') ? `${getPublicSiteOrigin()}${raw}` : fallback;
+  }
+}
 function compactSeoText(value='', max=160){
   const text = stripHtmlTags(value || '').replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
@@ -1076,8 +1092,10 @@ function syncCleanPublicPathForStudent(student, route=''){
   if (typeof window === 'undefined' || !student) return;
   const cleanPath = `/student/${cogoStudentCleanUrlSlug(student)}`;
   const nextHash = String(route || window.location.hash || cogoResolvedCleanHash || '#/').trim() || '#/';
-  const targetUrl = `${cleanPath}${window.location.search || ''}${nextHash.startsWith('#') ? nextHash : `#${nextHash}`}`;
+  const normalizedHash = nextHash.startsWith('#') ? nextHash : `#${nextHash}`;
+  const targetUrl = `${cleanPath}${window.location.search || ''}`;
   const currentUrl = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`;
+  cogoResolvedCleanHash = normalizedHash;
   if (currentUrl === targetUrl) return;
   window.history.replaceState({}, '', targetUrl);
 }
@@ -1086,8 +1104,10 @@ function syncCleanPublicPathForHashRoute(route=''){
   const cleanPath = resolveCleanPublicPathFromHashRoute(route);
   if (!cleanPath) return;
   const nextHash = String(route || window.location.hash || cogoResolvedCleanHash || '#/').trim() || '#/';
-  const targetUrl = `${cleanPath}${window.location.search || ''}${nextHash.startsWith('#') ? nextHash : `#${nextHash}`}`;
+  const normalizedHash = nextHash.startsWith('#') ? nextHash : `#${nextHash}`;
+  const targetUrl = `${cleanPath}${window.location.search || ''}`;
   const currentUrl = `${window.location.pathname}${window.location.search || ''}${window.location.hash || ''}`;
+  cogoResolvedCleanHash = normalizedHash;
   if (currentUrl === targetUrl) return;
   window.history.replaceState({}, '', targetUrl);
 }
@@ -1119,15 +1139,16 @@ function currentSeoPathFromRoute(route=''){
 }
 function fallbackSeoMeta(route=''){
   const isStaging = COGO_IS_STAGING;
-  const defaultImage = 'https://cogocity.com/assets/cogocity-social-share.png';
+  const publicOrigin = getPublicSiteOrigin();
+  const defaultImage = `${publicOrigin}/assets/cogocity-social-share.png`;
   const path = currentSeoPathFromRoute(route) || '/';
   const publicPage = !isPrivateNoindexRoute(path) && !isPrivateNoindexRoute(route);
   const robots = isStaging ? 'noindex,nofollow' : (publicPage ? 'index,follow' : 'noindex,nofollow');
   return {
     title: document.title || 'CoGo City',
     description: document.querySelector('meta[name="description"]')?.getAttribute('content') || 'CoGo City connects students, families, neighbors, and businesses for local jobs and services.',
-    canonical: `https://cogocity.com${path}`,
-    ogUrl: `https://cogocity.com${path}`,
+    canonical: `${publicOrigin}${path}`,
+    ogUrl: `${publicOrigin}${path}`,
     image: defaultImage,
     robots,
     type: 'website',
@@ -1135,19 +1156,22 @@ function fallbackSeoMeta(route=''){
 }
 function applySeoMeta(meta={}){
   const merged = Object.assign(fallbackSeoMeta(getRoute()), meta || {});
+  const canonicalUrl = normalizePublicMetaUrl(merged.canonical || `${getPublicSiteOrigin()}/`);
+  const ogUrl = normalizePublicMetaUrl(merged.ogUrl || canonicalUrl);
+  const imageUrl = normalizePublicMetaUrl(merged.image || `${getPublicSiteOrigin()}/assets/cogocity-social-share.png`);
   if (merged.title) document.title = merged.title;
   setMetaTag('meta[name="description"]', 'name', 'description', merged.description || '');
   setMetaTag('meta[name="robots"]', 'name', 'robots', COGO_IS_STAGING ? 'noindex,nofollow' : (merged.robots || 'index,follow'));
-  setCanonicalUrl(merged.canonical || 'https://cogocity.com/');
+  setCanonicalUrl(canonicalUrl);
   setMetaTag('meta[property="og:type"]', 'property', 'og:type', merged.type || 'website');
   setMetaTag('meta[property="og:title"]', 'property', 'og:title', merged.title || 'CoGo City');
   setMetaTag('meta[property="og:description"]', 'property', 'og:description', merged.description || '');
-  setMetaTag('meta[property="og:image"]', 'property', 'og:image', merged.image || 'https://cogocity.com/assets/cogocity-social-share.png');
-  setMetaTag('meta[property="og:url"]', 'property', 'og:url', merged.ogUrl || merged.canonical || 'https://cogocity.com/');
+  setMetaTag('meta[property="og:image"]', 'property', 'og:image', imageUrl);
+  setMetaTag('meta[property="og:url"]', 'property', 'og:url', ogUrl);
   setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
   setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', merged.title || 'CoGo City');
   setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', merged.description || '');
-  setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', merged.image || 'https://cogocity.com/assets/cogocity-social-share.png');
+  setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', imageUrl);
   let schemaEl = document.getElementById('cogo-seo-schema');
   if (merged.schema) {
     if (!schemaEl) {
