@@ -13212,6 +13212,8 @@ function renderPublicProfileNotFound(title='Profile not found'){
   `;
 }
 function renderPublicStudentProfilePage(student){
+  syncCleanPublicPathForHashRoute(getRoute());
+  applySeoForCurrentRoute(getRoute());
   const user = getUserById(student.userId) || {};
   const services = getRenderableStudentServices(student);
   const reviewSummary = getProfileReviewSummary(student);
