@@ -19415,6 +19415,12 @@ async function sendMessageToActive(){
     thread_label: nextThreadLabel,
     allow_admin_support: isAdminSupportThread
   });
+  trackCogoEvent('direct_message', {
+    recipient_role: partnerRecord.role || 'unknown',
+    project_id: activeProject && activeProject.id ? activeProject.id : '',
+    has_project_context: !!activeProject,
+    message_length: content.length
+  });
   input.value = '';
   renderDashboard();
 }
