@@ -586,12 +586,12 @@ const HOW_IT_WORKS_FAQS = [
   {
     id: 'profile-type',
     question: 'How do I create the right type of profile?',
-    answer: 'Choose the tutorial that matches your role, then follow the steps shown in the video to create your profile.'
+    answer: 'Choose the role that fits you best when you sign up, then complete the profile prompts to create the right account.'
   },
   {
     id: 'support',
     question: 'How do I contact support if I need help?',
-    answer: 'If you still have questions after reviewing the tutorials and FAQs, please contact the CoGo City support team for help at support@cogocity.com or message admin in the chat box that you can find at the bottom of each page once you sign up.'
+    answer: 'If you still have questions after reviewing the guidance and FAQs, please contact the CoGo City support team for help at support@cogocity.com or message admin in the chat box that you can find at the bottom of each page once you sign up.'
   }
 ];
 
@@ -3854,27 +3854,15 @@ function renderHowItWorksPage(){
           <div class="how-it-works-eyebrow">Guided onboarding</div>
           <h1>How CoGo City Works</h1>
           <p class="lead">Learn how to use CoGo City as a Student, Neighbor, or Employer.</p>
-          <p class="support">Watch quick tutorials, read step-by-step guidance, and find answers to common questions all in one place.</p>
+          <p class="support">Read step-by-step guidance and find answers to common questions all in one place.</p>
         </div>
       </section>
       <div class="how-it-works-jump-wrap">
         <div class="how-it-works-jump-nav" aria-label="How It Works sections">
-          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-student');return false;">Student Tutorial</a>
-          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-neighbor');return false;">Neighbor Tutorial</a>
-          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-employer');return false;">Employer Tutorial</a>
           <a href="#/how-it-works" onclick="scrollHowItWorksTo('how-it-works-faq');return false;">FAQ</a>
         </div>
       </div>
       <div class="container">
-        <section class="how-it-works-section" id="how-it-works-tutorials">
-          <div class="how-it-works-section-header">
-            <h2>Watch Tutorials by Role</h2>
-            <p>Choose the tutorial that matches your role and follow the steps to get started on CoGo City.</p>
-          </div>
-          <div class="tutorial-stack">
-            ${HOW_IT_WORKS_TUTORIALS.map(renderHowItWorksTutorialCard).join('')}
-          </div>
-        </section>
         <section class="how-it-works-section" id="how-it-works-faq">
           <div class="how-it-works-section-header">
             <h2>Frequently Asked Questions</h2>
