@@ -208,6 +208,82 @@
       background:var(--color-text-main);color:#fff;padding:12px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:100
     }
     .toast.show{opacity:1}
+    .how-it-works-page{padding-top:0}
+    .how-it-works-hero{
+      padding:72px 20px 28px;
+      background:
+        radial-gradient(circle at top right, rgba(255,230,0,.35), transparent 34%),
+        linear-gradient(180deg,#FFFFFF 0%, #FFFBE6 100%);
+      border-bottom:1px solid var(--border);
+    }
+    .how-it-works-hero-inner{max-width:980px;margin:0 auto}
+    .how-it-works-eyebrow{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 12px;border-radius:999px;
+      background:#fff;border:1px solid var(--border);
+      font-size:.82rem;font-weight:800;color:var(--navy);
+      letter-spacing:.02em;text-transform:uppercase;
+    }
+    .how-it-works-hero h1{margin:16px 0 12px;font-size:3rem;line-height:1.02;max-width:760px}
+    .how-it-works-hero .lead{
+      margin:0 0 10px;max-width:700px;
+      font-size:1.12rem;line-height:1.65;color:var(--color-text-main)
+    }
+    .how-it-works-hero .support{margin:0;max-width:700px;color:var(--gray);line-height:1.7}
+    .how-it-works-jump-wrap{
+      position:sticky;top:64px;z-index:14;
+      background:rgba(255,255,255,.94);
+      backdrop-filter:blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+    .how-it-works-jump-nav{
+      max-width:1120px;margin:0 auto;padding:14px 20px;
+      display:flex;gap:10px;flex-wrap:wrap;
+    }
+    .how-it-works-jump-nav a{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:10px 14px;border-radius:999px;
+      background:#fff;border:1px solid var(--border);
+      text-decoration:none;font-weight:800;font-size:.92rem;color:var(--color-text-main)
+    }
+    .how-it-works-jump-nav a:hover{
+      border-color:var(--color-primary);
+      box-shadow:0 0 0 3px rgba(255,230,0,.18);
+    }
+    .how-it-works-section{padding:30px 0}
+    .how-it-works-section-header{max-width:720px;margin-bottom:18px}
+    .how-it-works-section-header h2{margin:0 0 10px;font-size:2rem;line-height:1.1}
+    .how-it-works-section-header p{margin:0;color:var(--gray);line-height:1.7}
+    .tutorial-stack{display:grid;gap:24px}
+    .tutorial-card{
+      padding:24px;border-radius:22px;
+      background:linear-gradient(180deg,#FFFFFF 0%, #F9FAFB 100%);
+      border:1px solid var(--border);box-shadow:var(--shadow)
+    }
+    .tutorial-role{
+      display:inline-flex;align-items:center;justify-content:center;
+      min-width:110px;padding:7px 12px;margin-bottom:14px;
+      border-radius:999px;background:#FEF9C3;color:#92400E;
+      font-size:.8rem;font-weight:800;letter-spacing:.02em;text-transform:uppercase
+    }
+    .tutorial-card h3{margin:0 0 12px;font-size:1.5rem;line-height:1.25}
+    .tutorial-video{margin-bottom:16px}
+    .tutorial-card p{margin:0 0 16px;max-width:760px;color:var(--color-text-secondary);line-height:1.7}
+    .faq-stack{display:grid;gap:12px}
+    .how-faq-item{
+      border:1px solid var(--border);border-radius:18px;
+      background:#fff;box-shadow:var(--shadow);overflow:hidden
+    }
+    .how-faq-button{
+      width:100%;border:none;background:#fff;color:var(--color-text-main);
+      text-align:left;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+      font-weight:800;cursor:pointer
+    }
+    .how-faq-button:hover{background:var(--color-bg-light)}
+    .how-faq-chevron{flex-shrink:0;font-size:1.15rem;transition:transform .2s ease}
+    .how-faq-item.open .how-faq-chevron{transform:rotate(180deg)}
+    .how-faq-answer{display:none;padding:0 20px 18px;color:var(--gray);line-height:1.7}
+    .how-faq-item.open .how-faq-answer{display:block}
     .msg-shell{display:grid;grid-template-columns:280px 1fr;gap:14px}
     .thread-list,.thread-view{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
     .thread{padding:14px 16px;border-bottom:1px solid #F3F4F6;cursor:pointer}
@@ -349,6 +425,18 @@
       .hero h1{font-size:1.85rem;line-height:1.12}
       .hero p{font-size:.98rem;margin-left:0;margin-right:0}
       .hero .btn,.hero a.btn{width:100%;margin-bottom:8px}
+      .how-it-works-hero{padding:44px 16px 18px}
+      .how-it-works-hero h1{font-size:2.1rem}
+      .how-it-works-hero .lead,.how-it-works-hero .support{font-size:.98rem}
+      .how-it-works-jump-wrap{top:64px}
+      .how-it-works-jump-nav{padding:12px 14px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+      .how-it-works-jump-nav a{white-space:nowrap}
+      .how-it-works-section{padding:22px 0}
+      .how-it-works-section-header h2{font-size:1.6rem}
+      .tutorial-card{padding:18px}
+      .tutorial-card h3{font-size:1.24rem}
+      .how-faq-button{padding:16px}
+      .how-faq-answer{padding:0 16px 16px}
       .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:cover}
       .home-hero-copy{max-width:100%}
       .home-hero h1{font-size:2rem;line-height:1.08}
@@ -399,6 +487,7 @@
       .nav-actions{max-width:54%}
       .nav-actions .btn,.nav-actions button{font-size:.78rem;padding:7px 8px}
       .hero h1{font-size:1.65rem}
+      .how-it-works-hero h1{font-size:1.82rem}
       .container{padding-left:12px;padding-right:12px}
       .avatar{width:48px;height:48px}
     }
@@ -410,6 +499,7 @@
     <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
     <div class="nav-links">
       <a href="#/" id="nav-home">Browse Students</a>
+      <a href="#/how-it-works" id="nav-how-it-works">How It Works</a>
       <a href="#/community" id="nav-community">Community</a>
       <a href="#/jobs" id="nav-jobs">Jobs</a>
       <a href="#/workshops" id="nav-workshops">Workshop & Classes</a>
@@ -454,10 +544,62 @@ const TEST_USERS = {
   employer: { email: 'ilya@cogocity.com', password: 'Ilya123' },
   neighbor: { email: 'tanya@cogocity.com', password: 'tanya123' }
 };
+const HOW_IT_WORKS_TUTORIALS = [
+  {
+    id: 'student',
+    role: 'Student Tutorial',
+    title: 'How to Create a Student Profile on Cogo City | Get Hired for Part-Time Jobs & Paid Projects',
+    videoUrl: 'https://youtu.be/Y3Y9mhSAHgw',
+    description: 'Learn how to create your student profile on CoGo City and get ready to apply for paid projects, part-time jobs, and internships.',
+    ctaLabel: 'Create a Student Profile',
+    ctaAction: `openStudentSignupWorkflow()`
+  },
+  {
+    id: 'neighbor',
+    role: 'Neighbor Tutorial',
+    title: 'How to Create a Neighbor Profile on Cogo City | Hire Local Students & Post Jobs',
+    videoUrl: 'https://youtu.be/zbigBsTSIx4',
+    description: 'Learn how to create your Neighbor profile on CoGo City so you can hire trusted local students for part-time jobs, one-time projects, and everyday help.',
+    ctaLabel: 'Create a Neighbor Profile',
+    ctaAction: `openEmployerSignupWorkflow('neighbor')`
+  },
+  {
+    id: 'employer',
+    role: 'Employer Tutorial',
+    title: 'How to Create an Employer Profile on Cogo City | Hire Students & Post Jobs',
+    videoUrl: 'https://youtu.be/ugXCSwjIISU',
+    description: 'Learn how to create your Employer profile on CoGo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
+    ctaLabel: 'Create an Employer Profile',
+    ctaAction: `openEmployerSignupWorkflow('employer')`
+  }
+];
+const HOW_IT_WORKS_FAQS = [
+  {
+    id: 'join',
+    question: 'Who can join CoGo City?',
+    answer: 'CoGo City is built for students looking for paid local opportunities, as well as Neighbors and Employers who want to hire student talent.'
+  },
+  {
+    id: 'opportunities',
+    question: 'What kinds of opportunities are available?',
+    answer: 'Opportunities may include part-time jobs, one-time projects, internships, seasonal work, and everyday local help.'
+  },
+  {
+    id: 'profile-type',
+    question: 'How do I create the right type of profile?',
+    answer: 'Choose the tutorial that matches your role, then follow the steps shown in the video to create your profile.'
+  },
+  {
+    id: 'support',
+    question: 'How do I contact support if I need help?',
+    answer: 'If you still have questions after reviewing the tutorials and FAQs, please contact the CoGo City support team for help at support@cogocity.com or message admin in the chat box that you can find at the bottom of each page once you sign up.'
+  }
+];
 
 let currentUser = null;
 let dashSection = 'profile';
 let studentJobsTab = 'all';
+let howItWorksFaqOpenId = HOW_IT_WORKS_FAQS[0]?.id || '';
 let employerTab = 'all';
 let myPostsTab = 'all';
 let activeThreadUserId = null;
@@ -2514,6 +2656,7 @@ function getSiteSettings(){
   const defaults = {
     nav_labels: {
       home: 'Browse Students',
+      how_it_works: 'How It Works',
       community: 'Community',
       jobs: 'Jobs',
       workshops: 'Workshop & Classes',
@@ -2529,6 +2672,7 @@ function getSiteSettings(){
     footer_about_text: 'Our platform empowers teens and young adults to achieve financial independence by building job experience and entrepreneurial skills in the safe and protective environment of their local communities.',
     footer_main_links: [
       { label:'Browse Students', href:'#/' },
+      { label:'How It Works', href:'#/how-it-works' },
       { label:'Community', href:'#/community' },
       { label:'Jobs', href:'#/jobs' },
       { label:'Workshop & Classes', href:'#/workshops' },
@@ -3602,6 +3746,7 @@ function applySiteSettings(){
   const settings = getSiteSettings();
   const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
   setText('nav-home', settings.nav_labels.home || 'Browse Students');
+  setText('nav-how-it-works', settings.nav_labels.how_it_works || 'How It Works');
   setText('nav-community', settings.nav_labels.community || 'Community');
   setText('nav-jobs', settings.nav_labels.jobs || 'Jobs');
   setText('nav-workshops', settings.nav_labels.workshops || 'Workshop & Classes');
@@ -3655,6 +3800,95 @@ function renderAboutPage(){
     </div>
   `;
 }
+function renderHowItWorksTutorialCard(item){
+  return `
+    <article class="tutorial-card" id="tutorial-${esc(item.id)}">
+      <div class="tutorial-role">${esc(item.role)}</div>
+      <h3>${esc(item.title)}</h3>
+      <div class="tutorial-video">${renderVideoPreviewHtml(item.videoUrl, item.title, { maxWidth:'100%', showLabel:false })}</div>
+      <p>${esc(item.description)}</p>
+      <button class="btn btn-blue" onclick="${item.ctaAction}">${esc(item.ctaLabel)}</button>
+    </article>
+  `;
+}
+function renderHowItWorksFaqItem(item){
+  const open = howItWorksFaqOpenId === item.id;
+  return `
+    <div class="how-faq-item ${open ? 'open' : ''}">
+      <button
+        class="how-faq-button"
+        type="button"
+        aria-expanded="${open ? 'true' : 'false'}"
+        aria-controls="how-faq-answer-${esc(item.id)}"
+        id="how-faq-button-${esc(item.id)}"
+        onclick="toggleHowItWorksFaq('${esc(item.id)}')"
+      >
+        <span>${esc(item.question)}</span>
+        <span class="how-faq-chevron">⌄</span>
+      </button>
+      <div
+        class="how-faq-answer"
+        id="how-faq-answer-${esc(item.id)}"
+        role="region"
+        aria-labelledby="how-faq-button-${esc(item.id)}"
+      >${esc(item.answer)}</div>
+    </div>
+  `;
+}
+function toggleHowItWorksFaq(id=''){
+  howItWorksFaqOpenId = howItWorksFaqOpenId === id ? '' : id;
+  renderHowItWorksPage();
+}
+function scrollHowItWorksTo(id=''){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const navOffset = window.innerWidth <= 768 ? 130 : 150;
+  const top = el.getBoundingClientRect().top + window.scrollY - navOffset;
+  window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
+}
+function renderHowItWorksPage(){
+  document.getElementById('app').innerHTML = `
+    ${renderUserIdentityBanner()}
+    <div class="how-it-works-page">
+      <section class="how-it-works-hero">
+        <div class="how-it-works-hero-inner">
+          <div class="how-it-works-eyebrow">Guided onboarding</div>
+          <h1>How CoGo City Works</h1>
+          <p class="lead">Learn how to use CoGo City as a Student, Neighbor, or Employer.</p>
+          <p class="support">Watch quick tutorials, read step-by-step guidance, and find answers to common questions all in one place.</p>
+        </div>
+      </section>
+      <div class="how-it-works-jump-wrap">
+        <div class="how-it-works-jump-nav" aria-label="How It Works sections">
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-student');return false;">Student Tutorial</a>
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-neighbor');return false;">Neighbor Tutorial</a>
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-employer');return false;">Employer Tutorial</a>
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('how-it-works-faq');return false;">FAQ</a>
+        </div>
+      </div>
+      <div class="container">
+        <section class="how-it-works-section" id="how-it-works-tutorials">
+          <div class="how-it-works-section-header">
+            <h2>Watch Tutorials by Role</h2>
+            <p>Choose the tutorial that matches your role and follow the steps to get started on CoGo City.</p>
+          </div>
+          <div class="tutorial-stack">
+            ${HOW_IT_WORKS_TUTORIALS.map(renderHowItWorksTutorialCard).join('')}
+          </div>
+        </section>
+        <section class="how-it-works-section" id="how-it-works-faq">
+          <div class="how-it-works-section-header">
+            <h2>Frequently Asked Questions</h2>
+            <p>Here are some common questions about getting started with CoGo City.</p>
+          </div>
+          <div class="faq-stack">
+            ${HOW_IT_WORKS_FAQS.map(renderHowItWorksFaqItem).join('')}
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+}
 function openContactUsForm(){
   openModal('Contact us', `
     <div class="small muted" style="margin-bottom:12px">Send a message to CoGo City support. This will open your email app addressed to tanya@cogocity.com.</div>
@@ -3686,11 +3920,13 @@ function renderNav(){
   const nav = document.getElementById('nav-actions');
   const route = getRoute();
   const navHome = document.getElementById('nav-home');
+  const navHowItWorks = document.getElementById('nav-how-it-works');
   const navJobs = document.getElementById('nav-jobs');
   const navWorkshops = document.getElementById('nav-workshops');
   const navCommunity = document.getElementById('nav-community');
   const navBlog = document.getElementById('nav-blog');
   if (navHome) navHome.classList.toggle('active', route === '#/' || route === '');
+  if (navHowItWorks) navHowItWorks.classList.toggle('active', route === '#/how-it-works');
   if (navJobs) navJobs.classList.toggle('active', route === '#/jobs' || route.startsWith('#/jobs/'));
   if (navWorkshops) navWorkshops.classList.toggle('active', route === '#/workshops' || route.startsWith('#/workshops/'));
   if (navCommunity) navCommunity.classList.toggle('active', route === '#/community');
@@ -5116,6 +5352,7 @@ function renderPage(){
     }
     renderNav();
     if (route === '#/about-us') return renderAboutPage();
+    if (route === '#/how-it-works') return renderHowItWorksPage();
     if (route === '#/jobs' || route.startsWith('#/jobs/')) return renderJobsPage();
     if (route === '#/workshops' || route.startsWith('#/workshops/')) return renderWorkshopsPage();
     if (route === '#/community') return renderCommunity();
