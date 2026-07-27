@@ -9565,7 +9565,6 @@ function renderEmployerSignupStepContent(){
   `;
   return `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">${employerSignupMode === 'employer' ? 'After password setup, verification email is skipped in test mode and you will be redirected to your profile.' : 'After password setup, verification email is skipped in test mode and you will be redirected to your profile.'}</div>
       ${renderUsOnlySignupNotice()}
       ${renderPasswordField('Create Password', 'employerSignupPassword', { value:d.password, placeholder:'••••••••', autocomplete:'new-password', oninput:'syncEmployerSignupPasswordDraft()' })}
       ${renderPasswordField('Confirm Password', 'employerSignupConfirmPassword', { value:d.confirmPassword, placeholder:'••••••••', autocomplete:'new-password', oninput:'syncEmployerSignupPasswordDraft()' })}
