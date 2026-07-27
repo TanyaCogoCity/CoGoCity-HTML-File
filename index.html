@@ -8613,7 +8613,6 @@ function renderStudentSignupStepContent(){
   `;
   if (studentSignupStep === 7) return `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Create your password last. Your email verification is skipped in test mode for now.</div>
       ${renderUsOnlySignupNotice()}
       ${renderPasswordField('Create Password', 'studentFlowPassword', { value:d.password, placeholder:'••••••••', autocomplete:'new-password' })}
       ${renderPasswordField('Confirm Password', 'studentFlowConfirmPassword', { value:d.confirmPassword, placeholder:'••••••••', autocomplete:'new-password' })}
@@ -9490,7 +9489,6 @@ function renderEmployerSignupModal(){
             <div class="small muted">Step ${employerSignupStep} of ${employerSignupTotalSteps()}</div>
             <div style="font-weight:800;font-size:1.05rem">${employerSignupStepTitle()}</div>
           </div>
-          <div class="small muted">${employerSignupMode === 'employer' ? 'Verification email is skipped in the current test environment and you will go straight to your profile.' : 'Skip email verification in test mode and redirect straight to the profile page.'}</div>
         </div>
       </div>
       ${renderEmployerSignupStepContent()}
