@@ -271,53 +271,50 @@
     .tutorial-card p{margin:0 0 16px;max-width:760px;color:var(--color-text-secondary);line-height:1.7}
     .how-faq-filters{
       display:flex;gap:10px;flex-wrap:wrap;
-      margin:20px 0 18px;
+      margin:16px 0 18px;
     }
     .how-faq-filter{
       border:1px solid var(--border);
       border-radius:999px;
       background:#fff;
       color:var(--color-text-main);
-      padding:10px 14px;
+      padding:8px 12px;
       font-weight:800;
       cursor:pointer;
       transition:all .2s ease;
+      text-decoration:none;
+      font-size:.9rem;
     }
     .how-faq-filter:hover{
       border-color:var(--color-primary);
       box-shadow:0 0 0 3px rgba(255,230,0,.18);
     }
-    .how-faq-filter.active{
-      background:var(--color-primary);
-      border-color:var(--color-primary);
-      color:#111827;
-    }
     .faq-stack{display:grid;gap:12px}
+    .how-faq-section{padding-top:8px}
+    .how-faq-section + .how-faq-section{margin-top:20px}
+    .how-faq-section-title{
+      margin:0 0 10px;
+      font-size:1rem;
+      font-weight:900;
+      letter-spacing:.02em;
+      text-transform:uppercase;
+      color:var(--navy);
+    }
     .how-faq-item{
-      border:1px solid var(--border);border-radius:18px;
+      border:1px solid var(--border);border-radius:14px;
       background:#fff;box-shadow:var(--shadow);overflow:hidden
-    }
-    .how-faq-meta{
-      display:flex;align-items:center;justify-content:space-between;gap:10px;
-      padding:18px 20px 0;
-    }
-    .how-faq-category{
-      display:inline-flex;align-items:center;justify-content:center;
-      padding:7px 11px;border-radius:999px;
-      background:#FEF3C7;color:#92400E;
-      font-size:.76rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;
     }
     .how-faq-heading{margin:0}
     .how-faq-button{
       width:100%;border:none;background:#fff;color:var(--color-text-main);
-      text-align:left;padding:12px 20px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+      text-align:left;padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
       font-weight:800;cursor:pointer
     }
     .how-faq-button:hover{background:var(--color-bg-light)}
-    .how-faq-question-text{display:block;font-size:1.08rem;line-height:1.4}
-    .how-faq-chevron{flex-shrink:0;font-size:1.15rem;transition:transform .2s ease}
+    .how-faq-question-text{display:block;font-size:.98rem;line-height:1.35}
+    .how-faq-chevron{flex-shrink:0;font-size:1rem;transition:transform .2s ease}
     .how-faq-item.open .how-faq-chevron{transform:rotate(180deg)}
-    .how-faq-answer{display:none;padding:0 20px 18px;color:var(--gray);line-height:1.7}
+    .how-faq-answer{display:none;padding:0 14px 12px;color:var(--gray);line-height:1.6;font-size:.94rem}
     .how-faq-item.open .how-faq-answer{display:block}
     .how-faq-empty{
       padding:20px;border:1px dashed var(--border);border-radius:18px;
@@ -474,12 +471,12 @@
       .how-it-works-section-header h2{font-size:1.6rem}
       .tutorial-card{padding:18px}
       .tutorial-card h3{font-size:1.24rem}
-      .how-faq-filters{gap:8px;margin:18px 0 16px}
-      .how-faq-filter{padding:9px 12px;font-size:.88rem}
-      .how-faq-meta{padding:16px 16px 0}
-      .how-faq-button{padding:12px 16px 16px}
-      .how-faq-question-text{font-size:1rem}
-      .how-faq-answer{padding:0 16px 16px}
+      .how-faq-filters{gap:8px;margin:16px 0 14px}
+      .how-faq-filter{padding:8px 11px;font-size:.84rem}
+      .how-faq-section + .how-faq-section{margin-top:18px}
+      .how-faq-button{padding:11px 12px}
+      .how-faq-question-text{font-size:.94rem}
+      .how-faq-answer{padding:0 12px 12px;font-size:.9rem}
       .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:cover}
       .home-hero-copy{max-width:100%}
       .home-hero h1{font-size:2rem;line-height:1.08}
@@ -586,11 +583,39 @@ const TEST_USERS = {
   employer: { email: 'ilya@cogocity.com', password: 'Ilya123' },
   neighbor: { email: 'tanya@cogocity.com', password: 'tanya123' }
 };
-const HOW_IT_WORKS_FAQ_FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'general', label: 'General' },
-  { id: 'students', label: 'Students' },
-  { id: 'employers-neighbors', label: 'Employers & Neighbors' }
+const HOW_IT_WORKS_TUTORIALS = [
+  {
+    id: 'student',
+    role: 'Student Tutorial',
+    title: 'How to Create a Student Profile on CoGo City | Get Hired for Part-Time Jobs & Paid Projects',
+    videoUrl: 'https://youtu.be/Y3Y9mhSAHgw',
+    description: 'Learn how to create your student profile on CoGo City and get ready to apply for paid projects, part-time jobs, and internships.',
+    ctaLabel: 'Create a Student Profile',
+    ctaAction: `openStudentSignupWorkflow()`
+  },
+  {
+    id: 'neighbor',
+    role: 'Neighbor Tutorial',
+    title: 'How to Create a Neighbor Profile on CoGo City | Hire Local Students & Post Jobs',
+    videoUrl: 'https://youtu.be/zbigBsTSIx4',
+    description: 'Learn how to create your Neighbor profile on CoGo City so you can hire trusted local students for part-time jobs, one-time projects, and everyday help.',
+    ctaLabel: 'Create a Neighbor Profile',
+    ctaAction: `openEmployerSignupWorkflow('neighbor')`
+  },
+  {
+    id: 'employer',
+    role: 'Employer Tutorial',
+    title: 'How to Create an Employer Profile on CoGo City | Hire Students & Post Jobs',
+    videoUrl: 'https://youtu.be/ugXCSwjIISU',
+    description: 'Learn how to create your Employer profile on CoGo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
+    ctaLabel: 'Create an Employer Profile',
+    ctaAction: `openEmployerSignupWorkflow('employer')`
+  }
+];
+const HOW_IT_WORKS_FAQ_SECTIONS = [
+  { id: 'general', label: 'General', anchorId: 'faq-general' },
+  { id: 'students', label: 'Students', anchorId: 'faq-students' },
+  { id: 'employers-neighbors', label: 'Employers & Neighbors', anchorId: 'faq-employers-neighbors' }
 ];
 const HOW_IT_WORKS_FAQS = [
   {
@@ -877,7 +902,6 @@ const HOW_IT_WORKS_FAQS = [
 let currentUser = null;
 let dashSection = 'profile';
 let studentJobsTab = 'all';
-let howItWorksFaqFilter = 'all';
 let howItWorksFaqOpenId = HOW_IT_WORKS_FAQS[0]?.id || '';
 let employerTab = 'all';
 let myPostsTab = 'all';
@@ -4079,22 +4103,28 @@ function renderAboutPage(){
     </div>
   `;
 }
-function getHowItWorksFaqItems(){
-  return howItWorksFaqFilter === 'all'
-    ? HOW_IT_WORKS_FAQS
-    : HOW_IT_WORKS_FAQS.filter(item => item.category === howItWorksFaqFilter);
+function renderHowItWorksTutorialCard(item){
+  return `
+    <article class="tutorial-card" id="tutorial-${esc(item.id)}">
+      <div class="tutorial-role">${esc(item.role)}</div>
+      <h3>${esc(item.title)}</h3>
+      <div class="tutorial-video">${renderVideoPreviewHtml(item.videoUrl, item.title, { maxWidth:'100%', showLabel:false })}</div>
+      <p>${esc(item.description)}</p>
+      <button class="btn btn-blue" onclick="${item.ctaAction}">${esc(item.ctaLabel)}</button>
+    </article>
+  `;
 }
 function renderHowItWorksFaqFilters(){
   return `
     <div class="how-faq-filters" role="tablist" aria-label="FAQ categories">
-      ${HOW_IT_WORKS_FAQ_FILTERS.map(filter => `
-        <button
-          class="how-faq-filter ${howItWorksFaqFilter === filter.id ? 'active' : ''}"
-          type="button"
+      ${HOW_IT_WORKS_FAQ_SECTIONS.map(section => `
+        <a
+          class="how-faq-filter"
+          href="#/how-it-works"
           role="tab"
-          aria-selected="${howItWorksFaqFilter === filter.id ? 'true' : 'false'}"
-          onclick="setHowItWorksFaqFilter('${esc(filter.id)}')"
-        >${esc(filter.label)}</button>
+          aria-selected="false"
+          onclick="scrollHowItWorksTo('${esc(section.anchorId)}');return false;"
+        >${esc(section.label)}</a>
       `).join('')}
     </div>
   `;
@@ -4102,13 +4132,13 @@ function renderHowItWorksFaqFilters(){
 function renderHowItWorksFaqAnswer(answer){
   return renderFormattedLongText(Array.isArray(answer) ? answer : String(answer || ''));
 }
+function getHowItWorksFaqItems(sectionId=''){
+  return HOW_IT_WORKS_FAQS.filter(item => item.category === sectionId);
+}
 function renderHowItWorksFaqItem(item){
   const open = howItWorksFaqOpenId === item.id;
   return `
     <div class="how-faq-item ${open ? 'open' : ''}">
-      <div class="how-faq-meta">
-        <span class="how-faq-category">${esc(item.categoryLabel)}</span>
-      </div>
       <h3 class="how-faq-heading">
         <button
           class="how-faq-button"
@@ -4131,11 +4161,16 @@ function renderHowItWorksFaqItem(item){
     </div>
   `;
 }
-function setHowItWorksFaqFilter(filter='all'){
-  howItWorksFaqFilter = HOW_IT_WORKS_FAQ_FILTERS.some(item => item.id === filter) ? filter : 'all';
-  const firstVisibleFaq = getHowItWorksFaqItems()[0];
-  howItWorksFaqOpenId = firstVisibleFaq ? firstVisibleFaq.id : '';
-  renderHowItWorksPage();
+function renderHowItWorksFaqSection(section){
+  const items = getHowItWorksFaqItems(section.id);
+  return `
+    <div class="how-faq-section" id="${esc(section.anchorId)}">
+      <div class="how-faq-section-title">${esc(section.label)}</div>
+      <div class="faq-stack" role="list">
+        ${items.length ? items.map(renderHowItWorksFaqItem).join('') : `<div class="how-faq-empty">No FAQs in this section yet.</div>`}
+      </div>
+    </div>
+  `;
 }
 function toggleHowItWorksFaq(id=''){
   howItWorksFaqOpenId = howItWorksFaqOpenId === id ? '' : id;
@@ -4170,7 +4205,6 @@ function scrollHowItWorksTo(id=''){
   window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
 }
 function renderHowItWorksPage(){
-  const visibleFaqs = getHowItWorksFaqItems();
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="how-it-works-page">
@@ -4184,19 +4218,29 @@ function renderHowItWorksPage(){
       </section>
       <div class="how-it-works-jump-wrap">
         <div class="how-it-works-jump-nav" aria-label="How It Works sections">
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-student');return false;">Student Tutorial</a>
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-neighbor');return false;">Neighbor Tutorial</a>
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-employer');return false;">Employer Tutorial</a>
           <a href="#/how-it-works" onclick="scrollHowItWorksTo('how-it-works-faq');return false;">FAQ</a>
         </div>
       </div>
       <div class="container">
+        <section class="how-it-works-section" id="how-it-works-tutorials">
+          <div class="how-it-works-section-header">
+            <h2>Watch Tutorials by Role</h2>
+            <p>Choose the tutorial that matches your role and follow the steps to get started on CoGo City.</p>
+          </div>
+          <div class="tutorial-stack">
+            ${HOW_IT_WORKS_TUTORIALS.map(renderHowItWorksTutorialCard).join('')}
+          </div>
+        </section>
         <section class="how-it-works-section" id="how-it-works-faq">
           <div class="how-it-works-section-header">
             <h2>Frequently Asked Questions</h2>
             <p>Find answers about student jobs, internships, local hiring, freelance students, neighborhood help, and how CoGo City works for students, employers, and neighbors.</p>
           </div>
           ${renderHowItWorksFaqFilters()}
-          <div class="faq-stack" role="list">
-            ${visibleFaqs.length ? visibleFaqs.map(renderHowItWorksFaqItem).join('') : `<div class="how-faq-empty">No FAQs match this category yet.</div>`}
-          </div>
+          ${HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('')}
         </section>
       </div>
     </div>
