@@ -13790,6 +13790,29 @@ function getVideoPosterUrl(video){
   if (video.type === 'vimeo' && video.videoId) return `https://vumbnail.com/${video.videoId}.jpg`;
   return '';
 }
+const VIDEO_POSTER_DIMENSIONS = {
+  'Y3Y9mhSAHgw': { width:1175, height:662 },
+  'zbigBsTSIx4': { width:1176, height:661 },
+  'ugXCSwjIISU': { width:1177, height:662 },
+  'BNIQWA8E5rA': { width:1172, height:659 }
+};
+function getVideoPosterMeta(video=null){
+  const videoId = String(video?.videoId || video?.id || '').trim();
+  const dims = VIDEO_POSTER_DIMENSIONS[videoId] || null;
+  return {
+    width: dims?.width || '',
+    height: dims?.height || ''
+  };
+}
+function renderVideoPosterImage(video=null, label='Video preview', loading='lazy'){
+  const posterUrl = getVideoPosterUrl(video);
+  if (!posterUrl) return '';
+  const posterMeta = getVideoPosterMeta(video);
+  const sizeAttrs = posterMeta.width && posterMeta.height
+    ? ` width="${posterMeta.width}" height="${posterMeta.height}"`
+    : '';
+  return `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${esc(loading)}" decoding="async"${sizeAttrs} style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;image-rendering:auto;image-rendering:-webkit-optimize-contrast;backface-visibility:hidden;transform:translateZ(0)">`;
+}
 function getVideoWatchUrl(video){
   if (!video) return '';
   if (video.type === 'youtube' && video.videoId) return `https://www.youtube.com/watch?v=${video.videoId}`;
@@ -13888,13 +13911,12 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
   const videoId = video.videoId || video.id || '';
   if (video.type === 'youtube' && videoId) {
     const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
-    const posterUrl = getVideoPosterUrl(video) || '';
     const containerId = `video_${uid('inline').replace(/[^a-zA-Z0-9_]/g, '')}`;
     const encodedVideo = encodeURIComponent(JSON.stringify({ type:'youtube', videoId, id:videoId, url:embedUrl }));
     return `
       <div id="${containerId}">
         <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
-          ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : ''}
+          ${renderVideoPosterImage(video, label, 'lazy')}
           <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">\u25B6</div>
         </div>
       </div>
@@ -13903,13 +13925,12 @@ function getVideoPlayerHtml(video=null, label='Video preview'){
   }
   if (video.type === 'vimeo' && videoId) {
     const embedUrl = `https://player.vimeo.com/video/${videoId}`;
-    const posterUrl = getVideoPosterUrl(video) || '';
     const containerId = `video_${uid('inline').replace(/[^a-zA-Z0-9_]/g, '')}`;
     const encodedVideo = encodeURIComponent(JSON.stringify({ type:'vimeo', videoId, id:videoId, url:embedUrl }));
     return `
       <div id="${containerId}">
         <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
-          ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : ''}
+          ${renderVideoPosterImage(video, label, 'lazy')}
           <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(37,99,235,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">\u25B6</div>
         </div>
       </div>
@@ -13978,7 +13999,6 @@ function renderVideo(video=null, containerId='video-container', options={}){
   }
   const label = options.label || 'Video preview';
   const loading = options.loading === 'eager' ? 'eager' : 'lazy';
-  const posterUrl = getVideoPosterUrl(video);
   if (video.type === 'external') {
     container.innerHTML = getVideoPlayerHtml(video, label);
     return;
@@ -13986,7 +14006,7 @@ function renderVideo(video=null, containerId='video-container', options={}){
   const encodedVideo = encodeURIComponent(JSON.stringify(video));
   container.innerHTML = `
     <div style="position:relative;width:100%;padding-top:56.25%;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#1F2937;cursor:pointer" onclick="loadVideoPlayer('${esc(containerId)}','${esc(encodedVideo)}','${esc(label)}')">
-      ${posterUrl ? `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${loading}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">` : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1F2937,#374151);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
+      ${getVideoPosterUrl(video) ? renderVideoPosterImage(video, label, loading) : `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1F2937,#374151);color:#fff;font-weight:700;letter-spacing:.02em">${esc(video.type === 'upload' ? 'Uploaded Video' : label)}</div>`}
       <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;background:rgba(220,38,38,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 12px 30px rgba(0,0,0,.28)">\u25B6</div>
     </div>
     ${video.type === 'youtube' ? `<div class="small muted" style="margin-top:8px"><a href="${esc(getVideoWatchUrl(video))}">Watch on YouTube</a></div>` : ''}
