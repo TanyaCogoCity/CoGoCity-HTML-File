@@ -589,6 +589,7 @@ const HOW_IT_WORKS_TUTORIALS = [
     role: 'Student Tutorial',
     title: 'How to Create a Student Profile on CoGo City | Get Hired for Part-Time Jobs & Paid Projects',
     videoUrl: 'https://youtu.be/Y3Y9mhSAHgw',
+    posterUrl: 'assets/how-it-works-student-tutorial.jpg',
     description: 'Learn how to create your student profile on CoGo City and get ready to apply for paid projects, part-time jobs, and internships.',
     ctaLabel: 'Create a Student Profile',
     ctaAction: `openStudentSignupWorkflow()`
@@ -4104,11 +4105,14 @@ function renderAboutPage(){
   `;
 }
 function renderHowItWorksTutorialCard(item){
+  const videoConfig = item.posterUrl
+    ? Object.assign({}, parseVideo(item.videoUrl), { posterUrl: item.posterUrl })
+    : item.videoUrl;
   return `
     <article class="tutorial-card" id="tutorial-${esc(item.id)}">
       <div class="tutorial-role">${esc(item.role)}</div>
       <h3>${esc(item.title)}</h3>
-      <div class="tutorial-video">${renderVideoPreviewHtml(item.videoUrl, item.title, { maxWidth:'100%', showLabel:false })}</div>
+      <div class="tutorial-video">${renderVideoPreviewHtml(videoConfig, item.title, { maxWidth:'100%', showLabel:false })}</div>
       <p>${esc(item.description)}</p>
       <button class="btn btn-blue" onclick="${item.ctaAction}">${esc(item.ctaLabel)}</button>
     </article>
@@ -7817,6 +7821,7 @@ function getVideoEmbedUrl(url){
 }
 function getVideoPosterUrl(video){
   if (!video) return '';
+  if (video.posterUrl) return String(video.posterUrl).trim();
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   if (video.type === 'vimeo' && video.videoId) return `https://vumbnail.com/${video.videoId}.jpg`;
   return '';
