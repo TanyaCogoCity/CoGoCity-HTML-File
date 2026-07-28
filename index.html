@@ -269,21 +269,60 @@
     .tutorial-card h3{margin:0 0 12px;font-size:1.5rem;line-height:1.25}
     .tutorial-video{margin-bottom:16px}
     .tutorial-card p{margin:0 0 16px;max-width:760px;color:var(--color-text-secondary);line-height:1.7}
+    .how-faq-filters{
+      display:flex;gap:10px;flex-wrap:wrap;
+      margin:20px 0 18px;
+    }
+    .how-faq-filter{
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:#fff;
+      color:var(--color-text-main);
+      padding:10px 14px;
+      font-weight:800;
+      cursor:pointer;
+      transition:all .2s ease;
+    }
+    .how-faq-filter:hover{
+      border-color:var(--color-primary);
+      box-shadow:0 0 0 3px rgba(255,230,0,.18);
+    }
+    .how-faq-filter.active{
+      background:var(--color-primary);
+      border-color:var(--color-primary);
+      color:#111827;
+    }
     .faq-stack{display:grid;gap:12px}
     .how-faq-item{
       border:1px solid var(--border);border-radius:18px;
       background:#fff;box-shadow:var(--shadow);overflow:hidden
     }
+    .how-faq-meta{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:18px 20px 0;
+    }
+    .how-faq-category{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:7px 11px;border-radius:999px;
+      background:#FEF3C7;color:#92400E;
+      font-size:.76rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;
+    }
+    .how-faq-heading{margin:0}
     .how-faq-button{
       width:100%;border:none;background:#fff;color:var(--color-text-main);
-      text-align:left;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+      text-align:left;padding:12px 20px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
       font-weight:800;cursor:pointer
     }
     .how-faq-button:hover{background:var(--color-bg-light)}
+    .how-faq-question-text{display:block;font-size:1.08rem;line-height:1.4}
     .how-faq-chevron{flex-shrink:0;font-size:1.15rem;transition:transform .2s ease}
     .how-faq-item.open .how-faq-chevron{transform:rotate(180deg)}
     .how-faq-answer{display:none;padding:0 20px 18px;color:var(--gray);line-height:1.7}
     .how-faq-item.open .how-faq-answer{display:block}
+    .how-faq-empty{
+      padding:20px;border:1px dashed var(--border);border-radius:18px;
+      color:var(--gray);background:#fff;
+    }
     .msg-shell{display:grid;grid-template-columns:280px 1fr;gap:14px}
     .thread-list,.thread-view{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow)}
     .thread{padding:14px 16px;border-bottom:1px solid #F3F4F6;cursor:pointer}
@@ -435,7 +474,11 @@
       .how-it-works-section-header h2{font-size:1.6rem}
       .tutorial-card{padding:18px}
       .tutorial-card h3{font-size:1.24rem}
-      .how-faq-button{padding:16px}
+      .how-faq-filters{gap:8px;margin:18px 0 16px}
+      .how-faq-filter{padding:9px 12px;font-size:.88rem}
+      .how-faq-meta{padding:16px 16px 0}
+      .how-faq-button{padding:12px 16px 16px}
+      .how-faq-question-text{font-size:1rem}
       .how-faq-answer{padding:0 16px 16px}
       .home-hero{min-height:640px;align-items:flex-start;padding:28px 16px 300px;background-image:url('assets/home-hero-students-mobile.jpg');background-position:center bottom;background-size:cover}
       .home-hero-copy{max-width:100%}
@@ -543,61 +586,298 @@ const TEST_USERS = {
   employer: { email: 'ilya@cogocity.com', password: 'Ilya123' },
   neighbor: { email: 'tanya@cogocity.com', password: 'tanya123' }
 };
-const HOW_IT_WORKS_TUTORIALS = [
-  {
-    id: 'student',
-    role: 'Student Tutorial',
-    title: 'How to Create a Student Profile on Cogo City | Get Hired for Part-Time Jobs & Paid Projects',
-    videoUrl: 'https://youtu.be/Y3Y9mhSAHgw',
-    description: 'Learn how to create your student profile on CoGo City and get ready to apply for paid projects, part-time jobs, and internships.',
-    ctaLabel: 'Create a Student Profile',
-    ctaAction: `openStudentSignupWorkflow()`
-  },
-  {
-    id: 'neighbor',
-    role: 'Neighbor Tutorial',
-    title: 'How to Create a Neighbor Profile on Cogo City | Hire Local Students & Post Jobs',
-    videoUrl: 'https://youtu.be/zbigBsTSIx4',
-    description: 'Learn how to create your Neighbor profile on CoGo City so you can hire trusted local students for part-time jobs, one-time projects, and everyday help.',
-    ctaLabel: 'Create a Neighbor Profile',
-    ctaAction: `openEmployerSignupWorkflow('neighbor')`
-  },
-  {
-    id: 'employer',
-    role: 'Employer Tutorial',
-    title: 'How to Create an Employer Profile on Cogo City | Hire Students & Post Jobs',
-    videoUrl: 'https://youtu.be/ugXCSwjIISU',
-    description: 'Learn how to create your Employer profile on CoGo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
-    ctaLabel: 'Create an Employer Profile',
-    ctaAction: `openEmployerSignupWorkflow('employer')`
-  }
+const HOW_IT_WORKS_FAQ_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'general', label: 'General' },
+  { id: 'students', label: 'Students' },
+  { id: 'employers-neighbors', label: 'Employers & Neighbors' }
 ];
 const HOW_IT_WORKS_FAQS = [
   {
-    id: 'join',
-    question: 'Who can join CoGo City?',
-    answer: 'CoGo City is built for students looking for paid local opportunities, as well as Neighbors and Employers who want to hire student talent.'
+    id: 'what-is-cogo-city',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'What is Cogo City?',
+    answer: 'Cogo City is a local student marketplace that connects students ages 14–25 with paid projects, part-time jobs, internships, and freelance opportunities. Students build real-world experience before graduation, while businesses and neighbors find reliable local help for projects large and small.'
   },
   {
-    id: 'opportunities',
-    question: 'What kinds of opportunities are available?',
-    answer: 'Opportunities may include part-time jobs, one-time projects, internships, seasonal work, and everyday local help.'
+    id: 'who-can-join',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Who can join Cogo City?',
+    answer: 'Students between the ages of 14 and 25 can create profiles, showcase their skills, and apply for jobs. Businesses, startups, nonprofits, and neighbors can create accounts to post jobs or hire students directly.'
   },
   {
-    id: 'profile-type',
-    question: 'How do I create the right type of profile?',
-    answer: 'Choose the role that fits you best when you sign up, then complete the profile prompts to create the right account.'
+    id: 'where-available',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Where is Cogo City available?',
+    answer: 'Cogo City is expanding community by community. If there are not many users in your area yet, you can still create a profile or post a job. As more students and employers join, your local student marketplace continues to grow.'
   },
   {
-    id: 'support',
-    question: 'How do I contact support if I need help?',
-    answer: 'If you still have questions after reviewing the guidance and FAQs, please contact the CoGo City support team for help at support@cogocity.com or message admin in the chat box that you can find at the bottom of each page once you sign up.'
+    id: 'free-to-join',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Is Cogo City free to join?',
+    answer: 'Yes. Creating an account is completely free for students, businesses, and neighbors. You only pay platform fees when a Community Gig is successfully completed.'
+  },
+  {
+    id: 'why-created',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Why was Cogo City created?',
+    answer: 'Many students graduate with little or no real work experience. Cogo City was created to help students build confidence, practical skills, professional portfolios, and work history while helping local communities find affordable, motivated help.'
+  },
+  {
+    id: 'profile-time',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'How long does it take to create a profile?',
+    answer: 'Most users can complete their profile in about 5–10 minutes. Students who add a professional photo, detailed bio, skills, and services are much more likely to get hired.'
+  },
+  {
+    id: 'is-it-safe',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Is Cogo City safe?',
+    answer: 'Safety is one of our top priorities. Communication happens through Cogo City\'s messaging system, payments are processed securely, and students can earn a Cogo Verified badge after completing our verification process.'
+  },
+  {
+    id: 'why-trust',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Why should I trust Cogo City?',
+    answer: 'Cogo City was built to make hiring local students safer and easier. Student profiles include skills, portfolios, reviews, completed projects, and optional founder verification. Secure messaging and payments help protect everyone throughout the hiring process.'
+  },
+  {
+    id: 'something-goes-wrong',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'What if something goes wrong?',
+    answer: 'Most issues can be resolved through communication using Cogo City\'s messaging system. If additional assistance is needed, contact our support team and we\'ll help review the situation and work toward a fair resolution.'
+  },
+  {
+    id: 'reviews-work',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'How do reviews work?',
+    answer: 'After a Community Gig is completed, employers can leave a review based on their experience working with the student. Reviews help future employers make informed hiring decisions and reward students who consistently deliver excellent work.'
+  },
+  {
+    id: 'report-behavior',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'How do I report inappropriate behavior?',
+    answer: 'If you experience inappropriate behavior, please report it through your account or contact admin@cogocity.com. We review all reports promptly to help keep the Cogo City community safe and respectful.'
+  },
+  {
+    id: 'students-get-hired',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'How do I get hired on Cogo City?',
+    answer: 'Complete your profile, add your skills, create service listings, upload a professional photo, and set your rates. You can apply to jobs in the Community Feed or be discovered directly by employers searching for student talent.'
+  },
+  {
+    id: 'student-jobs-types',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'What kinds of jobs can I find?',
+    answer: 'Students can find paid projects, internships, freelance work, tutoring opportunities, photography jobs, AI projects, web development, marketing, event staffing, babysitting, pet care, yard work, administrative work, and many other local student jobs.'
+  },
+  {
+    id: 'multiple-services',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'Can I offer more than one service?',
+    answer: 'Yes. You can create multiple service listings to showcase different skills and increase your chances of getting hired.'
+  },
+  {
+    id: 'previous-experience',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'Do I need previous work experience?',
+    answer: 'No. Cogo City was built specifically to help students gain their first real work experience. School projects, volunteer work, hobbies, personal projects, and clubs all help demonstrate your skills.'
+  },
+  {
+    id: 'need-resume',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'Do I need a resume?',
+    answer: 'No. Your Cogo City profile acts as your online portfolio where you can showcase your experience, skills, projects, and services.'
+  },
+  {
+    id: 'employers-contact-students',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'How do employers contact me?',
+    answer: 'Employers can message you directly through Cogo City\'s secure messaging system after viewing your profile or receiving your job application.'
+  },
+  {
+    id: 'student-payment',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'How do I get paid?',
+    answer: 'After completing a Community Gig, submit the hours you worked. Once the employer approves the project, payment is processed securely through Cogo City.'
+  },
+  {
+    id: 'student-fees',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'How much does Cogo City charge students?',
+    answer: 'Students pay a 12% platform fee only after they get paid. There are no upfront costs to join or create a profile.'
+  },
+  {
+    id: 'direct-student-hire',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'Can businesses hire me without me applying?',
+    answer: 'Yes. Businesses and neighbors can browse student profiles and hire students directly without waiting for an application.'
+  },
+  {
+    id: 'under-18',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'Can students under 18 join?',
+    answer: 'Yes. Students under 18 may be asked to provide parent or guardian information during registration.'
+  },
+  {
+    id: 'verified-badge',
+    category: 'students',
+    categoryLabel: 'Students',
+    question: 'How do I earn a Cogo Verified badge?',
+    answer: [
+      'The Cogo Verified badge is awarded to students who complete a verification process with the Cogo City team. This may include identity verification and a short introductory Zoom call. The badge helps employers recognize students whose profiles have been personally reviewed.',
+      'If you would like to earn a Cogo Verified badge, simply email admin@cogocity.com from the same email address you used to register your Cogo City account. We will contact you to schedule a quick Zoom call.'
+    ]
+  },
+  {
+    id: 'jobs-you-can-post',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'What kinds of student jobs can I post?',
+    answer: 'You can post one-time projects, hourly work, internships, freelance opportunities, seasonal jobs, or long-term positions. Popular categories include marketing, AI assistance, tutoring, photography, web development, administrative work, event staffing, pet care, yard work, moving help, and household projects.'
+  },
+  {
+    id: 'how-to-hire-student',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'How do I hire a student?',
+    answer: 'You can browse student profiles and hire someone directly or create a job post in the Community Feed where interested students can apply.'
+  },
+  {
+    id: 'why-hire-student',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Why should I hire a student instead of a freelancer?',
+    answer: 'Students are eager to gain real-world experience, build their portfolios, and prove themselves. They often bring fresh ideas, current technology skills, and competitive pricing while giving your business or household access to motivated local talent.'
+  },
+  {
+    id: 'employee-or-contractor',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Am I hiring the student as my employee?',
+    answer: [
+      'For Community Gigs, no. These are project-based jobs facilitated through Cogo City with secure payments handled by the platform.',
+      'For Direct Hire positions, yes. The student becomes your employee and is paid through your company\'s payroll.'
+    ]
+  },
+  {
+    id: 'employer-cost',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'What does it cost to hire through Cogo City?',
+    answer: 'Creating an account is free. For Community Gigs, employers pay a 12% platform fee after the project is completed and approved.'
+  },
+  {
+    id: 'employer-payments',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'How do payments work?',
+    answer: 'Once the student completes the work and submits their final hours, you\'ll review the project and securely pay through Cogo City.'
+  },
+  {
+    id: 'hire-same-student',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I hire the same student again?',
+    answer: 'Absolutely. Many employers build long-term relationships with students they enjoy working with.'
+  },
+  {
+    id: 'hire-multiple-students',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I hire multiple students?',
+    answer: 'Yes. Businesses and neighbors can hire as many students as needed for different projects.'
+  },
+  {
+    id: 'cant-find-right-student',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'What if I can\'t find the right student?',
+    answer: 'Create a job post in the Community Feed. Students who match your project can apply, giving you additional candidates to review.'
+  },
+  {
+    id: 'household-projects',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I hire students for household projects?',
+    answer: 'Yes. Neighbors commonly hire students for tutoring, babysitting, pet sitting, yard work, moving help, organizing, technology assistance, event setup, and many other household tasks.'
+  },
+  {
+    id: 'few-hours',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I hire someone for just a few hours?',
+    answer: 'Yes. Cogo City is perfect for small projects and one-time jobs that do not require hiring a full-time employee.'
+  },
+  {
+    id: 'interview-needed',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Do I need to interview students?',
+    answer: 'No. Many employers hire directly based on a student\'s profile, portfolio, reviews, and services. However, you are welcome to message or schedule a call before hiring if you would like.'
+  },
+  {
+    id: 'how-fast-hire',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'How quickly can I hire someone?',
+    answer: 'Depending on your location and the type of project, you may begin receiving applications shortly after your job is posted. Many project-based jobs can be filled within a day.'
+  },
+  {
+    id: 'edit-job',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I edit my job after posting?',
+    answer: 'Yes. You can update your job description, requirements, budget, schedule, or other details before hiring a student.'
+  },
+  {
+    id: 'remote-students',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I hire students remotely?',
+    answer: 'Yes. Many students provide remote services such as AI assistance, graphic design, web development, digital marketing, tutoring, writing, research, bookkeeping, customer support, and administrative assistance.'
+  },
+  {
+    id: 'cancel-project',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Can I cancel a project?',
+    answer: 'Yes. If work has not yet started, you may cancel the project. If work has already begun, we recommend communicating with the student through Cogo City\'s messaging system to reach a fair resolution.'
+  },
+  {
+    id: 'student-no-show',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'What happens if a student doesn\'t show up?',
+    answer: 'Please contact the student through Cogo City\'s messaging system first. If the issue cannot be resolved, contact our support team and we\'ll work with both parties to help find a solution.'
   }
 ];
 
 let currentUser = null;
 let dashSection = 'profile';
 let studentJobsTab = 'all';
+let howItWorksFaqFilter = 'all';
 let howItWorksFaqOpenId = HOW_IT_WORKS_FAQS[0]?.id || '';
 let employerTab = 'all';
 let myPostsTab = 'all';
@@ -3799,44 +4079,88 @@ function renderAboutPage(){
     </div>
   `;
 }
-function renderHowItWorksTutorialCard(item){
+function getHowItWorksFaqItems(){
+  return howItWorksFaqFilter === 'all'
+    ? HOW_IT_WORKS_FAQS
+    : HOW_IT_WORKS_FAQS.filter(item => item.category === howItWorksFaqFilter);
+}
+function renderHowItWorksFaqFilters(){
   return `
-    <article class="tutorial-card" id="tutorial-${esc(item.id)}">
-      <div class="tutorial-role">${esc(item.role)}</div>
-      <h3>${esc(item.title)}</h3>
-      <div class="tutorial-video">${renderVideoPreviewHtml(item.videoUrl, item.title, { maxWidth:'100%', showLabel:false })}</div>
-      <p>${esc(item.description)}</p>
-      <button class="btn btn-blue" onclick="${item.ctaAction}">${esc(item.ctaLabel)}</button>
-    </article>
+    <div class="how-faq-filters" role="tablist" aria-label="FAQ categories">
+      ${HOW_IT_WORKS_FAQ_FILTERS.map(filter => `
+        <button
+          class="how-faq-filter ${howItWorksFaqFilter === filter.id ? 'active' : ''}"
+          type="button"
+          role="tab"
+          aria-selected="${howItWorksFaqFilter === filter.id ? 'true' : 'false'}"
+          onclick="setHowItWorksFaqFilter('${esc(filter.id)}')"
+        >${esc(filter.label)}</button>
+      `).join('')}
+    </div>
   `;
+}
+function renderHowItWorksFaqAnswer(answer){
+  return renderFormattedLongText(Array.isArray(answer) ? answer : String(answer || ''));
 }
 function renderHowItWorksFaqItem(item){
   const open = howItWorksFaqOpenId === item.id;
   return `
     <div class="how-faq-item ${open ? 'open' : ''}">
-      <button
-        class="how-faq-button"
-        type="button"
-        aria-expanded="${open ? 'true' : 'false'}"
-        aria-controls="how-faq-answer-${esc(item.id)}"
-        id="how-faq-button-${esc(item.id)}"
-        onclick="toggleHowItWorksFaq('${esc(item.id)}')"
-      >
-        <span>${esc(item.question)}</span>
-        <span class="how-faq-chevron">⌄</span>
-      </button>
+      <div class="how-faq-meta">
+        <span class="how-faq-category">${esc(item.categoryLabel)}</span>
+      </div>
+      <h3 class="how-faq-heading">
+        <button
+          class="how-faq-button"
+          type="button"
+          aria-expanded="${open ? 'true' : 'false'}"
+          aria-controls="how-faq-answer-${esc(item.id)}"
+          id="how-faq-button-${esc(item.id)}"
+          onclick="toggleHowItWorksFaq('${esc(item.id)}')"
+        >
+          <span class="how-faq-question-text">${esc(item.question)}</span>
+          <span class="how-faq-chevron">⌄</span>
+        </button>
+      </h3>
       <div
         class="how-faq-answer"
         id="how-faq-answer-${esc(item.id)}"
         role="region"
         aria-labelledby="how-faq-button-${esc(item.id)}"
-      >${esc(item.answer)}</div>
+      >${renderHowItWorksFaqAnswer(item.answer)}</div>
     </div>
   `;
+}
+function setHowItWorksFaqFilter(filter='all'){
+  howItWorksFaqFilter = HOW_IT_WORKS_FAQ_FILTERS.some(item => item.id === filter) ? filter : 'all';
+  const firstVisibleFaq = getHowItWorksFaqItems()[0];
+  howItWorksFaqOpenId = firstVisibleFaq ? firstVisibleFaq.id : '';
+  renderHowItWorksPage();
 }
 function toggleHowItWorksFaq(id=''){
   howItWorksFaqOpenId = howItWorksFaqOpenId === id ? '' : id;
   renderHowItWorksPage();
+}
+function syncHowItWorksFaqSchema(){
+  const schemaId = 'how-it-works-faq-schema';
+  const existing = document.getElementById(schemaId);
+  if (existing) existing.remove();
+  const script = document.createElement('script');
+  script.type = 'application/ld+json';
+  script.id = schemaId;
+  script.textContent = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: HOW_IT_WORKS_FAQS.map(item => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: Array.isArray(item.answer) ? item.answer.join('\n\n') : item.answer
+      }
+    }))
+  });
+  document.head.appendChild(script);
 }
 function scrollHowItWorksTo(id=''){
   const el = document.getElementById(id);
@@ -3846,6 +4170,7 @@ function scrollHowItWorksTo(id=''){
   window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
 }
 function renderHowItWorksPage(){
+  const visibleFaqs = getHowItWorksFaqItems();
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="how-it-works-page">
@@ -3866,15 +4191,17 @@ function renderHowItWorksPage(){
         <section class="how-it-works-section" id="how-it-works-faq">
           <div class="how-it-works-section-header">
             <h2>Frequently Asked Questions</h2>
-            <p>Here are some common questions about getting started with CoGo City.</p>
+            <p>Find answers about student jobs, internships, local hiring, freelance students, neighborhood help, and how CoGo City works for students, employers, and neighbors.</p>
           </div>
-          <div class="faq-stack">
-            ${HOW_IT_WORKS_FAQS.map(renderHowItWorksFaqItem).join('')}
+          ${renderHowItWorksFaqFilters()}
+          <div class="faq-stack" role="list">
+            ${visibleFaqs.length ? visibleFaqs.map(renderHowItWorksFaqItem).join('') : `<div class="how-faq-empty">No FAQs match this category yet.</div>`}
           </div>
         </section>
       </div>
     </div>
   `;
+  syncHowItWorksFaqSchema();
 }
 function openContactUsForm(){
   openModal('Contact us', `
