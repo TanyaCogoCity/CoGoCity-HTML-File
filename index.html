@@ -613,6 +613,16 @@ const HOW_IT_WORKS_TUTORIALS = [
     description: 'Learn how to create your Employer profile on CoGo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
     ctaLabel: 'Create an Employer Profile',
     ctaAction: `openEmployerSignupWorkflow('employer')`
+  },
+  {
+    id: 'stripe-connect',
+    role: 'Stripe Connect Tutorial',
+    title: 'Set Up Stripe Connect to Receive Payments | Cogo City',
+    videoUrl: 'https://youtu.be/BNIQWA8E5rA',
+    posterUrl: 'assets/how-it-works-stripe-connect-tutorial.jpg',
+    description: 'To receive payments for completed projects on Cogo City, you will need to connect a Stripe Connect account. The setup is quick, secure, and typically takes just a few minutes. Stripe is one of the world\'s most trusted payment platforms, used by millions of businesses to process payments securely. Your banking and payment information is entered directly into Stripe and is never stored or accessible by Cogo City. Once your Stripe account is connected, you will be ready to receive payments for every completed project you finish through CoGo City.',
+    ctaLabel: 'Set Up Stripe Connect',
+    ctaAction: `openStripeConnectTutorialSetup()`
   }
 ];
 const HOW_IT_WORKS_FAQ_SECTIONS = [
@@ -4227,6 +4237,7 @@ function renderHowItWorksPage(){
           <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-student');return false;">Student Tutorial</a>
           <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-neighbor');return false;">Neighbor Tutorial</a>
           <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-employer');return false;">Employer Tutorial</a>
+          <a href="#/how-it-works" onclick="scrollHowItWorksTo('tutorial-stripe-connect');return false;">Stripe Connect</a>
           <a href="#/how-it-works" onclick="scrollHowItWorksTo('how-it-works-faq');return false;">FAQ</a>
         </div>
       </div>
@@ -4252,6 +4263,22 @@ function renderHowItWorksPage(){
     </div>
   `;
   syncHowItWorksFaqSchema();
+}
+function openStripeConnectTutorialSetup(){
+  if (!currentUser){
+    openLoginModal();
+    toast('Sign in to set up Stripe Connect.');
+    return;
+  }
+  if (currentUser.role !== 'student'){
+    dashSection = 'profile';
+    goDashboard();
+    toast('Stripe Connect payouts are available for student accounts.');
+    return;
+  }
+  dashSection = 'profile';
+  goDashboard();
+  setTimeout(() => startStripeConnectOnboarding(), 250);
 }
 function openContactUsForm(){
   openModal('Contact us', `
