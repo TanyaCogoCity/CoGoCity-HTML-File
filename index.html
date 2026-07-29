@@ -428,6 +428,20 @@
       border:0;background:transparent;color:var(--color-text-secondary);
       font-weight:900;cursor:pointer;border-radius:999px;padding:8px
     }
+    .how-faq-search-meta{margin-top:8px;font-size:.92rem;color:var(--color-text-secondary)}
+    .how-faq-suggestions{
+      margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:16px;
+      background:#fff;box-shadow:var(--shadow);display:grid;gap:6px
+    }
+    .how-faq-suggestion{
+      width:100%;border:0;background:#fff;color:var(--navy);text-align:left;cursor:pointer;
+      border-radius:12px;padding:11px 12px;transition:background .18s ease,color .18s ease
+    }
+    .how-faq-suggestion:hover,
+    .how-faq-suggestion.active{background:#fff7cc}
+    .how-faq-suggestion-title{display:block;font-weight:800;line-height:1.35}
+    .how-faq-suggestion-meta{display:block;margin-top:4px;font-size:.86rem;color:var(--color-text-secondary)}
+    .how-faq-highlight{background:#fff1a8;color:inherit;padding:0 .08em;border-radius:.2em}
     .faq-stack{display:grid;gap:12px}
     .how-faq-section{padding-top:8px}
     .how-faq-section + .how-faq-section{margin-top:20px}
@@ -1282,6 +1296,7 @@ let dashSection = 'profile';
 let studentJobsTab = 'all';
 let howItWorksFaqOpenId = HOW_IT_WORKS_FAQS[0]?.id || '';
 let howItWorksFaqQuery = '';
+let howItWorksFaqSuggestionIndex = -1;
 let employerTab = 'all';
 let myPostsTab = 'all';
 let expandedLongTextKeys = new Set();
@@ -7676,15 +7691,18 @@ function renderHowItWorksFaqSearch(){
           placeholder="Search jobs, payments, hiring, internships..."
           value="${esc(howItWorksFaqQuery)}"
           oninput="setHowItWorksFaqQuery(this.value)"
+          onkeydown="handleHowItWorksFaqSearchKeydown(event)"
           autocomplete="off"
         >
         <button
           class="how-faq-search-clear"
           type="button"
           aria-label="Clear FAQ search"
-          onclick="setHowItWorksFaqQuery('')"
+          onclick="clearHowItWorksFaqSearch()"
         >×</button>
       </div>
+      <div class="how-faq-search-meta" id="howItWorksFaqSearchMeta">${renderHowItWorksFaqSearchMeta()}</div>
+      <div id="howItWorksFaqSuggestions">${renderHowItWorksFaqSuggestions()}</div>
     </div>
   `;
 }
@@ -7697,18 +7715,45 @@ function normalizeHowItWorksFaqSearchText(value=''){
     .replace(/\s+/g, ' ')
     .trim();
 }
+function getHowItWorksFaqSearchTerms(query=howItWorksFaqQuery){
+  const normalized = normalizeHowItWorksFaqSearchText(query);
+  if (!normalized) return [];
+  return Array.from(new Set(normalized.split(' ').filter(Boolean)));
+}
+function getHowItWorksFaqScore(item, query=howItWorksFaqQuery){
+  const normalizedQuery = normalizeHowItWorksFaqSearchText(query);
+  if (!normalizedQuery) return 0;
+  const question = normalizeHowItWorksFaqSearchText(item.question);
+  const category = normalizeHowItWorksFaqSearchText(item.categoryLabel);
+  const answer = normalizeHowItWorksFaqSearchText(Array.isArray(item.answer) ? item.answer.join(' ') : item.answer);
+  const haystack = [question, category, answer].join(' ');
+  if (!haystack) return 0;
+  const terms = getHowItWorksFaqSearchTerms(normalizedQuery);
+  let score = 0;
+  if (question.includes(normalizedQuery)) score += 180;
+  if (category.includes(normalizedQuery)) score += 70;
+  if (answer.includes(normalizedQuery)) score += 45;
+  terms.forEach(term => {
+    if (question.includes(term)) score += 40;
+    if (category.includes(term)) score += 14;
+    if (answer.includes(term)) score += 18;
+  });
+  return score;
+}
 function howItWorksFaqMatchesQuery(item){
-  const query = normalizeHowItWorksFaqSearchText(howItWorksFaqQuery);
-  if (!query) return true;
-  const haystack = normalizeHowItWorksFaqSearchText([
-    item.question,
-    item.categoryLabel,
-    Array.isArray(item.answer) ? item.answer.join(' ') : item.answer
-  ].join(' '));
-  return haystack.includes(query);
+  return !normalizeHowItWorksFaqSearchText(howItWorksFaqQuery) || getHowItWorksFaqScore(item) > 0;
+}
+function getHowItWorksFaqMatches(query=howItWorksFaqQuery){
+  return HOW_IT_WORKS_FAQS
+    .map(item => ({ item, score: getHowItWorksFaqScore(item, query) }))
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.item.question.localeCompare(b.item.question))
+    .map(entry => entry.item);
 }
 function getHowItWorksFaqItems(sectionId=''){
-  return HOW_IT_WORKS_FAQS.filter(item => item.category === sectionId && howItWorksFaqMatchesQuery(item));
+  const items = HOW_IT_WORKS_FAQS.filter(item => item.category === sectionId);
+  if (!normalizeHowItWorksFaqSearchText(howItWorksFaqQuery)) return items;
+  return getHowItWorksFaqMatches().filter(item => item.category === sectionId);
 }
 function renderHowItWorksFaqItem(item){
   const open = normalizeHowItWorksFaqSearchText(howItWorksFaqQuery) ? true : howItWorksFaqOpenId === item.id;
@@ -7749,14 +7794,159 @@ function renderHowItWorksFaqSection(section){
   `;
 }
 function getHowItWorksFaqMatchCount(){
-  return HOW_IT_WORKS_FAQS.filter(howItWorksFaqMatchesQuery).length;
+  return getHowItWorksFaqMatches().length;
+}
+function renderHowItWorksFaqSearchMeta(){
+  const query = normalizeHowItWorksFaqSearchText(howItWorksFaqQuery);
+  if (!query) return 'Type a full question or a few keywords to find the best FAQ match.';
+  const count = getHowItWorksFaqMatchCount();
+  if (!count) return `No FAQ questions match "${esc(howItWorksFaqQuery)}" yet.`;
+  const bestMatch = getHowItWorksFaqMatches()[0];
+  return `${count} match${count === 1 ? '' : 'es'} found. Press Enter for the best match${bestMatch ? `: ${esc(bestMatch.question)}` : ''}.`;
+}
+function renderHowItWorksFaqSuggestions(){
+  const query = normalizeHowItWorksFaqSearchText(howItWorksFaqQuery);
+  if (!query) return '';
+  const matches = getHowItWorksFaqMatches().slice(0, 6);
+  if (!matches.length) return '';
+  return `
+    <div class="how-faq-suggestions" role="listbox" aria-label="Suggested FAQ matches">
+      ${matches.map((item, index) => `
+        <button
+          type="button"
+          class="how-faq-suggestion ${index === howItWorksFaqSuggestionIndex ? 'active' : ''}"
+          role="option"
+          aria-selected="${index === howItWorksFaqSuggestionIndex ? 'true' : 'false'}"
+          onclick="selectHowItWorksFaqSuggestion('${esc(item.id)}')"
+        >
+          <span class="how-faq-suggestion-title">${esc(item.question)}</span>
+          <span class="how-faq-suggestion-meta">${esc(item.categoryLabel)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+function renderHowItWorksFaqResults(){
+  return getHowItWorksFaqMatchCount()
+    ? HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('')
+    : `<div class="how-faq-empty">No FAQ questions match your search yet.</div>`;
+}
+function clearHowItWorksFaqSearch(){
+  howItWorksFaqQuery = '';
+  howItWorksFaqSuggestionIndex = -1;
+  updateHowItWorksFaqSearchUi({ focusInput: true });
 }
 function setHowItWorksFaqQuery(value=''){
   howItWorksFaqQuery = String(value || '');
-  renderHowItWorksPage();
+  const matchCount = getHowItWorksFaqMatchCount();
+  howItWorksFaqSuggestionIndex = matchCount ? 0 : -1;
+  updateHowItWorksFaqSearchUi({ preserveSelection: true });
+}
+function handleHowItWorksFaqSearchKeydown(event){
+  const matches = getHowItWorksFaqMatches().slice(0, 6);
+  if (!matches.length){
+    if (event.key === 'Escape') clearHowItWorksFaqSearch();
+    return;
+  }
+  if (event.key === 'ArrowDown'){
+    event.preventDefault();
+    howItWorksFaqSuggestionIndex = howItWorksFaqSuggestionIndex < matches.length - 1 ? howItWorksFaqSuggestionIndex + 1 : 0;
+    updateHowItWorksFaqSuggestionUi();
+    return;
+  }
+  if (event.key === 'ArrowUp'){
+    event.preventDefault();
+    howItWorksFaqSuggestionIndex = howItWorksFaqSuggestionIndex > 0 ? howItWorksFaqSuggestionIndex - 1 : matches.length - 1;
+    updateHowItWorksFaqSuggestionUi();
+    return;
+  }
+  if (event.key === 'Enter'){
+    event.preventDefault();
+    const selected = matches[howItWorksFaqSuggestionIndex] || matches[0];
+    if (selected) selectHowItWorksFaqSuggestion(selected.id);
+    return;
+  }
+  if (event.key === 'Escape'){
+    event.preventDefault();
+    clearHowItWorksFaqSearch();
+  }
+}
+function selectHowItWorksFaqSuggestion(id=''){
+  const item = HOW_IT_WORKS_FAQS.find(entry => entry.id === id);
+  if (!item) return;
+  howItWorksFaqOpenId = item.id;
+  howItWorksFaqSuggestionIndex = Math.max(0, getHowItWorksFaqMatches().findIndex(entry => entry.id === item.id));
+  updateHowItWorksFaqSearchUi({ focusInput: true });
+  requestAnimationFrame(() => {
+    scrollHowItWorksTo(`how-faq-button-${item.id}`);
+    const button = document.getElementById(`how-faq-button-${item.id}`);
+    if (button) button.focus({ preventScroll:true });
+  });
+}
+function updateHowItWorksFaqSuggestionUi(){
+  const suggestions = document.getElementById('howItWorksFaqSuggestions');
+  if (suggestions) suggestions.innerHTML = renderHowItWorksFaqSuggestions();
+}
+function highlightHowItWorksFaqMatches(root){
+  if (!root) return;
+  const terms = getHowItWorksFaqSearchTerms();
+  if (!terms.length) return;
+  const pattern = new RegExp(`(${terms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node){
+      if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (parent.closest('.how-faq-highlight')) return NodeFilter.FILTER_REJECT;
+      if (['SCRIPT', 'STYLE', 'MARK'].includes(parent.tagName)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  textNodes.forEach(node => {
+    const text = node.nodeValue;
+    pattern.lastIndex = 0;
+    if (!pattern.test(text)) return;
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    text.replace(pattern, (match, _group, offset) => {
+      if (offset > lastIndex) fragment.appendChild(document.createTextNode(text.slice(lastIndex, offset)));
+      const mark = document.createElement('mark');
+      mark.className = 'how-faq-highlight';
+      mark.textContent = match;
+      fragment.appendChild(mark);
+      lastIndex = offset + match.length;
+      return match;
+    });
+    if (lastIndex < text.length) fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+    node.parentNode.replaceChild(fragment, node);
+  });
+}
+function updateHowItWorksFaqSearchUi(options={}){
+  const searchInput = document.getElementById('howItWorksFaqSearchInput');
+  const selectionStart = searchInput ? searchInput.selectionStart : null;
+  const selectionEnd = searchInput ? searchInput.selectionEnd : null;
+  if (searchInput && searchInput.value !== howItWorksFaqQuery) searchInput.value = howItWorksFaqQuery;
+  const meta = document.getElementById('howItWorksFaqSearchMeta');
+  if (meta) meta.innerHTML = renderHowItWorksFaqSearchMeta();
+  updateHowItWorksFaqSuggestionUi();
+  const results = document.getElementById('howItWorksFaqResults');
+  if (results) results.innerHTML = renderHowItWorksFaqResults();
+  highlightHowItWorksFaqMatches(results);
+  if (searchInput && options.preserveSelection && selectionStart !== null && selectionEnd !== null) {
+    searchInput.focus({ preventScroll:true });
+    searchInput.setSelectionRange(selectionStart, selectionEnd);
+  } else if (searchInput && options.focusInput) {
+    searchInput.focus({ preventScroll:true });
+  }
 }
 function toggleHowItWorksFaq(id=''){
   howItWorksFaqOpenId = howItWorksFaqOpenId === id ? '' : id;
+  if (document.getElementById('howItWorksFaqResults')){
+    updateHowItWorksFaqSearchUi();
+    return;
+  }
   renderHowItWorksPage();
 }
 function syncHowItWorksFaqSchema(){
@@ -7822,12 +8012,13 @@ function renderHowItWorksPage(){
           </div>
           ${renderHowItWorksFaqFilters()}
           ${renderHowItWorksFaqSearch()}
-          ${getHowItWorksFaqMatchCount() ? HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('') : `<div class="how-faq-empty">No FAQ questions match your search yet.</div>`}
+          <div id="howItWorksFaqResults">${renderHowItWorksFaqResults()}</div>
         </section>
       </div>
     </div>
   `;
   syncHowItWorksFaqSchema();
+  updateHowItWorksFaqSearchUi();
 }
 function openStripeConnectTutorialSetup(){
   if (!currentUser){
