@@ -414,6 +414,20 @@
       border-color:var(--color-primary);
       box-shadow:0 0 0 3px rgba(255,230,0,.18);
     }
+    .how-faq-search{margin:-2px 0 18px}
+    .how-faq-search-label{display:block;font-weight:800;margin-bottom:8px;color:var(--color-text-main)}
+    .how-faq-search-wrap{position:relative;display:block}
+    .how-faq-search-input{
+      width:100%;border:2px solid var(--color-input-border);border-radius:14px;padding:13px 44px 13px 44px;
+      outline:none;background:#fff;font:inherit
+    }
+    .how-faq-search-input:focus{border-color:var(--color-primary);box-shadow:0 0 0 4px rgba(255,230,0,.22)}
+    .how-faq-search-icon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--color-text-secondary)}
+    .how-faq-search-clear{
+      position:absolute;right:8px;top:50%;transform:translateY(-50%);
+      border:0;background:transparent;color:var(--color-text-secondary);
+      font-weight:900;cursor:pointer;border-radius:999px;padding:8px
+    }
     .faq-stack{display:grid;gap:12px}
     .how-faq-section{padding-top:8px}
     .how-faq-section + .how-faq-section{margin-top:20px}
@@ -1267,6 +1281,7 @@ let currentUser = null;
 let dashSection = 'profile';
 let studentJobsTab = 'all';
 let howItWorksFaqOpenId = HOW_IT_WORKS_FAQS[0]?.id || '';
+let howItWorksFaqQuery = '';
 let employerTab = 'all';
 let myPostsTab = 'all';
 let expandedLongTextKeys = new Set();
@@ -7648,14 +7663,55 @@ function renderHowItWorksFaqFilters(){
     </div>
   `;
 }
+function renderHowItWorksFaqSearch(){
+  return `
+    <div class="how-faq-search">
+      <label class="how-faq-search-label" for="howItWorksFaqSearchInput">Search FAQ questions</label>
+      <div class="how-faq-search-wrap">
+        <span class="how-faq-search-icon" aria-hidden="true">🔎</span>
+        <input
+          id="howItWorksFaqSearchInput"
+          class="how-faq-search-input"
+          type="search"
+          placeholder="Search jobs, payments, hiring, internships..."
+          value="${esc(howItWorksFaqQuery)}"
+          oninput="setHowItWorksFaqQuery(this.value)"
+          autocomplete="off"
+        >
+        <button
+          class="how-faq-search-clear"
+          type="button"
+          aria-label="Clear FAQ search"
+          onclick="setHowItWorksFaqQuery('')"
+        >×</button>
+      </div>
+    </div>
+  `;
+}
 function renderHowItWorksFaqAnswer(answer){
   return renderFormattedLongText(Array.isArray(answer) ? answer : String(answer || ''));
 }
+function normalizeHowItWorksFaqSearchText(value=''){
+  return String(Array.isArray(value) ? value.join(' ') : value || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function howItWorksFaqMatchesQuery(item){
+  const query = normalizeHowItWorksFaqSearchText(howItWorksFaqQuery);
+  if (!query) return true;
+  const haystack = normalizeHowItWorksFaqSearchText([
+    item.question,
+    item.categoryLabel,
+    Array.isArray(item.answer) ? item.answer.join(' ') : item.answer
+  ].join(' '));
+  return haystack.includes(query);
+}
 function getHowItWorksFaqItems(sectionId=''){
-  return HOW_IT_WORKS_FAQS.filter(item => item.category === sectionId);
+  return HOW_IT_WORKS_FAQS.filter(item => item.category === sectionId && howItWorksFaqMatchesQuery(item));
 }
 function renderHowItWorksFaqItem(item){
-  const open = howItWorksFaqOpenId === item.id;
+  const open = normalizeHowItWorksFaqSearchText(howItWorksFaqQuery) ? true : howItWorksFaqOpenId === item.id;
   return `
     <div class="how-faq-item ${open ? 'open' : ''}">
       <h3 class="how-faq-heading">
@@ -7682,6 +7738,7 @@ function renderHowItWorksFaqItem(item){
 }
 function renderHowItWorksFaqSection(section){
   const items = getHowItWorksFaqItems(section.id);
+  if (!items.length && normalizeHowItWorksFaqSearchText(howItWorksFaqQuery)) return '';
   return `
     <div class="how-faq-section" id="${esc(section.anchorId)}">
       <div class="how-faq-section-title">${esc(section.label)}</div>
@@ -7690,6 +7747,13 @@ function renderHowItWorksFaqSection(section){
       </div>
     </div>
   `;
+}
+function getHowItWorksFaqMatchCount(){
+  return HOW_IT_WORKS_FAQS.filter(howItWorksFaqMatchesQuery).length;
+}
+function setHowItWorksFaqQuery(value=''){
+  howItWorksFaqQuery = String(value || '');
+  renderHowItWorksPage();
 }
 function toggleHowItWorksFaq(id=''){
   howItWorksFaqOpenId = howItWorksFaqOpenId === id ? '' : id;
@@ -7757,7 +7821,8 @@ function renderHowItWorksPage(){
             <p>Find answers about student jobs, internships, local hiring, freelance students, neighborhood help, and how CoGo City works for students, employers, and neighbors.</p>
           </div>
           ${renderHowItWorksFaqFilters()}
-          ${HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('')}
+          ${renderHowItWorksFaqSearch()}
+          ${getHowItWorksFaqMatchCount() ? HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('') : `<div class="how-faq-empty">No FAQ questions match your search yet.</div>`}
         </section>
       </div>
     </div>
