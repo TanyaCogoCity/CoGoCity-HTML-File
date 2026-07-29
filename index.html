@@ -941,7 +941,7 @@ const HOW_IT_WORKS_TUTORIALS = [
     role: 'Student Tutorial',
     title: 'How to Create a Student Profile on CoGo City | Get Hired for Part-Time Jobs & Paid Projects',
     videoUrl: 'https://youtu.be/Y3Y9mhSAHgw',
-    posterUrl: 'assets/how-it-works-student-tutorial.jpg?v=20260728',
+    posterUrl: 'assets/how-it-works-student-tutorial.jpg?v=20260728c',
     description: 'Learn how to create your student profile on CoGo City and get ready to apply for paid projects, part-time jobs, and internships.',
     ctaLabel: 'Create a Student Profile',
     ctaAction: `openStudentSignupWorkflow()`
@@ -951,7 +951,7 @@ const HOW_IT_WORKS_TUTORIALS = [
     role: 'Neighbor Tutorial',
     title: 'How to Create a Neighbor Profile on CoGo City | Hire Local Students & Post Jobs',
     videoUrl: 'https://youtu.be/zbigBsTSIx4',
-    posterUrl: 'assets/how-it-works-neighbor-tutorial.jpg?v=20260728',
+    posterUrl: 'assets/how-it-works-neighbor-tutorial.jpg?v=20260728c',
     description: 'Learn how to create your Neighbor profile on CoGo City so you can hire trusted local students for part-time jobs, one-time projects, and everyday help.',
     ctaLabel: 'Create a Neighbor Profile',
     ctaAction: `openEmployerSignupWorkflow('neighbor')`
@@ -961,7 +961,7 @@ const HOW_IT_WORKS_TUTORIALS = [
     role: 'Employer Tutorial',
     title: 'How to Create an Employer Profile on CoGo City | Hire Students & Post Jobs',
     videoUrl: 'https://youtu.be/ugXCSwjIISU',
-    posterUrl: 'assets/how-it-works-employer-tutorial.jpg?v=20260728',
+    posterUrl: 'assets/how-it-works-employer-tutorial.jpg?v=20260728c',
     description: 'Learn how to create your Employer profile on CoGo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
     ctaLabel: 'Create an Employer Profile',
     ctaAction: `openEmployerSignupWorkflow('employer')`
@@ -971,7 +971,7 @@ const HOW_IT_WORKS_TUTORIALS = [
     role: 'Stripe Connect Tutorial',
     title: 'Set Up Stripe Connect to Receive Payments | Cogo City',
     videoUrl: 'https://youtu.be/BNIQWA8E5rA',
-    posterUrl: 'assets/how-it-works-stripe-connect-tutorial.jpg?v=20260728',
+    posterUrl: 'assets/how-it-works-stripe-connect-tutorial.jpg?v=20260728c',
     description: 'To receive payments for completed projects on Cogo City, you will need to connect a Stripe Connect account. The setup is quick, secure, and typically takes just a few minutes. Stripe is one of the world\'s most trusted payment platforms, used by millions of businesses to process payments securely. Your banking and payment information is entered directly into Stripe and is never stored or accessible by Cogo City. Once your Stripe account is connected, you will be ready to receive payments for every completed project you finish through CoGo City.',
     ctaLabel: 'Set Up Stripe Connect',
     ctaAction: `openStripeConnectTutorialSetup()`
@@ -13785,14 +13785,33 @@ function getVideoEmbedUrl(url){
 }
 function getVideoPosterUrl(video){
   if (!video) return '';
+  if (video.posterUrl) return String(video.posterUrl).trim();
   if (video.type === 'youtube' && video.videoId) return `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`;
   if (video.type === 'vimeo' && video.videoId) return `https://vumbnail.com/${video.videoId}.jpg`;
   return '';
 }
+const VIDEO_POSTER_DIMENSIONS = {
+  'Y3Y9mhSAHgw': { width:1175, height:662 },
+  'zbigBsTSIx4': { width:1176, height:661 },
+  'ugXCSwjIISU': { width:1175, height:657 },
+  'BNIQWA8E5rA': { width:1172, height:659 }
+};
+function getVideoPosterMeta(video=null){
+  const videoId = String(video?.videoId || video?.id || '').trim();
+  const dims = VIDEO_POSTER_DIMENSIONS[videoId] || null;
+  return {
+    width: dims?.width || '',
+    height: dims?.height || ''
+  };
+}
 function renderVideoPosterImage(video=null, label='Video preview', loading='lazy'){
   const posterUrl = getVideoPosterUrl(video);
   if (!posterUrl) return '';
-  return `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${esc(loading)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">`;
+  const posterMeta = getVideoPosterMeta(video);
+  const sizeAttrs = posterMeta.width && posterMeta.height
+    ? ` width="${posterMeta.width}" height="${posterMeta.height}"`
+    : '';
+  return `<img src="${esc(posterUrl)}" alt="${esc(label)}" loading="${esc(loading)}" decoding="async"${sizeAttrs} style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;image-rendering:auto;image-rendering:-webkit-optimize-contrast;backface-visibility:hidden;transform:translateZ(0)">`;
 }
 function getVideoWatchUrl(video){
   if (!video) return '';
