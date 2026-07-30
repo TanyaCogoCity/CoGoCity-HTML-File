@@ -964,6 +964,10 @@ let adminUsersRoleFilter = 'all';
 let adminUsersStatusFilter = 'all';
 let adminSelectedUserId = '';
 let adminPendingUserAction = '';
+let adminBackendUsers = [];
+let adminBackendUsersLoaded = false;
+let adminBackendUsersLoading = false;
+let adminBackendUsersError = '';
 let adminBlogQuery = '';
 let adminBlogDraft = null;
 let adminUserEditDraft = null;
@@ -1468,6 +1472,9 @@ function upsertBackendBrowseUser(user){
   const users = getBackendBrowseUsers().filter(item => String(item.id) !== String(user.id));
   saveBackendBrowseUsers([user, ...users]);
 }
+function getAdminUsersSource(){
+  return adminBackendUsersLoaded ? adminBackendUsers : getUsers();
+}
 function mapBackendStudentProfile(row={}){
   const profile = row.profile || row.user?.userProfile || {};
   const user = row.user || {};
@@ -1576,6 +1583,24 @@ async function refreshBackendCurrentProfile(options={}){
     return null;
   } finally {
     backendCurrentProfileLoading = false;
+  }
+}
+async function loadBackendAdminUsers(options={}){
+  if (!backendAuthEnabled() || !localStorage.getItem('cogo_backend_access_token') || adminBackendUsersLoading) return;
+  adminBackendUsersLoading = true;
+  adminBackendUsersError = '';
+  try {
+    const rows = await backendAuthRequest('/auth/admin/users');
+    adminBackendUsers = ensureArray(rows).map(user => mapBackendUser(user));
+    adminBackendUsersLoaded = true;
+    if (!adminBackendUsers.some(user => String(user.id) === String(adminSelectedUserId))) adminSelectedUserId = '';
+    if (options.rerender !== false && getRoute() === '#/dashboard' && dashSection === 'users') renderDashboard();
+  } catch (error) {
+    adminBackendUsersError = error.message || 'Could not load backend users.';
+    console.warn('Backend admin users load failed', error);
+  } finally {
+    adminBackendUsersLoading = false;
+    syncAdminUsersToolbar();
   }
 }
 function mergeBackendStudentRecords(localStudents=[]){
@@ -3594,7 +3619,9 @@ function currentStudentPrimaryService(){
 }
 function getUserById(id){
   const key = String(id || '');
-  return getUsers().find(u => String(u.id) === key) || getBackendBrowseUsers().find(u => String(u.id) === key);
+  return adminBackendUsers.find(u => String(u.id) === key)
+    || getUsers().find(u => String(u.id) === key)
+    || getBackendBrowseUsers().find(u => String(u.id) === key);
 }
 function getUserRoleLabel(user){
   if (!user) return 'User';
@@ -3654,7 +3681,13 @@ function syncCurrentUserRecord(){
     toast('This profile is no longer active.');
     return false;
   }
-  currentUser = latest;
+  currentUser = Object.assign({}, latest, currentUser, {
+    phone: currentUser.phone || latest.phone || '',
+    address: currentUser.address || latest.address || '',
+    about: currentUser.about || latest.about || '',
+    email: (!String(currentUser.email || '').includes('@placeholder.cogocity.local') && currentUser.email) ? currentUser.email : (latest.email || currentUser.email || ''),
+    businessProfile: currentUser.businessProfile || latest.businessProfile || null
+  });
   ls('cogo_current_user', currentUser);
   if (currentUser.status === 'suspended' && !isAdminImpersonating()) {
     signOut();
@@ -3662,6 +3695,18 @@ function syncCurrentUserRecord(){
     return false;
   }
   return true;
+}
+async function resolveAdminImpersonationTarget(userId){
+  const key = String(userId || '');
+  if (!key) return null;
+  if (backendAuthEnabled() && localStorage.getItem('cogo_backend_access_token')) {
+    if (!adminBackendUsersLoaded && !adminBackendUsersLoading) {
+      await loadBackendAdminUsers({ rerender:false });
+    }
+    const backendTarget = adminBackendUsers.find(user => String(user.id) === key);
+    if (backendTarget) return backendTarget;
+  }
+  return getUserById(key);
 }
 function stopAdminImpersonation(silent=false){
   const session = getAdminImpersonation();
@@ -3673,9 +3718,9 @@ function stopAdminImpersonation(silent=false){
   if (!silent) toast('Returned to Admin view.');
   renderPage();
 }
-function startAdminImpersonation(userId){
+async function startAdminImpersonation(userId){
   if (!currentUser || currentUser.role !== 'admin') return;
-  const target = getUserById(userId);
+  const target = await resolveAdminImpersonationTarget(userId);
   if (!target || target.archived) return toast('User not found.');
   ls('cogo_admin_impersonation', {
     adminId: currentUser.id,
@@ -12878,7 +12923,7 @@ function splitAdminUserName(user){
   };
 }
 function getFilteredAdminUsers(){
-  return getUsers()
+  return getAdminUsersSource()
     .filter(user => !user.archived)
     .filter(user => {
       const roleValue = getAdminRoleValueForUser(user);
@@ -12891,7 +12936,7 @@ function getFilteredAdminUsers(){
     .sort((a,b) => [a.lastName || '', a.firstName || '', a.name || ''].join(' ').localeCompare([b.lastName || '', b.firstName || '', b.name || ''].join(' ')));
 }
 function getSelectedAdminUser(){
-  return getUserById(adminSelectedUserId);
+  return getAdminUsersSource().find(user => String(user.id) === String(adminSelectedUserId)) || getUserById(adminSelectedUserId);
 }
 function getAdminUserActionOptions(user){
   if (!user) return [];
@@ -13364,7 +13409,9 @@ function renderAdminUsersResults(){
 }
 function renderAdminUsersSection(el){
   const logs = getAdminActionLog();
-  const totalDatabaseUsers = getUsers().filter(user => !user.archived).length;
+  if (backendAuthEnabled() && !adminBackendUsersLoaded && !adminBackendUsersLoading) loadBackendAdminUsers({ rerender:false });
+  const usersSource = getAdminUsersSource();
+  const totalDatabaseUsers = usersSource.filter(user => !user.archived).length;
   el.innerHTML = `
     <div class="split" style="align-items:flex-start;margin-bottom:18px;gap:14px">
       <div>
