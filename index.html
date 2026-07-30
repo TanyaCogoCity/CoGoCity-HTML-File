@@ -3558,13 +3558,15 @@ function mapBackendUser(apiUser={}, fallback={}){
   const display = deletedPlaceholder && reviewRequired ? 'Review Profile' : (rawDisplay || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User');
   const role = apiUser.role || fallback.role || 'student';
   const isBusinessRole = role === 'employer' || profile.type === 'business';
+  const resolvedPhoto = getPreferredImageReference(metadata.photo || '', fallback.photo || '');
+  const resolvedBusinessLogo = getPreferredImageReference(metadata.business_logo || '', fallback.businessProfile?.logo || '');
   const businessProfile = isBusinessRole && (profile.businessName || profile.business_name || fallback.businessProfile) ? Object.assign({}, fallback.businessProfile || {}, {
     name: profile.businessName || profile.business_name || fallback.businessProfile?.name || fallback.company || '',
     about: profile.businessAbout || profile.business_about || fallback.businessProfile?.about || '',
     phone: profile.businessPhone || profile.business_phone || fallback.businessProfile?.phone || '',
     address: profile.businessAddress || profile.business_address || fallback.businessProfile?.address || '',
     city: profile.businessCity || profile.business_city || fallback.businessProfile?.city || '',
-    logo: metadata.business_logo || fallback.businessProfile?.logo || ''
+    logo: resolvedBusinessLogo
   }) : null;
   const merged = Object.assign({}, fallback, {
     id: apiUser.id || fallback.id || uid('u'),
@@ -3581,7 +3583,7 @@ function mapBackendUser(apiUser={}, fallback={}){
     phone: apiUser.phone || fallback.phone || '',
     address: profile.address || fallback.address || '',
     about: profile.about || fallback.about || '',
-    photo: metadata.photo || fallback.photo || '',
+    photo: resolvedPhoto,
     emoji: profile.avatar || fallback.emoji || '',
     company: businessProfile?.name || fallback.company || '',
     businessProfile,
@@ -3613,6 +3615,21 @@ function looksLikeImageSource(value=''){
     || /^https?:\/\//i.test(raw)
     || /^\/\//.test(raw)
     || /\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(raw);
+}
+function hasRenderableImageReference(value=''){
+  const clean = String(value || '').trim();
+  if (!clean) return false;
+  return isImageRecordId(clean)
+    || !!imageIdFromBackendAssetUrl(clean)
+    || looksLikeImageSource(clean)
+    || isLegacyWordPressUploadSource(clean);
+}
+function getPreferredImageReference(primary='', fallback=''){
+  const preferred = imageReferenceForPersistence(primary);
+  if (hasRenderableImageReference(preferred)) return preferred;
+  const backup = imageReferenceForPersistence(fallback);
+  if (hasRenderableImageReference(backup)) return backup;
+  return preferred || backup || '';
 }
 function isLegacyWordPressUploadSource(value=''){
   const raw = String(value || '').trim();
@@ -6907,8 +6924,8 @@ function currentStudentPrimaryService(){
 }
 function getUserById(id){
   const key = String(id || '');
-  return adminBackendUsers.find(u => String(u.id) === key)
-    || getUsers().find(u => String(u.id) === key)
+  return getUsers().find(u => String(u.id) === key)
+    || adminBackendUsers.find(u => String(u.id) === key)
     || getBackendBrowseUsers().find(u => String(u.id) === key);
 }
 function getUserRoleLabel(user){
@@ -20855,7 +20872,13 @@ async function loadBackendAdminUsers(options={}){
   adminBackendUsersError = '';
   try {
     const rows = await backendAuthRequest('/auth/admin/users');
-    adminBackendUsers = ensureArray(rows).map(user => mapBackendUser(user));
+    adminBackendUsers = ensureArray(rows).map(user => {
+      const localFallback = getUsers().find(item =>
+        String(item.id || '') === String(user.id || '')
+        || (item.email && user.email && String(item.email).toLowerCase() === String(user.email).toLowerCase())
+      ) || {};
+      return mapBackendUser(user, localFallback);
+    });
     adminBackendUsersLoaded = true;
     if (!adminBackendUsers.some(user => user.id === adminSelectedUserId)) adminSelectedUserId = '';
     if (options.rerender !== false && getRoute() === '#/dashboard' && dashSection === 'users') renderDashboard();
