@@ -3607,6 +3607,33 @@ function isAdminImpersonating(){
   const session = getAdminImpersonation();
   return !!(session && currentUser && currentUser.id === session.userId);
 }
+function getAdminReturnContext(){
+  return {
+    hash: getRoute() || '#/dashboard',
+    dashSection: dashSection || 'users',
+    adminUsersQuery,
+    adminUsersRoleFilter,
+    adminUsersStatusFilter,
+    adminSelectedUserId,
+    adminPendingUserAction,
+    studentJobsTab,
+    employerTab,
+    employerMyJobsTab
+  };
+}
+function restoreAdminReturnContext(context){
+  const next = context && typeof context === 'object' ? context : {};
+  dashSection = typeof next.dashSection === 'string' && next.dashSection ? next.dashSection : 'users';
+  adminUsersQuery = typeof next.adminUsersQuery === 'string' ? next.adminUsersQuery : '';
+  adminUsersRoleFilter = typeof next.adminUsersRoleFilter === 'string' && next.adminUsersRoleFilter ? next.adminUsersRoleFilter : 'all';
+  adminUsersStatusFilter = typeof next.adminUsersStatusFilter === 'string' && next.adminUsersStatusFilter ? next.adminUsersStatusFilter : 'all';
+  adminSelectedUserId = typeof next.adminSelectedUserId === 'string' ? next.adminSelectedUserId : '';
+  adminPendingUserAction = typeof next.adminPendingUserAction === 'string' ? next.adminPendingUserAction : '';
+  studentJobsTab = typeof next.studentJobsTab === 'string' && next.studentJobsTab ? next.studentJobsTab : 'all';
+  employerTab = typeof next.employerTab === 'string' && next.employerTab ? next.employerTab : 'all';
+  employerMyJobsTab = typeof next.employerMyJobsTab === 'string' && next.employerMyJobsTab ? next.employerMyJobsTab : 'all';
+  location.hash = typeof next.hash === 'string' && next.hash ? next.hash : '#/dashboard';
+}
 function canViewBillingDetails(){
   return !isAdminImpersonating();
 }
@@ -3642,16 +3669,20 @@ function stopAdminImpersonation(silent=false){
   const adminUser = getUserById(session.adminId);
   localStorage.removeItem('cogo_admin_impersonation');
   if (adminUser) setCurrentUser(adminUser);
+  restoreAdminReturnContext(session.returnContext);
   if (!silent) toast('Returned to Admin view.');
-  dashSection = 'users';
-  location.hash = '#/dashboard';
   renderPage();
 }
 function startAdminImpersonation(userId){
   if (!currentUser || currentUser.role !== 'admin') return;
   const target = getUserById(userId);
   if (!target || target.archived) return toast('User not found.');
-  ls('cogo_admin_impersonation', { adminId: currentUser.id, userId: target.id, startedAt: new Date().toISOString() });
+  ls('cogo_admin_impersonation', {
+    adminId: currentUser.id,
+    userId: target.id,
+    startedAt: new Date().toISOString(),
+    returnContext: getAdminReturnContext()
+  });
   logAdminAction('login_as_user', { targetUserId: target.id, targetUserName: target.name, targetRole: getUserRoleLabel(target) });
   setCurrentUser(target);
   dashSection = target.role === 'student' ? 'profile' : (target.role === 'admin' ? 'admin' : 'profile');
@@ -3701,6 +3732,10 @@ function openDashboardSectionFromMenu(section='profile', extra={}){
 function signOutFromMenu(){
   avatarMenuOpen = false;
   signOut();
+}
+function stopAdminImpersonationFromMenu(){
+  avatarMenuOpen = false;
+  stopAdminImpersonation();
 }
 function goToPostJob(){
   if (!currentUser || currentUser.role !== 'employer') return;
@@ -4604,6 +4639,7 @@ function renderNav(){
   const avatarLabel = /^https?:\/\//i.test(String(rawAvatarLabel || '')) ? firstName(currentUser.name).charAt(0).toUpperCase() || '\u{1F464}' : rawAvatarLabel;
   const avatarMenuButtons = currentUser.role === 'student'
     ? `
+      ${isAdminImpersonating() ? `<button class="btn btn-blue btn-sm" style="width:100%;margin-bottom:8px" onclick="stopAdminImpersonationFromMenu()">Back to Admin</button>` : ''}
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
       <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('jobs_bookings', { studentJobsTab:'jobs' })">Jobs & Bookings</button>
@@ -4612,6 +4648,7 @@ function renderNav(){
     : currentUser.role === 'employer'
       ? (currentUser.type === 'neighbor'
         ? `
+          ${isAdminImpersonating() ? `<button class="btn btn-blue btn-sm" style="width:100%;margin-bottom:8px" onclick="stopAdminImpersonationFromMenu()">Back to Admin</button>` : ''}
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('applicants_projects', { employerTab:'applicants' })">Applicants</button>
@@ -4619,6 +4656,7 @@ function renderNav(){
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('profile')">My Profile</button>
         `
         : `
+          ${isAdminImpersonating() ? `<button class="btn btn-blue btn-sm" style="width:100%;margin-bottom:8px" onclick="stopAdminImpersonationFromMenu()">Back to Admin</button>` : ''}
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('my_jobs', { employerMyJobsTab:'all' })">My Jobs</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('myposts')">My Posts</button>
@@ -4626,7 +4664,10 @@ function renderNav(){
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('workshops')">Workshops</button>
           <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardSectionFromMenu('profile')">My Profile</button>
         `)
-      : `<button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>`;
+      : `
+        ${isAdminImpersonating() ? `<button class="btn btn-blue btn-sm" style="width:100%;margin-bottom:8px" onclick="stopAdminImpersonationFromMenu()">Back to Admin</button>` : ''}
+        <button class="btn btn-outline btn-sm" style="width:100%;margin-bottom:8px" onclick="openDashboardFromMenu()">Dashboard</button>
+      `;
   nav.innerHTML = `
     ${primaryButton}
     <button class="btn btn-outline btn-sm" onclick="openNotifications()">
@@ -4642,7 +4683,7 @@ function renderNav(){
       </button>
       ${avatarMenuOpen ? `
         <div class="card" style="position:absolute;right:0;top:44px;min-width:170px;padding:10px;z-index:30" onmouseleave="closeAvatarMenu()">
-          <div class="small muted" style="padding:4px 8px 8px">Signed in as ${esc(firstName(currentUser.name))}</div>
+          <div class="small muted" style="padding:4px 8px 8px">${isAdminImpersonating() ? `Viewing as ${esc(firstName(currentUser.name))}` : `Signed in as ${esc(firstName(currentUser.name))}`}</div>
           ${avatarMenuButtons}
           <button class="btn btn-outline btn-sm" style="width:100%" onclick="signOutFromMenu()">Sign Out</button>
         </div>
@@ -9578,7 +9619,6 @@ function renderDashboard(){
   document.getElementById('app').innerHTML = `
     <div class="dashboard">
       <div class="sidebar">
-        ${isAdminImpersonating() ? `<div class="card" style="padding:12px;margin-bottom:12px;background:#E0F2FE;border:1px solid #E0F2FE"><div class="small muted">Viewing as ${esc(currentUser.name)}</div><button class="btn btn-outline btn-sm" style="margin-top:8px;width:100%" onclick="stopAdminImpersonation()">Return to Admin Dashboard</button></div>` : ''}
         ${currentUser.role === 'admin' ? `
           <a href="#" class="${dashSection==='admin'?'active':''}" onclick="dashSection='admin';renderDashboard();return false;">\u{1F6E1}\uFE0F Admin Panel</a>
           <a href="#" class="${dashSection==='users'?'active':''}" onclick="dashSection='users';renderDashboard();return false;">\u{1F465} Users</a>
