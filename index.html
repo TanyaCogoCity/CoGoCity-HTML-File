@@ -4676,6 +4676,7 @@ function renderNav(){
     <button class="btn btn-outline btn-sm" onclick="dashSection='messages';goDashboard()">
       \u2709\uFE0F${unreadMsgs ? ` (${unreadMsgs})` : ''}
     </button>
+    ${isAdminImpersonating() ? `<button class="btn btn-blue btn-sm" onclick="stopAdminImpersonationFromMenu()">Back to Admin</button>` : ''}
     <div style="position:relative" data-user-menu>
       <button class="btn btn-outline btn-sm" data-user-menu-toggle onclick="toggleAvatarMenu()" style="gap:10px">
         <span style="width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--light);font-weight:800">${esc(avatarLabel)}</span>
