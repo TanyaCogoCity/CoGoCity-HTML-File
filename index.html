@@ -3629,7 +3629,7 @@ function getPreferredImageReference(primary='', fallback=''){
   if (hasRenderableImageReference(preferred)) return preferred;
   const backup = imageReferenceForPersistence(fallback);
   if (hasRenderableImageReference(backup)) return backup;
-  return preferred || backup || '';
+  return '';
 }
 function isLegacyWordPressUploadSource(value=''){
   const raw = String(value || '').trim();
