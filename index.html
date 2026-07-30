@@ -2267,6 +2267,14 @@ function imageReferenceForPersistence(value=''){
   const existing = findImageByUrl(clean);
   return existing && existing.id ? existing.id : clean;
 }
+function imageReferencePriority(value=''){
+  const clean = imageReferenceForPersistence(value);
+  if (!clean) return 0;
+  if (isImageRecordId(clean) || imageIdFromBackendAssetUrl(clean)) return 4;
+  if (looksLikeImageSource(clean)) return 3;
+  if (isLegacyWordPressUploadSource(clean)) return 2;
+  return 0;
+}
 function imageReferenceAssetUrl(value='', variant='full'){
   const image = getImageView(value, variant);
   return image && image.url ? image.url : String(value || '').trim();
@@ -3636,8 +3644,11 @@ function hasRenderableImageReference(value=''){
 }
 function getPreferredImageReference(primary='', fallback=''){
   const preferred = imageReferenceForPersistence(primary);
-  if (hasRenderableImageReference(preferred)) return preferred;
   const backup = imageReferenceForPersistence(fallback);
+  const preferredPriority = imageReferencePriority(preferred);
+  const backupPriority = imageReferencePriority(backup);
+  if (backupPriority > preferredPriority) return backup;
+  if (hasRenderableImageReference(preferred)) return preferred;
   if (hasRenderableImageReference(backup)) return backup;
   return '';
 }
@@ -16763,6 +16774,7 @@ async function submitStudentMigrationOnboarding(){
   renderPage();
 }
 function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=false){
+  const resolvedBusinessLogo = getPreferredImageReference(business.logo || business.image_id || '', user.businessProfile?.logo || user.businessProfile?.image_id || '');
   return `
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:12px">Personal information</div>
@@ -16778,9 +16790,9 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div style="font-weight:800;margin-bottom:12px">Business information</div>
       <div class="small muted" style="margin-bottom:12px">Employer accounts must also complete all required business fields before posting jobs.</div>
       <div class="field"><label>Business name *</label><input id="migBusinessName" value="${esc(business.name || user.company || '')}"></div>
-      <input type="hidden" id="migBusinessLogo" value="${esc(business.logo || business.image_id || '')}">
+      <input type="hidden" id="migBusinessLogo" value="${esc(resolvedBusinessLogo)}">
       <div class="field"><label>Business logo *</label><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" onchange="handleMigrationBusinessLogoUpload(this)"></div>
-      <div id="mig-business-logo-preview" style="margin-bottom:12px">${renderEditableSingleImage(business.logo || business.image_id || '', 'Business logo', 'removeMigrationBusinessLogo()', 88, 'No business logo added yet.')}</div>
+      <div id="mig-business-logo-preview" style="margin-bottom:12px">${renderEditableSingleImage(resolvedBusinessLogo, 'Business logo', 'removeMigrationBusinessLogo()', 88, 'No business logo added yet.')}</div>
       <div class="field"><label>Business description *</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
       <div class="field"><label>Business phone *</label><input id="migBusinessPhone" type="tel" placeholder="(555) 555-5555" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
       <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="Street, City, State ZIP — e.g. 456 Business Ave, Walnut Creek, CA 94596" onfocus="attachGoogleAddressAutocomplete('migBusinessAddress')" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. We’ll clean up common formatting automatically.</div></div>
