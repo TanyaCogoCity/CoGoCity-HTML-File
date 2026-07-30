@@ -7827,12 +7827,16 @@ function renderHowItWorksFaqSuggestions(){
   `;
 }
 function renderHowItWorksFaqResults(){
+  if (!normalizeHowItWorksFaqSearchText(howItWorksFaqQuery)) {
+    return HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('');
+  }
   return getHowItWorksFaqMatchCount()
     ? HOW_IT_WORKS_FAQ_SECTIONS.map(renderHowItWorksFaqSection).join('')
     : `<div class="how-faq-empty">No FAQ questions match your search yet.</div>`;
 }
 function clearHowItWorksFaqSearch(){
   howItWorksFaqQuery = '';
+  howItWorksFaqOpenId = '';
   howItWorksFaqSuggestionIndex = -1;
   updateHowItWorksFaqSearchUi({ focusInput: true });
 }
