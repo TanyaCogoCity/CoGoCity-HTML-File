@@ -6907,8 +6907,8 @@ function currentStudentPrimaryService(){
 }
 function getUserById(id){
   const key = String(id || '');
-  return getUsers().find(u => String(u.id) === key)
-    || adminBackendUsers.find(u => String(u.id) === key)
+  return adminBackendUsers.find(u => String(u.id) === key)
+    || getUsers().find(u => String(u.id) === key)
     || getBackendBrowseUsers().find(u => String(u.id) === key);
 }
 function getUserRoleLabel(user){
@@ -6984,6 +6984,18 @@ function syncCurrentUserRecord(){
   }
   return true;
 }
+async function resolveAdminImpersonationTarget(userId){
+  const key = String(userId || '');
+  if (!key) return null;
+  if (backendAuthEnabled() && getBackendAccessToken()) {
+    if (!adminBackendUsersLoaded && !adminBackendUsersLoading) {
+      await loadBackendAdminUsers({ rerender:false });
+    }
+    const backendTarget = adminBackendUsers.find(user => String(user.id) === key);
+    if (backendTarget) return backendTarget;
+  }
+  return getUserById(key);
+}
 function stopAdminImpersonation(silent=false){
   const session = getAdminImpersonation();
   if (!session) return;
@@ -6994,9 +7006,9 @@ function stopAdminImpersonation(silent=false){
   if (!silent) toast('Returned to Admin view.');
   renderPage();
 }
-function startAdminImpersonation(userId){
+async function startAdminImpersonation(userId){
   if (!currentUser || currentUser.role !== 'admin') return;
-  const target = getUserById(userId);
+  const target = await resolveAdminImpersonationTarget(userId);
   if (!target || target.archived) return toast('User not found.');
   ls('cogo_admin_impersonation', {
     adminId: currentUser.id,
