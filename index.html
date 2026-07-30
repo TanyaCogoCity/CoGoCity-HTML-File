@@ -2412,10 +2412,20 @@ function normalizeUserRecord(user){
   const normalized = Object.assign({}, user || {});
   if (looksLikeImageSource(normalized.photo || '')) normalized.photo = upsertImageRecord(normalized.photo, { source:'profile', entity_type:'user', entity_id: normalized.id || '', owner_id: normalized.id || '' });
   if (normalized.businessProfile && looksLikeImageSource(normalized.businessProfile.logo || '')) {
-    normalized.businessProfile.logo = upsertImageRecord(normalized.businessProfile.logo, { source:'business_logo', entity_type:'business', entity_id: normalized.id || '', owner_id: normalized.id || '' });
+    normalized.businessProfile = Object.assign({}, normalized.businessProfile, {
+      logo: upsertImageRecord(normalized.businessProfile.logo, { source:'business_logo', entity_type:'business', entity_id: normalized.id || '', owner_id: normalized.id || '' })
+    });
   }
-  if (normalized.photo) normalized.profile_image_id = normalized.profile_image_id || normalized.photo;
-  if (normalized.businessProfile?.logo) normalized.businessProfile.image_id = normalized.businessProfile.image_id || normalized.businessProfile.logo;
+  const resolvedPhoto = getPreferredImageReference(normalized.photo || '', normalized.profile_image_id || '');
+  normalized.photo = resolvedPhoto;
+  normalized.profile_image_id = resolvedPhoto;
+  if (normalized.businessProfile) {
+    const resolvedBusinessLogo = getPreferredImageReference(normalized.businessProfile.logo || '', normalized.businessProfile.image_id || '');
+    normalized.businessProfile = Object.assign({}, normalized.businessProfile, {
+      logo: resolvedBusinessLogo,
+      image_id: resolvedBusinessLogo
+    });
+  }
   if (!normalized.name) normalized.name = [normalized.firstName, normalized.lastName].filter(Boolean).join(' ').trim() || normalized.email || 'User';
   if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
   if (!normalized.status) normalized.status = normalized.archived ? 'archived' : 'active';
@@ -6986,12 +6996,22 @@ function syncCurrentUserRecord(){
     toast('This profile is no longer active.');
     return false;
   }
+  const resolvedPhoto = getPreferredImageReference(latest.photo || latest.profile_image_id || '', currentUser.photo || currentUser.profile_image_id || '');
+  const resolvedBusinessLogo = getPreferredImageReference(latest.businessProfile?.logo || latest.businessProfile?.image_id || '', currentUser.businessProfile?.logo || currentUser.businessProfile?.image_id || '');
+  const mergedBusinessProfile = latest.businessProfile || currentUser.businessProfile
+    ? Object.assign({}, latest.businessProfile || {}, currentUser.businessProfile || {}, {
+        logo: resolvedBusinessLogo,
+        image_id: resolvedBusinessLogo
+      })
+    : null;
   currentUser = Object.assign({}, latest, currentUser, {
     phone: currentUser.phone || latest.phone || '',
     address: currentUser.address || latest.address || '',
     about: currentUser.about || latest.about || '',
     email: (!String(currentUser.email || '').includes('@placeholder.cogocity.local') && currentUser.email) ? currentUser.email : (latest.email || currentUser.email || ''),
-    businessProfile: currentUser.businessProfile || latest.businessProfile || null
+    photo: resolvedPhoto,
+    profile_image_id: resolvedPhoto,
+    businessProfile: mergedBusinessProfile
   });
   ls('cogo_current_user', currentUser);
   if (currentUser.status === 'suspended' && !isAdminImpersonating()) {
@@ -16592,7 +16612,7 @@ function setMigrationAvatar(inputId='migAvatar', emoji=''){
   });
 }
 function renderMigrationProfileVisual(user={}, profile=null){
-  const photo = user.photo || user.profile_image_id || profile?.photo || profile?.profile_image_id || '';
+  const photo = getPreferredImageReference(user.photo || user.profile_image_id || '', profile?.photo || profile?.profile_image_id || '');
   const avatar = user.emoji || user.avatar || profile?.emoji || profile?.avatar || '\u{1F3E0}';
   return `
     <input type="hidden" id="migPhoto" value="${esc(photo)}">
