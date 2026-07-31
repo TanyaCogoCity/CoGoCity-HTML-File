@@ -5,13 +5,14 @@ const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { normalizeServicePayload, serializeReview, serializeService } = require('../lib/compat');
 const { userProfileMetadata } = require('../lib/onboardingGate');
+const { normalizeProfileMetadataMedia } = require('../lib/media');
 const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
 
 const router = express.Router();
 
 function publicUserProfile(profile) {
   if (!profile) return null;
-  const metadata = userProfileMetadata(profile);
+  const metadata = normalizeProfileMetadataMedia(userProfileMetadata(profile));
   return {
     id: profile.id,
     userId: profile.userId,
@@ -205,7 +206,7 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
 
   const updated = await prisma.$transaction(async (tx) => {
     const existingProfile = await tx.userProfile.findUnique({ where: { userId: req.user.id } });
-    const nextMetadata = Object.assign({}, userProfileMetadata(existingProfile), metadata);
+    const nextMetadata = normalizeProfileMetadataMedia(Object.assign({}, userProfileMetadata(existingProfile), metadata));
     if (payload.migrationOnboardingCompleted || payload.migration_onboarding_completed) {
       nextMetadata.migration_onboarding_completed_at = new Date().toISOString();
     }

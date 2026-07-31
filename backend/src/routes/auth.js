@@ -9,6 +9,7 @@ const { hashPassword, comparePassword, signAccessToken, signRefreshToken, hashTo
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { onboardingRequirementsForUser, userProfileMetadata } = require('../lib/onboardingGate');
+const { normalizeProfileMetadataMedia } = require('../lib/media');
 const { sendEmail, buildAppLink } = require('../lib/email');
 const { notifyAdminNewUser } = require('../lib/adminEmails');
 const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
@@ -340,7 +341,7 @@ function buildUserProfileData(userId, payload = {}) {
   const profile = payload.profile || {};
   const business = payload.businessProfile || profile.businessProfile || {};
   const birthDate = profile.birthDate || profile.birth_date || profile.birthday || payload.dateOfBirth || payload.date_of_birth || '';
-  const metadata = {
+  const metadata = normalizeProfileMetadataMedia({
     photo: profile.photo || payload.photo || '',
     business_logo: business.logo || business.business_logo || payload.businessLogo || payload.business_logo || '',
     profile_images: profile.profileImages || [],
@@ -351,7 +352,7 @@ function buildUserProfileData(userId, payload = {}) {
     birthday: birthDate || '',
     birth_year: profile.birthYear || profile.birth_year || (birthDate ? String(birthDate).slice(0, 4) : ''),
     private_email: profile.privateEmail || profile.private_email || payload.email || '',
-  };
+  });
   return {
     userId,
     type: payload.type || profile.type || null,
@@ -509,6 +510,9 @@ function serializeAdminUser(user) {
 }
 
 function serializeUser(user, extras = {}) {
+  const userProfile = extras.userProfile
+    ? { ...extras.userProfile, metadata: normalizeProfileMetadataMedia(userProfileMetadata(extras.userProfile)) }
+    : (user.userProfile ? { ...user.userProfile, metadata: normalizeProfileMetadataMedia(userProfileMetadata(user.userProfile)) } : null);
   const reviewRequired = onboardingRequirementsForUser(user, extras.userProfile || user.userProfile || null).profile_review_required;
   const deletedPlaceholder = /^deleted$/i.test(String(user.firstName || '').trim())
     && /^user$/i.test(String(user.lastName || '').trim());
@@ -528,7 +532,7 @@ function serializeUser(user, extras = {}) {
     email_verified_at: user.emailVerifiedAt || null,
     email_verification_status: user.emailVerificationStatus || (user.emailVerifiedAt ? 'verified' : 'pending'),
     city: user.city,
-    profile: extras.userProfile || null,
+    profile: userProfile,
     student_profile: extras.studentProfile || null,
     services: (extras.services || []).map(serializeService),
     stripe_onboarding: {

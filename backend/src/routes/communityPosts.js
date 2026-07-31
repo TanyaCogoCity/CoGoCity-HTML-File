@@ -5,6 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { ok, fail } = require('../lib/http');
 const { writeAuditLog } = require('../lib/audit');
 const { requirePlatformReady } = require('../lib/onboardingGate');
+const { normalizeProfileMetadataMedia } = require('../lib/media');
 const { notifyAdminHourlyJobCreated } = require('../lib/adminEmails');
 
 const router = express.Router();
@@ -71,7 +72,7 @@ function serializeCommunityPost(row) {
 function publicAuthorSnapshot(user = {}) {
   if (!user || !user.id) return null;
   const profile = user.userProfile || {};
-  const metadata = profile.metadata && typeof profile.metadata === 'object' ? profile.metadata : {};
+  const metadata = normalizeProfileMetadataMedia(profile.metadata);
   return {
     id: user.id,
     display_name: displayNameForUser(user),
