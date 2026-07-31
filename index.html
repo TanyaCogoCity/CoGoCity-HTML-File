@@ -685,7 +685,17 @@ const HOW_IT_WORKS_FAQS = [
     category: 'general',
     categoryLabel: 'General',
     question: 'Is Cogo City free to join?',
-    answer: 'Yes. Creating an account is completely free for students, businesses, and neighbors. You only pay platform fees when a Community Gig is successfully completed.'
+    answer: [
+      'Yes. Creating an account is completely free for students, employers, and neighbors.',
+      'Community Gigs (Hourly & One-Time Projects)',
+      'There are no upfront costs to post or accept a Community Gig. Payment is only made after the project is successfully completed.',
+      'Once the project is complete:',
+      'Students pay a 12% platform fee based on the total project amount.',
+      'Employers and neighbors pay a 12% service fee based on the total project amount.',
+      'For example, if a project costs $100:',
+      'The student receives $88 (before any applicable Stripe processing fees).',
+      'The employer or neighbor pays $112.'
+    ]
   },
   {
     id: 'why-created',
@@ -721,6 +731,13 @@ const HOW_IT_WORKS_FAQS = [
     categoryLabel: 'General',
     question: 'What if something goes wrong?',
     answer: 'Most issues can be resolved through communication using Cogo City\'s messaging system. If additional assistance is needed, contact our support team and we\'ll help review the situation and work toward a fair resolution.'
+  },
+  {
+    id: 'incident-responsibility',
+    category: 'general',
+    categoryLabel: 'General',
+    question: 'Who is responsible if an incident occurs while a student is working for me?',
+    answer: 'As the person hiring, you are responsible. Even though Cogo City facilitates the connection, the student works under your care. Please ensure your insurance policy covers temporary helpers.'
   },
   {
     id: 'reviews-work',
@@ -862,6 +879,27 @@ const HOW_IT_WORKS_FAQS = [
     answer: 'Once the student completes the work and submits their final hours, you\'ll review the project and securely pay through Cogo City.'
   },
   {
+    id: 'employer-insurance-coverage',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'Do I need insurance coverage if I hire a student through Cogo City?',
+    answer: 'Yes, even though students are paid through Cogo City, they are temporary helpers under your care. You should ensure your business or home insurance policy covers temporary workers, so that if anything happens during the job, you\'re protected.'
+  },
+  {
+    id: 'direct-hire-fees',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'What are the fees if I want to hire a student directly as a long-term employee?',
+    answer: [
+      'Direct Hire (Part-Time & Ongoing Employment)',
+      'If you would like to hire a student directly as an employee for an ongoing or long-term position, payments are handled directly between you and the student through your own payroll process.',
+      'Direct Hire employers pay a monthly subscription:',
+      'Basic Plan: $99/month',
+      'Advanced Plan: $199/month',
+      'The Advanced Plan includes additional recruiting support, promotion of your job posting, and increased visibility to help you attract qualified student candidates.'
+    ]
+  },
+  {
     id: 'hire-same-student',
     category: 'employers-neighbors',
     categoryLabel: 'Employers & Neighbors',
@@ -888,6 +926,13 @@ const HOW_IT_WORKS_FAQS = [
     categoryLabel: 'Employers & Neighbors',
     question: 'Can I hire students for household projects?',
     answer: 'Yes. Neighbors commonly hire students for tutoring, babysitting, pet sitting, yard work, moving help, organizing, technology assistance, event setup, and many other household tasks.'
+  },
+  {
+    id: 'neighbor-insurance',
+    category: 'employers-neighbors',
+    categoryLabel: 'Employers & Neighbors',
+    question: 'What kind of insurance should I have when hiring a student for tasks like babysitting or dog walking?',
+    answer: 'As a neighbor hiring a student, you should check your homeowner\'s or renter\'s insurance. Ensure it includes personal liability coverage for anyone working on your property. Confirm with your insurer that occasional helpers, like students, are covered in case of injury or damage. If not, they can suggest an appropriate policy adjustment.'
   },
   {
     id: 'few-hours',
@@ -1300,6 +1345,7 @@ function syncCurrentUserStripeOnboarding(status){
 }
 async function refreshStripeOnboardingStatus(options={}){
   if (!stripeOnboardingEnabled()) return null;
+  if (isAdminImpersonating()) return currentUser?.stripe_onboarding || null;
   try {
     const status = await backendAuthRequest('/stripe/onboarding/status');
     syncCurrentUserStripeOnboarding(status);
@@ -1571,6 +1617,10 @@ async function refreshBackendCurrentProfile(options={}){
   if (!backendAuthEnabled() || !currentUser || backendCurrentProfileLoading) return null;
   const token = localStorage.getItem('cogo_backend_access_token');
   if (!token) return null;
+  if (isAdminImpersonating()) {
+    backendCurrentProfileLoadedFor = currentUser.id || '';
+    return currentUser;
+  }
   backendCurrentProfileLoading = true;
   try {
     const apiUser = await backendAuthRequest('/auth/me');
@@ -9645,10 +9695,10 @@ function renderDashboard(){
   if (!currentUser) return openLoginModal();
   if (!syncCurrentUserRecord()) return;
   if (currentUser.role === 'employer') ensureDirectJobExpiryNotificationsForUser(currentUser.id);
-  if (currentUser.role === 'student' && backendAuthEnabled() && backendCurrentProfileLoadedFor !== currentUser.id) {
+  if (currentUser.role === 'student' && !isAdminImpersonating() && backendAuthEnabled() && backendCurrentProfileLoadedFor !== currentUser.id) {
     refreshBackendCurrentProfile({ rerender:true });
   }
-  if (stripeOnboardingEnabled() && !currentUser.stripe_onboarding) {
+  if (!isAdminImpersonating() && stripeOnboardingEnabled() && !currentUser.stripe_onboarding) {
     refreshStripeOnboardingStatus({ rerender:true, toast:false });
   }
 
