@@ -3690,9 +3690,16 @@ function looksLikeImageSource(value=''){
 function hasRenderableImageReference(value=''){
   const clean = String(value || '').trim();
   if (!clean) return false;
-  return isImageRecordId(clean)
-    || !!imageIdFromBackendAssetUrl(clean)
-    || looksLikeImageSource(clean)
+  if (isImageRecordId(clean)) {
+    const image = getImageView(clean, 'full');
+    return !!(image && image.url);
+  }
+  const backendImageId = imageIdFromBackendAssetUrl(clean);
+  if (backendImageId) {
+    const image = getImageView(backendImageId, 'full');
+    return !!(image && image.url);
+  }
+  return looksLikeImageSource(clean)
     || isLegacyWordPressUploadSource(clean);
 }
 function getPreferredImageReference(primary='', fallback=''){
