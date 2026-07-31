@@ -1794,6 +1794,8 @@ function mapBackendUser(apiUser={}, fallback={}){
   const display = apiUser.display_name || apiUser.displayName || fallback.name || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User';
   const profile = apiUser.profile || apiUser.userProfile || {};
   const metadata = profile.metadata || {};
+  const resolvedPhoto = getRenderableImageReference(metadata.photo || '', fallback.photo || '');
+  const resolvedBusinessLogo = getRenderableImageReference(metadata.business_logo || '', fallback.businessProfile?.logo || '');
   const businessProfile = profile.businessName || profile.business_name || fallback.businessProfile ? Object.assign({}, fallback.businessProfile || {}, {
     name: profile.businessName || profile.business_name || fallback.businessProfile?.name || fallback.company || '',
     about: profile.businessAbout || profile.business_about || fallback.businessProfile?.about || '',
@@ -1801,7 +1803,7 @@ function mapBackendUser(apiUser={}, fallback={}){
     address: profile.businessAddress || profile.business_address || fallback.businessProfile?.address || '',
     city: profile.businessCity || profile.business_city || fallback.businessProfile?.city || '',
     tin: profile.businessTin || profile.business_tin || fallback.businessProfile?.tin || '',
-    logo: metadata.business_logo || fallback.businessProfile?.logo || ''
+    logo: resolvedBusinessLogo
   }) : (fallback.businessProfile || null);
   const merged = Object.assign({}, fallback, {
     id: apiUser.id || fallback.id || uid('u'),
@@ -1818,7 +1820,7 @@ function mapBackendUser(apiUser={}, fallback={}){
     phone: apiUser.phone || fallback.phone || '',
     address: profile.address || fallback.address || '',
     about: profile.about || fallback.about || '',
-    photo: metadata.photo || fallback.photo || '',
+    photo: resolvedPhoto,
     emoji: profile.avatar || fallback.emoji || '',
     company: businessProfile?.name || fallback.company || '',
     businessProfile,
@@ -1846,6 +1848,15 @@ function looksLikeImageSource(value=''){
 }
 function isImageRecordId(value=''){
   return /^img_/i.test(String(value || '').trim());
+}
+function getRenderableImageReference(primary='', fallback=''){
+  const preferred = String(primary || '').trim();
+  const backup = String(fallback || '').trim();
+  const preferredImage = getImageView(preferred, 'full');
+  if (preferredImage && preferredImage.url) return preferred;
+  const fallbackImage = getImageView(backup, 'full');
+  if (fallbackImage && fallbackImage.url) return backup;
+  return preferred || backup || '';
 }
 function normalizeImageRecord(image){
   const normalized = Object.assign({
