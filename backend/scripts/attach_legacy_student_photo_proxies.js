@@ -17,6 +17,10 @@ const { normalizeProfileMetadataMedia, parseLegacyWordPressUploadUrl } = require
 const prisma = new PrismaClient();
 const args = new Set(process.argv.slice(2));
 const execute = args.has('--execute');
+const displayNameArg = process.argv.find((value, index, all) => value === '--display-name' ? all[index + 1] : null);
+const emailArg = process.argv.find((value, index, all) => value === '--email' ? all[index + 1] : null);
+const targetDisplayName = String(process.env.TARGET_DISPLAY_NAME || displayNameArg || '').trim().toLowerCase();
+const targetEmail = String(process.env.TARGET_EMAIL || emailArg || '').trim().toLowerCase();
 
 function changedKeys(before = {}, after = {}) {
   const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})]);
@@ -60,10 +64,16 @@ async function main() {
       after,
       changed,
     };
-  }).filter(Boolean);
+  }).filter(Boolean).filter((row) => {
+    if (targetDisplayName && String(row.displayName || '').trim().toLowerCase() !== targetDisplayName) return false;
+    if (targetEmail && String(row.email || '').trim().toLowerCase() !== targetEmail) return false;
+    return true;
+  });
 
   console.log(JSON.stringify({
     execute,
+    target_display_name: targetDisplayName || '',
+    target_email: targetEmail || '',
     count: candidates.length,
     candidates: candidates.slice(0, 200).map((row) => ({
       profileId: row.profileId,
