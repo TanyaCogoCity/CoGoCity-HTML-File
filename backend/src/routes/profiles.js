@@ -39,6 +39,12 @@ function publicStudentUser(user) {
     displayName: user.displayName,
     city: user.city,
     role: user.role,
+    co_go_verified: Boolean(user.coGoVerified),
+    coGoVerified: Boolean(user.coGoVerified),
+    verified_at: user.verifiedAt || null,
+    verifiedAt: user.verifiedAt || null,
+    verified_by: user.verifiedBy || null,
+    verifiedBy: user.verifiedBy || null,
     userProfile: publicUserProfile(user.userProfile),
     reviewsReceived: user.reviewsReceived || [],
   };
@@ -58,6 +64,12 @@ function serializeStudentProfile(profile) {
     created_at: profile.createdAt,
     services: (profile.services || []).map(serializeService),
     reviews: (profile.user?.reviewsReceived || []).map(serializeReview),
+    co_go_verified: Boolean(profile.user?.coGoVerified),
+    coGoVerified: Boolean(profile.user?.coGoVerified),
+    verified_at: profile.user?.verifiedAt || null,
+    verifiedAt: profile.user?.verifiedAt || null,
+    verified_by: profile.user?.verifiedBy || null,
+    verifiedBy: profile.user?.verifiedBy || null,
     user,
     profile: profileRecord,
   };
@@ -163,7 +175,7 @@ router.get('/student-profiles', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
       },
-      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
+      user: { select: { id: true, displayName: true, city: true, role: true, coGoVerified: true, verifiedAt: true, verifiedBy: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -315,7 +327,7 @@ router.patch('/student-profiles/:id', requireAuth, async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
       },
-      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
+      user: { select: { id: true, displayName: true, city: true, role: true, coGoVerified: true, verifiedAt: true, verifiedBy: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
   });
 

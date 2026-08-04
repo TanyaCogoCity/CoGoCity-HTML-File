@@ -2483,6 +2483,12 @@ function normalizeUserRecord(user){
   if (!normalized.createdAt) normalized.createdAt = new Date().toISOString();
   if (!normalized.status) normalized.status = normalized.archived ? 'archived' : 'active';
   if (!Object.prototype.hasOwnProperty.call(normalized, 'lastLogin')) normalized.lastLogin = null;
+  normalized.coGoVerified = Boolean(normalized.coGoVerified ?? normalized.co_go_verified);
+  normalized.co_go_verified = normalized.coGoVerified;
+  normalized.verifiedAt = normalized.verifiedAt || normalized.verified_at || null;
+  normalized.verified_at = normalized.verifiedAt;
+  normalized.verifiedBy = normalized.verifiedBy || normalized.verified_by || '';
+  normalized.verified_by = normalized.verifiedBy;
   if (normalized.role === 'employer' && !normalized.type) normalized.type = 'business';
   return normalized;
 }
@@ -3373,6 +3379,9 @@ function mapBackendStudentProfile(row={}){
     reviews: row.reviews || [],
     availability: primaryService.availability || '',
     status: row.is_active === false ? 'archived' : 'live',
+    coGoVerified: Boolean(row.coGoVerified ?? row.co_go_verified ?? user.coGoVerified ?? user.co_go_verified),
+    verifiedAt: row.verifiedAt || row.verified_at || user.verifiedAt || user.verified_at || null,
+    verifiedBy: row.verifiedBy || row.verified_by || user.verifiedBy || user.verified_by || '',
     createdAt: row.created_at || new Date().toISOString(),
     backendSource: true
   });
@@ -3397,6 +3406,9 @@ function mapBackendAuthStudent(apiUser={}){
       phone: apiUser.phone || '',
       city: apiUser.city || '',
       role: apiUser.role || 'student',
+      coGoVerified: Boolean(apiUser.coGoVerified ?? apiUser.co_go_verified),
+      verifiedAt: apiUser.verifiedAt || apiUser.verified_at || null,
+      verifiedBy: apiUser.verifiedBy || apiUser.verified_by || '',
       userProfile: apiUser.profile || null
     }
   });
@@ -3658,6 +3670,9 @@ function mapBackendUser(apiUser={}, fallback={}){
     emoji: profile.avatar || fallback.emoji || '',
     company: businessProfile?.name || fallback.company || '',
     businessProfile,
+    coGoVerified: Boolean(apiUser.coGoVerified ?? apiUser.co_go_verified ?? fallback.coGoVerified ?? fallback.co_go_verified),
+    verifiedAt: apiUser.verifiedAt || apiUser.verified_at || fallback.verifiedAt || fallback.verified_at || null,
+    verifiedBy: apiUser.verifiedBy || apiUser.verified_by || fallback.verifiedBy || fallback.verified_by || '',
     stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
     onboarding_requirements: apiUser.onboarding_requirements || apiUser.onboardingRequirements || fallback.onboarding_requirements || null,
     emailVerified: apiUser.email_verified ?? apiUser.emailVerified ?? fallback.emailVerified ?? false,
@@ -4423,6 +4438,12 @@ function normalizeStudentRecord(student){
     video_id: '',
     services: []
   }, student || {});
+  normalized.coGoVerified = Boolean(normalized.coGoVerified ?? normalized.co_go_verified);
+  normalized.co_go_verified = normalized.coGoVerified;
+  normalized.verifiedAt = normalized.verifiedAt || normalized.verified_at || null;
+  normalized.verified_at = normalized.verifiedAt;
+  normalized.verifiedBy = normalized.verifiedBy || normalized.verified_by || '';
+  normalized.verified_by = normalized.verifiedBy;
   const emojiAsImage = looksLikeImageSource(normalized.emoji || '') ? String(normalized.emoji || '').trim() : '';
   if (!normalized.profile_image_id && normalized.photo) normalized.profile_image_id = normalized.photo;
   if (!normalized.profile_image_id && emojiAsImage) normalized.profile_image_id = emojiAsImage;
@@ -7014,6 +7035,18 @@ function getUserRoleLabel(user){
   if (user.role === 'admin') return 'Admin';
   if (user.role === 'student') return 'Student';
   return user.type === 'neighbor' ? 'Neighbor' : 'Employer';
+}
+function isCoGoVerified(record={}){
+  return Boolean(record && (record.coGoVerified ?? record.co_go_verified));
+}
+function renderCoGoVerifiedBadge(record={}, options={}){
+  if (!isCoGoVerified(record)) return '';
+  const style = options.style || 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.8rem;font-weight:800;';
+  return `<span style="${style}">⭐ CoGo Verified</span>`;
+}
+function renderReviewSummaryLine(summary, suffix='reviews'){
+  if (!summary || !Number(summary.total || 0)) return '';
+  return `<div class="small muted">⭐ ${esc(summary.average)} (${esc(summary.total)} ${esc(suffix)})</div>`;
 }
 function getAdminImpersonation(){ return ls('cogo_admin_impersonation'); }
 function isAdminImpersonating(){
@@ -15140,7 +15173,8 @@ function openStudentServiceDetail(studentId, serviceId){
   openModal(service.title || 'Service', `${renderServiceDetailBody(service, backButton, { showStudentCreationGuidance: studentId === 'signup_preview' })}
     <div class="card form-card" style="margin-top:14px">
       <div style="font-weight:800;margin-bottom:8px">Reviews</div>
-      <div class="small muted" style="margin-bottom:10px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
+      ${renderCoGoVerifiedBadge(student, { style:'display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;padding:4px 10px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.8rem;font-weight:800;' })}
+      ${summary.total ? `<div class="small muted" style="margin-bottom:10px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>` : ''}
       ${summary.reviews.length ? summary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No reviews yet.</div>`}
       ${summary.reviews.length > 3 ? `<button class="btn btn-outline btn-sm" onclick="openReviewListModal('${esc(service.title || 'Service')} reviews', getServiceReviewSummary(getStudents().find(x => x.id === '${esc(student.id)}'), getRenderableStudentServices(getStudents().find(x => x.id === '${esc(student.id)}')).find(s => s.id === '${esc(service.id || '')}') || {}, ${serviceIndex}).reviews)">View All Reviews</button>` : ''}
       ${actionButtons}
@@ -15159,13 +15193,14 @@ function renderProfileCard(card){
         <div>
           <a class="link-btn" style="color:#fff;font-weight:800;text-align:left" href="${getProfileUrl(s.userId)}">${esc(s.name)}, ${esc(s.age)}</a>
           <div style="font-size:.8rem;opacity:.88">\u{1F4CD} ${esc(s.location || '')}</div>
+          ${renderCoGoVerifiedBadge(s, { style:'display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:3px 9px;border-radius:999px;background:rgba(255,247,204,.96);border:1px solid rgba(243,205,69,.95);color:#7A5A00;font-size:.74rem;font-weight:800;' })}
         </div>
       </div>
       <div class="profile-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
         <div style="font-weight:900;font-size:1.04rem;line-height:1.25">${esc(service.title || s.title || 'Student Service')}</div>
         <div class="small" style="min-height:2.8em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(service.description || '')}</div>
         <div class="small muted">Availability: ${esc(service.availability || '')}</div>
-        <div class="small muted">\u2B50 ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews)</div>
+        ${reviewSummary.total ? `<div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews)</div>` : ''}
         <div class="split" style="margin-top:auto;align-items:flex-end">
           <div class="rate">$${esc(service.rate || s.rate || 0)}/hr</div>
           <div class="muted small">Service card</div>
@@ -15192,14 +15227,15 @@ function openProfile(studentId){
   const reviewSummary = getProfileReviewSummary(s);
   openModal(`${s.name}'s Profile`, `
     <div class="split" style="align-items:center">
-      <div style="display:flex;gap:14px;align-items:center">
-        ${renderStudentAvatar(s, 72, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
-        <div>
-          <div style="font-size:1.25rem;font-weight:800">${esc(s.name)}</div>
-          <div class="muted small">\u{1F4CD} ${esc(s.location || '')} \u00B7 \u{1F3EB} ${esc(s.school || '')}</div>
-          <div class="small muted">\u2B50 ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews across services)</div>
-        </div>
-      </div>
+          <div style="display:flex;gap:14px;align-items:center">
+            ${renderStudentAvatar(s, 72, 'background:linear-gradient(135deg,var(--navy),var(--blue));color:#fff')}
+            <div>
+              <div style="font-size:1.25rem;font-weight:800">${esc(s.name)}</div>
+              <div class="muted small">\u{1F4CD} ${esc(s.location || '')} \u00B7 \u{1F3EB} ${esc(s.school || '')}</div>
+              <div style="margin-top:8px">${renderCoGoVerifiedBadge(s)}</div>
+              ${renderReviewSummaryLine(reviewSummary, 'reviews across services')}
+            </div>
+          </div>
       <div class="rate">$${esc(s.rate)}/hr</div>
     </div>
     <div style="height:16px"></div>
@@ -15219,7 +15255,7 @@ function openProfile(studentId){
               <div style="font-weight:800">${esc(service.title)}</div>
               <div class="small muted">$${esc(service.rate)}/hr \u00B7 ${esc(service.location || '')}</div>
               <div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div>
-              <div class="small muted" style="margin-top:6px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
+              ${summary.total ? `<div class="small muted" style="margin-top:6px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>` : ''}
             </div>
             <div class="small muted">View</div>
           </div>
@@ -19952,7 +19988,8 @@ function renderPublicStudentProfilePage(student){
             <div>
               <h1 class="section-title" style="margin:0">${esc(student.name)}${student.age ? `, ${esc(student.age)}` : ''}</h1>
               <div class="muted small">📍 ${esc(student.location || '')} · 🎓 ${esc(student.school || '')}</div>
-              <div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews across services)</div>
+              <div style="margin-top:8px">${renderCoGoVerifiedBadge(student)}</div>
+              ${renderReviewSummaryLine(reviewSummary, 'reviews across services')}
             </div>
           </div>
           <div class="rate">$${esc(student.rate)}/hr</div>
@@ -21007,6 +21044,10 @@ function getAdminUserActionOptions(user){
     { value:'edit', label:'Edit' },
     { value:'password_reset', label:'Send Password Reset' }
   ];
+  if (user.role === 'student') {
+    options.push({ value:'verify', label:'Verify' });
+    options.push({ value:'remove_verified', label:'Remove Verified' });
+  }
   if (user.id !== currentUser.id) options.push({ value:'toggle_status', label:user.status === 'suspended' ? 'Unsuspend' : 'Suspend' });
   if (user.id !== currentUser.id) options.push({ value:'delete', label:'Delete' });
   return options;
@@ -21040,8 +21081,73 @@ function runAdminUserAction(){
   if (!adminPendingUserAction) return toast('Choose an action first.');
   if (adminPendingUserAction === 'edit') return openAdminUserEditModal(user.id);
   if (adminPendingUserAction === 'password_reset') return sendAdminPasswordReset(user.id);
+  if (adminPendingUserAction === 'verify') return updateAdminUserVerifiedStatus(user.id, true);
+  if (adminPendingUserAction === 'remove_verified') return updateAdminUserVerifiedStatus(user.id, false);
   if (adminPendingUserAction === 'toggle_status') return toggleAdminUserStatus(user.id);
   if (adminPendingUserAction === 'delete') return openAdminDeleteUserModal(user.id);
+}
+async function updateAdminUserVerifiedStatus(userId, nextVerified){
+  const users = getUsers();
+  const user = getSelectedAdminUser()
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || users.find(item => String(item.id) === String(userId));
+  if (!user) return toast('User not found.');
+  if (user.role !== 'student') return toast('CoGo Verified is only available for student accounts.');
+  if (backendAuthEnabled() && adminBackendUsersLoaded && user.backendAuth) {
+    try {
+      const updatedBackendUser = await backendAuthRequest(`/auth/admin/users/${encodeURIComponent(user.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify({ co_go_verified: Boolean(nextVerified) })
+      });
+      const mappedBackendUser = mapBackendUser(updatedBackendUser, user);
+      adminBackendUsers = adminBackendUsers.map(item => String(item.id) === String(user.id) ? mappedBackendUser : item);
+      saveUsers(users.map(item => String(item.id) === String(user.id) ? Object.assign({}, item, mappedBackendUser) : item));
+      const student = getStudents().find(item => String(item.userId) === String(user.id));
+      if (student) {
+        student.coGoVerified = Boolean(nextVerified);
+        student.co_go_verified = student.coGoVerified;
+        student.verifiedAt = mappedBackendUser.verifiedAt || null;
+        student.verified_at = student.verifiedAt;
+        student.verifiedBy = mappedBackendUser.verifiedBy || '';
+        student.verified_by = student.verifiedBy;
+        saveStudents(getStudents().map(item => String(item.userId) === String(user.id) ? student : item));
+      }
+      logAdminAction(nextVerified ? 'student_verified' : 'student_verification_removed', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(mappedBackendUser) });
+      toast(nextVerified ? 'Student marked CoGo Verified.' : 'CoGo Verified removed.');
+      adminPendingUserAction = '';
+      loadBackendAdminUsers({ rerender:false });
+      if (getRoute().startsWith('#/profile/')) renderPage();
+      renderDashboard();
+      return;
+    } catch (error) {
+      return toast(userFacingBackendError(error, 'Could not update CoGo Verified for this student.'));
+    }
+  }
+  if (backendAuthEnabled()) {
+    return toast('This user is not loaded from the staging database. Refresh Users and try again.');
+  }
+  user.coGoVerified = Boolean(nextVerified);
+  user.co_go_verified = user.coGoVerified;
+  user.verifiedAt = nextVerified ? new Date().toISOString() : null;
+  user.verified_at = user.verifiedAt;
+  user.verifiedBy = nextVerified ? (currentUser?.id || '') : '';
+  user.verified_by = user.verifiedBy;
+  saveUsers(users);
+  saveStudents(getStudents().map(item => {
+    if (String(item.userId) !== String(user.id)) return item;
+    return Object.assign({}, item, {
+      coGoVerified: Boolean(nextVerified),
+      co_go_verified: Boolean(nextVerified),
+      verifiedAt: user.verifiedAt,
+      verified_at: user.verifiedAt,
+      verifiedBy: user.verifiedBy,
+      verified_by: user.verifiedBy,
+    });
+  }));
+  logAdminAction(nextVerified ? 'student_verified' : 'student_verification_removed', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast(nextVerified ? 'Student marked CoGo Verified.' : 'CoGo Verified removed.');
+  adminPendingUserAction = '';
+  renderDashboard();
 }
 async function sendAdminPasswordReset(userId){
   const user = getSelectedAdminUser()

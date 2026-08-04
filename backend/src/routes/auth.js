@@ -439,6 +439,8 @@ const adminUserUpdateSchema = z.object({
   businessAbout: z.string().trim().optional().nullable(),
   business_logo: z.string().trim().optional().nullable(),
   businessLogo: z.string().trim().optional().nullable(),
+  co_go_verified: z.boolean().optional(),
+  coGoVerified: z.boolean().optional(),
   student_profile: z.object({
     title: z.string().trim().optional().nullable(),
     bio: z.string().optional().nullable(),
@@ -528,6 +530,12 @@ function serializeUser(user, extras = {}) {
     phone: user.phone,
     status: user.status,
     role: user.role,
+    co_go_verified: Boolean(user.coGoVerified),
+    coGoVerified: Boolean(user.coGoVerified),
+    verified_at: user.verifiedAt || null,
+    verifiedAt: user.verifiedAt || null,
+    verified_by: user.verifiedBy || null,
+    verifiedBy: user.verifiedBy || null,
     email_verified: isEmailVerified(user),
     email_verified_at: user.emailVerifiedAt || null,
     email_verification_status: user.emailVerificationStatus || (user.emailVerifiedAt ? 'verified' : 'pending'),
@@ -1160,6 +1168,12 @@ router.patch('/admin/users/:id', requireAuth, requireRoles(['admin']), async (re
     if (payload.role !== undefined) data.role = payload.role;
     if (payload.status !== undefined) data.status = payload.status;
     if (payload.city !== undefined) data.city = payload.city || null;
+    const nextCoGoVerified = payload.coGoVerified ?? payload.co_go_verified;
+    if (nextCoGoVerified !== undefined) {
+      data.coGoVerified = Boolean(nextCoGoVerified);
+      data.verifiedAt = nextCoGoVerified ? new Date() : null;
+      data.verifiedBy = nextCoGoVerified ? req.user.id : null;
+    }
 
     const photo = payload.photo ?? payload.profileImageId ?? payload.profile_image_id;
     const businessName = payload.businessName ?? payload.business_name;
