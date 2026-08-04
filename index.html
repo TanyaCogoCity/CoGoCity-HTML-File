@@ -215,24 +215,18 @@
     }
     .service-card-top > *{position:relative;z-index:1}
     .service-card-eyebrow{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      margin-bottom:12px;
-      padding:5px 10px;
-      border-radius:999px;
-      background:rgba(255,255,255,.14);
-      font-size:.72rem;
+      font-size:.7rem;
       font-weight:800;
-      letter-spacing:.04em;
+      letter-spacing:.14em;
       text-transform:uppercase;
+      color:rgba(255,255,255,.76);
     }
     .service-card-name{
-      margin-top:10px;
       display:flex;
       flex-direction:column;
       gap:4px;
       min-width:0;
+      flex:1;
     }
     .service-card-name .link-btn,
     .service-card-name a.link-btn{
@@ -248,6 +242,21 @@
     .service-card-location{
       font-size:.82rem;
       color:rgba(255,255,255,.82);
+    }
+    .service-card-service{
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-end;
+      align-items:flex-end;
+      min-width:110px;
+      text-align:right;
+    }
+    .service-card-service-title{
+      margin-top:6px;
+      font-size:.8rem;
+      font-weight:800;
+      line-height:1.25;
+      color:#fff;
     }
     .service-card-body{
       position:relative;
@@ -1011,6 +1020,7 @@
       .service-card-actions{grid-template-columns:1fr;padding:0 16px 16px}
       .service-card-bottom{align-items:flex-start;flex-direction:column}
       .service-card-cta-note{text-align:left}
+      .service-card-service{min-width:0}
       .row{grid-template-columns:1fr}
       .form-card,.item-card,.post-card{padding:14px}
       .card{border-radius:14px}
@@ -7199,7 +7209,13 @@ function getUserRoleLabel(user){
   return user.type === 'neighbor' ? 'Neighbor' : 'Employer';
 }
 function isCoGoVerified(record={}){
-  return Boolean(record && (record.coGoVerified ?? record.co_go_verified));
+  if (!record) return false;
+  if (record.coGoVerified !== undefined || record.co_go_verified !== undefined) {
+    return Boolean(record.coGoVerified ?? record.co_go_verified);
+  }
+  const linkedUserId = record.userId || record.user_id || '';
+  const linkedUser = linkedUserId ? getUserById(linkedUserId) : null;
+  return Boolean(linkedUser && (linkedUser.coGoVerified ?? linkedUser.co_go_verified));
 }
 function renderCoGoVerifiedBadge(record={}, options={}){
   if (!isCoGoVerified(record)) return '';
@@ -15352,21 +15368,26 @@ function renderProfileCard(card){
   const availabilityLabel = esc(service.availability || s.availability || 'Open to new work');
   const rateLabel = esc(service.rate || s.rate || 0);
   const description = esc(service.description || 'Browse this service to see how this student can help.');
+  const schoolLabel = esc(s.school || '');
+  const serviceLabel = esc(service.title || s.title || 'Student Service');
   return `
     <div class="card profile-card service-card-shell" style="display:flex;flex-direction:column">
-      <div class="profile-top service-card-top">
-        <div>
-          <div class="service-card-eyebrow">Student Service</div>
+      <div class="profile-top service-card-top" style="display:flex;align-items:stretch;justify-content:space-between;gap:14px">
+        <div style="display:flex;gap:12px;align-items:center;flex:1;min-width:0">
           ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
+          <div class="service-card-name">
+            <a class="link-btn" style="color:#fff;font-weight:800;text-align:left" href="${getProfileUrl(s.userId)}">${esc(s.name)}, ${esc(s.age)}</a>
+            ${schoolLabel ? `<div class="service-card-location">🎓 ${schoolLabel}</div>` : ''}
+            <div class="service-card-location">\u{1F4CD} ${locationLabel || 'Local to your area'}</div>
+            ${renderCoGoVerifiedBadge(s, { style:'display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:3px 9px;border-radius:999px;background:rgba(255,247,204,.96);border:1px solid rgba(243,205,69,.95);color:#7A5A00;font-size:.74rem;font-weight:800;' })}
+          </div>
         </div>
-        <div class="service-card-name">
-          <a class="link-btn" style="color:#fff;font-weight:800;text-align:left" href="${getProfileUrl(s.userId)}">${esc(s.name)}, ${esc(s.age)}</a>
-          <div class="service-card-location">\u{1F4CD} ${locationLabel || 'Local to your area'}</div>
-          ${renderCoGoVerifiedBadge(s, { style:'display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:3px 9px;border-radius:999px;background:rgba(255,247,204,.96);border:1px solid rgba(243,205,69,.95);color:#7A5A00;font-size:.74rem;font-weight:800;' })}
+        <div class="service-card-service">
+          <div class="service-card-eyebrow">Student Service</div>
+          <div class="service-card-service-title">${serviceLabel}</div>
         </div>
       </div>
       <div class="profile-body service-card-body">
-        <div class="service-card-title">${esc(service.title || s.title || 'Student Service')}</div>
         <div class="small service-card-description">${description}</div>
         <div class="service-card-meta">
           <div class="service-card-pill service-card-pill-availability">Available: ${availabilityLabel}</div>
@@ -15377,7 +15398,7 @@ function renderProfileCard(card){
             <div class="service-card-price-label">Starting Rate</div>
             <div class="service-card-price-value">$${rateLabel}/hr</div>
           </div>
-          <div class="service-card-cta-note">View service details, message, or book directly.</div>
+          <div class="service-card-cta-note">${locationLabel || 'Student service'}</div>
         </div>
       </div>
       <div class="profile-actions service-card-actions">
@@ -20177,7 +20198,7 @@ function renderPublicStudentProfilePage(student){
         <div style="font-weight:800;margin-bottom:8px">About</div>
         ${renderFormattedLongText(student.about || [], { small:true, emptyHtml:'<div class="small muted">No about details yet.</div>' })}
         <div style="font-weight:800;margin:14px 0 8px">Services</div>
-        ${services.map((service, index) => `<button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentServiceDetail('${esc(student.id)}','${esc(service.id || ('service_' + index))}')"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></button>`).join('')}
+        ${services.map((service, index) => `<button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentServiceDetail('${esc(student.id)}','${esc(service.id || ('service_' + index))}')"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div style="margin-top:6px">${renderCoGoVerifiedBadge(student, { style:'display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.74rem;font-weight:800;' })}</div><div class="small muted" style="margin-top:6px">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></button>`).join('')}
         <div style="font-weight:800;margin:14px 0 8px">Recent Reviews</div>
         ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
       </div>
@@ -21862,6 +21883,7 @@ function renderAdminUsersResults(){
             <th style="padding:12px;border-bottom:1px solid var(--border)">Email</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Phone</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Role</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Verified</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Status</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Last Login</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Login as User</th>
@@ -21878,6 +21900,7 @@ function renderAdminUsersResults(){
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.phone || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(getUserRoleLabel(user))}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:800;color:${isCoGoVerified(user) ? '#15803D' : '#94A3B8'}">${getAdminRoleValueForUser(user) === 'student' ? (isCoGoVerified(user) ? '&#10003;' : '\u2014') : '\u2014'}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${roleStatusPill(user.status)}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.lastLogin, true)}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)"><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();startAdminImpersonation('${esc(user.id)}')">Login as User</button></td>
