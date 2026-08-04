@@ -176,6 +176,165 @@
     .grid{display:grid;gap:18px}
     .profiles-grid{grid-template-columns:repeat(3,1fr)}
     .profile-card{overflow:hidden}
+    .service-card-shell{
+      position:relative;
+      min-height:320px;
+      border:1px solid #E5E7EB;
+      border-radius:24px;
+      background:linear-gradient(180deg,#FFFFFF 0%,#F9FAFB 100%);
+      box-shadow:0 18px 40px rgba(15,23,42,.08);
+    }
+    .service-card-shell::after{
+      content:'';
+      position:absolute;
+      right:-18%;
+      bottom:-30%;
+      width:180px;
+      height:180px;
+      border-radius:50%;
+      background:radial-gradient(circle,rgba(255,230,0,.18) 0%,rgba(255,230,0,0) 72%);
+      pointer-events:none;
+    }
+    .service-card-top{
+      position:relative;
+      overflow:hidden;
+      background:linear-gradient(135deg,#111827 0%,#1D3557 52%,#2F6690 100%);
+      padding:18px;
+      color:#fff;
+    }
+    .service-card-top::before{
+      content:'';
+      position:absolute;
+      top:-12%;
+      left:58%;
+      width:160px;
+      height:160px;
+      border-radius:50%;
+      background:radial-gradient(circle,rgba(255,255,255,.16) 0%,rgba(255,255,255,0) 72%);
+      pointer-events:none;
+    }
+    .service-card-top > *{position:relative;z-index:1}
+    .service-card-eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      margin-bottom:12px;
+      padding:5px 10px;
+      border-radius:999px;
+      background:rgba(255,255,255,.14);
+      font-size:.72rem;
+      font-weight:800;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+    }
+    .service-card-name{
+      margin-top:10px;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      min-width:0;
+    }
+    .service-card-name .link-btn,
+    .service-card-name a.link-btn{
+      color:#fff;
+      font-size:1.08rem;
+      line-height:1.2;
+      text-decoration:none;
+    }
+    .service-card-name .link-btn:hover,
+    .service-card-name a.link-btn:hover{
+      color:#FFF7CC;
+    }
+    .service-card-location{
+      font-size:.82rem;
+      color:rgba(255,255,255,.82);
+    }
+    .service-card-body{
+      position:relative;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      flex:1;
+      padding:18px;
+    }
+    .service-card-title{
+      font-size:1.08rem;
+      font-weight:900;
+      line-height:1.28;
+      color:var(--color-text-main);
+    }
+    .service-card-description{
+      min-height:3.2em;
+      color:var(--color-text-secondary);
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    .service-card-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .service-card-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:#F3F4F6;
+      color:#374151;
+      font-size:.78rem;
+      font-weight:700;
+    }
+    .service-card-pill.service-card-pill-availability{
+      background:#ECFDF5;
+      color:#166534;
+    }
+    .service-card-pill.service-card-pill-reviews{
+      background:#EFF6FF;
+      color:#1D4ED8;
+    }
+    .service-card-bottom{
+      margin-top:auto;
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .service-card-price{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .service-card-price-label{
+      font-size:.72rem;
+      font-weight:800;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+      color:#6B7280;
+    }
+    .service-card-price-value{
+      font-size:1.34rem;
+      font-weight:900;
+      color:#0F7B6C;
+      line-height:1;
+    }
+    .service-card-cta-note{
+      font-size:.76rem;
+      font-weight:700;
+      color:#6B7280;
+      text-align:right;
+    }
+    .service-card-actions{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:8px;
+      padding:0 18px 18px;
+    }
+    .service-card-actions .btn{
+      min-height:40px;
+    }
     .student-search-panel{padding:18px;margin-bottom:18px;background:linear-gradient(135deg,#FFFFFF,#F9FAFB);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}
     .student-search-primary{position:relative;margin-bottom:12px}
     .student-search-primary input{width:100%;min-width:0;padding:14px 44px 14px 44px;border:2px solid var(--color-input-border);border-radius:14px;font-size:1.02rem;outline:none;background:#fff}
@@ -849,6 +1008,9 @@
       .profile-body{padding:14px}
       .profile-actions{padding:0 14px 14px;flex-direction:column}
       .profile-actions .btn{width:100%}
+      .service-card-actions{grid-template-columns:1fr;padding:0 16px 16px}
+      .service-card-bottom{align-items:flex-start;flex-direction:column}
+      .service-card-cta-note{text-align:left}
       .row{grid-template-columns:1fr}
       .form-card,.item-card,.post-card{padding:14px}
       .card{border-radius:14px}
@@ -15186,27 +15348,39 @@ function renderProfileCard(card){
   const index = card.index || 0;
   const reviewSummary = getServiceReviewSummary(s, service, index);
   const isSelf = currentUser && s.userId === currentUser.id;
+  const locationLabel = esc(s.location || service.location || '');
+  const availabilityLabel = esc(service.availability || s.availability || 'Open to new work');
+  const rateLabel = esc(service.rate || s.rate || 0);
+  const description = esc(service.description || 'Browse this service to see how this student can help.');
   return `
-    <div class="card profile-card" style="display:flex;flex-direction:column;min-height:300px">
-      <div class="profile-top">
-        ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
+    <div class="card profile-card service-card-shell" style="display:flex;flex-direction:column">
+      <div class="profile-top service-card-top">
         <div>
+          <div class="service-card-eyebrow">Student Service</div>
+          ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
+        </div>
+        <div class="service-card-name">
           <a class="link-btn" style="color:#fff;font-weight:800;text-align:left" href="${getProfileUrl(s.userId)}">${esc(s.name)}, ${esc(s.age)}</a>
-          <div style="font-size:.8rem;opacity:.88">\u{1F4CD} ${esc(s.location || '')}</div>
+          <div class="service-card-location">\u{1F4CD} ${locationLabel || 'Local to your area'}</div>
           ${renderCoGoVerifiedBadge(s, { style:'display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:3px 9px;border-radius:999px;background:rgba(255,247,204,.96);border:1px solid rgba(243,205,69,.95);color:#7A5A00;font-size:.74rem;font-weight:800;' })}
         </div>
       </div>
-      <div class="profile-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
-        <div style="font-weight:900;font-size:1.04rem;line-height:1.25">${esc(service.title || s.title || 'Student Service')}</div>
-        <div class="small" style="min-height:2.8em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(service.description || '')}</div>
-        <div class="small muted">Availability: ${esc(service.availability || '')}</div>
-        ${reviewSummary.total ? `<div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews)</div>` : ''}
-        <div class="split" style="margin-top:auto;align-items:flex-end">
-          <div class="rate">$${esc(service.rate || s.rate || 0)}/hr</div>
-          <div class="muted small">Service card</div>
+      <div class="profile-body service-card-body">
+        <div class="service-card-title">${esc(service.title || s.title || 'Student Service')}</div>
+        <div class="small service-card-description">${description}</div>
+        <div class="service-card-meta">
+          <div class="service-card-pill service-card-pill-availability">Available: ${availabilityLabel}</div>
+          ${reviewSummary.total ? `<div class="service-card-pill service-card-pill-reviews">⭐ ${esc(reviewSummary.average)} · ${esc(reviewSummary.total)} reviews</div>` : `<div class="service-card-pill">New service profile</div>`}
+        </div>
+        <div class="service-card-bottom">
+          <div class="service-card-price">
+            <div class="service-card-price-label">Starting Rate</div>
+            <div class="service-card-price-value">$${rateLabel}/hr</div>
+          </div>
+          <div class="service-card-cta-note">View service details, message, or book directly.</div>
         </div>
       </div>
-      <div class="profile-actions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      <div class="profile-actions service-card-actions">
         <button class="btn btn-outline btn-sm" onclick="openStudentServiceDetail('${esc(s.id)}','${esc(service.id || ('service_' + index))}')">View Service</button>
         ${isSelf
           ? `<button class="btn btn-outline btn-sm" onclick="dashSection='profile';goDashboard()">Your Profile</button>`
