@@ -214,8 +214,8 @@
     .service-card-name .link-btn,
     .service-card-name a.link-btn{
       color:#fff;
-      font-size:1.45rem;
-      line-height:1.08;
+      font-size:1.08rem;
+      line-height:1.2;
       text-decoration:none;
       font-weight:900;
       justify-content:flex-start;
@@ -228,10 +228,10 @@
     }
     .service-card-school,
     .service-card-location{
-      font-size:.95rem;
-      color:rgba(255,255,255,.96);
-      font-weight:800;
-      line-height:1.18;
+      font-size:.82rem;
+      color:rgba(255,255,255,.88);
+      font-weight:700;
+      line-height:1.35;
       word-break:break-word;
     }
     .service-card-body{
@@ -307,6 +307,18 @@
       color:var(--gray);
       text-align:right;
       white-space:nowrap;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+    }
+    .service-card-reviews-link{
+      color:inherit;
+      text-decoration:underline;
+      text-underline-offset:2px;
+      cursor:pointer;
+    }
+    .service-card-reviews-link:hover{
+      color:var(--color-link-hover);
     }
     .service-card-bottom{
       margin-top:auto;
@@ -1025,8 +1037,8 @@
       .service-card-top{padding:18px 16px}
       .service-card-top-inner{min-height:auto}
       .service-card-top .avatar{width:76px;height:76px}
-      .service-card-name .link-btn,.service-card-name a.link-btn{font-size:1.25rem}
-      .service-card-school,.service-card-location{font-size:.9rem}
+      .service-card-name .link-btn,.service-card-name a.link-btn{font-size:1.02rem}
+      .service-card-school,.service-card-location{font-size:.8rem}
       .service-card-body{padding:16px}
       .service-card-verified-row{align-items:flex-start;flex-direction:column}
       .service-card-reviews{text-align:left;white-space:normal}
@@ -1090,8 +1102,8 @@
       .container{padding-left:12px;padding-right:12px}
       .avatar{width:48px;height:48px}
       .service-card-top .avatar{width:68px;height:68px}
-      .service-card-name .link-btn,.service-card-name a.link-btn{font-size:1.08rem}
-      .service-card-school,.service-card-location{font-size:.82rem}
+      .service-card-name .link-btn,.service-card-name a.link-btn{font-size:.98rem}
+      .service-card-school,.service-card-location{font-size:.78rem}
     }
   </style>
 </head>
@@ -15364,7 +15376,7 @@ function openStudentServiceDetail(studentId, serviceId){
     ? ''
     : `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-outline" onclick="closeModal();openStudentMessage('${esc(student.id)}')">Message</button><button class="btn btn-blue" onclick="closeModal();openBookDirect('${esc(student.id)}','${esc(service.id || '')}')">Book</button></div>`;
   openModal(service.title || 'Service', `${renderServiceDetailBody(service, backButton, { showStudentCreationGuidance: studentId === 'signup_preview' })}
-    <div class="card form-card" style="margin-top:14px">
+    <div class="card form-card" id="service-detail-reviews-box" style="margin-top:14px">
       <div style="font-weight:800;margin-bottom:8px">Reviews</div>
       ${renderCoGoVerifiedBadge(student, { style:'display:inline-flex;align-items:center;gap:6px;margin-bottom:10px;padding:4px 10px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.8rem;font-weight:800;' })}
       ${summary.total ? `<div class="small muted" style="margin-bottom:10px">⭐ ${esc(summary.average)} (${esc(summary.total)} reviews)</div>` : ''}
@@ -15372,6 +15384,13 @@ function openStudentServiceDetail(studentId, serviceId){
       ${summary.reviews.length > 3 ? `<button class="btn btn-outline btn-sm" onclick="openReviewListModal('${esc(service.title || 'Service')} reviews', getServiceReviewSummary(getStudents().find(x => x.id === '${esc(student.id)}'), getRenderableStudentServices(getStudents().find(x => x.id === '${esc(student.id)}')).find(s => s.id === '${esc(service.id || '')}') || {}, ${serviceIndex}).reviews)">View All Reviews</button>` : ''}
       ${actionButtons}
     </div>`, '680px');
+}
+function openStudentServiceReviews(studentId, serviceId){
+  openStudentServiceDetail(studentId, serviceId);
+  setTimeout(() => {
+    const reviewsBox = document.getElementById('service-detail-reviews-box');
+    if (reviewsBox) reviewsBox.scrollIntoView({ behavior:'smooth', block:'start' });
+  }, 80);
 }
 function renderProfileCard(card){
   const s = card.student;
@@ -15389,7 +15408,10 @@ function renderProfileCard(card){
   const verifiedLabel = renderCoGoVerifiedBadge(s, {
     style:'display:inline-flex;align-items:center;gap:8px;padding:0;background:transparent;border:0;color:#111827;font-size:.95rem;font-weight:800;'
   }).replace('⭐', '<span class="service-card-verified-star">★</span>');
-  const reviewsLabel = reviewSummary.total ? `★ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} review${reviewSummary.total === 1 ? '' : 's'})` : '';
+  const reviewsLabel = reviewSummary.total ? `
+    <span>★ ${esc(reviewSummary.average)}</span>
+    <a class="service-card-reviews-link" onclick="openStudentServiceReviews('${esc(s.id)}','${esc(service.id || ('service_' + index))}')">(${esc(reviewSummary.total)} review${reviewSummary.total === 1 ? '' : 's'})</a>
+  ` : '';
   return `
     <div class="card profile-card service-card-shell" style="display:flex;flex-direction:column">
       <div class="profile-top service-card-top">
