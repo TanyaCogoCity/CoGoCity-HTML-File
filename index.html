@@ -186,19 +186,19 @@
     }
     .service-card-top{
       background:#3F3F46;
-      padding:18px 20px;
+      padding:12px 18px;
       color:#fff;
     }
     .service-card-top-inner{
       display:flex;
       align-items:center;
-      gap:14px;
-      min-height:116px;
+      gap:12px;
+      min-height:84px;
     }
     .service-card-top .avatar{
-      width:84px;
-      height:84px;
-      font-size:2rem;
+      width:64px;
+      height:64px;
+      font-size:1.7rem;
       background:rgba(255,255,255,.2);
       color:#fff;
       flex-shrink:0;
@@ -207,7 +207,7 @@
       display:flex;
       flex-direction:column;
       justify-content:center;
-      gap:10px;
+      gap:5px;
       min-width:0;
       flex:1;
     }
@@ -228,11 +228,23 @@
     }
     .service-card-school,
     .service-card-location{
+      display:flex;
+      align-items:center;
+      gap:6px;
       font-size:.82rem;
       color:rgba(255,255,255,.88);
       font-weight:700;
       line-height:1.35;
       word-break:break-word;
+    }
+    .service-card-top-icon{
+      width:14px;
+      flex:0 0 14px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:.78rem;
+      line-height:1;
     }
     .service-card-body{
       display:flex;
@@ -1034,9 +1046,9 @@
       .profile-body{padding:14px}
       .profile-actions{padding:0 14px 14px;flex-direction:column}
       .profile-actions .btn{width:100%}
-      .service-card-top{padding:16px}
+      .service-card-top{padding:12px 16px}
       .service-card-top-inner{min-height:auto}
-      .service-card-top .avatar{width:72px;height:72px}
+      .service-card-top .avatar{width:60px;height:60px}
       .service-card-name .link-btn,.service-card-name a.link-btn{font-size:1.02rem}
       .service-card-school,.service-card-location{font-size:.8rem}
       .service-card-body{padding:14px 16px}
@@ -1101,8 +1113,8 @@
       .how-it-works-hero h1{font-size:1.82rem}
       .container{padding-left:12px;padding-right:12px}
       .avatar{width:48px;height:48px}
-      .service-card-top{padding:14px}
-      .service-card-top .avatar{width:64px;height:64px}
+      .service-card-top{padding:10px 14px}
+      .service-card-top .avatar{width:56px;height:56px}
       .service-card-name .link-btn,.service-card-name a.link-btn{font-size:.98rem}
       .service-card-school,.service-card-location{font-size:.78rem}
     }
@@ -15420,8 +15432,8 @@ function renderProfileCard(card){
           ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
           <div class="service-card-name">
             <a class="link-btn" href="${getProfileUrl(s.userId)}">${esc(s.name || 'Student')}${esc(ageLabel)}</a>
-            <div class="service-card-school">${schoolLabel || '&nbsp;'}</div>
-            <div class="service-card-location">${locationLabel || '&nbsp;'}</div>
+            <div class="service-card-school">${schoolLabel ? `<span class="service-card-top-icon">🎓</span><span>${schoolLabel}</span>` : '&nbsp;'}</div>
+            <div class="service-card-location">${locationLabel ? `<span class="service-card-top-icon">📍</span><span>${locationLabel}</span>` : '&nbsp;'}</div>
           </div>
         </div>
       </div>
