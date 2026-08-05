@@ -274,6 +274,15 @@
       flex-direction:column;
       gap:10px;
     }
+    .service-card-meta-slot{
+      min-height:38px;
+      display:flex;
+      align-items:center;
+      width:100%;
+    }
+    .service-card-meta-slot.is-empty{
+      visibility:hidden;
+    }
     .service-card-pill{
       display:inline-flex;
       align-items:center;
@@ -291,13 +300,6 @@
     .service-card-pill.service-card-pill-availability{
       background:#ECFDF5;
       color:#166534;
-    }
-    .service-card-verified-row{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      min-height:38px;
     }
     .service-card-verified{
       display:inline-flex;
@@ -317,7 +319,7 @@
       font-size:.9rem;
       font-weight:600;
       color:var(--gray);
-      text-align:right;
+      text-align:left;
       white-space:nowrap;
       display:inline-flex;
       align-items:center;
@@ -1052,8 +1054,8 @@
       .service-card-name .link-btn,.service-card-name a.link-btn{font-size:1.02rem}
       .service-card-school,.service-card-location{font-size:.8rem}
       .service-card-body{padding:14px 16px}
-      .service-card-verified-row{align-items:flex-start;flex-direction:column}
-      .service-card-reviews{text-align:left;white-space:normal}
+      .service-card-meta-slot{min-height:34px}
+      .service-card-reviews{white-space:normal}
       .service-card-actions{grid-template-columns:1fr;padding:0 16px 16px}
       .service-card-bottom{align-items:flex-start;flex-direction:column}
       .service-card-cta-note{text-align:left}
@@ -15441,10 +15443,14 @@ function renderProfileCard(card){
         <div class="service-card-title">${serviceTitle}</div>
         <div class="small service-card-description">${description}</div>
         <div class="service-card-meta">
-          ${availabilityLabel ? `<div class="service-card-pill service-card-pill-availability">${availabilityLabel}</div>` : ''}
-          <div class="service-card-verified-row">
-            <div class="service-card-verified">${verifiedLabel || ''}</div>
-            <div class="service-card-reviews">${reviewsLabel}</div>
+          <div class="service-card-meta-slot ${availabilityLabel ? 'is-filled' : 'is-empty'}">
+            <div class="service-card-pill service-card-pill-availability">${availabilityLabel || '&nbsp;'}</div>
+          </div>
+          <div class="service-card-meta-slot ${verifiedLabel ? 'is-filled' : 'is-empty'}">
+            <div class="service-card-verified">${verifiedLabel || '&nbsp;'}</div>
+          </div>
+          <div class="service-card-meta-slot ${reviewsLabel ? 'is-filled' : 'is-empty'}">
+            <div class="service-card-reviews">${reviewsLabel || '&nbsp;'}</div>
           </div>
         </div>
         <div class="service-card-bottom">
