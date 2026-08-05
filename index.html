@@ -1639,6 +1639,7 @@ let directJobApplyDraft = null;
 let cogoResolvedCleanHash = '';
 let cogoSeoMetaRequestId = 0;
 let modalTriggerElement = null;
+let publicServiceAutoOpenKey = '';
 
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
@@ -11505,6 +11506,7 @@ function renderPage(){
     if (WORKSHOPS_ENABLED) processWorkshopPayouts();
     applySiteSettings();
     const route = getRoute();
+    if (!route.startsWith('#/profile/')) publicServiceAutoOpenKey = '';
     trackCogoPageView(route);
     if (route.startsWith('#/reset-password')) {
       renderNav();
@@ -15468,12 +15470,16 @@ function renderProfileCard(card){
   const rateLabel = esc(service.rate || s.rate || 0);
   const description = esc(service.description || 'Browse this service to see how this student can help.');
   const serviceTitle = esc(service.title || s.title || 'Student Service');
+  const serviceRouteId = getPublicStudentServiceRouteId(service, index);
+  const profileHref = getPublicProfileHref(s.userId);
+  const serviceHref = getPublicStudentServiceHref(s.id, serviceRouteId);
+  const reviewsHref = getPublicStudentServiceHref(s.id, serviceRouteId, { section:'reviews' });
   const verifiedLabel = renderCoGoVerifiedBadge(s, {
     style:'display:inline-flex;align-items:center;gap:8px;padding:0;background:transparent;border:0;color:#111827;font-size:.95rem;font-weight:800;'
   }).replace('⭐', '<span class="service-card-verified-star">★</span>');
   const reviewsLabel = reviewSummary.total ? `
     <span>★ ${esc(reviewSummary.average)}</span>
-    <a class="service-card-reviews-link" onclick="openStudentServiceReviews('${esc(s.id)}','${esc(service.id || ('service_' + index))}')">(${esc(reviewSummary.total)} review${reviewSummary.total === 1 ? '' : 's'})</a>
+    <a class="service-card-reviews-link" href="${reviewsHref}">(${esc(reviewSummary.total)} review${reviewSummary.total === 1 ? '' : 's'})</a>
   ` : '';
   return `
     <div class="card profile-card service-card-shell" style="display:flex;flex-direction:column">
@@ -15481,7 +15487,7 @@ function renderProfileCard(card){
         <div class="service-card-top-inner">
           ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
           <div class="service-card-name">
-            <a class="link-btn" href="${getProfileUrl(s.userId)}">${esc(s.name || 'Student')}${esc(ageLabel)}</a>
+            <a class="link-btn" href="${profileHref}">${esc(s.name || 'Student')}${esc(ageLabel)}</a>
             <div class="service-card-school">${schoolLabel ? `<span class="service-card-top-icon">🎓</span><span>${schoolLabel}</span>` : '&nbsp;'}</div>
             <div class="service-card-location">${locationLabel ? `<span class="service-card-top-icon">📍</span><span>${locationLabel}</span>` : '&nbsp;'}</div>
           </div>
@@ -15512,7 +15518,7 @@ function renderProfileCard(card){
         </div>
       </div>
       <div class="profile-actions service-card-actions">
-        <button class="btn btn-outline btn-sm" onclick="openStudentServiceDetail('${esc(s.id)}','${esc(service.id || ('service_' + index))}')">View Service</button>
+        <a class="btn btn-outline btn-sm" href="${serviceHref}">View Service</a>
         ${isSelf
           ? `<button class="btn btn-outline btn-sm" onclick="dashSection='profile';goDashboard()">Your Profile</button>`
           : `<button class="btn btn-outline btn-sm" onclick="openStudentMessage('${esc(s.id)}')">Message</button>`}
@@ -20239,6 +20245,28 @@ function getProfileUrl(userId=''){
 function getBusinessUrl(userId=''){
   return `#/business/${encodeURIComponent(userId || '')}`;
 }
+function getPublicStudentPathByUserId(userId=''){
+  const student = getStudentByUserId(userId);
+  return student ? `/student/${cogoStudentCleanUrlSlug(student)}` : '';
+}
+function getPublicProfileHref(userId=''){
+  return getPublicStudentPathByUserId(userId) || getProfileUrl(userId);
+}
+function getPublicStudentServiceRouteId(service={}, index=0){
+  return String(service.id || `service_${index}`);
+}
+function getPublicStudentServiceHref(studentId='', serviceId='', options={}){
+  const student = getStudents().find(item => String(item.id) === String(studentId));
+  const userId = student?.userId || '';
+  const profilePath = getPublicStudentPathByUserId(userId);
+  if (!profilePath) return getProfileUrl(userId);
+  const params = new URLSearchParams();
+  if (serviceId) params.set('service', String(serviceId));
+  const section = String(options.section || '').trim().toLowerCase();
+  if (section) params.set('section', section);
+  const query = params.toString();
+  return `${profilePath}${query ? `?${query}` : ''}`;
+}
 function getRouteEntityId(prefix=''){
   const route = getRoute();
   const match = route.match(new RegExp(`^#/${prefix}/([^?#]+)`));
@@ -20308,12 +20336,35 @@ function renderPublicStudentProfilePage(student){
         <div style="font-weight:800;margin-bottom:8px">About</div>
         ${renderFormattedLongText(student.about || [], { small:true, emptyHtml:'<div class="small muted">No about details yet.</div>' })}
         <div style="font-weight:800;margin:14px 0 8px">Services</div>
-        ${services.map((service, index) => `<button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentServiceDetail('${esc(student.id)}','${esc(service.id || ('service_' + index))}')"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div style="margin-top:6px">${renderCoGoVerifiedBadge(student, { style:'display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.74rem;font-weight:800;' })}</div><div class="small muted" style="margin-top:6px">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></button>`).join('')}
+        ${services.map((service, index) => {
+          const routeServiceId = getPublicStudentServiceRouteId(service, index);
+          const serviceHref = getPublicStudentServiceHref(student.id, routeServiceId);
+          return `<a class="card item-card" href="${serviceHref}" style="width:100%;text-align:left;margin-bottom:10px;background:#fff;display:block;text-decoration:none"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div style="margin-top:6px">${renderCoGoVerifiedBadge(student, { style:'display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.74rem;font-weight:800;' })}</div><div class="small muted" style="margin-top:6px">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></a>`;
+        }).join('')}
         <div style="font-weight:800;margin:14px 0 8px">Recent Reviews</div>
         ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
       </div>
     </div>
   `;
+  const requestedParams = new URLSearchParams(window.location.search || '');
+  const requestedServiceId = String(requestedParams.get('service') || '').trim();
+  const requestedSection = String(requestedParams.get('section') || '').trim().toLowerCase();
+  if (!requestedServiceId) {
+    publicServiceAutoOpenKey = '';
+    return;
+  }
+  const requestedServiceIndex = services.findIndex((service, index) => getPublicStudentServiceRouteId(service, index) === requestedServiceId);
+  if (requestedServiceIndex < 0) {
+    publicServiceAutoOpenKey = '';
+    return;
+  }
+  const autoOpenKey = `${student.id}:${requestedServiceId}:${requestedSection}`;
+  if (publicServiceAutoOpenKey === autoOpenKey) return;
+  publicServiceAutoOpenKey = autoOpenKey;
+  setTimeout(() => {
+    if (requestedSection === 'reviews') openStudentServiceReviews(student.id, requestedServiceId);
+    else openStudentServiceDetail(student.id, requestedServiceId);
+  }, 60);
 }
 function renderPublicProfilePage(){
   const userId = getRouteEntityId('profile');
@@ -20393,7 +20444,7 @@ function renderBusinessPage(){
         <div style="font-weight:800;margin-bottom:8px">About ${esc(businessName)}</div>
         ${renderFormattedLongText(business.about || '', { small:true, emptyHtml:'<div class="small muted">No company about section added yet.</div>' })}
       </div>
-      <div style="margin-top:16px"><a class="btn btn-outline" href="${getProfileUrl(user.id)}">View ${esc(user.publicName || user.name || 'Owner')}’s Profile</a></div>
+      <div style="margin-top:16px"><a class="btn btn-outline" href="${getPublicProfileHref(user.id)}">View ${esc(user.publicName || user.name || 'Owner')}’s Profile</a></div>
     </div>
   `;
 }
