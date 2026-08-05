@@ -1630,6 +1630,8 @@ let studentProfileDraft = null;
 let studentServiceDraft = null;
 let directJobsSearchQuery = '';
 let browseStudentFilters = { query: '', location: '', maxRate: '' };
+const browseStudentFilterIndexCache = new WeakMap();
+let browseStudentQueryTimer = null;
 let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
 let employerMyJobsSearchQuery = '';
@@ -11576,6 +11578,20 @@ function getBrowseStudentSearchText(card){
     ...(Array.isArray(service.tags) ? service.tags : [])
   ].filter(Boolean).join(' ').toLowerCase();
 }
+function getBrowseStudentFilterIndex(card){
+  if (!card || typeof card !== 'object') return { searchText:'', locationText:'', rate:0 };
+  const cached = browseStudentFilterIndexCache.get(card);
+  if (cached) return cached;
+  const service = card.service || {};
+  const student = card.student || {};
+  const indexRecord = {
+    searchText: getBrowseStudentSearchText(card),
+    locationText: [service.location, student.location].filter(Boolean).join(' ').toLowerCase(),
+    rate: getBrowseStudentRate(card)
+  };
+  browseStudentFilterIndexCache.set(card, indexRecord);
+  return indexRecord;
+}
 function getBrowseStudentRate(card){
   const rawRate = (card.service && card.service.rate !== undefined && card.service.rate !== '') ? card.service.rate : ((card.student || {}).rate || '');
   const match = String(rawRate || '').match(/\d+(?:\.\d+)?/);
@@ -11586,13 +11602,10 @@ function filterBrowseStudentCards(cards=[]){
   const locationQuery = String(browseStudentFilters.location || '').trim().toLowerCase();
   const maxRate = Number(String(browseStudentFilters.maxRate || '').replace(/[^\d.]/g, ''));
   return cards.filter(card => {
-    const searchText = getBrowseStudentSearchText(card);
-    if (query && !searchText.includes(query)) return false;
-    if (locationQuery) {
-      const locationText = [card.service?.location, card.student?.location].filter(Boolean).join(' ').toLowerCase();
-      if (!locationText.includes(locationQuery)) return false;
-    }
-    if (Number.isFinite(maxRate) && maxRate > 0 && getBrowseStudentRate(card) > maxRate) return false;
+    const indexRecord = getBrowseStudentFilterIndex(card);
+    if (query && !indexRecord.searchText.includes(query)) return false;
+    if (locationQuery && !indexRecord.locationText.includes(locationQuery)) return false;
+    if (Number.isFinite(maxRate) && maxRate > 0 && indexRecord.rate > maxRate) return false;
     return true;
   });
 }
@@ -11668,15 +11681,27 @@ function showMoreBrowseStudentProfiles(){
 function updateBrowseStudentFilter(key='', value=''){
   if (!Object.prototype.hasOwnProperty.call(browseStudentFilters, key)) return;
   browseStudentFilters[key] = String(value || '');
-  const allCards = getHomepageOrderedServiceCards();
-  let filteredCards = filterBrowseStudentCards(allCards);
-  if (key === 'query') trackCogoSearchEvent(browseStudentFilters.query, filteredCards.length);
-  filteredCards = refreshBrowseStudentResults(true);
-  const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
-  const clearButtons = document.querySelectorAll('.student-search-clear');
-  clearButtons.forEach(button => { button.style.display = hasFilters ? '' : 'none'; });
-  const panelClearButton = document.getElementById('browseStudentClearButton');
-  if (panelClearButton) panelClearButton.disabled = !hasFilters;
+  const applyFilters = () => {
+    const filteredCards = refreshBrowseStudentResults(true);
+    if (key === 'query') trackCogoSearchEvent(browseStudentFilters.query, filteredCards.length);
+    const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
+    const clearButtons = document.querySelectorAll('.student-search-clear');
+    clearButtons.forEach(button => { button.style.display = hasFilters ? '' : 'none'; });
+    const panelClearButton = document.getElementById('browseStudentClearButton');
+    if (panelClearButton) panelClearButton.disabled = !hasFilters;
+  };
+  if (browseStudentQueryTimer) {
+    clearTimeout(browseStudentQueryTimer);
+    browseStudentQueryTimer = null;
+  }
+  if (key === 'query') {
+    browseStudentQueryTimer = setTimeout(() => {
+      browseStudentQueryTimer = null;
+      applyFilters();
+    }, 120);
+    return;
+  }
+  applyFilters();
 }
 
 window.addEventListener('resize', () => {
@@ -11684,6 +11709,10 @@ window.addEventListener('resize', () => {
 });
 
 function clearBrowseStudentFilters(){
+  if (browseStudentQueryTimer) {
+    clearTimeout(browseStudentQueryTimer);
+    browseStudentQueryTimer = null;
+  }
   browseStudentFilters = { query: '', location: '', maxRate: '' };
   ['browseStudentQuery','browseStudentLocation','browseStudentMaxRate'].forEach(id => {
     const input = document.getElementById(id);
