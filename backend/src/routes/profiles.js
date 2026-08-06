@@ -39,6 +39,12 @@ function publicStudentUser(user) {
     displayName: user.displayName,
     city: user.city,
     role: user.role,
+    co_go_verified: Boolean(user.coGoVerified),
+    coGoVerified: Boolean(user.coGoVerified),
+    verified_at: user.verifiedAt || null,
+    verifiedAt: user.verifiedAt || null,
+    verified_by: user.verifiedBy || null,
+    verifiedBy: user.verifiedBy || null,
     userProfile: publicUserProfile(user.userProfile),
     reviewsReceived: user.reviewsReceived || [],
   };
@@ -163,7 +169,7 @@ router.get('/student-profiles', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
       },
-      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
+      user: { select: { id: true, displayName: true, city: true, role: true, coGoVerified: true, verifiedAt: true, verifiedBy: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -315,7 +321,7 @@ router.patch('/student-profiles/:id', requireAuth, async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
       },
-      user: { select: { id: true, displayName: true, city: true, role: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
+      user: { select: { id: true, displayName: true, city: true, role: true, coGoVerified: true, verifiedAt: true, verifiedBy: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
   });
 

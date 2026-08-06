@@ -88,6 +88,12 @@ function serializeService(service) {
     reviewCount,
     average_rating: averageRating,
     averageRating,
+    co_go_verified: Boolean(studentUser.coGoVerified),
+    coGoVerified: Boolean(studentUser.coGoVerified),
+    verified_at: studentUser.verifiedAt || null,
+    verifiedAt: studentUser.verifiedAt || null,
+    verified_by: studentUser.verifiedBy || null,
+    verifiedBy: studentUser.verifiedBy || null,
     created_at: service.createdAt,
     createdAt: service.createdAt,
   };

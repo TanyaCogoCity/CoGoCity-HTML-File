@@ -3866,6 +3866,12 @@ function mapBackendUser(apiUser={}, fallback={}){
     businessProfile,
     stripe_onboarding: apiUser.stripe_onboarding || apiUser.stripeOnboarding || fallback.stripe_onboarding || null,
     onboarding_requirements: apiUser.onboarding_requirements || apiUser.onboardingRequirements || fallback.onboarding_requirements || null,
+    coGoVerified: Boolean(apiUser.coGoVerified ?? apiUser.co_go_verified ?? fallback.coGoVerified ?? fallback.co_go_verified),
+    co_go_verified: Boolean(apiUser.coGoVerified ?? apiUser.co_go_verified ?? fallback.coGoVerified ?? fallback.co_go_verified),
+    verifiedAt: apiUser.verifiedAt || apiUser.verified_at || fallback.verifiedAt || fallback.verified_at || null,
+    verified_at: apiUser.verifiedAt || apiUser.verified_at || fallback.verifiedAt || fallback.verified_at || null,
+    verifiedBy: apiUser.verifiedBy || apiUser.verified_by || fallback.verifiedBy || fallback.verified_by || '',
+    verified_by: apiUser.verifiedBy || apiUser.verified_by || fallback.verifiedBy || fallback.verified_by || '',
     emailVerified: apiUser.email_verified ?? apiUser.emailVerified ?? fallback.emailVerified ?? false,
     emailVerifiedAt: apiUser.email_verified_at || apiUser.emailVerifiedAt || fallback.emailVerifiedAt || null,
     emailVerificationStatus: apiUser.email_verification_status || apiUser.emailVerificationStatus || fallback.emailVerificationStatus || '',
@@ -7220,6 +7226,15 @@ function getUserRoleLabel(user){
   if (user.role === 'admin') return 'Admin';
   if (user.role === 'student') return 'Student';
   return user.type === 'neighbor' ? 'Neighbor' : 'Employer';
+}
+function renderCoGoVerifiedBadge(record={}, options={}){
+  if (!isCoGoVerified(record)) return '';
+  const style = options.style || 'display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.8rem;font-weight:800;';
+  return `<span style="${style}">⭐ CoGo Verified</span>`;
+}
+function renderReviewSummaryLine(summary, suffix='reviews'){
+  if (!summary || !Number(summary.total || 0)) return '';
+  return `<div class="small muted">⭐ ${esc(summary.average)} (${esc(summary.total)} ${esc(suffix)})</div>`;
 }
 function getAdminImpersonation(){ return ls('cogo_admin_impersonation'); }
 function isAdminImpersonating(){
@@ -15403,6 +15418,9 @@ function renderProfileCard(card){
   const profileHref = getPublicProfileHref(s.userId);
   const serviceHref = getPublicStudentServiceHref(s.id, serviceRouteId);
   const reviewsHref = getPublicStudentServiceHref(s.id, serviceRouteId, { section:'reviews' });
+  const verifiedLabel = renderCoGoVerifiedBadge(s, {
+    style:'display:inline-flex;align-items:center;gap:8px;padding:0;background:transparent;border:0;color:#111827;font-size:.95rem;font-weight:800;'
+  }).replace('⭐', '<span class="service-card-verified-star">★</span>');
   const reviewsLabel = reviewSummary.total ? `
     <span>★ ${esc(reviewSummary.average)}</span>
     <a class="service-card-reviews-link" href="${reviewsHref}">(${esc(reviewSummary.total)} review${reviewSummary.total === 1 ? '' : 's'})</a>
@@ -15427,7 +15445,12 @@ function renderProfileCard(card){
             <div class="service-card-pill">${availabilityLabel || '&nbsp;'}</div>
           </div>
           <div class="service-card-status-row">
-            <div class="service-card-reviews">${reviewsLabel || '&nbsp;'}</div>
+            <div class="service-card-status-cell">
+              <div class="service-card-verified">${verifiedLabel || '&nbsp;'}</div>
+            </div>
+            <div class="service-card-status-cell is-end">
+              <div class="service-card-reviews">${reviewsLabel || '&nbsp;'}</div>
+            </div>
           </div>
         </div>
         <div class="service-card-bottom">
@@ -15464,7 +15487,8 @@ function openProfile(studentId){
         <div>
           <div style="font-size:1.25rem;font-weight:800">${esc(s.name)}</div>
           <div class="muted small">\u{1F4CD} ${esc(s.location || '')} \u00B7 \u{1F3EB} ${esc(s.school || '')}</div>
-          <div class="small muted">\u2B50 ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews across services)</div>
+          <div style="margin-top:8px">${renderCoGoVerifiedBadge(s)}</div>
+          ${renderReviewSummaryLine(reviewSummary, 'reviews across services')}
         </div>
       </div>
       <div class="rate">$${esc(s.rate)}/hr</div>
@@ -15484,6 +15508,7 @@ function openProfile(studentId){
           <div class="split" style="align-items:flex-start">
             <div>
               <div style="font-weight:800">${esc(service.title)}</div>
+              <div style="margin-top:6px">${renderCoGoVerifiedBadge(s, { style:'display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.74rem;font-weight:800;' })}</div>
               <div class="small muted">$${esc(service.rate)}/hr \u00B7 ${esc(service.location || '')}</div>
               <div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div>
               <div class="small muted" style="margin-top:6px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
@@ -20254,7 +20279,8 @@ function renderPublicStudentProfilePage(student){
             <div>
               <h1 class="section-title" style="margin:0">${esc(student.name)}${student.age ? `, ${esc(student.age)}` : ''}</h1>
               <div class="muted small">📍 ${esc(student.location || '')} · 🎓 ${esc(student.school || '')}</div>
-              <div class="small muted">⭐ ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews across services)</div>
+              <div style="margin-top:8px">${renderCoGoVerifiedBadge(student)}</div>
+              ${renderReviewSummaryLine(reviewSummary, 'reviews across services')}
             </div>
           </div>
           <div class="rate">$${esc(student.rate)}/hr</div>
@@ -20271,7 +20297,7 @@ function renderPublicStudentProfilePage(student){
         ${services.map((service, index) => {
           const routeServiceId = getPublicStudentServiceRouteId(service, index);
           const serviceHref = getPublicStudentServiceHref(student.id, routeServiceId);
-          return `<a class="card item-card" href="${serviceHref}" style="width:100%;text-align:left;margin-bottom:10px;background:#fff;display:block;text-decoration:none"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></a>`;
+          return `<a class="card item-card" href="${serviceHref}" style="width:100%;text-align:left;margin-bottom:10px;background:#fff;display:block;text-decoration:none"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div style="margin-top:6px">${renderCoGoVerifiedBadge(student, { style:'display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:#FFF7CC;border:1px solid #F3CD45;color:#7A5A00;font-size:.74rem;font-weight:800;' })}</div><div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></a>`;
         }).join('')}
         <div style="font-weight:800;margin:14px 0 8px">Recent Reviews</div>
         ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
