@@ -176,6 +176,193 @@
     .grid{display:grid;gap:18px}
     .profiles-grid{grid-template-columns:repeat(3,1fr)}
     .profile-card{overflow:hidden}
+    .service-card-shell{
+      min-height:320px;
+      border:1px solid #E5E7EB;
+      border-radius:24px;
+      background:#fff;
+      box-shadow:0 8px 24px rgba(15,23,42,.08);
+      overflow:hidden;
+    }
+    .service-card-top{
+      background:#3F3F46;
+      padding:12px 18px;
+      color:#fff;
+    }
+    .service-card-top-inner{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-height:84px;
+    }
+    .service-card-top .avatar{
+      width:64px;
+      height:64px;
+      font-size:1.7rem;
+      background:rgba(255,255,255,.2);
+      color:#fff;
+      flex-shrink:0;
+    }
+    .service-card-name{
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:5px;
+      min-width:0;
+      flex:1;
+    }
+    .service-card-name .link-btn,
+    .service-card-name a.link-btn{
+      color:#fff;
+      font-size:1.02rem;
+      line-height:1.2;
+      text-decoration:none;
+      font-weight:900;
+      justify-content:flex-start;
+      text-align:left;
+    }
+    .service-card-name .link-btn:hover,
+    .service-card-name a.link-btn:hover{
+      color:#fff;
+      text-decoration:none;
+    }
+    .service-card-school,
+    .service-card-location{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:.8rem;
+      color:rgba(255,255,255,.88);
+      font-weight:700;
+      line-height:1.35;
+      word-break:break-word;
+    }
+    .service-card-top-icon{
+      width:14px;
+      flex:0 0 14px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:.78rem;
+      line-height:1;
+    }
+    .service-card-body{
+      display:flex;
+      flex-direction:column;
+      gap:7px;
+      flex:1;
+      padding:14px 18px 12px;
+    }
+    .service-card-title{
+      font-size:.95rem;
+      line-height:1.22;
+      font-weight:800;
+      color:var(--color-text-main);
+    }
+    .service-card-description{
+      min-height:4.1em;
+      color:var(--color-text-secondary);
+      display:-webkit-box;
+      -webkit-line-clamp:4;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+      line-height:1.38;
+      font-size:.84rem;
+    }
+    .service-card-meta{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .service-card-meta-slot{
+      min-height:32px;
+      display:flex;
+      align-items:center;
+      width:100%;
+    }
+    .service-card-meta-slot.is-empty{
+      visibility:hidden;
+    }
+    .service-card-status-row{
+      min-height:28px;
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+    }
+    .service-card-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      width:max-content;
+      max-width:100%;
+      padding:6px 12px;
+      border-radius:999px;
+      background:#ECFDF5;
+      color:#166534;
+      font-size:.78rem;
+      font-weight:700;
+      line-height:1.2;
+    }
+    .service-card-reviews{
+      font-size:.82rem;
+      font-weight:600;
+      color:var(--gray);
+      white-space:nowrap;
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      line-height:1.1;
+    }
+    .service-card-reviews-link{
+      color:inherit;
+      text-decoration:underline;
+      text-underline-offset:2px;
+      cursor:pointer;
+    }
+    .service-card-reviews-link:hover{
+      color:var(--color-link-hover);
+    }
+    .service-card-bottom{
+      margin-top:auto;
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .service-card-price{
+      display:flex;
+      flex-direction:column;
+      gap:1px;
+    }
+    .service-card-price-label{
+      font-size:.72rem;
+      font-weight:900;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      color:#6B7280;
+    }
+    .service-card-price-value{
+      font-size:1.26rem;
+      font-weight:900;
+      color:#0F7B6C;
+      line-height:1;
+    }
+    .service-card-cta-note{
+      font-size:.76rem;
+      font-weight:700;
+      color:#9CA3AF;
+      text-align:right;
+    }
+    .service-card-actions{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:8px;
+      padding:0 18px 18px;
+    }
+    .service-card-actions .btn{
+      min-height:40px;
+      width:100%;
+    }
     .student-search-panel{padding:18px;margin-bottom:18px;background:linear-gradient(135deg,#FFFFFF,#F9FAFB);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow)}
     .student-search-primary{position:relative;margin-bottom:12px}
     .student-search-primary input{width:100%;min-width:0;padding:14px 44px 14px 44px;border:2px solid var(--color-input-border);border-radius:14px;font-size:1.02rem;outline:none;background:#fff}
@@ -849,6 +1036,18 @@
       .profile-body{padding:14px}
       .profile-actions{padding:0 14px 14px;flex-direction:column}
       .profile-actions .btn{width:100%}
+      .service-card-top{padding:12px 16px}
+      .service-card-top-inner{min-height:auto}
+      .service-card-top .avatar{width:60px;height:60px}
+      .service-card-name .link-btn,.service-card-name a.link-btn{font-size:1rem}
+      .service-card-school,.service-card-location{font-size:.79rem}
+      .service-card-body{padding:14px 16px}
+      .service-card-meta-slot{min-height:30px}
+      .service-card-status-row{min-height:26px}
+      .service-card-reviews{white-space:normal}
+      .service-card-actions{grid-template-columns:1fr;padding:0 16px 16px}
+      .service-card-bottom{align-items:flex-start;flex-direction:column}
+      .service-card-cta-note{text-align:left}
       .row{grid-template-columns:1fr}
       .form-card,.item-card,.post-card{padding:14px}
       .card{border-radius:14px}
@@ -905,6 +1104,10 @@
       .how-it-works-hero h1{font-size:1.82rem}
       .container{padding-left:12px;padding-right:12px}
       .avatar{width:48px;height:48px}
+      .service-card-top{padding:10px 14px}
+      .service-card-top .avatar{width:56px;height:56px}
+      .service-card-name .link-btn,.service-card-name a.link-btn{font-size:.96rem}
+      .service-card-school,.service-card-location{font-size:.77rem}
     }
   </style>
 </head>
@@ -1397,6 +1600,8 @@ let studentProfileDraft = null;
 let studentServiceDraft = null;
 let directJobsSearchQuery = '';
 let browseStudentFilters = { query: '', location: '', maxRate: '' };
+const browseStudentFilterIndexCache = new WeakMap();
+let browseStudentQueryTimer = null;
 let directJobsSort = 'latest';
 let employerMyJobsTab = 'all';
 let employerMyJobsSearchQuery = '';
@@ -1404,6 +1609,7 @@ let directJobApplyDraft = null;
 let cogoResolvedCleanHash = '';
 let cogoSeoMetaRequestId = 0;
 let modalTriggerElement = null;
+let publicServiceAutoOpenKey = '';
 
 const DEFAULT_PLATFORM_COMMISSION_PERCENT = 12;
 const DEFAULT_WORKSHOP_PLATFORM_FEE_PERCENT = 30;
@@ -11304,6 +11510,20 @@ function getBrowseStudentSearchText(card){
     ...(Array.isArray(service.tags) ? service.tags : [])
   ].filter(Boolean).join(' ').toLowerCase();
 }
+function getBrowseStudentFilterIndex(card){
+  if (!card || typeof card !== 'object') return { searchText:'', locationText:'', rate:0 };
+  const cached = browseStudentFilterIndexCache.get(card);
+  if (cached) return cached;
+  const service = card.service || {};
+  const student = card.student || {};
+  const indexRecord = {
+    searchText: getBrowseStudentSearchText(card),
+    locationText: [service.location, student.location].filter(Boolean).join(' ').toLowerCase(),
+    rate: getBrowseStudentRate(card)
+  };
+  browseStudentFilterIndexCache.set(card, indexRecord);
+  return indexRecord;
+}
 function getBrowseStudentRate(card){
   const rawRate = (card.service && card.service.rate !== undefined && card.service.rate !== '') ? card.service.rate : ((card.student || {}).rate || '');
   const match = String(rawRate || '').match(/\d+(?:\.\d+)?/);
@@ -11314,13 +11534,10 @@ function filterBrowseStudentCards(cards=[]){
   const locationQuery = String(browseStudentFilters.location || '').trim().toLowerCase();
   const maxRate = Number(String(browseStudentFilters.maxRate || '').replace(/[^\d.]/g, ''));
   return cards.filter(card => {
-    const searchText = getBrowseStudentSearchText(card);
-    if (query && !searchText.includes(query)) return false;
-    if (locationQuery) {
-      const locationText = [card.service?.location, card.student?.location].filter(Boolean).join(' ').toLowerCase();
-      if (!locationText.includes(locationQuery)) return false;
-    }
-    if (Number.isFinite(maxRate) && maxRate > 0 && getBrowseStudentRate(card) > maxRate) return false;
+    const indexRecord = getBrowseStudentFilterIndex(card);
+    if (query && !indexRecord.searchText.includes(query)) return false;
+    if (locationQuery && !indexRecord.locationText.includes(locationQuery)) return false;
+    if (Number.isFinite(maxRate) && maxRate > 0 && indexRecord.rate > maxRate) return false;
     return true;
   });
 }
@@ -11396,15 +11613,27 @@ function showMoreBrowseStudentProfiles(){
 function updateBrowseStudentFilter(key='', value=''){
   if (!Object.prototype.hasOwnProperty.call(browseStudentFilters, key)) return;
   browseStudentFilters[key] = String(value || '');
-  const allCards = getHomepageOrderedServiceCards();
-  let filteredCards = filterBrowseStudentCards(allCards);
-  if (key === 'query') trackCogoSearchEvent(browseStudentFilters.query, filteredCards.length);
-  filteredCards = refreshBrowseStudentResults(true);
-  const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
-  const clearButtons = document.querySelectorAll('.student-search-clear');
-  clearButtons.forEach(button => { button.style.display = hasFilters ? '' : 'none'; });
-  const panelClearButton = document.getElementById('browseStudentClearButton');
-  if (panelClearButton) panelClearButton.disabled = !hasFilters;
+  const applyFilters = () => {
+    const filteredCards = refreshBrowseStudentResults(true);
+    if (key === 'query') trackCogoSearchEvent(browseStudentFilters.query, filteredCards.length);
+    const hasFilters = Boolean(browseStudentFilters.query || browseStudentFilters.location || browseStudentFilters.maxRate);
+    const clearButtons = document.querySelectorAll('.student-search-clear');
+    clearButtons.forEach(button => { button.style.display = hasFilters ? '' : 'none'; });
+    const panelClearButton = document.getElementById('browseStudentClearButton');
+    if (panelClearButton) panelClearButton.disabled = !hasFilters;
+  };
+  if (browseStudentQueryTimer) {
+    clearTimeout(browseStudentQueryTimer);
+    browseStudentQueryTimer = null;
+  }
+  if (key === 'query') {
+    browseStudentQueryTimer = setTimeout(() => {
+      browseStudentQueryTimer = null;
+      applyFilters();
+    }, 120);
+    return;
+  }
+  applyFilters();
 }
 
 window.addEventListener('resize', () => {
@@ -11412,6 +11641,10 @@ window.addEventListener('resize', () => {
 });
 
 function clearBrowseStudentFilters(){
+  if (browseStudentQueryTimer) {
+    clearTimeout(browseStudentQueryTimer);
+    browseStudentQueryTimer = null;
+  }
   browseStudentFilters = { query: '', location: '', maxRate: '' };
   ['browseStudentQuery','browseStudentLocation','browseStudentMaxRate'].forEach(id => {
     const input = document.getElementById(id);
@@ -15138,7 +15371,7 @@ function openStudentServiceDetail(studentId, serviceId){
     ? ''
     : `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn btn-outline" onclick="closeModal();openStudentMessage('${esc(student.id)}')">Message</button><button class="btn btn-blue" onclick="closeModal();openBookDirect('${esc(student.id)}','${esc(service.id || '')}')">Book</button></div>`;
   openModal(service.title || 'Service', `${renderServiceDetailBody(service, backButton, { showStudentCreationGuidance: studentId === 'signup_preview' })}
-    <div class="card form-card" style="margin-top:14px">
+    <div class="card form-card" id="service-detail-reviews-box" style="margin-top:14px">
       <div style="font-weight:800;margin-bottom:8px">Reviews</div>
       <div class="small muted" style="margin-bottom:10px">\u2B50 ${esc(summary.average)} (${esc(summary.total)} reviews)</div>
       ${summary.reviews.length ? summary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-bottom:10px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 \u00B7 ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No reviews yet.</div>`}
@@ -15146,33 +15379,67 @@ function openStudentServiceDetail(studentId, serviceId){
       ${actionButtons}
     </div>`, '680px');
 }
+function openStudentServiceReviews(studentId, serviceId){
+  openStudentServiceDetail(studentId, serviceId);
+  setTimeout(() => {
+    const reviewsBox = document.getElementById('service-detail-reviews-box');
+    if (reviewsBox) reviewsBox.scrollIntoView({ behavior:'smooth', block:'start' });
+  }, 80);
+}
 function renderProfileCard(card){
   const s = card.student;
   const service = card.service;
   const index = card.index || 0;
   const reviewSummary = getServiceReviewSummary(s, service, index);
   const isSelf = currentUser && s.userId === currentUser.id;
+  const ageLabel = s.age ? `, ${s.age}` : '';
+  const schoolLabel = esc(s.school || '');
+  const locationLabel = esc(service.location || s.location || '');
+  const availabilityLabel = service.availability ? `Available: ${esc(service.availability)}` : '';
+  const rateLabel = esc(service.rate || s.rate || 0);
+  const description = esc(service.description || 'Browse this service to see how this student can help.');
+  const serviceTitle = esc(service.title || s.title || 'Student Service');
+  const serviceRouteId = getPublicStudentServiceRouteId(service, index);
+  const profileHref = getPublicProfileHref(s.userId);
+  const serviceHref = getPublicStudentServiceHref(s.id, serviceRouteId);
+  const reviewsHref = getPublicStudentServiceHref(s.id, serviceRouteId, { section:'reviews' });
+  const reviewsLabel = reviewSummary.total ? `
+    <span>★ ${esc(reviewSummary.average)}</span>
+    <a class="service-card-reviews-link" href="${reviewsHref}">(${esc(reviewSummary.total)} review${reviewSummary.total === 1 ? '' : 's'})</a>
+  ` : '';
   return `
-    <div class="card profile-card" style="display:flex;flex-direction:column;min-height:300px">
-      <div class="profile-top">
-        ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
-        <div>
-          <a class="link-btn" style="color:#fff;font-weight:800;text-align:left" href="${getProfileUrl(s.userId)}">${esc(s.name)}, ${esc(s.age)}</a>
-          <div style="font-size:.8rem;opacity:.88">\u{1F4CD} ${esc(s.location || '')}</div>
+    <div class="card profile-card service-card-shell" style="display:flex;flex-direction:column">
+      <div class="profile-top service-card-top">
+        <div class="service-card-top-inner">
+          ${renderStudentAvatar(s, 54, 'background:rgba(255,255,255,.18);color:#fff')}
+          <div class="service-card-name">
+            <a class="link-btn" href="${profileHref}">${esc(s.name || 'Student')}${esc(ageLabel)}</a>
+            <div class="service-card-school">${schoolLabel ? `<span class="service-card-top-icon">🎓</span><span>${schoolLabel}</span>` : '&nbsp;'}</div>
+            <div class="service-card-location">${locationLabel ? `<span class="service-card-top-icon">📍</span><span>${locationLabel}</span>` : '&nbsp;'}</div>
+          </div>
         </div>
       </div>
-      <div class="profile-body" style="display:flex;flex-direction:column;gap:10px;flex:1">
-        <div style="font-weight:900;font-size:1.04rem;line-height:1.25">${esc(service.title || s.title || 'Student Service')}</div>
-        <div class="small" style="min-height:2.8em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(service.description || '')}</div>
-        <div class="small muted">Availability: ${esc(service.availability || '')}</div>
-        <div class="small muted">\u2B50 ${esc(reviewSummary.average)} (${esc(reviewSummary.total)} reviews)</div>
-        <div class="split" style="margin-top:auto;align-items:flex-end">
-          <div class="rate">$${esc(service.rate || s.rate || 0)}/hr</div>
-          <div class="muted small">Service card</div>
+      <div class="profile-body service-card-body">
+        <div class="service-card-title">${serviceTitle}</div>
+        <div class="small service-card-description">${description}</div>
+        <div class="service-card-meta">
+          <div class="service-card-meta-slot ${availabilityLabel ? 'is-filled' : 'is-empty'}">
+            <div class="service-card-pill">${availabilityLabel || '&nbsp;'}</div>
+          </div>
+          <div class="service-card-status-row">
+            <div class="service-card-reviews">${reviewsLabel || '&nbsp;'}</div>
+          </div>
+        </div>
+        <div class="service-card-bottom">
+          <div class="service-card-price">
+            <div class="service-card-price-label">Starting Rate</div>
+            <div class="service-card-price-value">$${rateLabel}/hr</div>
+          </div>
+          <div class="service-card-cta-note">Service card</div>
         </div>
       </div>
-      <div class="profile-actions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        <button class="btn btn-outline btn-sm" onclick="openStudentServiceDetail('${esc(s.id)}','${esc(service.id || ('service_' + index))}')">View Service</button>
+      <div class="profile-actions service-card-actions">
+        <a class="btn btn-outline btn-sm" href="${serviceHref}">View Service</a>
         ${isSelf
           ? `<button class="btn btn-outline btn-sm" onclick="dashSection='profile';goDashboard()">Your Profile</button>`
           : `<button class="btn btn-outline btn-sm" onclick="openStudentMessage('${esc(s.id)}')">Message</button>`}
@@ -19898,6 +20165,28 @@ function getProfileUrl(userId=''){
 function getBusinessUrl(userId=''){
   return `#/business/${encodeURIComponent(userId || '')}`;
 }
+function getPublicStudentPathByUserId(userId=''){
+  const student = getStudentByUserId(userId);
+  return student ? `/student/${cogoStudentCleanUrlSlug(student)}` : '';
+}
+function getPublicProfileHref(userId=''){
+  return getPublicStudentPathByUserId(userId) || getProfileUrl(userId);
+}
+function getPublicStudentServiceRouteId(service={}, index=0){
+  return String(service.id || `service_${index}`);
+}
+function getPublicStudentServiceHref(studentId='', serviceId='', options={}){
+  const student = getStudents().find(item => String(item.id) === String(studentId));
+  const userId = student?.userId || '';
+  const profilePath = getPublicStudentPathByUserId(userId);
+  if (!profilePath) return getProfileUrl(userId);
+  const params = new URLSearchParams();
+  if (serviceId) params.set('service', String(serviceId));
+  const section = String(options.section || '').trim().toLowerCase();
+  if (section) params.set('section', section);
+  const query = params.toString();
+  return `${profilePath}${query ? `?${query}` : ''}`;
+}
 function getRouteEntityId(prefix=''){
   const route = getRoute();
   const match = route.match(new RegExp(`^#/${prefix}/([^?#]+)`));
@@ -19942,6 +20231,19 @@ function renderPublicStudentProfilePage(student){
   const user = getUserById(student.userId) || {};
   const services = getRenderableStudentServices(student);
   const reviewSummary = getProfileReviewSummary(student);
+  const requestedParams = new URLSearchParams(window.location.search || '');
+  const requestedServiceId = String(requestedParams.get('service') || '').trim();
+  const requestedSection = String(requestedParams.get('section') || '').trim().toLowerCase();
+  const publicPath = getPublicStudentPathByUserId(student.userId) || window.location.pathname || '/';
+  const desiredSearch = requestedParams.toString() ? `?${requestedParams.toString()}` : '';
+  const desiredUrl = `${publicPath}${desiredSearch}`;
+  const requestedServiceIndex = requestedServiceId
+    ? services.findIndex((service, index) => getPublicStudentServiceRouteId(service, index) === requestedServiceId)
+    : -1;
+  cogoResolvedCleanHash = getProfileUrl(student.userId);
+  if (window.location.pathname !== publicPath || window.location.search !== desiredSearch || window.location.hash) {
+    window.history.replaceState({}, '', desiredUrl);
+  }
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="padding-top:28px;padding-bottom:42px">
@@ -19966,12 +20268,31 @@ function renderPublicStudentProfilePage(student){
         <div style="font-weight:800;margin-bottom:8px">About</div>
         ${renderFormattedLongText(student.about || [], { small:true, emptyHtml:'<div class="small muted">No about details yet.</div>' })}
         <div style="font-weight:800;margin:14px 0 8px">Services</div>
-        ${services.map((service, index) => `<button class="card item-card" style="width:100%;text-align:left;margin-bottom:10px;background:#fff" onclick="openStudentServiceDetail('${esc(student.id)}','${esc(service.id || ('service_' + index))}')"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></button>`).join('')}
+        ${services.map((service, index) => {
+          const routeServiceId = getPublicStudentServiceRouteId(service, index);
+          const serviceHref = getPublicStudentServiceHref(student.id, routeServiceId);
+          return `<a class="card item-card" href="${serviceHref}" style="width:100%;text-align:left;margin-bottom:10px;background:#fff;display:block;text-decoration:none"><div class="split" style="align-items:flex-start"><div><div style="font-weight:800">${esc(service.title)}</div><div class="small muted">$${esc(service.rate)}/hr · ${esc(service.location || '')}</div><div style="margin-top:6px">${renderFormattedLongText(service.description || '', { small:true })}</div></div><div class="small muted">View</div></div></a>`;
+        }).join('')}
         <div style="font-weight:800;margin:14px 0 8px">Recent Reviews</div>
         ${reviewSummary.reviews.length ? reviewSummary.reviews.slice(0,3).map(r => `<div class="contract-box small" style="margin-top:8px"><div style="font-weight:700">${esc(r.reviewerName || 'Employer')}</div><div class="muted small">${esc(r.rating || 5)}/5 · ${timeAgo(r.createdAt)}</div><div style="margin-top:6px">${renderFormattedLongText(r.comment || '', { small:true })}</div></div>`).join('') : `<div class="small muted">No Reviews</div>`}
       </div>
     </div>
   `;
+  if (!requestedServiceId) {
+    publicServiceAutoOpenKey = '';
+    return;
+  }
+  if (requestedServiceIndex < 0) {
+    publicServiceAutoOpenKey = '';
+    return;
+  }
+  const autoOpenKey = `${student.id}:${requestedServiceId}:${requestedSection}`;
+  if (publicServiceAutoOpenKey === autoOpenKey) return;
+  publicServiceAutoOpenKey = autoOpenKey;
+  setTimeout(() => {
+    if (requestedSection === 'reviews') openStudentServiceReviews(student.id, requestedServiceId);
+    else openStudentServiceDetail(student.id, requestedServiceId);
+  }, 60);
 }
 function renderPublicProfilePage(){
   const userId = getRouteEntityId('profile');
