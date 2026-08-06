@@ -20311,6 +20311,33 @@ function renderPublicStudentProfilePage(student){
   const user = getUserById(student.userId) || {};
   const services = getRenderableStudentServices(student);
   const reviewSummary = getProfileReviewSummary(student);
+  const requestedParams = new URLSearchParams(window.location.search || '');
+  const requestedServiceId = String(requestedParams.get('service') || '').trim();
+  const requestedSection = String(requestedParams.get('section') || '').trim().toLowerCase();
+  const publicPath = getPublicStudentPathByUserId(student.userId) || window.location.pathname || '/';
+  const desiredSearch = requestedParams.toString() ? `?${requestedParams.toString()}` : '';
+  const desiredUrl = `${publicPath}${desiredSearch}`;
+  const requestedServiceIndex = requestedServiceId
+    ? services.findIndex((service, index) => getPublicStudentServiceRouteId(service, index) === requestedServiceId)
+    : -1;
+  const requestedService = requestedServiceIndex >= 0 ? services[requestedServiceIndex] : null;
+  cogoResolvedCleanHash = getProfileUrl(student.userId);
+  if (window.location.pathname !== publicPath || window.location.search !== desiredSearch || window.location.hash) {
+    window.history.replaceState({}, '', desiredUrl);
+  }
+  applySeoMeta({
+    title: requestedService
+      ? `${requestedService.title || 'Student Service'} | ${student.name || 'Student'} | CoGo City`
+      : `${student.name || 'Student'} | CoGo City`,
+    description: compactSeoText(
+      (requestedService && (requestedService.description || requestedService.location || requestedService.rate))
+      || student.about
+      || `${student.name || 'Student'} offers local student services through CoGo City.`
+    ),
+    canonical: `${window.location.origin}${desiredUrl}`,
+    ogUrl: `${window.location.origin}${desiredUrl}`,
+    robots: COGO_IS_STAGING ? 'noindex,nofollow' : 'index,follow'
+  });
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="padding-top:28px;padding-bottom:42px">
@@ -20346,14 +20373,10 @@ function renderPublicStudentProfilePage(student){
       </div>
     </div>
   `;
-  const requestedParams = new URLSearchParams(window.location.search || '');
-  const requestedServiceId = String(requestedParams.get('service') || '').trim();
-  const requestedSection = String(requestedParams.get('section') || '').trim().toLowerCase();
   if (!requestedServiceId) {
     publicServiceAutoOpenKey = '';
     return;
   }
-  const requestedServiceIndex = services.findIndex((service, index) => getPublicStudentServiceRouteId(service, index) === requestedServiceId);
   if (requestedServiceIndex < 0) {
     publicServiceAutoOpenKey = '';
     return;
