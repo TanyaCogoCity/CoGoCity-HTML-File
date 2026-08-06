@@ -21328,6 +21328,10 @@ function getAdminUserActionOptions(user){
     { value:'edit', label:'Edit' },
     { value:'password_reset', label:'Send Password Reset' }
   ];
+  if (user.role === 'student') {
+    options.push({ value:'verify', label:'Verify' });
+    options.push({ value:'remove_verified', label:'Remove Verified' });
+  }
   if (user.id !== currentUser.id) options.push({ value:'toggle_status', label:user.status === 'suspended' ? 'Unsuspend' : 'Suspend' });
   if (user.id !== currentUser.id) options.push({ value:'delete', label:'Delete' });
   return options;
@@ -21361,8 +21365,82 @@ function runAdminUserAction(){
   if (!adminPendingUserAction) return toast('Choose an action first.');
   if (adminPendingUserAction === 'edit') return openAdminUserEditModal(user.id);
   if (adminPendingUserAction === 'password_reset') return sendAdminPasswordReset(user.id);
+  if (adminPendingUserAction === 'verify') return updateAdminUserVerifiedStatus(user.id, true);
+  if (adminPendingUserAction === 'remove_verified') return updateAdminUserVerifiedStatus(user.id, false);
   if (adminPendingUserAction === 'toggle_status') return toggleAdminUserStatus(user.id);
   if (adminPendingUserAction === 'delete') return openAdminDeleteUserModal(user.id);
+}
+function isCoGoVerified(record={}){
+  if (!record) return false;
+  if (record.coGoVerified !== undefined || record.co_go_verified !== undefined) {
+    return Boolean(record.coGoVerified ?? record.co_go_verified);
+  }
+  const linkedUserId = record.userId || record.user_id || '';
+  const linkedUser = linkedUserId ? getUserById(linkedUserId) : null;
+  return Boolean(linkedUser && (linkedUser.coGoVerified ?? linkedUser.co_go_verified));
+}
+async function updateAdminUserVerifiedStatus(userId, nextVerified){
+  const users = getUsers();
+  const user = getSelectedAdminUser()
+    || adminBackendUsers.find(item => String(item.id) === String(userId))
+    || users.find(item => String(item.id) === String(userId));
+  if (!user) return toast('User not found.');
+  if (user.role !== 'student') return toast('CoGo Verified is only available for student accounts.');
+  if (backendAuthEnabled() && adminBackendUsersLoaded && user.backendAuth) {
+    try {
+      const updatedBackendUser = await backendAuthRequest(`/auth/admin/users/${encodeURIComponent(user.id)}`, {
+        method:'PATCH',
+        body: JSON.stringify({ co_go_verified: Boolean(nextVerified) })
+      });
+      const mappedBackendUser = mapBackendUser(updatedBackendUser, user);
+      adminBackendUsers = adminBackendUsers.map(item => String(item.id) === String(user.id) ? mappedBackendUser : item);
+      saveUsers(users.map(item => String(item.id) === String(user.id) ? Object.assign({}, item, mappedBackendUser) : item));
+      const student = getStudents().find(item => String(item.userId) === String(user.id));
+      if (student) {
+        student.coGoVerified = Boolean(nextVerified);
+        student.co_go_verified = student.coGoVerified;
+        student.verifiedAt = mappedBackendUser.verifiedAt || null;
+        student.verified_at = student.verifiedAt;
+        student.verifiedBy = mappedBackendUser.verifiedBy || '';
+        student.verified_by = student.verifiedBy;
+        saveStudents(getStudents().map(item => String(item.userId) === String(user.id) ? student : item));
+      }
+      logAdminAction(nextVerified ? 'student_verified' : 'student_verification_removed', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(mappedBackendUser) });
+      toast(nextVerified ? 'Student marked CoGo Verified.' : 'CoGo Verified removed.');
+      adminPendingUserAction = '';
+      loadBackendAdminUsers({ rerender:false });
+      if (getRoute().startsWith('#/profile/')) renderPage();
+      renderDashboard();
+      return;
+    } catch (error) {
+      return toast(userFacingBackendError(error, 'Could not update CoGo Verified for this student.'));
+    }
+  }
+  if (backendAuthEnabled()) {
+    return toast('This user is not loaded from the staging database. Refresh Users and try again.');
+  }
+  user.coGoVerified = Boolean(nextVerified);
+  user.co_go_verified = user.coGoVerified;
+  user.verifiedAt = nextVerified ? new Date().toISOString() : null;
+  user.verified_at = user.verifiedAt;
+  user.verifiedBy = nextVerified ? (currentUser?.id || '') : '';
+  user.verified_by = user.verifiedBy;
+  saveUsers(users);
+  saveStudents(getStudents().map(item => {
+    if (String(item.userId) !== String(user.id)) return item;
+    return Object.assign({}, item, {
+      coGoVerified: Boolean(nextVerified),
+      co_go_verified: Boolean(nextVerified),
+      verifiedAt: user.verifiedAt,
+      verified_at: user.verifiedAt,
+      verifiedBy: user.verifiedBy,
+      verified_by: user.verifiedBy,
+    });
+  }));
+  logAdminAction(nextVerified ? 'student_verified' : 'student_verification_removed', { targetUserId: user.id, targetUserName: user.name, targetRole: getUserRoleLabel(user) });
+  toast(nextVerified ? 'Student marked CoGo Verified.' : 'CoGo Verified removed.');
+  adminPendingUserAction = '';
+  renderDashboard();
 }
 async function sendAdminPasswordReset(userId){
   const user = getSelectedAdminUser()
@@ -21903,6 +21981,7 @@ function renderAdminUsersResults(){
             <th style="padding:12px;border-bottom:1px solid var(--border)">Email</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Phone</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Role</th>
+            <th style="padding:12px;border-bottom:1px solid var(--border)">Verified</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Status</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Last Login</th>
             <th style="padding:12px;border-bottom:1px solid var(--border)">Login as User</th>
@@ -21919,6 +21998,7 @@ function renderAdminUsersResults(){
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.email || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(user.phone || '\u2014')}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${esc(getUserRoleLabel(user))}</td>
+                <td style="padding:12px;border-bottom:1px solid var(--border);font-weight:800;color:${isCoGoVerified(user) ? '#15803D' : '#94A3B8'}">${getAdminRoleValueForUser(user) === 'student' ? (isCoGoVerified(user) ? '&#10003;' : '\u2014') : '\u2014'}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${roleStatusPill(user.status)}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)">${formatAdminDate(user.lastLogin, true)}</td>
                 <td style="padding:12px;border-bottom:1px solid var(--border)"><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();startAdminImpersonation('${esc(user.id)}')">Login as User</button></td>
