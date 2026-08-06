@@ -65,6 +65,7 @@ function serializeService(service) {
   const reviews = (service.reviews || []).map(serializeReview);
   const reviewCount = reviews.length;
   const averageRating = reviewCount ? Number((reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / reviewCount).toFixed(2)) : 0;
+  const studentUser = service.profile?.user || {};
   return {
     id: service.id,
     profile_id: service.profileId,
