@@ -1931,10 +1931,33 @@ function getCogoAnalyticsPagePath(route=''){
     .replace(/\/(post|student|service|job|project|application|message|thread)\/[^/?#]+/gi, '/$1/[redacted]')
     .replace(/(id=)[^&#]+/gi, '$1[redacted]');
 }
+function getCogoCampaignParams(){
+  if (typeof window === 'undefined') return {};
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const campaignParams = {};
+    const mapping = {
+      utm_id: 'campaign_id',
+      utm_source: 'campaign_source',
+      utm_medium: 'campaign_medium',
+      utm_campaign: 'campaign_name',
+      utm_term: 'campaign_term',
+      utm_content: 'campaign_content'
+    };
+    Object.entries(mapping).forEach(([queryKey, payloadKey]) => {
+      const value = params.get(queryKey);
+      if (value) campaignParams[payloadKey] = value;
+    });
+    return campaignParams;
+  } catch (error) {
+    return {};
+  }
+}
 function sanitizeCogoAnalyticsParams(params={}){
   const allowedKeys = new Set([
-    'environment', 'hostname', 'page_path', 'page_type', 'user_role', 'source', 'results_count',
+    'environment', 'hostname', 'page_path', 'page_location', 'page_title', 'page_type', 'user_role', 'source', 'results_count',
     'service_category', 'category', 'package', 'value', 'currency', 'success', 'status',
+    'campaign_id', 'campaign_source', 'campaign_medium', 'campaign_name', 'campaign_term', 'campaign_content',
     'user_type', 'onboarding_flow'
   ]);
   const sanitized = {};
@@ -1945,7 +1968,8 @@ function sanitizeCogoAnalyticsParams(params={}){
       sanitized[key] = value;
       return;
     }
-    sanitized[key] = String(value).slice(0, 80);
+    const maxLength = key === 'page_location' ? 2048 : (key === 'page_title' ? 300 : 80);
+    sanitized[key] = String(value).slice(0, maxLength);
   });
   return sanitized;
 }
@@ -1959,16 +1983,20 @@ function initCogoGa4(){
   script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(COGO_GA4_MEASUREMENT_ID)}`;
   document.head.appendChild(script);
   window.gtag('js', new Date());
-  window.gtag('config', COGO_GA4_MEASUREMENT_ID, { send_page_view: false });
+  window.gtag('config', COGO_GA4_MEASUREMENT_ID, Object.assign({
+    send_page_view: false,
+    page_location: window.location.href || '',
+    page_referrer: document.referrer || undefined
+  }, getCogoCampaignParams()));
 }
 function sendCogoGa4Event(eventName='', payload={}){
   if (typeof window === 'undefined' || !eventName || !COGO_DIRECT_GA4_ENABLED) return;
   initCogoGa4();
   if (typeof window.gtag !== 'function') return;
-  const gaPayload = Object.assign({}, payload || {});
+  const gaPayload = Object.assign({}, getCogoCampaignParams(), payload || {});
+  gaPayload.page_location = gaPayload.page_location || window.location.href || `${window.location.origin}${gaPayload.page_path || getCogoAnalyticsPagePath()}`;
   if (eventName === 'page_view') {
     gaPayload.page_title = document.title || 'CoGoCity';
-    gaPayload.page_location = window.location.href || `${window.location.origin}${gaPayload.page_path || getCogoAnalyticsPagePath()}`;
   }
   window.gtag('event', eventName, gaPayload);
 }
@@ -1992,7 +2020,7 @@ function trackCogoEvent(eventName='', params={}){
     environment: getCogoAnalyticsEnvironment(),
     page_path: getCogoAnalyticsPagePath(),
     user_role: currentUser ? currentUser.role : 'guest'
-  }, params || {}));
+  }, getCogoCampaignParams(), params || {}));
   window.dataLayer = window.dataLayer || [];
   window.dataLayer.push(Object.assign({ event: eventName }, payload));
   sendCogoGa4Event(eventName, payload);
@@ -2017,7 +2045,8 @@ function trackCogoPageView(route=''){
   if (pageKey === cogoAnalyticsLastPage) return;
   cogoAnalyticsLastPage = pageKey;
   trackCogoEvent('page_view', {
-    page_path: pageKey
+    page_path: pageKey,
+    page_location: window.location.href || `${window.location.origin}${pageKey}`
   });
 }
 const BACKEND_SYNC_ENDPOINTS = {
