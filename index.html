@@ -1968,7 +1968,7 @@ function sendCogoGa4Event(eventName='', payload={}){
   const gaPayload = Object.assign({}, payload || {});
   if (eventName === 'page_view') {
     gaPayload.page_title = document.title || 'CoGoCity';
-    gaPayload.page_location = `${window.location.origin}${gaPayload.page_path || getCogoAnalyticsPagePath()}`;
+    gaPayload.page_location = window.location.href || `${window.location.origin}${gaPayload.page_path || getCogoAnalyticsPagePath()}`;
   }
   window.gtag('event', eventName, gaPayload);
 }
