@@ -16207,9 +16207,9 @@ function renderPost(p){
         <div class="card" style="padding:14px;background:#F9FAFB;border-color:#E5E7EB">
           <div style="font-weight:800;font-size:1.05rem">${esc(p.jobTitle)}</div>
           <div class="meta-row" style="margin:8px 0">
-            <span>\u{1F4B0} $${esc(p.rate)}/hr</span>
-            <span>\u23F1\uFE0F ${esc(p.hoursNeeded)} hours</span>
-            <span>\u{1F4CD} ${esc(p.location)}</span>
+            ${String(p.rate || '').trim() ? `<span>\u{1F4B0} $${esc(p.rate)}/hr</span>` : ''}
+            ${String(p.hoursNeeded || '').trim() ? `<span>\u23F1\uFE0F ${esc(p.hoursNeeded)} hours</span>` : ''}
+            ${String(p.location || '').trim() ? `<span>\u{1F4CD} ${esc(p.location)}</span>` : ''}
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:#E0F2FE;color:#0369A1;font-size:.78rem;font-weight:700">${esc(getCommunityFeedApplicantCountLabel(appsCount))}</span>
             <span style="display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;background:${jobIsOpen ? '#DCFCE7' : '#E5E7EB'};color:${jobIsOpen ? '#166534' : '#374151'};font-size:.78rem;font-weight:700">${esc(publicJobStatusLabel)}</span>
           </div>

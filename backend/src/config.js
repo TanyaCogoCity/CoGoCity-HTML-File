@@ -40,4 +40,9 @@ module.exports = {
   spacesRegion: process.env.DO_SPACES_REGION || 'sfo3',
   spacesEndpoint: process.env.DO_SPACES_ENDPOINT || '',
   spacesCdnUrl: process.env.DO_SPACES_CDN_URL || '',
+
+  importLegacyClosedJobsOnStartup: process.env.COGOCITY_IMPORT_LEGACY_CLOSED_JOBS === 'true',
+  importLegacyClosedJobsAllowUnmatched: process.env.COGOCITY_IMPORT_LEGACY_CLOSED_JOBS_ALLOW_UNMATCHED === 'true',
+  legacyWordPressMediaHost: String(process.env.LEGACY_WORDPRESS_MEDIA_HOST || 'cogocity.com').trim() || 'cogocity.com',
+  legacyWordPressMediaIp: String(process.env.LEGACY_WORDPRESS_MEDIA_IP || '206.189.191.246').trim() || '206.189.191.246',
 };
