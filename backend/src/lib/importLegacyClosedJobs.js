@@ -5,6 +5,47 @@ const { prisma } = require('./prisma');
 const { legacyWordPressProxyUrl } = require('./media');
 
 const LEGACY_IMPORT_SOURCE = 'legacy_wordpress_closed_job_import';
+const LEGACY_DESCRIPTION_OVERRIDES = {
+  '13971': [
+    'Overview',
+    '',
+    'The SeaNet Vision is seeking a motivated and organized student intern to support the launch of an upcoming climate focused book and related initiatives.',
+    '',
+    'This is a hands on opportunity to gain real world experience in business operations, marketing, event coordination, media outreach, and climate innovation.',
+    '',
+    'Key Responsibilities',
+    '',
+    'Office & Administrative Support',
+    '',
+    'Organize business receipts and basic records',
+    'Assist with business cards and other materials',
+    'Set up and manage various technology tools',
+    '',
+    'Book Launch & Event Support',
+    '',
+    'Build and manage invitation lists',
+    'Send event invitations, track RSVPs, and follow up with reminders',
+    'Assist with planning book launches and signing events',
+    'Coordinate dates and logistics with bookstores, libraries, businesses, and community venues',
+    '',
+    'Media, Speaking & Outreach Support',
+    '',
+    'Support outreach to media outlets, conferences, podcasts, and local schools',
+    'Research and track speaking and interview opportunities',
+    '',
+    'Marketing, PR & Digital Support',
+    '',
+    'Help create, organize, and promote content for SeaNet Vision',
+    'Support website updates and social media channels, including Instagram, TikTok, YouTube, LinkedIn, and Facebook',
+    '',
+    'What You’ll Gain',
+    'Real world experience in business, marketing, media, and event planning',
+    'Experience supporting a major climate innovation initiative',
+    'Mentorship, skill building, and valuable experience for your resume',
+    'Opportunities to interact with leaders across government, media, construction, technology, insurance, real estate, and finance',
+    'Generous compensation',
+  ].join('\n'),
+};
 
 function fetchJson(pathname) {
   return new Promise((resolve, reject) => {
@@ -81,8 +122,9 @@ function normalizeImage(meta = {}) {
 
 function buildCommunityPost(job, matchedUser) {
   const meta = job.meta || {};
+  const jobId = String(job.id || '').trim();
   const title = decodeHtml(job.title?.rendered || '');
-  const description = stripHtml(job.content?.rendered || '');
+  const description = LEGACY_DESCRIPTION_OVERRIDES[jobId] || stripHtml(job.content?.rendered || '');
   const applicationEmail = String(meta._application || '').trim().toLowerCase();
   const imageRefs = normalizeImage(meta);
   const createdAt = job.date ? new Date(job.date).toISOString() : new Date().toISOString();
@@ -94,7 +136,7 @@ function buildCommunityPost(job, matchedUser) {
   ).trim();
 
   return {
-    id: `legacy-wp-job-${job.id}`,
+    id: `legacy-wp-job-${jobId}`,
     authorId: matchedUser?.id || '',
     authorName,
     authorEmoji: '💼',
