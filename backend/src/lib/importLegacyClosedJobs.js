@@ -160,7 +160,6 @@ async function importLegacyClosedJobs() {
   if (!Array.isArray(jobs) || !jobs.length) {
     return { total: 0, matched: 0, imported: 0, skipped: 0, unmatchedEmails: [] };
   }
-  const applicantCountsByJobId = seededApplicantCountsByJobId(jobs);
 
   const emails = [...new Set(jobs
     .map((job) => String(job?.meta?._application || '').trim().toLowerCase())
@@ -178,6 +177,11 @@ async function importLegacyClosedJobs() {
     : [];
 
   const userByEmail = new Map(users.map((user) => [String(user.email || '').trim().toLowerCase(), user]));
+  const importableJobs = jobs.filter((job) => {
+    const applicationEmail = String(job?.meta?._application || '').trim().toLowerCase();
+    return !!userByEmail.get(applicationEmail) || config.importLegacyClosedJobsAllowUnmatched;
+  });
+  const applicantCountsByJobId = seededApplicantCountsByJobId(importableJobs);
   const unmatchedEmails = new Set();
   let matched = 0;
   let imported = 0;
