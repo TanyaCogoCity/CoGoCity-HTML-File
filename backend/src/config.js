@@ -6,10 +6,14 @@ const toList = (value = '') => String(value)
   .map((part) => part.trim())
   .filter(Boolean);
 
+const defaultAppUrl = process.env.API_BASE_URL || process.env.APP_URL || 'https://staging.cogocity.com';
+const importLegacyClosedJobsDefault = defaultAppUrl.includes('staging.cogocity.com')
+  || defaultAppUrl.includes('cogocity-production-s7i3m.ondigitalocean.app');
+
 module.exports = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
-  apiBaseUrl: process.env.API_BASE_URL || process.env.APP_URL || 'https://staging.cogocity.com',
+  apiBaseUrl: defaultAppUrl,
   appUrl: process.env.APP_URL || 'https://staging.cogocity.com',
   corsOrigins: toList(process.env.CORS_ORIGIN || 'https://staging.cogocity.com'),
 
@@ -41,7 +45,7 @@ module.exports = {
   spacesEndpoint: process.env.DO_SPACES_ENDPOINT || '',
   spacesCdnUrl: process.env.DO_SPACES_CDN_URL || '',
 
-  importLegacyClosedJobsOnStartup: process.env.COGOCITY_IMPORT_LEGACY_CLOSED_JOBS === 'true',
+  importLegacyClosedJobsOnStartup: process.env.COGOCITY_IMPORT_LEGACY_CLOSED_JOBS === 'true' || importLegacyClosedJobsDefault,
   importLegacyClosedJobsAllowUnmatched: process.env.COGOCITY_IMPORT_LEGACY_CLOSED_JOBS_ALLOW_UNMATCHED === 'true',
   legacyWordPressMediaHost: String(process.env.LEGACY_WORDPRESS_MEDIA_HOST || 'cogocity.com').trim() || 'cogocity.com',
   legacyWordPressMediaIp: String(process.env.LEGACY_WORDPRESS_MEDIA_IP || '206.189.191.246').trim() || '206.189.191.246',
