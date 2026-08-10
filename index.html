@@ -1816,11 +1816,23 @@ function cogoCleanUrlSlug(parts=[], id=''){
   const suffix = String(id || '').replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase();
   return suffix ? `${base}-${suffix}` : base;
 }
+function looksLikeImageDisplayValue(value=''){
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (/^data:image\//i.test(raw)) return true;
+  if (isLegacyWordPressUploadSource(raw)) return true;
+  return /^(https?:)?\/\/\S+\.(png|jpe?g|webp|gif|svg)(?:[?#].*)?$/i.test(raw)
+    || /^\/wp-content\/uploads\/.+\.(png|jpe?g|webp|gif|svg)(?:[?#].*)?$/i.test(raw);
+}
+function sanitizeDisplayText(value='', fallback=''){
+  const raw = String(value || '').trim();
+  return looksLikeImageDisplayValue(raw) ? String(fallback || '').trim() : raw;
+}
 function cogoStudentCleanUrlSlug(profile={}){
   const user = getUserById(profile.userId) || {};
   const service = ensureArray(profile.services)[0] || {};
   return cogoCleanUrlSlug([
-    user.displayName || user.publicName || profile.name,
+    sanitizeDisplayText(user.displayName || '') || sanitizeDisplayText(user.publicName || '') || sanitizeDisplayText(profile.name || ''),
     service.title || profile.title,
     user.city || service.location
   ], profile.userId || profile.id);
@@ -3759,12 +3771,14 @@ function mapBackendDirectJob(row={}){
   const createdAt = row.created_at || row.createdAt || new Date().toISOString();
   const durationDays = Math.max(1, Number(row.listing_duration_days || row.listingDurationDays || 30) || 30);
   const expiresAt = row.expires_at || row.expiresAt || new Date(new Date(createdAt).getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+  const employerName = sanitizeDisplayText(row.employer_name || row.employerName || '');
+  const companyName = sanitizeDisplayText(row.company_name || row.companyName || '') || employerName || 'Company';
   return normalizeDirectJobRecord({
     id: row.id,
     backendJobId: row.id,
     employer_id: row.employer_id || row.employerId || row.created_by || row.createdBy || '',
-    employer_name: row.employer_name || row.employerName || '',
-    company_name: row.company_name || row.companyName || row.employer_name || row.employerName || 'Company',
+    employer_name: employerName,
+    company_name: companyName,
     job_title: row.job_title || row.jobTitle || row.title || 'Job',
     job_type: row.job_type || row.jobType || 'full_time',
     compensation_type: row.compensation_type || 'range',
@@ -21867,7 +21881,7 @@ async function saveAdminUserEdit(userId){
   }
   user.firstName = firstName;
   user.lastName = lastName;
-  user.name = [firstName, lastName].filter(Boolean).join(' ').trim();
+  user.name = sanitizeDisplayText([firstName, lastName].filter(Boolean).join(' ').trim(), 'User') || 'User';
   user.publicName = publicName || user.name;
   user.email = email;
   user.phone = phone ? formatUsPhoneNumber(phone) : '';
@@ -21898,7 +21912,7 @@ async function saveAdminUserEdit(userId){
     student = {
       id: uid('student'),
       userId: user.id,
-      name: user.publicName || user.name,
+      name: sanitizeDisplayText(user.publicName || '') || sanitizeDisplayText(user.name || '') || 'Student',
       school: '',
       birthDate: '',
       birthYear: '',
@@ -21928,7 +21942,7 @@ async function saveAdminUserEdit(userId){
     let profileImages = draft.student ? [...(draft.student.profileImages || [])] : [];
     if (!profileImages.length && user.photo) profileImages = [user.photo];
     else if (user.photo && !profileImages.some(id => String(id) === String(user.photo))) profileImages = replaceWithSingleImage(user.photo);
-    student.name = user.publicName || user.name;
+    student.name = sanitizeDisplayText(user.publicName || '') || sanitizeDisplayText(user.name || '') || 'Student';
     student.privateEmail = email;
     student.phone = phone;
     student.location = city ? (city.includes(',') ? city : `${city}, CA`) : student.location;
@@ -21978,7 +21992,7 @@ async function saveAdminUserEdit(userId){
         body: JSON.stringify({
           first_name:firstName,
           last_name:lastName,
-          display_name:user.name,
+          display_name:sanitizeDisplayText(user.name || '') || sanitizeDisplayText(user.publicName || '') || `${firstName} ${lastName}`.trim(),
           email,
           phone:user.phone || null,
           role:nextRole,

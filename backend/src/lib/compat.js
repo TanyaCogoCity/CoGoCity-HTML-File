@@ -163,17 +163,32 @@ function normalizeJobPayload(payload = {}) {
   };
 }
 
+function looksLikeImageDisplayValue(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  if (/^data:image\//i.test(raw)) return true;
+  if (/^\/wp-content\/uploads\/.+\.(png|jpe?g|webp|gif|svg)(?:[?#].*)?$/i.test(raw)) return true;
+  return /^(https?:)?\/\/\S+\.(png|jpe?g|webp|gif|svg)(?:[?#].*)?$/i.test(raw);
+}
+
+function sanitizeDisplayText(value = '') {
+  const raw = String(value || '').trim();
+  return looksLikeImageDisplayValue(raw) ? '' : raw;
+}
+
 function serializeJob(job) {
   const status = job.status === 'open' ? 'active' : (job.status || 'closed');
+  const employerName = sanitizeDisplayText(job.creator?.displayName || '');
+  const companyName = sanitizeDisplayText(job.companyName || job.creator?.userProfile?.businessName || '') || employerName;
   return {
     id: job.id,
     created_by: job.createdBy,
     createdBy: job.createdBy,
     employer_id: job.createdBy,
     employerId: job.createdBy,
-    employer_name: job.creator?.displayName || '',
-    company_name: job.companyName || job.creator?.userProfile?.businessName || job.creator?.displayName || '',
-    companyName: job.companyName || job.creator?.userProfile?.businessName || job.creator?.displayName || '',
+    employer_name: employerName,
+    company_name: companyName,
+    companyName: companyName,
     title: job.title,
     job_title: job.title,
     jobTitle: job.title,
