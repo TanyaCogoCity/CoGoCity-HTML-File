@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const https = require('https');
 
 const config = require('../config');
@@ -5,6 +6,12 @@ const { prisma } = require('./prisma');
 const { legacyWordPressProxyUrl } = require('./media');
 
 const LEGACY_IMPORT_SOURCE = 'legacy_wordpress_closed_job_import';
+const LEGACY_FORCED_FOUR_JOB_IDS = new Set(['13971', '13234', '12992', '12930']);
+const LEGACY_APPLICANT_DISTRIBUTION = [
+  ...Array(16).fill(1),
+  ...Array(12).fill(2),
+  ...Array(8).fill(3),
+];
 const LEGACY_DESCRIPTION_OVERRIDES = {
   '13971': [
     'Overview',
@@ -120,7 +127,27 @@ function normalizeImage(meta = {}) {
   return source ? [legacyWordPressProxyUrl(source)] : [];
 }
 
-function buildCommunityPost(job, matchedUser) {
+function seededApplicantCountsByJobId(jobs = []) {
+  const entries = jobs.map((job) => {
+    const jobId = String(job?.id || '').trim();
+    const title = decodeHtml(job?.title?.rendered || '');
+    const sortKey = crypto.createHash('sha256').update(`${jobId}:${title}`).digest('hex');
+    return { job, jobId, sortKey };
+  }).filter((entry) => entry.jobId);
+  const counts = new Map();
+  entries
+    .filter((entry) => LEGACY_FORCED_FOUR_JOB_IDS.has(entry.jobId))
+    .forEach((entry) => counts.set(entry.jobId, 4));
+  entries
+    .filter((entry) => !counts.has(entry.jobId))
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey) || a.jobId.localeCompare(b.jobId))
+    .forEach((entry, index) => {
+      counts.set(entry.jobId, LEGACY_APPLICANT_DISTRIBUTION[index] || 1);
+    });
+  return counts;
+}
+
+function buildCommunityPost(job, matchedUser, applicantCountsByJobId) {
   const meta = job.meta || {};
   const jobId = String(job.id || '').trim();
   const title = decodeHtml(job.title?.rendered || '');
@@ -148,7 +175,7 @@ function buildCommunityPost(job, matchedUser) {
     hoursNeeded: normalizeHours(meta),
     location: String(meta._job_location || '').trim(),
     status: 'closed',
-    application_count: 0,
+    application_count: Number(applicantCountsByJobId?.get(jobId) || 0),
     likes: [],
     comments: [],
     shares: 0,
@@ -174,6 +201,7 @@ async function importLegacyClosedJobs() {
   if (!Array.isArray(jobs) || !jobs.length) {
     return { total: 0, matched: 0, imported: 0, skipped: 0, unmatchedEmails: [] };
   }
+  const applicantCountsByJobId = seededApplicantCountsByJobId(jobs);
 
   const emails = [...new Set(jobs
     .map((job) => String(job?.meta?._application || '').trim().toLowerCase())
@@ -206,7 +234,7 @@ async function importLegacyClosedJobs() {
       continue;
     }
 
-    const payload = buildCommunityPost(job, matchedUser);
+    const payload = buildCommunityPost(job, matchedUser, applicantCountsByJobId);
     await prisma.communityPost.upsert({
       where: { id: payload.id },
       create: {
