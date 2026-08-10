@@ -6999,7 +6999,10 @@ function renderMarkdownLikeText(value='', options={}){
   return `<div class="${classes.join(' ')}">${html}</div>`;
 }
 function renderFormattedLongText(value='', options={}){
-  return renderMarkdownLikeText(value, options);
+  const normalizedValue = Array.isArray(value)
+    ? value.map(item => sanitizeLeakedRichTextUtilityTokens(item)).filter(Boolean)
+    : sanitizeLeakedRichTextUtilityTokens(value);
+  return renderMarkdownLikeText(normalizedValue, options);
 }
 function shouldCollapseLongText(value=''){
   const text = String(value || '').trim();
@@ -11813,6 +11816,18 @@ function decodeHtmlEntities(html=''){
 function stripHtmlTags(html=''){
   return decodeHtmlEntities(String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
 }
+function sanitizeLeakedRichTextUtilityTokens(text=''){
+  let cleaned = decodeHtmlEntities(String(text || ''));
+  cleaned = cleaned.replace(/\[\&gt;p\]:[a-z0-9-]+/gi, '\n\n');
+  cleaned = cleaned.replace(/\[&>p\]:[a-z0-9-]+/gi, '\n\n');
+  cleaned = cleaned.replace(/\bp\]:[a-z0-9-]+/gi, '\n\n');
+  cleaned = cleaned.replace(/">\s*/g, ' ');
+  cleaned = cleaned.replace(/[ \t]+\n/g, '\n');
+  cleaned = cleaned.replace(/\n[ \t]+/g, '\n');
+  cleaned = cleaned.replace(/(?:\s*\n\s*){3,}/g, '\n\n');
+  cleaned = cleaned.replace(/[ \t]{2,}/g, ' ');
+  return cleaned.trim();
+}
 function sanitizeArticleHtml(html=''){
   return String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/\son\w+=("[^"]*"|'[^']*')/gi, '');
 }
@@ -12437,7 +12452,7 @@ function renderDisabledStudentOnlyApply(buttonClass=''){
   return `<div style="display:flex;flex-direction:column;gap:4px;align-items:center"><button class="btn btn-outline ${esc(buttonClass)}" disabled>Apply</button><div class="small muted" style="line-height:1.1">Students only</div></div>`;
 }
 function sanitizeDirectJobPublicText(text='', fallback=''){
-  const cleaned = String(text || '')
+  const cleaned = sanitizeLeakedRichTextUtilityTokens(text)
     .split(/\r?\n+/)
     .map(line => line.trim())
     .filter(line => line && !/\b(browser\s*qa|system\s*note|internal\s*note|posting\s*fee\s*paid)\b/i.test(line))
