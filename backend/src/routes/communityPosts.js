@@ -101,6 +101,11 @@ function isUuid(value = '') {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
 }
 
+function legacyImportedJobFallbackCount(post = {}) {
+  if (String(post.legacyImportSource || '') !== 'legacy_wordpress_closed_job_import') return 0;
+  return Number(post.application_count || 0) || 0;
+}
+
 async function applicationCountsForPosts(postIds = []) {
   const ids = [...new Set(postIds.filter(Boolean))];
   if (!ids.length) return new Map();
@@ -161,7 +166,7 @@ router.get('/community-posts', async (_req, res) => {
           const post = serializeCommunityPost(row);
           const author = authorSnapshots.get(row.authorId);
           if (author) post.author_user = author;
-          if (post.isJob) post.application_count = counts.get(row.id) || 0;
+          if (post.isJob) post.application_count = counts.has(row.id) ? (counts.get(row.id) || 0) : legacyImportedJobFallbackCount(post);
           return post;
         }),
       },
