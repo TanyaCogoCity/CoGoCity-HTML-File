@@ -29,8 +29,13 @@ function userName(user = {}) {
   return user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email || 'CoGo City user';
 }
 
-function userProfileLink(userId = '') {
-  return buildAppLink(`/#/profile/${encodeURIComponent(userId)}`);
+function userAdminLink(user = {}) {
+  const userId = String(user.id || '').trim();
+  if (!userId) return buildAppLink('/dashboard');
+  if (String(user.role || '').toLowerCase() === 'student') {
+    return buildAppLink(`/#/profile/${encodeURIComponent(userId)}`);
+  }
+  return buildAppLink('/dashboard');
 }
 
 function linkHtml(label, href) {
@@ -97,12 +102,15 @@ async function notifyAdminNewUser(user) {
     title: 'New User Registered',
     intro: 'A new user completed registration on CoGo City.',
     rows: [
-      ['Name', linkHtml(name, userProfileLink(user.id))],
+      ['Name', linkHtml(name, userAdminLink(user))],
+      ['User ID', escapeHtml(user.id || '')],
       ['User type', escapeHtml(roleLabel(user.role))],
       ['Email', escapeHtml(user.email || '')],
     ],
-    ctaLabel: 'View User',
-    ctaLink: `/#/profile/${encodeURIComponent(user.id)}`,
+    ctaLabel: String(user.role || '').toLowerCase() === 'student' ? 'View User' : 'Open Dashboard',
+    ctaLink: String(user.role || '').toLowerCase() === 'student'
+      ? `/#/profile/${encodeURIComponent(user.id)}`
+      : '/dashboard',
   });
 }
 
@@ -114,7 +122,7 @@ async function notifyAdminHourlyJobCreated({ lister, title, link, source = 'Dash
     intro: 'A new hourly job was created on CoGo City.',
     rows: [
       ['Job', linkHtml(title || 'Hourly job', buildAppLink(link || '/dashboard'))],
-      ['Job lister', linkHtml(name, userProfileLink(lister.id))],
+      ['Job lister', linkHtml(name, userAdminLink(lister))],
       ['Lister type', escapeHtml(roleLabel(lister.role))],
       ['Source', escapeHtml(source)],
       ...(amount == null ? [] : [['Estimated work value', escapeHtml(money(amount))]]),
@@ -131,7 +139,7 @@ async function notifyAdminJobListingCreated({ employer, job, link }) {
     title: 'New Employer Job Listing',
     intro: 'An employer created a new job listing.',
     rows: [
-      ['Employer', linkHtml(name, userProfileLink(employer.id))],
+      ['Employer', linkHtml(name, userAdminLink(employer))],
       ['Job', linkHtml(job.title || 'Job listing', buildAppLink(link || '/dashboard'))],
       ['Listing fee', escapeHtml(money(job.postingFee || 0))],
       ['Payment status', escapeHtml(job.paymentStatus || 'pending')],
@@ -148,8 +156,8 @@ async function notifyAdminProjectCommission({ payer, payee, title, amountTotal, 
     intro: 'A project payment was captured and CoGo commission was recorded.',
     rows: [
       ['Job', linkHtml(title || 'Project payment', buildAppLink(link || '/dashboard?section=transactions'))],
-      ['Payer', payer ? linkHtml(userName(payer), userProfileLink(payer.id)) : ''],
-      ['Student', payee ? linkHtml(userName(payee), userProfileLink(payee.id)) : ''],
+      ['Payer', payer ? linkHtml(userName(payer), userAdminLink(payer)) : ''],
+      ['Student', payee ? linkHtml(userName(payee), userAdminLink(payee)) : ''],
       ['Total charged', escapeHtml(money(amountTotal))],
       ['CoGo commission', escapeHtml(money(platformFee))],
       ['Stripe PaymentIntent', escapeHtml(stripePaymentIntentId || '')],
@@ -167,7 +175,7 @@ async function notifyAdminWorkshopListed({ host, workshop, link }) {
     intro: 'A new workshop or class was listed on CoGo City.',
     rows: [
       ['Workshop/Class', linkHtml(workshop.title || 'Workshop', buildAppLink(link || '/workshops'))],
-      ['Lister', linkHtml(name, userProfileLink(host.id))],
+      ['Lister', linkHtml(name, userAdminLink(host))],
       ['Lister type', escapeHtml(roleLabel(host.role))],
       ['Price', escapeHtml(money(workshop.price || 0))],
       ['Status', escapeHtml(workshop.status || '')],
@@ -184,8 +192,8 @@ async function notifyAdminWorkshopCommission({ host, registrant, workshop, quant
     intro: 'A paid workshop/class registration was completed and CoGo commission was recorded.',
     rows: [
       ['Workshop/Class', linkHtml(workshop.title || 'Workshop', buildAppLink(link || '/dashboard?section=transactions'))],
-      ['Lister', host ? linkHtml(userName(host), userProfileLink(host.id)) : ''],
-      ['Registrant', registrant ? linkHtml(userName(registrant), userProfileLink(registrant.id)) : ''],
+      ['Lister', host ? linkHtml(userName(host), userAdminLink(host)) : ''],
+      ['Registrant', registrant ? linkHtml(userName(registrant), userAdminLink(registrant)) : ''],
       ['Tickets', escapeHtml(String(quantity || 1))],
       ['Total charged', escapeHtml(money(amountTotal))],
       ['CoGo commission', escapeHtml(money(platformFee))],

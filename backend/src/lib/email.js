@@ -1,5 +1,7 @@
 const config = require('../config');
 
+const PRODUCTION_APP_URL = 'https://cogocity.com';
+
 function escapeHtml(value = '') {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -10,7 +12,11 @@ function escapeHtml(value = '') {
 }
 
 function appBaseUrl() {
-  return String(config.appUrl || 'https://staging.cogocity.com').replace(/\/api\/?$/, '').replace(/\/$/, '');
+  const raw = String(config.appUrl || 'https://staging.cogocity.com').replace(/\/api\/?$/, '').replace(/\/$/, '');
+  if (/\.ondigitalocean\.app$/i.test(raw) && config.nodeEnv === 'production' && !/staging\.cogocity\.com$/i.test(raw)) {
+    return PRODUCTION_APP_URL;
+  }
+  return raw;
 }
 
 function toHashRoute(path = '/dashboard') {
