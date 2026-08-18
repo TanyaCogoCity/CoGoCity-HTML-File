@@ -23,7 +23,7 @@ const STATIC_PAGES = [
   { path: '/', title: 'CoGo City | Student Jobs and Local Services', description: 'Hire students for local services, discover student jobs, and connect with trusted community opportunities through CoGo City.' },
   { path: '/students', title: 'Browse Students | CoGo City', description: 'Browse student services, skills, and local talent available for hire through CoGo City.' },
   { path: '/community', title: 'Community Gigs | CoGo City', description: 'Discover safe local community gigs and student opportunities through CoGo City.' },
-  { path: '/jobs', title: 'Student Jobs | CoGo City', description: 'Explore direct hire student jobs, internships, and local opportunities from employers on CoGo City.' },
+  { path: '/jobs', title: 'Direct Hire | CoGo City', description: 'Learn how Direct Hire works on CoGo City for employers and students, including hiring flow, expectations, and account setup.' },
   { path: '/blog', title: 'Student Work and Career Blog | CoGo City', description: 'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.' },
   { path: '/about-us', title: 'About CoGo City | Student Jobs and Services', description: 'Learn about CoGo City and our mission to connect students, families, neighbors, and businesses.' },
   { path: '/faq-safety-legal', title: 'FAQ, Safety and Legal Guidelines | CoGo City', description: 'Review CoGo City safety guidelines, legal policies, payment rules, and student work FAQs.' },
