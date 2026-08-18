@@ -6,20 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
-  <meta name="description" content="CoGo City connects local students, families, neighbors, and businesses for trusted services, jobs, messages, and community opportunities." />
+  <meta name="description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#FFE600" />
   <link rel="canonical" href="https://cogocity.com/" />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="CoGo City | Student Jobs and Local Services" />
-  <meta property="og:description" content="Hire students for local services, discover student jobs, and connect with trusted community opportunities through CoGo City." />
+  <meta property="og:title" content="CoGo City | Local Student Services, Jobs and Community Opportunities" />
+  <meta property="og:description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta property="og:image" content="https://cogocity.com/assets/cogocity-social-share.png" />
   <meta property="og:url" content="https://cogocity.com/" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CoGo City | Student Jobs and Local Services" />
-  <meta name="twitter:description" content="Hire students for local services, discover student jobs, and connect with trusted community opportunities through CoGo City." />
+  <meta name="twitter:title" content="CoGo City | Local Student Services, Jobs and Community Opportunities" />
+  <meta name="twitter:description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta name="twitter:image" content="https://cogocity.com/assets/cogocity-social-share.png" />
-  <title>CoGo City</title>
+  <title>CoGo City | Local Student Services, Jobs and Community Opportunities</title>
   <script>
     (function(){
       var host = window.location && window.location.hostname;
@@ -824,6 +824,21 @@
     .cogo-home-layout.has-ad{grid-template-columns:minmax(0,1120px) 300px;gap:8px;justify-content:center}
     .cogo-home-main{min-width:0;width:100%;max-width:1120px}
     .home-blog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .homepage-seo-stack{display:grid;gap:18px;margin:22px 0 26px}
+    .homepage-seo-card{padding:22px}
+    .homepage-seo-card p{margin:0 0 12px;color:var(--color-text-secondary);line-height:1.7}
+    .homepage-seo-card p:last-child{margin-bottom:0}
+    .homepage-seo-card ul{margin:0;padding-left:1.15rem;color:var(--color-text-secondary);line-height:1.7}
+    .homepage-seo-card li{margin:6px 0}
+    .homepage-pillars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+    .homepage-pillar-card{padding:22px}
+    .homepage-pillar-card h3,.homepage-faq-card h3{margin:0 0 10px;font-size:1.06rem}
+    .homepage-pillar-card p,.homepage-faq-card p{margin:0 0 12px;color:var(--color-text-secondary);line-height:1.65}
+    .homepage-pillar-card p:last-child,.homepage-faq-card p:last-child{margin-bottom:0}
+    .homepage-links-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+    .homepage-link-chip{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid var(--color-border);border-radius:999px;background:#fff;text-decoration:none;font-weight:800;color:var(--color-text-main)}
+    .homepage-link-chip:hover{background:#FFFEF0;border-color:#FDE68A}
+    .homepage-faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
     .cogo-ad-sidebar{width:300px;justify-self:end;padding-top:45px}
     .cogo-ad-strip{margin:0;width:100%;max-width:300px}
     .cogo-mobile-extra-ads{display:none}
@@ -1060,6 +1075,7 @@
       .cogo-ad-cta{display:inline-flex;padding:9px 12px;font-size:.8rem}
       .container{padding:20px 14px}
       .profiles-grid,.blog-grid,.workshop-grid,.home-blog-grid{grid-template-columns:1fr!important}
+      .homepage-pillars,.homepage-faq-grid{grid-template-columns:1fr}
       .student-search-panel{padding:14px}
       .student-filter-row{grid-template-columns:1fr}
       .profile-top{padding:14px;gap:10px}
@@ -11814,6 +11830,7 @@ function clearBrowseStudentFilters(){
   updateBrowseStudentFilter('query', '');
 }
 function renderHome(){
+  applySeoMeta(buildHomepageSeoMeta());
   if (backendAuthEnabled() && !backendBrowseStudentsLoaded && !backendBrowseStudentsLoading) refreshBackendBrowseStudents({ rerender:true });
   if (backendAuthEnabled() && currentUser && getBackendAccessToken()) ensureBackendProjectsLoaded({ rerender:true, forceFresh:true });
   ensureBackendArraySettingLoaded('images', 'cogo_images', { rerender:true });
@@ -11822,8 +11839,8 @@ function renderHome(){
   const filteredServiceCards = filterBrowseStudentCards(serviceCards);
   const publicBlogPosts = getPublicBlogPosts();
   const homeBlock = Object.assign({
-    title:'Browse Students',
-    body:'Find local student services for social media, office support, event help, tutoring, and more.'
+    title:'Local student services, jobs, and community opportunities',
+    body:'Connect with trusted local students for tutoring, babysitting, pet care, event help, office support, creative work, and real-world career-building opportunities.'
   }, (getSiteSettings().page_blocks || {}).home || {});
   const advertisingSlots = getActiveAdvertisingSlots();
   ensureAdvertisingImagesLoaded(advertisingSlots, { rerender:true });
@@ -11854,6 +11871,7 @@ function renderHome(){
           <div id="browseStudentMoreRow" class="browse-more-row" ${filteredServiceCards.length > getBrowseStudentVisibleCount() ? '' : 'hidden'}>
             ${renderBrowseStudentMoreButton(filteredServiceCards)}
           </div>
+          ${renderHomepageSeoContent()}
           ${mobileExtraAdvertisingHtml ? `<div class="cogo-mobile-extra-ads" aria-label="Additional sponsored community ads">${mobileExtraAdvertisingHtml}</div>` : ''}
           ${renderTestimonialsSection()}
           <div class="split" style="align-items:flex-end;margin-bottom:18px">
@@ -11985,6 +12003,140 @@ function getBlogPostSeoDescription(post={}){
       || 'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
     155
   );
+}
+function buildHomepageSeoMeta(){
+  const path = '/';
+  const title = 'CoGo City | Local Student Services, Jobs and Community Opportunities';
+  const description = 'CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience.';
+  return {
+    type:'website',
+    title,
+    description,
+    canonical:`https://cogocity.com${path}`,
+    ogUrl:`https://cogocity.com${path}`,
+    image:'https://cogocity.com/assets/cogocity-social-share.png',
+    robots:COGO_IS_STAGING ? 'noindex,nofollow' : 'index,follow',
+    schema:{
+      '@context':'https://schema.org',
+      '@graph':[
+        {
+          '@type':'Organization',
+          name:'CoGo City',
+          url:'https://cogocity.com/',
+          logo:'https://cogocity.com/assets/cogocity-logo-blue.jpg',
+          image:'https://cogocity.com/assets/cogocity-social-share.png',
+          description,
+          areaServed:['Tri-Valley', 'East Bay', 'California'],
+          audience:{
+            '@type':'Audience',
+            audienceType:'Students, families, neighbors, and local businesses'
+          }
+        },
+        {
+          '@type':'WebSite',
+          name:'CoGo City',
+          url:'https://cogocity.com/',
+          description
+        },
+        {
+          '@type':'FAQPage',
+          mainEntity:[
+            {
+              '@type':'Question',
+              name:'What is CoGo City?',
+              acceptedAnswer:{
+                '@type':'Answer',
+                text:'CoGo City is a local platform that helps students, families, neighbors, and businesses connect for student services, community gigs, and direct hire opportunities.'
+              }
+            },
+            {
+              '@type':'Question',
+              name:'Who is CoGo City for?',
+              acceptedAnswer:{
+                '@type':'Answer',
+                text:'CoGo City is built for students looking for paid experience, families and neighbors looking for local help, and businesses that want to hire motivated student talent.'
+              }
+            },
+            {
+              '@type':'Question',
+              name:'What kinds of work can students do on CoGo City?',
+              acceptedAnswer:{
+                '@type':'Answer',
+                text:'Students can offer services like tutoring, babysitting, pet care, event help, office support, social media help, and other local skill-based work through CoGo City.'
+              }
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+function renderHomepageSeoContent(){
+  return `
+    <div class="homepage-seo-stack">
+      <section class="card homepage-seo-card" aria-labelledby="homepage-overview-title">
+        <h2 id="homepage-overview-title" class="section-title" style="margin-bottom:10px">What CoGo City Does</h2>
+        <p>CoGo City helps families, neighbors, and businesses connect with local students for trusted services, paid opportunities, and real-world work experience. It gives students a practical way to build skills, earn money, and grow confidence through work that starts in their own communities.</p>
+        <p>From tutoring and babysitting to event help, pet care, admin support, social media work, and local hiring, CoGo City is designed to make student talent easier to discover and safer to engage.</p>
+      </section>
+      <section aria-labelledby="homepage-pathways-title">
+        <h2 id="homepage-pathways-title" class="section-title">Explore CoGo City</h2>
+        <div class="homepage-pillars">
+          <article class="card homepage-pillar-card">
+            <h3>Student Services</h3>
+            <p>Browse local student talent for tutoring, childcare, pet care, office help, creative work, sports coaching, and other skill-based services.</p>
+            <a class="link-btn" href="/students" onclick="location.hash='#/students';renderPage();return false;">Browse student services</a>
+          </article>
+          <article class="card homepage-pillar-card">
+            <h3>Community Gigs</h3>
+            <p>Discover short-term paid opportunities posted by neighbors, families, and community members who need local help.</p>
+            <a class="link-btn" href="/community" onclick="location.hash='#/community';renderPage();return false;">Explore community gigs</a>
+          </article>
+          <article class="card homepage-pillar-card">
+            <h3>Direct Hire</h3>
+            <p>Support longer-term student hiring and employer demand for part-time work, internships, and early career opportunities.</p>
+            <a class="link-btn" href="/jobs" onclick="location.hash='#/jobs';renderPage();return false;">View direct hire</a>
+          </article>
+        </div>
+      </section>
+      <section class="card homepage-seo-card" aria-labelledby="homepage-trust-title">
+        <h2 id="homepage-trust-title" class="section-title" style="margin-bottom:10px">Why Families and Businesses Use CoGo City</h2>
+        <ul>
+          <li>Trusted access to local student talent for real community needs</li>
+          <li>Clear pathways for students to build work experience before traditional employment</li>
+          <li>Safer, more community-centered connections than broad anonymous marketplaces</li>
+          <li>Strong fit for Tri-Valley, East Bay, and local-first hiring and service needs</li>
+        </ul>
+        <div class="homepage-links-row">
+          <a class="homepage-link-chip" href="/how-it-works" onclick="location.hash='#/how-it-works';renderPage();return false;">How It Works</a>
+          <a class="homepage-link-chip" href="/about-us" onclick="location.hash='#/about-us';renderPage();return false;">About Us</a>
+          <a class="homepage-link-chip" href="/faq-safety-legal" onclick="location.hash='#/faq-safety-legal';renderPage();return false;">Safety and FAQ</a>
+          <a class="homepage-link-chip" href="/blog" onclick="location.hash='#/blog';renderPage();return false;">Career Blog</a>
+        </div>
+      </section>
+      <section aria-labelledby="homepage-faq-title">
+        <h2 id="homepage-faq-title" class="section-title">Common Questions</h2>
+        <div class="homepage-faq-grid">
+          <article class="card homepage-faq-card homepage-seo-card">
+            <h3>What is CoGo City?</h3>
+            <p>CoGo City is a local marketplace connecting students, families, neighbors, and businesses for services, community gigs, and early work opportunities.</p>
+          </article>
+          <article class="card homepage-faq-card homepage-seo-card">
+            <h3>Who is CoGo City for?</h3>
+            <p>It is built for students who want paid experience, families and neighbors who need local help, and businesses that want motivated student talent.</p>
+          </article>
+          <article class="card homepage-faq-card homepage-seo-card">
+            <h3>What kinds of student services are available?</h3>
+            <p>Common services include tutoring, babysitting, pet sitting, event help, yard work, admin support, digital help, and creative services.</p>
+          </article>
+          <article class="card homepage-faq-card homepage-seo-card">
+            <h3>Why is CoGo City different?</h3>
+            <p>CoGo City focuses on local trust, real-world experience, and community-based student work instead of treating young people like anonymous listings on a generic gig platform.</p>
+          </article>
+        </div>
+      </section>
+    </div>
+  `;
 }
 function buildBlogListSeoMeta(){
   const path = '/blog';

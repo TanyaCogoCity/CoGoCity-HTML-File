@@ -20,7 +20,64 @@ const {
 const router = express.Router();
 
 const STATIC_PAGES = [
-  { path: '/', title: 'CoGo City | Student Jobs and Local Services', description: 'Hire students for local services, discover student jobs, and connect with trusted community opportunities through CoGo City.' },
+  {
+    path: '/',
+    title: 'CoGo City | Local Student Services, Jobs and Community Opportunities',
+    description: 'CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience.',
+    schema: {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          name: 'CoGo City',
+          url: 'https://cogocity.com/',
+          logo: 'https://cogocity.com/assets/cogocity-logo-blue.jpg',
+          image: 'https://cogocity.com/assets/cogocity-social-share.png',
+          description: 'CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience.',
+          areaServed: ['Tri-Valley', 'East Bay', 'California'],
+          audience: {
+            '@type': 'Audience',
+            audienceType: 'Students, families, neighbors, and local businesses',
+          },
+        },
+        {
+          '@type': 'WebSite',
+          name: 'CoGo City',
+          url: 'https://cogocity.com/',
+          description: 'CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience.',
+        },
+        {
+          '@type': 'FAQPage',
+          mainEntity: [
+            {
+              '@type': 'Question',
+              name: 'What is CoGo City?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'CoGo City is a local platform that helps students, families, neighbors, and businesses connect for student services, community gigs, and direct hire opportunities.',
+              },
+            },
+            {
+              '@type': 'Question',
+              name: 'Who is CoGo City for?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'CoGo City is built for students looking for paid experience, families and neighbors looking for local help, and businesses that want to hire motivated student talent.',
+              },
+            },
+            {
+              '@type': 'Question',
+              name: 'What kinds of work can students do on CoGo City?',
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: 'Students can offer services like tutoring, babysitting, pet care, event help, office support, social media help, and other local skill-based work through CoGo City.',
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
   { path: '/students', title: 'Browse Students | CoGo City', description: 'Browse student services, skills, and local talent available for hire through CoGo City.' },
   { path: '/community', title: 'Community Gigs | CoGo City', description: 'Discover safe local community gigs and student opportunities through CoGo City.' },
   { path: '/jobs', title: 'Student Jobs | CoGo City', description: 'Explore direct hire student jobs, internships, and local opportunities from employers on CoGo City.' },
