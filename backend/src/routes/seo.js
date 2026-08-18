@@ -148,6 +148,8 @@ function renderFrontendShell(template = '', meta = {}) {
 
 function shouldServeSeoShell(req) {
   if (req.method !== 'GET') return false;
+  const baseUrl = String(req.baseUrl || '');
+  if (baseUrl === '/api' || baseUrl.startsWith('/api/')) return false;
   const cleanPath = normalizeSeoPath(req.path || '/');
   if (cleanPath.includes('.')) return false;
   return !SERVER_RENDER_EXCLUDED_PREFIXES.some(prefix => cleanPath === prefix || cleanPath.startsWith(`${prefix}/`));
