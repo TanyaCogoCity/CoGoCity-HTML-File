@@ -1,3 +1,5 @@
+const fs = require('fs/promises');
+const path = require('path');
 const express = require('express');
 const { prisma } = require('../lib/prisma');
 const { ok, fail } = require('../lib/http');
@@ -25,6 +27,7 @@ const STATIC_PAGES = [
   { path: '/blog', title: 'Student Work and Career Blog | CoGo City', description: 'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.' },
   { path: '/about-us', title: 'About CoGo City | Student Jobs and Services', description: 'Learn about CoGo City and our mission to connect students, families, neighbors, and businesses.' },
   { path: '/faq-safety-legal', title: 'FAQ, Safety and Legal Guidelines | CoGo City', description: 'Review CoGo City safety guidelines, legal policies, payment rules, and student work FAQs.' },
+  { path: '/how-it-works', title: 'How CoGo City Works | Students, Employers, and Neighbors', description: 'Learn how CoGo City works for students, employers, and neighbors with onboarding tutorials, hiring guidance, payment setup steps, and FAQs.' },
   { path: '/privacy-policy', title: 'Privacy Policy | CoGo City', description: 'Read the CoGo City Privacy Policy and learn how personal information is collected, used, and protected.' },
   { path: '/accessibility', title: 'Accessibility Statement | CoGo City', description: 'Read the CoGo City accessibility statement and WCAG 2.1 AA compliance goals.' },
   { path: '/terms-and-conditions', title: 'Terms and Conditions | CoGo City', description: 'Read the CoGo City Terms and Conditions for students, employers, neighbors, and community users.' },
@@ -65,9 +68,89 @@ const LEGACY_BLOG_SLUG_REDIRECTS = new Map([
   ['youth-labor-law-in-ca-2', 'understanding-californias-child-and-minor-labor-laws'],
 ]);
 
+const FRONTEND_SHELL_PATH = path.resolve(__dirname, '../../public-shell/index.html');
+const SERVER_RENDER_EXCLUDED_PREFIXES = [
+  '/api',
+  '/health',
+  '/auth',
+  '/services',
+  '/applications',
+  '/projects',
+  '/messages',
+  '/workshops',
+  '/transactions',
+  '/notifications',
+  '/sync',
+  '/stripe',
+];
+
+let frontendShellTemplatePromise = null;
+
 function isStagingRequest(req) {
   const host = String(req.get('x-forwarded-host') || req.get('host') || '').toLowerCase();
   return host.includes('staging.') || host.includes('localhost') || host.includes('127.0.0.1');
+}
+
+function escapeHtml(value = '') {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function replaceTag(html = '', pattern, replacement = '') {
+  return pattern.test(html) ? html.replace(pattern, replacement) : html;
+}
+
+async function loadFrontendShellTemplate() {
+  if (!frontendShellTemplatePromise) frontendShellTemplatePromise = fs.readFile(FRONTEND_SHELL_PATH, 'utf8');
+  return frontendShellTemplatePromise;
+}
+
+function renderFrontendShell(template = '', meta = {}) {
+  const description = escapeHtml(meta.description || '');
+  const canonical = escapeHtml(meta.canonical || urlFor(meta.path || '/'));
+  const title = escapeHtml(meta.title || 'CoGo City');
+  const image = escapeHtml(meta.image || DEFAULT_SOCIAL_IMAGE);
+  const robots = escapeHtml(meta.robots || 'index,follow');
+  const ogType = escapeHtml(meta.type || 'website');
+  let html = template;
+
+  html = replaceTag(html, /<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+  html = replaceTag(html, /<meta name="description" content="[^"]*"\s*\/?>/i, `<meta name="description" content="${description}" />`);
+  html = replaceTag(html, /<meta name="robots" content="[^"]*"\s*\/?>/i, `<meta name="robots" content="${robots}" />`);
+  html = replaceTag(html, /<link rel="canonical" href="[^"]*"\s*\/?>/i, `<link rel="canonical" href="${canonical}" />`);
+  html = replaceTag(html, /<meta property="og:type" content="[^"]*"\s*\/?>/i, `<meta property="og:type" content="${ogType}" />`);
+  html = replaceTag(html, /<meta property="og:title" content="[^"]*"\s*\/?>/i, `<meta property="og:title" content="${title}" />`);
+  html = replaceTag(html, /<meta property="og:description" content="[^"]*"\s*\/?>/i, `<meta property="og:description" content="${description}" />`);
+  html = replaceTag(html, /<meta property="og:image" content="[^"]*"\s*\/?>/i, `<meta property="og:image" content="${image}" />`);
+  html = replaceTag(html, /<meta property="og:url" content="[^"]*"\s*\/?>/i, `<meta property="og:url" content="${canonical}" />`);
+  html = replaceTag(html, /<meta name="twitter:title" content="[^"]*"\s*\/?>/i, `<meta name="twitter:title" content="${title}" />`);
+  html = replaceTag(html, /<meta name="twitter:description" content="[^"]*"\s*\/?>/i, `<meta name="twitter:description" content="${description}" />`);
+  html = replaceTag(html, /<meta name="twitter:image" content="[^"]*"\s*\/?>/i, `<meta name="twitter:image" content="${image}" />`);
+
+  if (!/<base href="\/"\s*\/?>/i.test(html)) {
+    html = html.replace(/<head>/i, '<head>\n  <base href="/" />');
+  }
+
+  const schemaScript = meta.schema
+    ? `<script type="application/ld+json" id="cogo-seo-schema-server">${JSON.stringify(meta.schema)}</script>`
+    : '';
+  html = html.replace(/<script type="application\/ld\+json" id="cogo-seo-schema-server">[\s\S]*?<\/script>/i, '');
+  if (schemaScript) {
+    html = html.replace(/<\/head>/i, `  ${schemaScript}\n</head>`);
+  }
+
+  return html;
+}
+
+function shouldServeSeoShell(req) {
+  if (req.method !== 'GET') return false;
+  const cleanPath = normalizeSeoPath(req.path || '/');
+  if (cleanPath.includes('.')) return false;
+  return !SERVER_RENDER_EXCLUDED_PREFIXES.some(prefix => cleanPath === prefix || cleanPath.startsWith(`${prefix}/`));
 }
 
 function withDefaults(meta = {}) {
@@ -472,6 +555,27 @@ router.get('/seo/resolve', async (req, res) => {
     return ok(res, { path: meta.path, canonical: meta.canonical, hash: meta.hash, redirect: meta.path !== normalizeSeoPath(requestedPath) });
   } catch (error) {
     return fail(res, 500, 'Could not resolve SEO URL', error.message);
+  }
+});
+
+router.get('*', async (req, res, next) => {
+  if (!shouldServeSeoShell(req)) return next();
+  try {
+    const requestedPath = String(req.path || '/');
+    const meta = await findMetaByPath(requestedPath);
+    if (!meta) return next();
+    const normalizedRequestedPath = normalizeSeoPath(requestedPath);
+    if (meta.path && meta.path !== normalizedRequestedPath) {
+      return res.redirect(301, meta.path);
+    }
+    const template = await loadFrontendShellTemplate();
+    const html = renderFrontendShell(template, meta);
+    res.status(200);
+    res.type('html');
+    res.set('X-Robots-Tag', meta.robots || 'index,follow');
+    return res.send(html);
+  } catch (error) {
+    return next(error);
   }
 });
 

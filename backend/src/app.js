@@ -71,7 +71,6 @@ app.use(
 );
 app.use(morgan('dev'));
 app.use(apiLimiter);
-app.use(['/api', '/'], seoRoutes);
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'cogocity-backend', environment: config.nodeEnv, time: new Date().toISOString() });
@@ -106,6 +105,7 @@ app.use(['/api/transactions', '/transactions'], transactionRoutes);
 app.use(['/api/notifications', '/notifications'], notificationRoutes);
 app.use(['/api', '/'], communityPostRoutes);
 app.use(['/api/sync', '/sync'], syncRecordRoutes);
+app.use(['/api', '/'], seoRoutes);
 
 app.use((err, _req, res, _next) => {
   const msg = err?.message || 'Server error';
