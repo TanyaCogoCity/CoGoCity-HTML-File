@@ -12566,7 +12566,7 @@ function renderJobsPage(){
     ${renderUserIdentityBanner()}
     ${renderPageContentBlock('jobs', {
       title:'Direct Hire',
-      body:'Learn how Direct Hire works on CoGo City for employers and students.'
+      body:'Apply directly to jobs posted by employers and businesses.'
     })}
     <div class="container">
       ${showDirectHireCreateJob ? `
@@ -12574,17 +12574,18 @@ function renderJobsPage(){
           <button class="btn btn-blue" onclick="goToDirectHireJobCreator()">Create Job</button>
         </div>
       ` : ''}
-      <div class="card form-card">
-        <div class="section-title" style="margin-bottom:10px">No Public Direct Hire Positions</div>
-        <div class="small muted" style="line-height:1.7;margin-bottom:12px">
-          Direct Hire positions are not displayed on this public page.
-          Employers can still manage Direct Hire postings from their dashboard, and students can continue using CoGo City for community gigs, projects, and profile discovery.
+      <div class="card form-card" style="margin-bottom:16px">
+        <div class="row">
+          <div class="field"><label for="directJobsSearchInput">Search jobs</label><input id="directJobsSearchInput" value="${esc(directJobsSearchQuery)}" placeholder="Title, company, location, or keyword" oninput="updateDirectJobsSearch(this.value)"></div>
+          <div class="field"><label for="directJobsSortSelect">Sort</label>
+            <select id="directJobsSortSelect" onchange="directJobsSort=this.value;renderJobsPage()">
+              <option value="latest" ${directJobsSort === 'latest' ? 'selected' : ''}>Latest first</option>
+              <option value="deadline" ${directJobsSort === 'deadline' ? 'selected' : ''}>Expiration soonest</option>
+            </select>
+          </div>
         </div>
-        ${showDirectHireCreateJob
-          ? `<div class="small muted">Use <strong>Create Job</strong> to post and manage a Direct Hire opportunity from your employer account.</div>`
-          : `<div class="small muted">If you are an employer and want to create a Direct Hire role, sign in to your employer account to manage postings.</div>`
-        }
       </div>
+      <div id="direct-jobs-list">${renderDirectJobsList()}</div>
     </div>
   `;
 }
