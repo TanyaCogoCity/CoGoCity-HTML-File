@@ -72,8 +72,12 @@ app.use(
 app.use(morgan('dev'));
 app.use(apiLimiter);
 
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'cogocity-backend', environment: config.nodeEnv, time: new Date().toISOString() });
+function healthPayload() {
+  return { ok: true, service: 'cogocity-backend', environment: config.nodeEnv, time: new Date().toISOString() };
+}
+
+app.get(['/health', '/api/health'], (_req, res) => {
+  res.json(healthPayload());
 });
 
 app.get('/health/db', async (_req, res) => {
@@ -93,6 +97,7 @@ app.use(['/api/stripe', '/stripe'], stripeRoutes);
 app.use(express.json({ limit: '25mb' }));
 
 app.use(['/api/auth', '/auth'], authLimiter, authRoutes);
+app.use(['/api', '/'], seoRoutes);
 app.use(['/api', '/'], profileRoutes);
 app.use(['/api/services', '/services'], serviceRoutes);
 app.use(['/api/jobs', '/jobs'], jobRoutes);
@@ -105,7 +110,6 @@ app.use(['/api/transactions', '/transactions'], transactionRoutes);
 app.use(['/api/notifications', '/notifications'], notificationRoutes);
 app.use(['/api', '/'], communityPostRoutes);
 app.use(['/api/sync', '/sync'], syncRecordRoutes);
-app.use(['/api', '/'], seoRoutes);
 
 app.use((err, _req, res, _next) => {
   const msg = err?.message || 'Server error';
