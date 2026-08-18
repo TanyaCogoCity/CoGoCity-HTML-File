@@ -6,20 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
-  <meta name="description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
+  <meta name="description" content="Cogo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#FFE600" />
   <link rel="canonical" href="https://cogocity.com/" />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="CoGo City | Local Student Services, Jobs and Community Opportunities" />
-  <meta property="og:description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
+  <meta property="og:title" content="Cogo City | Local Student Services, Jobs and Community Opportunities" />
+  <meta property="og:description" content="Cogo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta property="og:image" content="https://cogocity.com/assets/cogocity-social-share.png" />
   <meta property="og:url" content="https://cogocity.com/" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CoGo City | Local Student Services, Jobs and Community Opportunities" />
-  <meta name="twitter:description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
+  <meta name="twitter:title" content="Cogo City | Local Student Services, Jobs and Community Opportunities" />
+  <meta name="twitter:description" content="Cogo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta name="twitter:image" content="https://cogocity.com/assets/cogocity-social-share.png" />
-  <title>CoGo City | Local Student Services, Jobs and Community Opportunities</title>
+  <title>Cogo City | Local Student Services, Jobs and Community Opportunities</title>
   <script>
     (function(){
       var host = window.location && window.location.hostname;
@@ -832,6 +832,10 @@
     .homepage-seo-card li{margin:6px 0}
     .homepage-pillars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
     .homepage-pillar-card{padding:22px}
+    .homepage-pillar-icon{
+      width:52px;height:52px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+      margin-bottom:16px;font-size:1.55rem;background:linear-gradient(135deg,#FFF7CC,#FFE600);border:1px solid #F3CD45
+    }
     .homepage-pillar-card h3,.homepage-faq-card h3{margin:0 0 10px;font-size:1.06rem}
     .homepage-pillar-card p,.homepage-faq-card p{margin:0 0 12px;color:var(--color-text-secondary);line-height:1.65}
     .homepage-pillar-card p:last-child,.homepage-faq-card p:last-child{margin-bottom:0}
@@ -839,6 +843,29 @@
     .homepage-link-chip{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid var(--color-border);border-radius:999px;background:#fff;text-decoration:none;font-weight:800;color:var(--color-text-main)}
     .homepage-link-chip:hover{background:#FFFEF0;border-color:#FDE68A}
     .homepage-faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .homepage-trust-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:22px;align-items:center}
+    .homepage-trust-visual{
+      min-height:320px;border-radius:22px;border:1px solid var(--color-border);overflow:hidden;
+      background:linear-gradient(145deg,#FFF9D7 0%,#FDE68A 36%,#DCEBFF 100%);
+      position:relative;padding:24px;display:flex;align-items:flex-end;justify-content:flex-start
+    }
+    .homepage-trust-visual::before{
+      content:"";position:absolute;inset:18px auto auto 18px;width:130px;height:130px;border-radius:999px;
+      background:rgba(255,255,255,.55);filter:blur(2px)
+    }
+    .homepage-trust-visual::after{
+      content:"";position:absolute;right:-34px;bottom:-38px;width:220px;height:220px;border-radius:32px;
+      background:rgba(255,255,255,.42);transform:rotate(-12deg)
+    }
+    .homepage-trust-visual-label{
+      position:relative;z-index:1;max-width:250px;padding:16px 18px;border-radius:18px;
+      background:rgba(255,255,255,.88);box-shadow:0 14px 34px rgba(31,41,55,.14)
+    }
+    .homepage-trust-visual-label strong{display:block;font-size:1.05rem;margin-bottom:6px}
+    .homepage-trust-visual-label span{display:block;font-size:.92rem;line-height:1.55;color:var(--color-text-secondary)}
+    .homepage-trust-placeholder-figure{
+      position:absolute;right:22px;bottom:12px;z-index:1;font-size:6.5rem;line-height:1;filter:drop-shadow(0 12px 16px rgba(31,41,55,.14))
+    }
     .cogo-ad-sidebar{width:300px;justify-self:end;padding-top:45px}
     .cogo-ad-strip{margin:0;width:100%;max-width:300px}
     .cogo-mobile-extra-ads{display:none}
@@ -1075,7 +1102,8 @@
       .cogo-ad-cta{display:inline-flex;padding:9px 12px;font-size:.8rem}
       .container{padding:20px 14px}
       .profiles-grid,.blog-grid,.workshop-grid,.home-blog-grid{grid-template-columns:1fr!important}
-      .homepage-pillars,.homepage-faq-grid{grid-template-columns:1fr}
+      .homepage-pillars,.homepage-faq-grid,.homepage-trust-layout{grid-template-columns:1fr}
+      .homepage-trust-visual{min-height:260px}
       .student-search-panel{padding:14px}
       .student-filter-row{grid-template-columns:1fr}
       .profile-top{padding:14px;gap:10px}
@@ -1162,7 +1190,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="a11y-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <nav aria-label="Main navigation">
-    <a class="logo" href="#/" aria-label="CoGo City home"><img src="assets/cogocity-logo-blue.jpg" alt="CoGo City" /></a>
+    <a class="logo" href="#/" aria-label="Cogo City home"><img src="assets/cogocity-logo-blue.jpg" alt="Cogo City" /></a>
     <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Open navigation menu" aria-controls="nav-links" aria-expanded="false" onclick="toggleMobileNav()">☰</button>
     <div class="nav-links" id="nav-links">
       <a href="/students" id="nav-home" onclick="closeMobileNav()">Browse Students</a>
@@ -1178,7 +1206,7 @@
   <footer class="site-footer">
     <div class="footer-inner">
       <div>
-        <div class="footer-title" id="footer-about-title">About CoGo City</div>
+        <div class="footer-title" id="footer-about-title">About Cogo City</div>
         <div class="footer-text" id="footer-about-text">
           Our platform empowers teens and young adults to achieve financial independence by building job experience and entrepreneurial skills in the safe and protective environment of their local communities.
         </div>
@@ -1201,7 +1229,7 @@
         </div>
       </div>
     </div>
-    <div class="footer-bottom">&#169; CoGo City. All rights reserved.</div>
+    <div class="footer-bottom">&#169; Cogo City. All rights reserved.</div>
   </footer>
   <div id="modal-root"></div>
 
@@ -1216,30 +1244,30 @@ const HOW_IT_WORKS_TUTORIALS = [
   {
     id: 'student',
     role: 'Student Tutorial',
-    title: 'How to Create a Student Profile on CoGo City | Get Hired for Part-Time Jobs & Paid Projects',
+    title: 'How to Create a Student Profile on Cogo City | Get Hired for Part-Time Jobs & Paid Projects',
     videoUrl: 'https://youtu.be/Y3Y9mhSAHgw',
     posterUrl: 'assets/how-it-works-student-tutorial.jpg?v=20260728c',
-    description: 'Learn how to create your student profile on CoGo City and get ready to apply for paid projects, part-time jobs, and internships.',
+    description: 'Learn how to create your student profile on Cogo City and get ready to apply for paid projects, part-time jobs, and internships.',
     ctaLabel: 'Create a Student Profile',
     ctaAction: `openStudentSignupWorkflow()`
   },
   {
     id: 'neighbor',
     role: 'Neighbor Tutorial',
-    title: 'How to Create a Neighbor Profile on CoGo City | Hire Local Students & Post Jobs',
+    title: 'How to Create a Neighbor Profile on Cogo City | Hire Local Students & Post Jobs',
     videoUrl: 'https://youtu.be/zbigBsTSIx4',
     posterUrl: 'assets/how-it-works-neighbor-tutorial.jpg?v=20260728c',
-    description: 'Learn how to create your Neighbor profile on CoGo City so you can hire trusted local students for part-time jobs, one-time projects, and everyday help.',
+    description: 'Learn how to create your Neighbor profile on Cogo City so you can hire trusted local students for part-time jobs, one-time projects, and everyday help.',
     ctaLabel: 'Create a Neighbor Profile',
     ctaAction: `openEmployerSignupWorkflow('neighbor')`
   },
   {
     id: 'employer',
     role: 'Employer Tutorial',
-    title: 'How to Create an Employer Profile on CoGo City | Hire Students & Post Jobs',
+    title: 'How to Create an Employer Profile on Cogo City | Hire Students & Post Jobs',
     videoUrl: 'https://youtu.be/ugXCSwjIISU',
     posterUrl: 'assets/how-it-works-employer-tutorial.jpg?v=20260729a',
-    description: 'Learn how to create your Employer profile on CoGo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
+    description: 'Learn how to create your Employer profile on Cogo City and start hiring local students for part-time jobs, paid projects, internships, and seasonal work.',
     ctaLabel: 'Create an Employer Profile',
     ctaAction: `openEmployerSignupWorkflow('employer')`
   },
@@ -1249,7 +1277,7 @@ const HOW_IT_WORKS_TUTORIALS = [
     title: 'Set Up Stripe Connect to Receive Payments | Cogo City',
     videoUrl: 'https://youtu.be/BNIQWA8E5rA',
     posterUrl: 'assets/how-it-works-stripe-connect-tutorial.jpg?v=20260729a',
-    description: 'To receive payments for completed projects on Cogo City, you will need to connect a Stripe Connect account. The setup is quick, secure, and typically takes just a few minutes. Stripe is one of the world\'s most trusted payment platforms, used by millions of businesses to process payments securely. Your banking and payment information is entered directly into Stripe and is never stored or accessible by Cogo City. Once your Stripe account is connected, you will be ready to receive payments for every completed project you finish through CoGo City.',
+    description: 'To receive payments for completed projects on Cogo City, you will need to connect a Stripe Connect account. The setup is quick, secure, and typically takes just a few minutes. Stripe is one of the world\'s most trusted payment platforms, used by millions of businesses to process payments securely. Your banking and payment information is entered directly into Stripe and is never stored or accessible by Cogo City. Once your Stripe account is connected, you will be ready to receive payments for every completed project you finish through Cogo City.',
     ctaLabel: 'Set Up Stripe Connect',
     ctaAction: `openStripeConnectTutorialSetup()`
   }
@@ -1865,8 +1893,8 @@ function fallbackSeoMeta(route=''){
   const publicPage = !isPrivateNoindexRoute(path) && !isPrivateNoindexRoute(route);
   const robots = isStaging ? 'noindex,nofollow' : (publicPage ? 'index,follow' : 'noindex,nofollow');
   return {
-    title: document.title || 'CoGo City',
-    description: document.querySelector('meta[name="description"]')?.getAttribute('content') || 'CoGo City connects students, families, neighbors, and businesses for local jobs and services.',
+    title: document.title || 'Cogo City',
+    description: document.querySelector('meta[name="description"]')?.getAttribute('content') || 'Cogo City connects students, families, neighbors, and businesses for local jobs and services.',
     canonical: `https://cogocity.com${path}`,
     ogUrl: `https://cogocity.com${path}`,
     image: defaultImage,
@@ -1881,12 +1909,12 @@ function applySeoMeta(meta={}){
   setMetaTag('meta[name="robots"]', 'name', 'robots', COGO_IS_STAGING ? 'noindex,nofollow' : (merged.robots || 'index,follow'));
   setCanonicalUrl(merged.canonical || 'https://cogocity.com/');
   setMetaTag('meta[property="og:type"]', 'property', 'og:type', merged.type || 'website');
-  setMetaTag('meta[property="og:title"]', 'property', 'og:title', merged.title || 'CoGo City');
+  setMetaTag('meta[property="og:title"]', 'property', 'og:title', merged.title || 'Cogo City');
   setMetaTag('meta[property="og:description"]', 'property', 'og:description', merged.description || '');
   setMetaTag('meta[property="og:image"]', 'property', 'og:image', merged.image || 'https://cogocity.com/assets/cogocity-social-share.png');
   setMetaTag('meta[property="og:url"]', 'property', 'og:url', merged.ogUrl || merged.canonical || 'https://cogocity.com/');
   setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
-  setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', merged.title || 'CoGo City');
+  setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', merged.title || 'Cogo City');
   setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', merged.description || '');
   setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', merged.image || 'https://cogocity.com/assets/cogocity-social-share.png');
   let schemaEl = document.getElementById('cogo-seo-schema');
@@ -2108,7 +2136,7 @@ const DEFAULT_COMMUNITY_JOB_PLACEHOLDERS = {
   hours: '2',
   location: 'San Francisco, Remote',
   imageLabel: 'Post Image (Optional)',
-  imageHelper: 'Recommended image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly in the feed.',
+  imageHelper: 'Recommended image: 1200 x 675 px (16:9). Square or vertical images are OK; Cogo City will crop them neatly in the feed.',
   videoLinkLabel: 'Post a YouTube/Vimeo Link (Optional)',
   videoLinkHelper: '',
   videoUploadLabel: 'Upload Video (Optional)',
@@ -3000,7 +3028,7 @@ function showStripePayoutSafetyBlock(error, studentLabel='this student'){
   openModal('Payout setup required', `
     <div class="card form-card">
       <div class="warning" style="margin-bottom:14px">Payment is blocked until ${esc(studentLabel)} completes Stripe Connect payout setup.</div>
-      <div class="small muted" style="margin-bottom:12px">CoGo City does not collect or store bank, SSN/TIN, tax identity, or IRS reporting details. Stripe Connect collects those details on its hosted onboarding flow.</div>
+      <div class="small muted" style="margin-bottom:12px">Cogo City does not collect or store bank, SSN/TIN, tax identity, or IRS reporting details. Stripe Connect collects those details on its hosted onboarding flow.</div>
       <ul class="small" style="margin:0 0 14px 18px">${statusParts.map(part => `<li>${esc(part)}</li>`).join('')}</ul>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-blue" onclick="closeModal()">Got it</button>
@@ -3096,7 +3124,7 @@ async function createManualProjectStripePayment(project={}, breakdown={}){
     body: JSON.stringify({
       project_id: project.id || project.project_id || '',
       application_id: project.applicationId || project.application_id || '',
-      job_title: project.jobTitle || project.title || 'CoGo City project',
+      job_title: project.jobTitle || project.title || 'Cogo City project',
       student_user_id: project.studentUserId || project.student_id || '',
       work_total: breakdown.workTotal,
       amount_total: breakdown.employerTotal,
@@ -3148,7 +3176,7 @@ function stripeOnboardingEnabled(){
 async function ensureStripeOnboardingAvailable(setupLabel='payment setup'){
   if (!STRIPE_ENABLED) await loadStripePublicConfig();
   if (!STRIPE_ENABLED) {
-    toast(`Secure ${setupLabel} is not configured yet. Please contact CoGo City support.`);
+    toast(`Secure ${setupLabel} is not configured yet. Please contact Cogo City support.`);
     return false;
   }
   if (!backendAuthEnabled()) {
@@ -3232,8 +3260,8 @@ function openPostSignupStripeOnboardingPrompt(kind){
   openModal(isPayer ? 'Add Payment Method' : 'Set Up Payouts', `
     <div class="card form-card">
       <div style="font-weight:900;font-size:1.1rem;margin-bottom:8px">${isPayer ? 'Add payment method' : 'Get ready to receive payouts'}</div>
-      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Add a secure payment method before messaging, booking, or registering for classes. CoGo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect setup. Stripe collects and stores tax identity, SSN/TIN, bank, and IRS reporting details; CoGo City stores only onboarding status.'}</div>
-      <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled. Payment details are handled by Stripe, not stored in CoGo City.</div>
+      <div class="small muted" style="margin-bottom:14px">${isPayer ? 'Add a secure payment method before messaging, booking, or registering for classes. Cogo City never stores card numbers.' : 'Before receiving project payouts, complete Stripe Connect setup. Stripe collects and stores tax identity, SSN/TIN, bank, and IRS reporting details; Cogo City stores only onboarding status.'}</div>
+      <div class="warning" style="margin-bottom:14px">Secure payment setup is enabled. Payment details are handled by Stripe, not stored in Cogo City.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="closeModal()">Later</button>
         <button class="btn btn-blue" onclick="${isPayer ? 'closeModal();openPayerStripeSetupModal()' : 'closeModal();startStripeConnectOnboarding()'}">${isPayer ? 'Add Card' : 'Set Up Payouts'}</button>
@@ -3328,9 +3356,9 @@ function requireStudentPayoutSetup(actionLabel='use the platform'){
   else { dashSection = 'profile'; goDashboard(); }
   return false;
 }
-function requirePlatformUseReady(actionLabel='use CoGo City'){
+function requirePlatformUseReady(actionLabel='use Cogo City'){
   if (!currentUser) { openLoginModal(); return false; }
-  if (needsMigrationOnboarding()) { toast('Please update and confirm your profile before using CoGo City.'); dashSection = 'profile'; goDashboard(); return false; }
+  if (needsMigrationOnboarding()) { toast('Please update and confirm your profile before using Cogo City.'); dashSection = 'profile'; goDashboard(); return false; }
   if (currentUser.role === 'student') return requireStudentPayoutSetup(actionLabel);
   if (isEmployerLikeUser(currentUser)) return requirePayerPaymentSetup(actionLabel);
   return true;
@@ -3356,7 +3384,7 @@ function renderStripeOnboardingCard(){
         <div>
           <div style="font-weight:800">Payment method on file</div>
           <div class="small muted">Status: ${esc(payer.ready ? 'Ready' : stripeStatusLabel(payer.payment_setup_status))}</div>
-          <div class="small muted" style="margin-top:4px">Used to pay for job listings, bookings, or hires. Cards are saved securely; CoGo City never stores card numbers.</div>
+          <div class="small muted" style="margin-top:4px">Used to pay for job listings, bookings, or hires. Cards are saved securely; Cogo City never stores card numbers.</div>
         </div>
         <button class="btn ${payer.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="openPayerStripeSetupModal()">${payer.ready ? 'Update Card' : 'Add Card'}</button>
       </div>
@@ -3368,7 +3396,7 @@ function renderStripeOnboardingCard(){
         <div>
           <div style="font-weight:800">Payout setup</div>
           <div class="small muted">Status: ${esc(connect.ready ? 'Ready' : stripeStatusLabel(connect.onboarding_status))}</div>
-          <div class="small muted" style="margin-top:4px">Required when you receive money for services. Stripe Connect collects and stores bank, identity, SSN/TIN, and IRS tax-reporting details on a secure hosted page. CoGo City stores only Stripe account/status fields.</div>
+          <div class="small muted" style="margin-top:4px">Required when you receive money for services. Stripe Connect collects and stores bank, identity, SSN/TIN, and IRS tax-reporting details on a secure hosted page. Cogo City stores only Stripe account/status fields.</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
           <button class="btn ${connect.ready ? 'btn-outline' : 'btn-blue'} btn-sm" onclick="startStripeConnectOnboarding()">${connect.ready ? 'Review Payouts' : 'Set Up Payouts'}</button>
@@ -3379,8 +3407,8 @@ function renderStripeOnboardingCard(){
   `);
   if (!blocks.length) return '';
   const setupCopy = isPayout
-    ? 'Payout setup is enabled. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in CoGo City.'
-    : 'Payment setup is enabled. Card details are handled securely by Stripe, not stored in CoGo City.';
+    ? 'Payout setup is enabled. Sensitive payout and tax identity details are handled by Stripe-hosted forms, not stored in Cogo City.'
+    : 'Payment setup is enabled. Card details are handled securely by Stripe, not stored in Cogo City.';
   return `<div class="card form-card" style="margin-bottom:16px;background:#F9FAFB"><div style="font-weight:900;font-size:1.05rem">Secure payment setup</div><div class="small muted" style="margin-top:6px">${setupCopy}</div>${blocks.join('')}${renderUnder18StudentSafetyNotice()}</div>`;
 }
 function renderUnder18StudentSafetyNotice(){
@@ -3389,7 +3417,7 @@ function renderUnder18StudentSafetyNotice(){
   const age = getStudentAge(profile || {});
   if (age === '') return '';
   const message = Number(age) < 18
-    ? "If you are under 18, please make sure your parent or guardian is aware of any job you accept through CoGo City. Share the employer's contact information, the job location, and the time you plan to be there. Your safety comes first&mdash;always keep your parent or guardian informed."
+    ? "If you are under 18, please make sure your parent or guardian is aware of any job you accept through Cogo City. Share the employer's contact information, the job location, and the time you plan to be there. Your safety comes first&mdash;always keep your parent or guardian informed."
     : "We recommend informing a trusted friend or family member about any job or project you accept. Share the employer's contact information, the job location, and the time you plan to be there for your safety.";
   return `
     <div class="warning" style="margin-top:12px;line-height:1.5">
@@ -3402,7 +3430,7 @@ async function openPayerStripeSetupModal(){
   if (!STRIPE_PUBLISHABLE_KEY) return toast('Secure payment setup is not configured.');
   openModal('Add Payment Method', `
     <div class="card form-card">
-      <div class="warning" style="margin-bottom:14px">Payment details are handled securely by Stripe. CoGo City never stores full card numbers.</div>
+      <div class="warning" style="margin-bottom:14px">Payment details are handled securely by Stripe. Cogo City never stores full card numbers.</div>
       <div class="field"><label>Card details</label><div id="stripe-card-element" style="padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff"></div></div>
       <div id="stripe-card-errors" class="small" style="color:#991B1B;margin-bottom:12px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
@@ -3485,12 +3513,12 @@ function openStripeConnectRecoveryModal(errorMessage=''){
       <div class="small muted" style="margin-bottom:12px">Use these steps if Stripe payout setup does not open, expires, or returns without marking payouts ready.</div>
       <ol class="small" style="line-height:1.65;margin:0 0 14px 18px">
         <li>Click <strong>Restart secure Stripe setup</strong> below. Stripe links are single-use and expire quickly.</li>
-        <li>Complete every required Stripe field, then return to CoGo City.</li>
+        <li>Complete every required Stripe field, then return to Cogo City.</li>
         <li>If it still fails, sign out and back in, then open Profile → Secure payment setup → Set Up Payouts.</li>
-        <li>Try a private/incognito browser window and disable popup/ad blockers for CoGo City and Stripe.</li>
+        <li>Try a private/incognito browser window and disable popup/ad blockers for Cogo City and Stripe.</li>
         <li>If Stripe says the account needs review, open the Stripe page again and complete the missing requirements.</li>
       </ol>
-      <div class="small muted" style="margin-bottom:14px">CoGo City does not store bank, SSN/TIN, identity, or tax details. Those stay with Stripe Connect.</div>
+      <div class="small muted" style="margin-bottom:14px">Cogo City does not store bank, SSN/TIN, identity, or tax details. Those stay with Stripe Connect.</div>
       <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="refreshStripeOnboardingStatus({rerender:true,toast:true})">Refresh Status</button>
         <button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Restart secure Stripe setup</button>
@@ -3510,7 +3538,7 @@ function openWorkshopPayoutSetupModal(options={}){
       </div>
       <div class="small muted" style="line-height:1.55;margin-bottom:14px">
         ${isHost
-          ? 'Stripe Connect is where you securely add payout and tax details so CoGo City can send you the remaining ticket balance after CoGo fees. CoGo City does not store your bank, SSN/TIN, identity, or tax details.'
+          ? 'Stripe Connect is where you securely add payout and tax details so Cogo City can send you the remaining ticket balance after CoGo fees. Cogo City does not store your bank, SSN/TIN, identity, or tax details.'
           : 'Please try again later or message the host/admin.'}
       </div>
       ${isHost ? `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-outline" onclick="closeModal()">Not Now</button><button class="btn btn-blue" onclick="closeModal();startStripeConnectOnboarding()">Set Up Payment</button></div>` : `<div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap"><button class="btn btn-blue" onclick="closeModal()">Got it</button></div>`}
@@ -5228,7 +5256,7 @@ function buildDirectHireProjectRecord(app={}, job={}, backendProject=null){
     ${rate ? `<div>Rate: $${esc(rate)}/hr</div>` : `<div>Compensation: ${esc(formatDirectJobCompensation(job))}</div>`}
     <div>Location: ${esc(projectSnapshot.location || 'TBD')}</div>
     <div>Status: In Progress</div>
-    <div>Direct-hire payroll is handled directly by the employer outside CoGo City.</div>
+    <div>Direct-hire payroll is handled directly by the employer outside Cogo City.</div>
   `;
   const backendStatus = backendProject && backendProject.status;
   const frontendStatus = backendStatus === 'awaiting_approval' ? 'awaiting_employer_approval' : backendStatus;
@@ -6349,6 +6377,30 @@ function ensureBlogImagesLoaded(posts=[], options={}){
     rerender: options.rerender !== false
   });
 }
+function getReferencedImageIds(records=[]){
+  const ids = new Set();
+  ensureArray(records).forEach(record => collectProfileImageReferences(record, ids));
+  return Array.from(ids);
+}
+function ensureProfileRecordImagesLoaded(records=[], options={}){
+  const missingIds = getReferencedImageIds(records).filter(id => {
+    const image = getImageById(id);
+    return !image || !image.url || image.embedded_image_omitted;
+  });
+  if (!missingIds.length) return;
+  ensureBackendArraySettingLoaded('images', 'cogo_images', {
+    full: true,
+    ids: missingIds,
+    rerender: options.rerender !== false
+  });
+}
+function ensureTestimonialProfileImagesLoaded(testimonials=[], options={}){
+  const linkedProfiles = ensureArray(testimonials).map(item => {
+    const display = getTestimonialDisplay(item);
+    return display.student || display.user || null;
+  }).filter(Boolean);
+  ensureProfileRecordImagesLoaded(linkedProfiles, options);
+}
 function refreshAdvertisingImagesFromStore(root=document){
   if (!root || typeof root.querySelectorAll !== 'function') return;
   root.querySelectorAll('source[data-cogo-ad-source-id]').forEach(source => {
@@ -6378,7 +6430,7 @@ function getSiteSettings(){
       employer: 'Post or Create a Job',
       neighbor: 'Post or Create a Job'
     },
-    footer_about_title: 'About CoGo City',
+    footer_about_title: 'About Cogo City',
     footer_about_text: 'Our platform empowers teens and young adults to achieve financial independence by building job experience and entrepreneurial skills in the safe and protective environment of their local communities.',
     footer_main_links: [
       { label:'Browse Students', href:'/students' },
@@ -6442,11 +6494,11 @@ function getSiteSettings(){
     merged.page_blocks[key] = Object.assign({}, defaults.page_blocks[key], ((saved.page_blocks || {})[key] || {}));
   });
   if (!merged.page_blocks.community.title || ['Community Feed', 'CoGo Community'].includes(merged.page_blocks.community.title)) merged.page_blocks.community.title = 'Community Gigs';
-  if (!merged.page_blocks.community.body || ['Share updates, post opportunities, and connect with your local CoGo City community.', 'Find local gigs, odd jobs, projects, and opportunities posted by the community.'].includes(merged.page_blocks.community.body)) {
+  if (!merged.page_blocks.community.body || ['Share updates, post opportunities, and connect with your local Cogo City community.', 'Find local gigs, odd jobs, projects, and opportunities posted by the community.'].includes(merged.page_blocks.community.body)) {
     merged.page_blocks.community.body = 'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.';
   }
   if (!merged.page_blocks.jobs.title || merged.page_blocks.jobs.title === 'Find Jobs Near You') merged.page_blocks.jobs.title = 'Direct Hire';
-  if (!merged.page_blocks.jobs.body || String(merged.page_blocks.jobs.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.') || merged.page_blocks.jobs.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs') {
+  if (!merged.page_blocks.jobs.body || String(merged.page_blocks.jobs.body).includes('local employers. Students apply with a required resume. Employers pay Cogo City to publish listings.') || merged.page_blocks.jobs.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs') {
     merged.page_blocks.jobs.body = 'Apply directly to jobs posted by employers and businesses.';
   }
   merged.footer_main_links = visibleSiteLinks(ensureArray(saved.footer_main_links).length ? ensureArray(saved.footer_main_links) : defaults.footer_main_links).map(link => {
@@ -6807,7 +6859,7 @@ function migrateLegacyData(){
         user.businessProfile = {
           name: user.company || `${firstName}'s Business`,
           logo: '',
-          about: user.company ? `${user.company} on CoGo City.` : 'Business profile on CoGo City.',
+          about: user.company ? `${user.company} on Cogo City.` : 'Business profile on Cogo City.',
           phone: user.phone || '',
           address: user.address || '',
           city: user.city || extractCity(user.address || '')
@@ -6950,7 +7002,7 @@ function seedData(){
       authorId:'s_test_main',
       authorName:'Daniel',
       authorEmoji:'\u{1F393}',
-      content:'Excited to be on CoGo City and ready to help with tutoring and local projects.',
+      content:'Excited to be on Cogo City and ready to help with tutoring and local projects.',
       isJob:false,
       createdAt:new Date(Date.now()-10800*1000).toISOString(),
       likes:[]
@@ -7261,7 +7313,7 @@ function userFacingBackendError(error, fallback='Something went wrong. Please ch
   if (/Invalid credentials|Incorrect email|wrong password/i.test(message)) return 'Incorrect email or password. Please check your email and password and try again.';
   if (/Invalid login payload/i.test(message)) return 'Please enter a valid email address and password.';
   if (/Invalid register payload/i.test(message)) return 'Please check the signup form. Make sure first name, last name, email, phone, address, and password are complete.';
-  if (/deleted CoGo City account|reactivate your account/i.test(message)) return 'This email already exists from a deleted account. Please reset your password to reactivate your account.';
+  if (/deleted Cogo City account|reactivate your account/i.test(message)) return 'This email already exists from a deleted account. Please reset your password to reactivate your account.';
   if (/account has been suspended/i.test(message)) return 'This account has been suspended. Please contact support@cogocity.com for help.';
   if (/aborted|abort|signal/i.test(message) || error?.name === 'AbortError') return 'The signup request took longer than expected. Please try again. If the account was already created, sign in with your email and password.';
   return message;
@@ -7805,7 +7857,7 @@ function getProjectRolePaymentData(project){
 function projectPaymentStatusText(project={}){
   const paymentStatus = project.payment_status || project.paymentStatus || '';
   const escrowStatus = project.escrowStatus || project.escrow_status || '';
-  if (isDirectHireProject(project)) return 'Direct hire payroll is handled outside CoGo City';
+  if (isDirectHireProject(project)) return 'Direct hire payroll is handled outside Cogo City';
   if (paymentStatus === 'funded' || escrowStatus === 'held') return 'Funds secured and held until project approval';
   if (paymentStatus === 'paid' || project.paid) return 'Paid and released';
   if (paymentStatus === 'requires_payment_method') return 'Payment method needed';
@@ -7836,8 +7888,8 @@ function renderProjectPaymentSection(project){
     return `
       ${renderProjectPaymentStatus(project)}
       <div class="warning" style="margin-top:8px">
-        <div class="small">Employer payroll and student wages are handled directly between the employer and student outside CoGo City.</div>
-        <div class="small">CoGo City only collects the paid job-listing fee for this direct-hire posting.</div>
+        <div class="small">Employer payroll and student wages are handled directly between the employer and student outside Cogo City.</div>
+        <div class="small">Cogo City only collects the paid job-listing fee for this direct-hire posting.</div>
       </div>
     `;
   }
@@ -8117,7 +8169,7 @@ function applySiteSettings(){
   setText('nav-blog', settings.nav_labels.blog || 'Blog');
   const navWorkshops = document.getElementById('nav-workshops');
   if (navWorkshops) navWorkshops.hidden = !WORKSHOPS_ENABLED;
-  setText('footer-about-title', settings.footer_about_title || 'About CoGo City');
+  setText('footer-about-title', settings.footer_about_title || 'About Cogo City');
   setText('footer-about-text', settings.footer_about_text || '');
   const mainWrap = document.getElementById('footer-main-links');
   if (mainWrap) {
@@ -8141,9 +8193,9 @@ function renderPageContentBlock(pageKey='', fallback={}){
     image_url: ''
   }, fallback || {}, pageBlocks[pageKey] || {});
   if (pageKey === 'community' && (!block.title || ['Community Feed', 'CoGo Community'].includes(block.title))) block.title = 'Community Gigs';
-  if (pageKey === 'community' && (!block.body || ['Share updates, post opportunities, and connect with your local CoGo City community.', 'Find local gigs, odd jobs, projects, and opportunities posted by the community.'].includes(block.body))) block.body = 'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.';
+  if (pageKey === 'community' && (!block.body || ['Share updates, post opportunities, and connect with your local Cogo City community.', 'Find local gigs, odd jobs, projects, and opportunities posted by the community.'].includes(block.body))) block.body = 'Explore local jobs, gigs, and opportunities posted by the community, or showcase your services and work to attract new clients and projects.';
   if (pageKey === 'jobs' && (!block.title || block.title === 'Find Jobs Near You')) block.title = 'Direct Hire';
-  if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay CoGo City to publish listings.') || block.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs')) {
+  if (pageKey === 'jobs' && (!block.body || String(block.body).includes('local employers. Students apply with a required resume. Employers pay Cogo City to publish listings.') || block.body === 'These jobs are posted by employers looking to hire talented students for internships, part-time, and full-time jobs')) {
     block.body = 'Apply directly to jobs posted by employers and businesses.';
   }
   const heroClass = ['community', 'jobs', 'workshops'].includes(pageKey) ? 'hero community-hero' : 'hero';
@@ -8161,8 +8213,8 @@ function renderPageContentBlock(pageKey='', fallback={}){
 function renderAboutPage(){
   const settings = getSiteSettings();
   const about = settings.about_page || {};
-  const imageHtml = about.image_url ? `<img src="${esc(about.image_url)}" alt="About CoGo City" style="width:100%;max-height:360px;object-fit:cover;border-radius:14px;border:1px solid var(--border);margin-bottom:16px">` : '';
-  document.title = `${about.title || 'About Us'} | CoGo City`;
+  const imageHtml = about.image_url ? `<img src="${esc(about.image_url)}" alt="About Cogo City" style="width:100%;max-height:360px;object-fit:cover;border-radius:14px;border:1px solid var(--border);margin-bottom:16px">` : '';
+  document.title = `${about.title || 'About Us'} | Cogo City`;
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -8509,8 +8561,8 @@ function scrollHowItWorksTo(id=''){
 }
 function getHowItWorksSeoMeta(){
   return {
-    title: 'How CoGo City Works | Students, Employers, and Neighbors',
-    description: 'Learn how CoGo City works for students, employers, and neighbors with onboarding tutorials, hiring guidance, payment setup steps, and FAQs.',
+    title: 'How Cogo City Works | Students, Employers, and Neighbors',
+    description: 'Learn how Cogo City works for students, employers, and neighbors with onboarding tutorials, hiring guidance, payment setup steps, and FAQs.',
     canonical: 'https://cogocity.com/how-it-works',
     ogUrl: 'https://cogocity.com/how-it-works',
     image: 'https://cogocity.com/assets/cogocity-social-share.png',
@@ -8526,8 +8578,8 @@ function renderHowItWorksPage(){
       <section class="how-it-works-hero">
         <div class="how-it-works-hero-inner">
           <div class="how-it-works-eyebrow">Guided onboarding</div>
-          <h1>How CoGo City Works</h1>
-          <p class="lead">Learn how to use CoGo City as a Student, Neighbor, or Employer.</p>
+          <h1>How Cogo City Works</h1>
+          <p class="lead">Learn how to use Cogo City as a Student, Neighbor, or Employer.</p>
           <p class="support">Read step-by-step guidance and find answers to common questions all in one place.</p>
         </div>
       </section>
@@ -8549,7 +8601,7 @@ function renderHowItWorksPage(){
         <section class="how-it-works-section" id="how-it-works-faq">
           <div class="how-it-works-section-header">
             <h2>Frequently Asked Questions</h2>
-            <p>Find answers about student jobs, internships, local hiring, freelance students, neighborhood help, and how CoGo City works for students, employers, and neighbors.</p>
+            <p>Find answers about student jobs, internships, local hiring, freelance students, neighborhood help, and how Cogo City works for students, employers, and neighbors.</p>
           </div>
           ${renderHowItWorksFaqFilters()}
           ${renderHowItWorksFaqSearch()}
@@ -8581,7 +8633,7 @@ function openStripeConnectTutorialSetup(){
 const STAGING_LEGAL_PAGES = {
   'youth-labor-law-in-ca': {
     title: 'Youth Labor Law in CA',
-    body: "Please read and understand the labor disclaimer below. CoGo City disclaims any and all liability whatsoever for any actions taken by any user of the website. CoGo City shall not be responsible for the actions taken of any individual stemming from his or her use of the website and/or the materials featured therein.\nThe minimum legal age to work in California is 12, but this is governed by state and federal child labor laws and varies based on the following factors:\n\n- Whether the work is agricultural or non-agricultural;\n- Whether the job is considered hazardous or has duties considered dangerous;\n- Whether school is in session;\n- The legal status of the minor;\n- Whether or not the job is exempt from the Fair Labor Standards Act (FLSA).\nAccording to the FLSA, a minor must be over the age of 14 to work for an employer, such as retail stores, food service establishments, and gasoline service stations, except for minors working for a parent or legal guardian who owns the business. The State of California has the following minimum ages to work:\n\n- 12 is the minimum age to work in connection with the occupation of selling or distributing newspapers, magazines, periodicals, or circulars;\n- 16 is the minimum age to work in any kind of mechanical work or in a gasoline service establishment as a courtesy service, and for car cleaning, washing, and polishing. It is also the legal minimum age for someone to work in an establishment that sells alcoholic beverages for consumption off the premises if supervised by someone over the age of 21.\n- 18 is the minimum age to perform an act in a premises where alcohol is served, serve alcohol in a bona fide public eating establishment if the person is not employed as a bartender and the service is in that part of the establishment used for the sale and service of food. It is also the minimum age to sell lottery tickets if supervised by someone over the age of 21.\n- 21 is the minimum age to sell or serve alcoholic beverages and lottery tickets unrestricted.\nThe State of California has the following restrictions on work hours:\n\n- Children at the age of 12 may only be employed during school holidays and vacations (usually construed to include weekends. They may never be employed on any school day, either before or after school. When school is not in session, they may be employed 8 hours a day, 40 hours per week. The work hours must be between 7 A.M. and 7 P.M. except from June 1 through Labor Day, when the ending time is 9 P.M.\n- Children at the age of 14, who must have completed 7th grade to work while school is in session, may work 3 hours per school day outside of school hours, and 18 hours per week. They may work 8 hours per day and 40 hours per week when school is not in session, and the work hours must be between 7 A.M. and 7 P.M. except from June 1 through Labor Day, when the ending time is 9 P.M.\n- Children at the age of 16, who must have completed 7th grade to work while school in session) may work 4 hours per day on any school day, and may work 48 hours per week. They may work 8 hours per day and 48 hours per week when school is not in session, and the work hours must be between 5 A.M. and 10 P.M. except on any evening preceding a non-school day.\n- Children at the age of 18 may work unrestrictedly.\n\n### Work Permit:\nTypically, after an employer agrees to hire a minor (under 18), the minor obtains from his or her school a Department of Education form entitled “Statement of Intent to Employ Minor and Request for Work Permit” Minors aged 15 days to 18 years employed in the entertainment industry must have a permit to work, and employers must have a permit to employ, both permits being issued by the Labor Commissioner’s Office. The work permit is also a certificate of Age.\n\n### Minimum Wages:\nThe minimum wages in California is $15.50. FLSA allows employes to pay minors a minimum wage of not less than $4.25 an hour to employees who are under 20 years old during the first 90 consecutive calendar days after initial employment."
+    body: "Please read and understand the labor disclaimer below. Cogo City disclaims any and all liability whatsoever for any actions taken by any user of the website. Cogo City shall not be responsible for the actions taken of any individual stemming from his or her use of the website and/or the materials featured therein.\nThe minimum legal age to work in California is 12, but this is governed by state and federal child labor laws and varies based on the following factors:\n\n- Whether the work is agricultural or non-agricultural;\n- Whether the job is considered hazardous or has duties considered dangerous;\n- Whether school is in session;\n- The legal status of the minor;\n- Whether or not the job is exempt from the Fair Labor Standards Act (FLSA).\nAccording to the FLSA, a minor must be over the age of 14 to work for an employer, such as retail stores, food service establishments, and gasoline service stations, except for minors working for a parent or legal guardian who owns the business. The State of California has the following minimum ages to work:\n\n- 12 is the minimum age to work in connection with the occupation of selling or distributing newspapers, magazines, periodicals, or circulars;\n- 16 is the minimum age to work in any kind of mechanical work or in a gasoline service establishment as a courtesy service, and for car cleaning, washing, and polishing. It is also the legal minimum age for someone to work in an establishment that sells alcoholic beverages for consumption off the premises if supervised by someone over the age of 21.\n- 18 is the minimum age to perform an act in a premises where alcohol is served, serve alcohol in a bona fide public eating establishment if the person is not employed as a bartender and the service is in that part of the establishment used for the sale and service of food. It is also the minimum age to sell lottery tickets if supervised by someone over the age of 21.\n- 21 is the minimum age to sell or serve alcoholic beverages and lottery tickets unrestricted.\nThe State of California has the following restrictions on work hours:\n\n- Children at the age of 12 may only be employed during school holidays and vacations (usually construed to include weekends. They may never be employed on any school day, either before or after school. When school is not in session, they may be employed 8 hours a day, 40 hours per week. The work hours must be between 7 A.M. and 7 P.M. except from June 1 through Labor Day, when the ending time is 9 P.M.\n- Children at the age of 14, who must have completed 7th grade to work while school is in session, may work 3 hours per school day outside of school hours, and 18 hours per week. They may work 8 hours per day and 40 hours per week when school is not in session, and the work hours must be between 7 A.M. and 7 P.M. except from June 1 through Labor Day, when the ending time is 9 P.M.\n- Children at the age of 16, who must have completed 7th grade to work while school in session) may work 4 hours per day on any school day, and may work 48 hours per week. They may work 8 hours per day and 48 hours per week when school is not in session, and the work hours must be between 5 A.M. and 10 P.M. except on any evening preceding a non-school day.\n- Children at the age of 18 may work unrestrictedly.\n\n### Work Permit:\nTypically, after an employer agrees to hire a minor (under 18), the minor obtains from his or her school a Department of Education form entitled “Statement of Intent to Employ Minor and Request for Work Permit” Minors aged 15 days to 18 years employed in the entertainment industry must have a permit to work, and employers must have a permit to employ, both permits being issued by the Labor Commissioner’s Office. The work permit is also a certificate of Age.\n\n### Minimum Wages:\nThe minimum wages in California is $15.50. FLSA allows employes to pay minors a minimum wage of not less than $4.25 an hour to employees who are under 20 years old during the first 90 consecutive calendar days after initial employment."
   },
   disclaimer: {
     title: 'Disclaimer',
@@ -8589,15 +8641,15 @@ const STAGING_LEGAL_PAGES = {
 
 Last Updated: Jun 10th, 20206
 
-### CoGo City Is a Marketplace Platform
+### Cogo City Is a Marketplace Platform
 
-CoGo City is an online marketplace that connects students, young adults, parents, neighbors, businesses, organizations, and other users seeking services, projects, internships, volunteer opportunities, workshops, mentorship, or employment-related opportunities.
+Cogo City is an online marketplace that connects students, young adults, parents, neighbors, businesses, organizations, and other users seeking services, projects, internships, volunteer opportunities, workshops, mentorship, or employment-related opportunities.
 
-CoGo City is not an employer, staffing agency, employment agency, labor contractor, recruiting firm, contractor, subcontractor, supervisor, educational institution, guardian, or legal representative of any user.
+Cogo City is not an employer, staffing agency, employment agency, labor contractor, recruiting firm, contractor, subcontractor, supervisor, educational institution, guardian, or legal representative of any user.
 
-CoGo City does not employ, supervise, direct, control, train, evaluate, or manage students, workers, employers, businesses, or other users of the platform.
+Cogo City does not employ, supervise, direct, control, train, evaluate, or manage students, workers, employers, businesses, or other users of the platform.
 
-Any agreement, relationship, project, service, employment arrangement, internship, volunteer position, payment arrangement, or other engagement formed through CoGo City exists solely between the participating users.
+Any agreement, relationship, project, service, employment arrangement, internship, volunteer position, payment arrangement, or other engagement formed through Cogo City exists solely between the participating users.
 
 ### User Responsibility
 
@@ -8610,7 +8662,7 @@ Users are solely responsible for:
 - Complying with all applicable federal, state, and local laws.
 - Obtaining any permits, licenses, insurance, parental permissions, or other approvals required by law.
 
-CoGo City does not guarantee the accuracy, quality, legality, safety, legitimacy, qualifications, reliability, availability, or performance of any user, opportunity, service, employer, student, project, or business listed on the platform.
+Cogo City does not guarantee the accuracy, quality, legality, safety, legitimacy, qualifications, reliability, availability, or performance of any user, opportunity, service, employer, student, project, or business listed on the platform.
 
 ### Youth Employment and Minor Users
 
@@ -8618,9 +8670,9 @@ Federal, state, and local laws impose special restrictions on the employment of 
 
 Employers, parents, guardians, and students are solely responsible for understanding and complying with all applicable child labor, youth employment, wage and hour, workplace safety, and educational attendance laws, including but not limited to California labor laws and regulations.
 
-CoGo City does not verify whether a particular opportunity is legally permissible for a minor under applicable law.
+Cogo City does not verify whether a particular opportunity is legally permissible for a minor under applicable law.
 
-CoGo City does not determine whether a work permit, parental consent, school authorization, or other legal requirement applies to a specific opportunity.
+Cogo City does not determine whether a work permit, parental consent, school authorization, or other legal requirement applies to a specific opportunity.
 
 Employers are solely responsible for ensuring that any opportunity offered to a minor complies with all applicable laws and regulations.
 
@@ -8628,9 +8680,9 @@ Parents and guardians are strongly encouraged to review opportunities accepted b
 
 ### Payments and Tax Obligations
 
-CoGo City may facilitate payments through third-party payment processors, including Stripe or similar providers.
+Cogo City may facilitate payments through third-party payment processors, including Stripe or similar providers.
 
-CoGo City is not responsible for:
+Cogo City is not responsible for:
 
 - Payment disputes.
 - Chargebacks.
@@ -8647,7 +8699,7 @@ Users are solely responsible for determining and complying with their tax, repor
 
 ### No Background Verification Guarantee
 
-Although CoGo City may offer optional verification tools, profile verification, badges, reviews, ratings, or background screening services, such services do not constitute a guarantee of safety, trustworthiness, identity, qualifications, criminal history, or suitability.
+Although Cogo City may offer optional verification tools, profile verification, badges, reviews, ratings, or background screening services, such services do not constitute a guarantee of safety, trustworthiness, identity, qualifications, criminal history, or suitability.
 
 No screening process can eliminate all risk.
 
@@ -8663,11 +8715,11 @@ Users should meet in safe locations whenever possible and share relevant informa
 
 If an emergency occurs, contact local emergency services immediately.
 
-CoGo City does not supervise in-person meetings, work activities, transportation, job sites, workshops, events, or communications between users.
+Cogo City does not supervise in-person meetings, work activities, transportation, job sites, workshops, events, or communications between users.
 
 ### No Liability for User Conduct
 
-CoGo City is not responsible for and expressly disclaims liability for:
+Cogo City is not responsible for and expressly disclaims liability for:
 
 - User conduct.
 - Fraud.
@@ -8703,7 +8755,7 @@ IN NO EVENT SHALL COGO CITY'S TOTAL LIABILITY EXCEED THE GREATER OF $100 OR THE 
 
 ### Indemnification
 
-Users agree to defend, indemnify, and hold harmless CoGo City and its affiliates, officers, directors, employees, contractors, and agents from any claims, liabilities, damages, losses, costs, expenses, and legal fees arising out of:
+Users agree to defend, indemnify, and hold harmless Cogo City and its affiliates, officers, directors, employees, contractors, and agents from any claims, liabilities, damages, losses, costs, expenses, and legal fees arising out of:
 
 - User conduct.
 - User content.
@@ -8716,33 +8768,33 @@ Users agree to defend, indemnify, and hold harmless CoGo City and its affiliates
 
 ### No Legal Advice
 
-Information provided by CoGo City, including blog posts, FAQs, educational materials, workshops, guides, or customer support communications, is provided for informational purposes only and does not constitute legal, tax, employment, accounting, financial, or professional advice.
+Information provided by Cogo City, including blog posts, FAQs, educational materials, workshops, guides, or customer support communications, is provided for informational purposes only and does not constitute legal, tax, employment, accounting, financial, or professional advice.
 
 Users should consult qualified professionals regarding their specific circumstances.
 
 ### Third-Party Services
 
-CoGo City may integrate with third-party services including payment processors, communication tools, verification providers, analytics services, and other technology partners.
+Cogo City may integrate with third-party services including payment processors, communication tools, verification providers, analytics services, and other technology partners.
 
-CoGo City is not responsible for the availability, security, accuracy, performance, actions, or policies of any third-party service provider.
+Cogo City is not responsible for the availability, security, accuracy, performance, actions, or policies of any third-party service provider.
 
 Users are subject to the terms and policies of those providers.
 
 ### Acceptance of Risk
 
-By using CoGo City, users acknowledge and accept that participating in online marketplaces, employment opportunities, internships, volunteer activities, workshops, business transactions, and in-person interactions involves inherent risks.
+By using Cogo City, users acknowledge and accept that participating in online marketplaces, employment opportunities, internships, volunteer activities, workshops, business transactions, and in-person interactions involves inherent risks.
 
 Users voluntarily assume all risks associated with their use of the platform.`
   },
   'terms-and-conditions': {
     title: 'Terms and Conditions',
-    body: "### Platform Role Disclaimer\n\nCoGo City is a technology platform that connects students, parents, neighbors, businesses, mentors, and other users for educational, entrepreneurial, volunteer, and work-related opportunities. CoGo City is not an employer, staffing agency, labor provider, contractor, broker, agent, or representative of any user of the platform.\n\nCoGo City does not supervise, direct, control, monitor, or guarantee the quality, legality, timing, safety, or suitability of any project, job, service, communication, or interaction between users.\n\nAll projects, services, employment opportunities, transactions, and interactions are solely between the participating users.\n\n### Independent Contractor & Employment Disclaimer\n\nUsers understand and agree that CoGo City does not employ students or other service providers listed on the platform.\n\nNothing contained in these Terms shall be construed to create any partnership, joint venture, employment, agency, or contractor relationship between CoGo City and any user.\n\nUsers are solely responsible for determining their own compliance with any applicable local, state, and federal laws, including laws relating to:\n\n- youth employment\n- independent contracting\n- permits\n- taxes\n- wages\n- workplace safety\n- insurance\n- work-hour restrictions\n- parental consent requirements\n\n### Parents & Minors\n\nIf you are under the age of 18, you may use the platform only with the involvement and consent of a parent or legal guardian.\n\nParents and guardians are solely responsible for supervising minors using the platform and evaluating the safety and appropriateness of any project, employer, neighbor, business, or interaction.\n\n### Assumption of Risk\n\nUsers understand that interactions arranged through the platform may involve online communications, in-person meetings, transportation, physical activity, tools, equipment, private residences, businesses, or other risks.\n\nBy using the platform, users voluntarily assume all risks associated with participation in projects, services, jobs, communications, and interactions arranged through the platform.\n\n### Release of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY SHALL NOT BE LIABLE FOR ANY INJURY, LOSS, DAMAGE, CLAIM, DISPUTE, PROPERTY DAMAGE, PERSONAL INJURY, DEATH, NEGLIGENCE, MISCONDUCT, HARASSMENT, ASSAULT, CRIMINAL ACTIVITY, OR OTHER INCIDENT ARISING OUT OF OR RELATING TO:\n\n- USER INTERACTIONS;\n- PROJECTS OR SERVICES;\n- EMPLOYMENT OPPORTUNITIES;\n- PAYMENTS;\n- IN-PERSON MEETINGS;\n- TRANSPORTATION;\n- COMMUNICATIONS;\n- OR USE OF THE PLATFORM.\n\nUSERS RELEASE AND HOLD HARMLESS COGO CITY, ITS OFFICERS, EMPLOYEES, CONTRACTORS, AFFILIATES, AND AGENTS FROM ANY CLAIMS, LIABILITIES, DAMAGES, OR LOSSES ARISING FROM USER ACTIVITIES OR INTERACTIONS.\n\n### Background Checks & Verification Disclaimer\n\nCoGo City may offer optional identity verification, ratings, reviews, or background checks. However, no screening or verification process can guarantee user safety or prevent all risks.\n\nCoGo City does not guarantee the identity, honesty, trustworthiness, qualifications, licensing, or conduct of any user.\n\n### Payments & Stripe Disclaimer\n\nPayments may be processed through third-party payment providers, including Stripe. CoGo City is not a bank, money transmitter, escrow company, or financial institution.\n\nProcessing times, payout timing, holds, refunds, disputes, chargebacks, and payment availability may be subject to third-party provider policies.\n\nCoGo City does not guarantee uninterrupted or error-free payment processing services.\n\n### User Conduct\n\nUsers agree not to:\n\n- engage in unlawful, unsafe, discriminatory, abusive, fraudulent, or harassing behavior;\n- request or perform illegal services;\n- misrepresent identity, qualifications, age, or experience;\n- circumvent platform payments or safety systems;\n- use the platform for dangerous or prohibited activities.\n\nCoGo City reserves the right to suspend or terminate accounts at any time for safety, legal, or policy concerns.\n\n### No Guarantee Disclaimer\n\nCoGo City does not guarantee:\n\n- that users will receive jobs, projects, or income;\n- that employers will find suitable candidates;\n- the quality or completion of services;\n- payment collection from users;\n- the availability of opportunities;\n- or uninterrupted platform access.\n\n### Dispute Resolution Between Users\n\nCoGo City is not responsible for resolving disputes between users. Users are encouraged to attempt to resolve disputes directly.\n\nCoGo City may, but is not obligated to, assist with dispute resolution at its sole discretion.\n\n### Limitation of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY’S TOTAL LIABILITY ARISING OUT OF OR RELATING TO THE PLATFORM SHALL NOT EXCEED THE GREATER OF:\n(A) THE TOTAL FEES PAID TO COGO CITY IN THE SIX (6) MONTHS PRECEDING THE CLAIM; OR\n(B) $100 USD.\n\n### Class Action Waiver\n\nUsers agree that any disputes shall be brought solely in an individual capacity and not as part of any class action or representative proceeding.\n\n### California Law\n\nThese Terms shall be governed by the laws of the State of California without regard to conflict of law principles."
+    body: "### Platform Role Disclaimer\n\nCogo City is a technology platform that connects students, parents, neighbors, businesses, mentors, and other users for educational, entrepreneurial, volunteer, and work-related opportunities. Cogo City is not an employer, staffing agency, labor provider, contractor, broker, agent, or representative of any user of the platform.\n\nCogo City does not supervise, direct, control, monitor, or guarantee the quality, legality, timing, safety, or suitability of any project, job, service, communication, or interaction between users.\n\nAll projects, services, employment opportunities, transactions, and interactions are solely between the participating users.\n\n### Independent Contractor & Employment Disclaimer\n\nUsers understand and agree that Cogo City does not employ students or other service providers listed on the platform.\n\nNothing contained in these Terms shall be construed to create any partnership, joint venture, employment, agency, or contractor relationship between Cogo City and any user.\n\nUsers are solely responsible for determining their own compliance with any applicable local, state, and federal laws, including laws relating to:\n\n- youth employment\n- independent contracting\n- permits\n- taxes\n- wages\n- workplace safety\n- insurance\n- work-hour restrictions\n- parental consent requirements\n\n### Parents & Minors\n\nIf you are under the age of 18, you may use the platform only with the involvement and consent of a parent or legal guardian.\n\nParents and guardians are solely responsible for supervising minors using the platform and evaluating the safety and appropriateness of any project, employer, neighbor, business, or interaction.\n\n### Assumption of Risk\n\nUsers understand that interactions arranged through the platform may involve online communications, in-person meetings, transportation, physical activity, tools, equipment, private residences, businesses, or other risks.\n\nBy using the platform, users voluntarily assume all risks associated with participation in projects, services, jobs, communications, and interactions arranged through the platform.\n\n### Release of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY SHALL NOT BE LIABLE FOR ANY INJURY, LOSS, DAMAGE, CLAIM, DISPUTE, PROPERTY DAMAGE, PERSONAL INJURY, DEATH, NEGLIGENCE, MISCONDUCT, HARASSMENT, ASSAULT, CRIMINAL ACTIVITY, OR OTHER INCIDENT ARISING OUT OF OR RELATING TO:\n\n- USER INTERACTIONS;\n- PROJECTS OR SERVICES;\n- EMPLOYMENT OPPORTUNITIES;\n- PAYMENTS;\n- IN-PERSON MEETINGS;\n- TRANSPORTATION;\n- COMMUNICATIONS;\n- OR USE OF THE PLATFORM.\n\nUSERS RELEASE AND HOLD HARMLESS COGO CITY, ITS OFFICERS, EMPLOYEES, CONTRACTORS, AFFILIATES, AND AGENTS FROM ANY CLAIMS, LIABILITIES, DAMAGES, OR LOSSES ARISING FROM USER ACTIVITIES OR INTERACTIONS.\n\n### Background Checks & Verification Disclaimer\n\nCogo City may offer optional identity verification, ratings, reviews, or background checks. However, no screening or verification process can guarantee user safety or prevent all risks.\n\nCogo City does not guarantee the identity, honesty, trustworthiness, qualifications, licensing, or conduct of any user.\n\n### Payments & Stripe Disclaimer\n\nPayments may be processed through third-party payment providers, including Stripe. Cogo City is not a bank, money transmitter, escrow company, or financial institution.\n\nProcessing times, payout timing, holds, refunds, disputes, chargebacks, and payment availability may be subject to third-party provider policies.\n\nCogo City does not guarantee uninterrupted or error-free payment processing services.\n\n### User Conduct\n\nUsers agree not to:\n\n- engage in unlawful, unsafe, discriminatory, abusive, fraudulent, or harassing behavior;\n- request or perform illegal services;\n- misrepresent identity, qualifications, age, or experience;\n- circumvent platform payments or safety systems;\n- use the platform for dangerous or prohibited activities.\n\nCogo City reserves the right to suspend or terminate accounts at any time for safety, legal, or policy concerns.\n\n### No Guarantee Disclaimer\n\nCogo City does not guarantee:\n\n- that users will receive jobs, projects, or income;\n- that employers will find suitable candidates;\n- the quality or completion of services;\n- payment collection from users;\n- the availability of opportunities;\n- or uninterrupted platform access.\n\n### Dispute Resolution Between Users\n\nCogo City is not responsible for resolving disputes between users. Users are encouraged to attempt to resolve disputes directly.\n\nCogo City may, but is not obligated to, assist with dispute resolution at its sole discretion.\n\n### Limitation of Liability\n\nTO THE MAXIMUM EXTENT PERMITTED BY LAW, COGO CITY’S TOTAL LIABILITY ARISING OUT OF OR RELATING TO THE PLATFORM SHALL NOT EXCEED THE GREATER OF:\n(A) THE TOTAL FEES PAID TO COGO CITY IN THE SIX (6) MONTHS PRECEDING THE CLAIM; OR\n(B) $100 USD.\n\n### Class Action Waiver\n\nUsers agree that any disputes shall be brought solely in an individual capacity and not as part of any class action or representative proceeding.\n\n### California Law\n\nThese Terms shall be governed by the laws of the State of California without regard to conflict of law principles."
   },
   accessibility: {
     title: 'Accessibility Statement',
     body: `Last Updated: June 9, 2026
 
-CoGo City is committed to making its website and platform accessible to the widest possible audience, including people who use assistive technologies such as screen readers, keyboard navigation, voice input, and browser zoom.
+Cogo City is committed to making its website and platform accessible to the widest possible audience, including people who use assistive technologies such as screen readers, keyboard navigation, voice input, and browser zoom.
 
 ### Accessibility Goal
 
@@ -8765,11 +8817,11 @@ We are actively reviewing and improving:
 
 ### Third-Party Services
 
-Some payment flows are provided by Stripe. CoGo City aims to use accessible payment experiences and will continue testing custom payment pages and checkout flows for keyboard, screen-reader, and error-message accessibility.
+Some payment flows are provided by Stripe. Cogo City aims to use accessible payment experiences and will continue testing custom payment pages and checkout flows for keyboard, screen-reader, and error-message accessibility.
 
 ### Feedback
 
-If you have trouble accessing any part of CoGo City, please contact us so we can help and improve the experience.
+If you have trouble accessing any part of Cogo City, please contact us so we can help and improve the experience.
 
 Email: tanya@cogocity.com
 
@@ -8783,7 +8835,7 @@ Last accessibility review started: June 9, 2026`
     title: 'Privacy Policy',
     body: `Last Updated: June 4th, 2026
 
-CoGo City ("CoGo City," "we," "our," or "us") is committed to protecting the privacy and security of our users. This Privacy Policy explains how we collect, use, store, disclose, and protect information when you access or use the CoGo City platform, website, mobile applications, and related services (collectively, the "Platform").
+Cogo City ("Cogo City," "we," "our," or "us") is committed to protecting the privacy and security of our users. This Privacy Policy explains how we collect, use, store, disclose, and protect information when you access or use the Cogo City platform, website, mobile applications, and related services (collectively, the "Platform").
 
 By accessing or using the Platform, you acknowledge that you have read, understood, and agree to this Privacy Policy.
 
@@ -8813,7 +8865,7 @@ We may collect the following categories of information:
 
 ### Payment Information
 
-CoGo City does not store full payment card or bank account information. Payments and payouts are processed through third-party payment providers, including Stripe. Information submitted through Stripe is governed by Stripe's privacy policy and security standards.
+Cogo City does not store full payment card or bank account information. Payments and payouts are processed through third-party payment providers, including Stripe. Information submitted through Stripe is governed by Stripe's privacy policy and security standards.
 
 ### Communications
 
@@ -8849,7 +8901,7 @@ We use information to:
 
 ### Information Sharing
 
-CoGo City does not sell personal information.
+Cogo City does not sell personal information.
 
 We may share information in the following circumstances:
 
@@ -8868,15 +8920,15 @@ We may disclose information if required by law, court order, subpoena, governmen
 - Protect users
 - Prevent fraud
 - Enforce our Terms of Service
-- Protect the rights, property, or safety of CoGo City or others
+- Protect the rights, property, or safety of Cogo City or others
 
 ### Business Transfers
 
-If CoGo City is involved in a merger, acquisition, financing, sale of assets, or bankruptcy proceeding, user information may be transferred as part of that transaction.
+If Cogo City is involved in a merger, acquisition, financing, sale of assets, or bankruptcy proceeding, user information may be transferred as part of that transaction.
 
 ### Privacy and Safety of Minors
 
-CoGo City serves students and young adults. Users under 18 years of age should involve a parent or legal guardian when using the Platform.
+Cogo City serves students and young adults. Users under 18 years of age should involve a parent or legal guardian when using the Platform.
 
 For users under 18:
 
@@ -8890,7 +8942,7 @@ Parents and guardians who believe their child has provided information without a
 
 ### Payment Processing
 
-All payment transactions are processed by third-party payment providers, including Stripe. CoGo City does not store full payment card numbers, bank account numbers, or payment credentials.
+All payment transactions are processed by third-party payment providers, including Stripe. Cogo City does not store full payment card numbers, bank account numbers, or payment credentials.
 
 By using payment services through the Platform, you agree to the applicable terms and privacy policies of our payment providers.
 
@@ -8927,7 +8979,7 @@ To exercise these rights, contact us at support@cogocity.com.
 
 If you have questions regarding this Privacy Policy, please contact:
 
-CoGo City
+Cogo City
 
 Email: support@cogocity.com
 
@@ -8938,9 +8990,9 @@ Website: www.cogocity.com`
 function renderStagingLegalPage(pageKey=''){
   const page = STAGING_LEGAL_PAGES[pageKey];
   if (!page) return renderHome();
-  document.title = `${page.title} | CoGo City`;
+  document.title = `${page.title} | Cogo City`;
   const metaDescription = document.querySelector('meta[name="description"]');
-  if (metaDescription) metaDescription.setAttribute('content', `${page.title} for CoGo City.`);
+  if (metaDescription) metaDescription.setAttribute('content', `${page.title} for Cogo City.`);
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="max-width:920px">
@@ -8962,7 +9014,7 @@ function createContactCaptcha(){
 function openContactUsForm(){
   const captchaQuestion = createContactCaptcha();
   openModal('Contact us', `
-    <div class="small muted" style="margin-bottom:12px">Send a message to CoGo City support. This will open your email app addressed to tanya@cogocity.com.</div>
+    <div class="small muted" style="margin-bottom:12px">Send a message to Cogo City support. This will open your email app addressed to tanya@cogocity.com.</div>
     <div class="field"><label for="contactName">Your Name</label><input id="contactName" placeholder="Your name" autocomplete="name"></div>
     <div class="field"><label for="contactEmail">Your Email</label><input id="contactEmail" type="email" placeholder="you@example.com" autocomplete="email"></div>
     <div class="field"><label for="contactSubject">Subject</label><input id="contactSubject" placeholder="How can we help?"></div>
@@ -9464,7 +9516,7 @@ function openLoginModal(tab='signin'){
     return openEmployerSignupWorkflow(authTab === 'neighbor' ? 'neighbor' : 'employer');
   }
 
-  openModal('Welcome to CoGo City', `
+  openModal('Welcome to Cogo City', `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
       <button class="pill ${authTab==='signin'?'active':''}" onclick="openLoginModal('signin')">Sign In</button>
       <button class="pill ${authTab==='student'?'active':''}" onclick="openLoginModal('student')">Join as Student</button>
@@ -9603,7 +9655,7 @@ function openPasswordResetConfirmModal(token=''){
   if (!token) return openLoginModal('signin');
   openModal('Choose New Password', `
     <div class="card form-card">
-      <div class="small muted" style="margin-bottom:10px">Enter a new password for your CoGo City account.</div>
+      <div class="small muted" style="margin-bottom:10px">Enter a new password for your Cogo City account.</div>
       ${renderPasswordField('New Password', 'resetNewPassword', { placeholder:'At least 8 characters', autocomplete:'new-password' })}
       ${renderPasswordField('Confirm New Password', 'resetConfirmPassword', { placeholder:'Repeat password', autocomplete:'new-password' })}
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
@@ -9674,7 +9726,7 @@ function openEmailVerificationPendingModal(email=''){
   openModal('Check Your Email', `
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:8px">Confirm your email before signing in</div>
-      <div class="small muted" style="margin-bottom:14px">We sent a CoGo City confirmation link to ${esc(email || 'your email address')}. Click that link, then you can sign in and continue setup.</div>
+      <div class="small muted" style="margin-bottom:14px">We sent a Cogo City confirmation link to ${esc(email || 'your email address')}. Click that link, then you can sign in and continue setup.</div>
       <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap">
         <button class="btn btn-outline" onclick="openEmailVerificationResendModal('${esc(email)}')">Resend Email</button>
         <button class="btn btn-blue" onclick="openLoginModal('signin')">Back to Sign In</button>
@@ -9691,7 +9743,7 @@ function completeSignupPendingEmailVerification(email=''){
   renderNav();
   location.hash = '#/';
   renderPage();
-  toast('Please check your email to confirm your CoGo City account before signing in.');
+  toast('Please check your email to confirm your Cogo City account before signing in.');
   openEmailVerificationPendingModal(email);
 }
 async function submitEmailVerificationResend(){
@@ -9716,7 +9768,7 @@ function openEmailVerificationConfirmModal(token=''){
   openModal('Confirming Email', `
     <div class="card form-card">
       <div style="font-weight:800;margin-bottom:8px">Confirming your email...</div>
-      <div class="small muted">Please wait while CoGo City verifies your confirmation link.</div>
+      <div class="small muted">Please wait while Cogo City verifies your confirmation link.</div>
     </div>
   `, '620px');
   submitEmailVerificationConfirm(token);
@@ -9740,7 +9792,7 @@ async function submitEmailVerificationConfirm(token=''){
     closeModal();
     dashSection = 'profile';
     location.hash = '#/dashboard';
-    toast('Email confirmed. Welcome to CoGo City.');
+    toast('Email confirmed. Welcome to Cogo City.');
     renderPage();
   } catch (error) {
     clearBackendAuthSession();
@@ -9752,7 +9804,7 @@ async function submitEmailVerificationConfirm(token=''){
 }
 const STUDENT_AVATAR_OPTIONS = ['\u{1F393}','\u{1F4DA}','\u{1F4BB}','\u{1F3A8}','\u{1F3B5}','\u26BD','\u{1F9E0}','\u{1F6B2}','\u{1F4F7}','\u{1F6E0}\uFE0F','\u{1F31F}','\u{1F3AC}','\u{1F9D1}\u200D\u{1F373}','\u{1F9EA}'];
 const ONBOARDING_PROFILE_IMAGE_HELP = 'Recommended profile photo: square 800 x 800 px. JPG or PNG works best.';
-const ONBOARDING_SERVICE_IMAGE_HELP = 'Recommended service or business image: 1200 x 675 px (16:9). Square or vertical images are OK; CoGo City will crop them neatly.';
+const ONBOARDING_SERVICE_IMAGE_HELP = 'Recommended service or business image: 1200 x 675 px (16:9). Square or vertical images are OK; Cogo City will crop them neatly.';
 const ONBOARDING_VIDEO_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link, or upload a short video. 16:9 video at 720p or 1080p under 60 seconds and under 15 MB works best.';
 const ONBOARDING_PROFILE_VIDEO_UPLOAD_HELP = 'Upload a short video: 16:9 video at 720p or 1080p, under 60 seconds, and under 15 MB works best.';
 const ONBOARDING_SERVICE_VIDEO_LINK_HELP = 'Paste a YouTube/Vimeo link, direct MP4/WebM link';
@@ -9862,13 +9914,13 @@ function isSignupLegalAcknowledged(id='signupLegalAck'){
   return !!document.getElementById(id)?.checked;
 }
 function renderUsOnlySignupNotice(){
-  return `<div class="signup-us-only-note">At this moment, CoGo City is available only within the United States. We hope to expand to other countries soon.</div>`;
+  return `<div class="signup-us-only-note">At this moment, Cogo City is available only within the United States. We hope to expand to other countries soon.</div>`;
 }
 function renderUsOnlyConfirmation(id='signupUsOnlyAck'){
   return `
     <label class="signup-legal-ack" for="${esc(id)}">
       <input id="${esc(id)}" type="checkbox">
-      <span>I confirm that I live in the United States and will use CoGo City only for U.S.-based opportunities.</span>
+      <span>I confirm that I live in the United States and will use Cogo City only for U.S.-based opportunities.</span>
     </label>
   `;
 }
@@ -9891,7 +9943,7 @@ function getEmployerSignupElement(id){
   return getScopedSignupElement('[data-employer-signup-root="true"]', id);
 }
 function usOnlyBlockMessage(){
-  return 'Thanks for your interest in CoGo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
+  return 'Thanks for your interest in Cogo City. At this moment, we can only support users and opportunities within the United States, but we hope to expand to other countries soon.';
 }
 function addressLooksOutsideUs(address=''){
   const value = String(address || '').toLowerCase();
@@ -9958,7 +10010,7 @@ function renderStudentSignupStepContent(){
       </div>
       <div class="field"><label>Email address</label><input id="studentFlowEmail" type="email" value="${esc(d.email)}" placeholder="your@email.com" autocomplete="email"><div class="small muted" style="margin-top:6px">We will use this email for your account and important onboarding updates.</div></div>
       <div class="row">
-        <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || d.birthday || '')}"><div class="small muted" style="margin-top:6px">You must be between 14–25 years old to sign up as a student on CoGo City. Your age will automatically update each year based on your birth date.</div></div>
+        <div class="field"><label>Birthday</label><input id="studentFlowBirthday" type="date" value="${esc(d.birthDate || d.birthday || '')}"><div class="small muted" style="margin-top:6px">You must be between 14–25 years old to sign up as a student on Cogo City. Your age will automatically update each year based on your birth date.</div></div>
         <div class="field"><label>School</label><input id="studentFlowSchool" value="${esc(d.school)}" placeholder="School name"></div>
       </div>
     </div>
@@ -10084,7 +10136,7 @@ async function saveStudentSignupStep(step){
     if (!migrationIsValidEmailAddress(email)) return toast('Please enter a valid email address.'), false;
     if (firstNameValue.length < 2) return toast('Please enter your full first name.'), false;
     if (lastNameValue.length < 2) return toast('Please enter your full last name.'), false;
-    if (age < 14 || age > 25) return toast('You must be between 14–25 years old to sign up as a student on CoGo City.'), false;
+    if (age < 14 || age > 25) return toast('You must be between 14–25 years old to sign up as a student on Cogo City.'), false;
     Object.assign(studentSignupDraft, { firstName:firstNameValue, lastName:lastNameValue, name, email, birthDate, birthday:birthDate, birthYear: Number(birthDate.slice(0, 4)), age, school });
     return true;
   }
@@ -10438,7 +10490,7 @@ async function submitStudentSignupProfile(){
 async function publishStudentSignupProfile(){
   if (!studentSignupDraft.profileReady) return toast('Please submit and publish your profile first.');
   if (!(await saveStudentSignupStep(7))) return;
-  if (!isUsOnlyConfirmed('studentSignupUsOnlyAck')) return toast('Please confirm that you live in the United States and will use CoGo City only for U.S.-based opportunities.');
+  if (!isUsOnlyConfirmed('studentSignupUsOnlyAck')) return toast('Please confirm that you live in the United States and will use Cogo City only for U.S.-based opportunities.');
   if (!isSignupLegalAcknowledged('studentSignupLegalAck')) return toast('Please acknowledge the Privacy Policy, Disclaimer, and Safety & Legal Guidelines before signing up.');
   const d = studentSignupDraft;
   if (!(d.services || []).length) return toast('Please add at least one service.');
@@ -10916,7 +10968,7 @@ function renderEmployerSignupModal(){
   const label = employerSignupMode === 'employer' ? 'Employer' : 'Neighbor';
   const footer = renderEmployerSignupFooter();
   ensureEmployerOnboardingCopyConfigLoaded();
-  openModal(`Join CoGo City as ${label}`, `
+  openModal(`Join Cogo City as ${label}`, `
     <div data-employer-signup-root="true">
       <div class="card" style="padding:14px 16px;background:#F9FAFB;border:1px solid var(--border);margin-bottom:16px">
         <div class="split" style="align-items:center;gap:12px;flex-wrap:wrap">
@@ -10967,7 +11019,7 @@ function renderEmployerSignupStepContent(){
       <div id="employer-business-video-preview" style="margin-bottom:14px">${renderVideoPreviewHtml(getRenderableVideoUrl({ video_url:d.business_video_url, video_type:d.business_video_type, video_id:d.business_video_id }), 'Business video')}</div>
       <div class="field"><label>Business Phone Number (private)</label><input id="employerBusinessPhone" value="${esc(d.businessPhone)}" placeholder="(555) 555-5555" oninput="syncEmployerSignupBusinessDraft()"><div class="small muted" style="margin-top:6px">This is a separate field from the personal phone number.</div></div>
       <div class="field"><label>Business Address</label><input id="employerBusinessAddress" value="${esc(d.businessAddress)}" placeholder="456 Business Ave, Walnut Creek, CA 94596" oninput="syncEmployerSignupBusinessDraft()" onfocus="attachGoogleAddressAutocomplete('employerBusinessAddress')"><div class="small muted" style="margin-top:6px">Enter street, city, state, and ZIP. Choose the correct Google suggestion when available. Only the city is shown publicly.</div></div>
-      <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by CoGo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
+      <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by Cogo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
     </div>
   `;
   if (employerSignupMode === 'employer' && employerSignupStep === 3) return `
@@ -11174,7 +11226,7 @@ async function submitEmployerSignupPreview(){
 async function publishEmployerSignupProfile(){
   const passwordStep = employerSignupMode === 'employer' ? 4 : 2;
   if (!(await saveEmployerSignupStep(passwordStep))) return;
-  if (!isUsOnlyConfirmed('employerSignupUsOnlyAck')) return toast('Please confirm that you live in the United States and will use CoGo City only for U.S.-based opportunities.');
+  if (!isUsOnlyConfirmed('employerSignupUsOnlyAck')) return toast('Please confirm that you live in the United States and will use Cogo City only for U.S.-based opportunities.');
   if (!isSignupLegalAcknowledged('employerSignupLegalAck')) return toast('Please acknowledge the Privacy Policy, Disclaimer, and Safety & Legal Guidelines before signing up.');
   const d = employerSignupDraft;
   const users = getUsers();
@@ -11355,27 +11407,27 @@ const FAQ_CATEGORIES = [
 ];
 
 const FAQ_ITEMS = [
-  { category:'general', question:'How does CoGo City work?', answer:['CoGo City helps students connect with local job opportunities, freelance gigs, and entrepreneurial experiences.','Students, parents, employers, and neighbors can use the platform to discover opportunities, communicate, approve project details, and coordinate next steps.','CoGo City facilitates introductions and platform tools, but users remain responsible for evaluating opportunities, communicating clearly, and following applicable laws.'] },
-  { category:'safety', question:'What safety rules should students follow?', answer:['Students under 18 should always inform a parent or guardian about jobs they accept.','Share the job location, employer information, and schedule with parents.','Never accept dangerous or illegal work.','Meet in public places when possible.','Keep communication inside the CoGo City platform whenever possible.','Leave immediately if a situation feels unsafe.'] },
-  { category:'safety', question:'Does CoGo City background check users?', answer:['CoGo City may implement certain verification or safety features, but users and parents remain responsible for evaluating opportunities and supervising minors.'] },
-  { category:'students', question:'Can students under 18 work in California?', answer:['Yes, but California has strict labor laws regarding work permits, work hours, hazardous work, and school attendance requirements.'], links:[{ label:'CoGo City: Youth Labor Law in CA', href:'https://cogocity.com/youth-labor-law-in-ca/' },{ label:'California Child Labor Law Pamphlet', href:'https://www.dir.ca.gov/dlse/childlaborlawpamphlet.pdf' }] },
+  { category:'general', question:'How does Cogo City work?', answer:['Cogo City helps students connect with local job opportunities, freelance gigs, and entrepreneurial experiences.','Students, parents, employers, and neighbors can use the platform to discover opportunities, communicate, approve project details, and coordinate next steps.','Cogo City facilitates introductions and platform tools, but users remain responsible for evaluating opportunities, communicating clearly, and following applicable laws.'] },
+  { category:'safety', question:'What safety rules should students follow?', answer:['Students under 18 should always inform a parent or guardian about jobs they accept.','Share the job location, employer information, and schedule with parents.','Never accept dangerous or illegal work.','Meet in public places when possible.','Keep communication inside the Cogo City platform whenever possible.','Leave immediately if a situation feels unsafe.'] },
+  { category:'safety', question:'Does Cogo City background check users?', answer:['Cogo City may implement certain verification or safety features, but users and parents remain responsible for evaluating opportunities and supervising minors.'] },
+  { category:'students', question:'Can students under 18 work in California?', answer:['Yes, but California has strict labor laws regarding work permits, work hours, hazardous work, and school attendance requirements.'], links:[{ label:'Cogo City: Youth Labor Law in CA', href:'https://cogocity.com/youth-labor-law-in-ca/' },{ label:'California Child Labor Law Pamphlet', href:'https://www.dir.ca.gov/dlse/childlaborlawpamphlet.pdf' }] },
   { category:'students', question:'Do students need work permits?', answer:['In many cases, yes. Most minors under 18 in California require a work permit issued through their school.'] },
-  { category:'students', question:'Can students work additional hours?', answer:['Students should NOT work additional hours beyond the approved estimate unless the employer approves those hours through the CoGo City messaging system before the work continues.'] },
+  { category:'students', question:'Can students work additional hours?', answer:['Students should NOT work additional hours beyond the approved estimate unless the employer approves those hours through the Cogo City messaging system before the work continues.'] },
   { category:'students', question:'What should students do after finishing work?', answer:['Students should click “Project Completed” once the work is finished so the employer can review the work and release payment.'] },
   { category:'parents', question:'Should parents monitor student jobs?', answer:['Yes. Parents and guardians are strongly encouraged to review all job details, know the work location, know the employer information, discuss safety expectations, and supervise minors appropriately.'] },
-  { category:'parents', question:'Is CoGo City responsible for supervising minors?', answer:['No. Parents and guardians remain responsible for supervising minors and evaluating opportunities.'] },
+  { category:'parents', question:'Is Cogo City responsible for supervising minors?', answer:['No. Parents and guardians remain responsible for supervising minors and evaluating opportunities.'] },
   { category:'employers', question:'What must employers do before hiring a student?', answer:['Employers should clearly explain the work, provide accurate contact information, maintain a safe environment, comply with California youth labor laws, and obtain required permits when applicable.'] },
-  { category:'employers', question:'Can employers approve additional hours?', answer:['Yes. Any additional hours beyond the original estimate must be approved through the CoGo City platform before the student continues working.'] },
-  { category:'employers', question:'What happens after the project is completed?', answer:['Once the student marks the project as completed, the employer will have the opportunity to review the final submitted hours and approve payment.','If no action is taken within 24 hours after project completion, CoGo City may automatically process payment for up to the originally approved estimated project amount.','If the employer previously approved additional hours through the platform, the employer remains responsible for payment of those approved additional hours.'] },
+  { category:'employers', question:'Can employers approve additional hours?', answer:['Yes. Any additional hours beyond the original estimate must be approved through the Cogo City platform before the student continues working.'] },
+  { category:'employers', question:'What happens after the project is completed?', answer:['Once the student marks the project as completed, the employer will have the opportunity to review the final submitted hours and approve payment.','If no action is taken within 24 hours after project completion, Cogo City may automatically process payment for up to the originally approved estimated project amount.','If the employer previously approved additional hours through the platform, the employer remains responsible for payment of those approved additional hours.'] },
   { category:'neighbors', question:'Can neighbors hire students for small local jobs?', answer:['Yes. Examples may include babysitting, tutoring, pet care, yard work, tech help, event assistance, and other age-appropriate tasks.'] },
   { category:'neighbors', question:'What should neighbors avoid?', answer:['Neighbors should never ask students to perform dangerous work, roofing, heavy lifting, hazardous construction, unsafe transportation, or illegal activities.'] },
-  { category:'payments', question:'How does payment work?', answer:['CoGo City securely processes payments through Stripe.','When a project is completed, students pay a 12% platform fee and employers pay a 12% platform fee.','Example: A student completes a project worth $75. Student View: Project Amount $75.00, CoGo City Service Fee (12%) -$9.00, Student Earnings $66.00. Employer View: Project Amount $75.00, Platform Fee (12%) +$9.00, Total Paid $84.00.','Payments are processed securely through Stripe, and earnings are deposited directly into the student\'s connected bank account.'], answerHtml:`<p>CoGo City securely processes payments through Stripe.</p><p>When a project is completed:</p><ul><li>Students pay a 12% platform fee.</li><li>Employers pay a 12% platform fee.</li></ul><div class="faq-example"><h3>Example</h3><p>A student completes a project worth $75.</p><h3>Student View (My Transactions)</h3><p>Project Amount: $75.00<br>CoGo City Service Fee (12%): -$9.00<br>Student Earnings: $66.00</p><h3>Employer View (My Transactions)</h3><p>Project Amount: $75.00<br>Platform Fee (12%): +$9.00<br>Total Paid: $84.00</p></div><p>Payments are processed securely through Stripe, and earnings are deposited directly into the student's connected bank account.</p>` },
-  { category:'payments', question:'How are taxes handled?', answer:['CoGo City processes payments through Stripe Connect. During onboarding, Stripe may require students and employers to provide identity, tax, and banking information to comply with financial regulations.','For Students: Students are responsible for reporting and paying any taxes related to their earnings. Stripe may collect tax information and issue required tax forms when applicable under federal or state regulations. Earnings received through CoGo City may be considered taxable income.','For Employers: Employers are responsible for determining any tax obligations related to hiring students and for complying with all applicable federal, state, and local laws. Employers should consult a tax professional if they have questions about their specific situation.','Important: CoGo City does not provide tax, legal, or accounting advice. Users are responsible for understanding and meeting their own tax obligations. We recommend consulting a qualified tax professional if you have questions regarding taxes or reporting requirements.'], answerHtml:`<p>CoGo City processes payments through Stripe Connect. During onboarding, Stripe may require students and employers to provide identity, tax, and banking information to comply with financial regulations.</p><h3>For Students</h3><p>Students are responsible for reporting and paying any taxes related to their earnings. Stripe may collect tax information and issue required tax forms when applicable under federal or state regulations. Earnings received through CoGo City may be considered taxable income.</p><h3>For Employers</h3><p>Employers are responsible for determining any tax obligations related to hiring students and for complying with all applicable federal, state, and local laws. Employers should consult a tax professional if they have questions about their specific situation.</p><h3>Important</h3><p>CoGo City does not provide tax, legal, or accounting advice. Users are responsible for understanding and meeting their own tax obligations. We recommend consulting a qualified tax professional if you have questions regarding taxes or reporting requirements.</p>` },
-  { category:'payments', question:'Does CoGo City guarantee payment?', answer:['CoGo City facilitates payment processing between users. CoGo City may automatically process payment for approved project amounts, but does not guarantee payment for disputed work, unapproved additional hours, chargebacks, failed payments, or disagreements between users.'] },
-  { category:'payments', question:'Who is responsible for disputes?', answer:['Users are responsible for resolving disputes directly with one another. CoGo City may review reported issues but is not responsible for resolving legal disputes between users.'] },
-  { category:'legal', question:'Is CoGo City the employer?', answer:['No. CoGo City is a technology platform only.'] },
-  { category:'legal', question:'Does CoGo City provide insurance?', answer:['No. CoGo City does not provide workers’ compensation, liability insurance, accident coverage, or employment insurance.'] },
-  { category:'legal', question:'Can CoGo City remove users?', answer:['Yes. CoGo City reserves the right to suspend or remove users who violate platform policies or create unsafe situations.'] }
+  { category:'payments', question:'How does payment work?', answer:['Cogo City securely processes payments through Stripe.','When a project is completed, students pay a 12% platform fee and employers pay a 12% platform fee.','Example: A student completes a project worth $75. Student View: Project Amount $75.00, Cogo City Service Fee (12%) -$9.00, Student Earnings $66.00. Employer View: Project Amount $75.00, Platform Fee (12%) +$9.00, Total Paid $84.00.','Payments are processed securely through Stripe, and earnings are deposited directly into the student\'s connected bank account.'], answerHtml:`<p>Cogo City securely processes payments through Stripe.</p><p>When a project is completed:</p><ul><li>Students pay a 12% platform fee.</li><li>Employers pay a 12% platform fee.</li></ul><div class="faq-example"><h3>Example</h3><p>A student completes a project worth $75.</p><h3>Student View (My Transactions)</h3><p>Project Amount: $75.00<br>Cogo City Service Fee (12%): -$9.00<br>Student Earnings: $66.00</p><h3>Employer View (My Transactions)</h3><p>Project Amount: $75.00<br>Platform Fee (12%): +$9.00<br>Total Paid: $84.00</p></div><p>Payments are processed securely through Stripe, and earnings are deposited directly into the student's connected bank account.</p>` },
+  { category:'payments', question:'How are taxes handled?', answer:['Cogo City processes payments through Stripe Connect. During onboarding, Stripe may require students and employers to provide identity, tax, and banking information to comply with financial regulations.','For Students: Students are responsible for reporting and paying any taxes related to their earnings. Stripe may collect tax information and issue required tax forms when applicable under federal or state regulations. Earnings received through Cogo City may be considered taxable income.','For Employers: Employers are responsible for determining any tax obligations related to hiring students and for complying with all applicable federal, state, and local laws. Employers should consult a tax professional if they have questions about their specific situation.','Important: Cogo City does not provide tax, legal, or accounting advice. Users are responsible for understanding and meeting their own tax obligations. We recommend consulting a qualified tax professional if you have questions regarding taxes or reporting requirements.'], answerHtml:`<p>Cogo City processes payments through Stripe Connect. During onboarding, Stripe may require students and employers to provide identity, tax, and banking information to comply with financial regulations.</p><h3>For Students</h3><p>Students are responsible for reporting and paying any taxes related to their earnings. Stripe may collect tax information and issue required tax forms when applicable under federal or state regulations. Earnings received through Cogo City may be considered taxable income.</p><h3>For Employers</h3><p>Employers are responsible for determining any tax obligations related to hiring students and for complying with all applicable federal, state, and local laws. Employers should consult a tax professional if they have questions about their specific situation.</p><h3>Important</h3><p>Cogo City does not provide tax, legal, or accounting advice. Users are responsible for understanding and meeting their own tax obligations. We recommend consulting a qualified tax professional if you have questions regarding taxes or reporting requirements.</p>` },
+  { category:'payments', question:'Does Cogo City guarantee payment?', answer:['Cogo City facilitates payment processing between users. Cogo City may automatically process payment for approved project amounts, but does not guarantee payment for disputed work, unapproved additional hours, chargebacks, failed payments, or disagreements between users.'] },
+  { category:'payments', question:'Who is responsible for disputes?', answer:['Users are responsible for resolving disputes directly with one another. Cogo City may review reported issues but is not responsible for resolving legal disputes between users.'] },
+  { category:'legal', question:'Is Cogo City the employer?', answer:['No. Cogo City is a technology platform only.'] },
+  { category:'legal', question:'Does Cogo City provide insurance?', answer:['No. Cogo City does not provide workers’ compensation, liability insurance, accident coverage, or employment insurance.'] },
+  { category:'legal', question:'Can Cogo City remove users?', answer:['Yes. Cogo City reserves the right to suspend or remove users who violate platform policies or create unsafe situations.'] }
 ];
 
 const FAQ_CONTENT_BY_LOCALE = {
@@ -11471,15 +11523,15 @@ function filterFaqItems(value=''){
 
 function renderFaqSafetyLegalPage(){
   updateFaqStructuredData();
-  document.title = 'FAQ, Safety & Legal Guidelines | CoGo City';
+  document.title = 'FAQ, Safety & Legal Guidelines | Cogo City';
   const metaDescription = document.querySelector('meta[name="description"]');
-  if (metaDescription) metaDescription.setAttribute('content', 'CoGo City FAQ, safety rules, California student labor guidelines, payment policies, employer and neighbor responsibilities, and legal disclaimers.');
+  if (metaDescription) metaDescription.setAttribute('content', 'Cogo City FAQ, safety rules, California student labor guidelines, payment policies, employer and neighbor responsibilities, and legal disclaimers.');
   const legalDisclaimer = {
-    intro:'CoGo City is a technology platform that facilitates introductions and connections between users. CoGo City is NOT an employer, staffing agency, contractor, legal representative, or supervisor of work performed through the platform.',
-    lead:'By using CoGo City, all users understand and agree that:',
-    bullets:['CoGo City does not employ students.','CoGo City does not supervise jobs or services.','CoGo City does not guarantee work quality, conduct, or outcomes.','Users are independently responsible for complying with all applicable laws.','Any agreement or employment relationship exists solely between the student and the hiring party.','CoGo City is not responsible for disputes, injuries, damages, losses, misconduct, or legal claims between users.']
+    intro:'Cogo City is a technology platform that facilitates introductions and connections between users. Cogo City is NOT an employer, staffing agency, contractor, legal representative, or supervisor of work performed through the platform.',
+    lead:'By using Cogo City, all users understand and agree that:',
+    bullets:['Cogo City does not employ students.','Cogo City does not supervise jobs or services.','Cogo City does not guarantee work quality, conduct, or outcomes.','Users are independently responsible for complying with all applicable laws.','Any agreement or employment relationship exists solely between the student and the hiring party.','Cogo City is not responsible for disputes, injuries, damages, losses, misconduct, or legal claims between users.']
   };
-  const finalNotice = 'By using CoGo City, users acknowledge that they use the platform at their own risk and are solely responsible for complying with applicable laws, communicating clearly, supervising minors appropriately, and making safe decisions.';
+  const finalNotice = 'By using Cogo City, users acknowledge that they use the platform at their own risk and are solely responsible for complying with applicable laws, communicating clearly, supervising minors appropriately, and making safe decisions.';
   const faqContent = getFaqContent('en');
   const sectionsHtml = faqContent.categories.map(cat => {
     const items = faqContent.items.filter(item => item.category === cat.id);
@@ -11496,7 +11548,7 @@ function renderFaqSafetyLegalPage(){
         <div class="container">
           <div class="faq-eyebrow">🛡️ Safety-first community guidelines</div>
           <h1>FAQ, Safety &amp; Legal Guidelines</h1>
-          <p class="faq-intro">Welcome to CoGo City — a platform designed to help students connect with local job opportunities, freelance gigs, and entrepreneurial experiences.</p>
+          <p class="faq-intro">Welcome to Cogo City — a platform designed to help students connect with local job opportunities, freelance gigs, and entrepreneurial experiences.</p>
           <p class="faq-intro" style="margin-top:10px">Please read these guidelines carefully before using the platform.</p>
         </div>
       </section>
@@ -11598,7 +11650,7 @@ function normalizeRenderedPageAccessibility(route=''){
   }
   app.querySelectorAll('img:not([alt])').forEach(img => img.setAttribute('alt', ''));
   app.querySelectorAll('button:not([type])').forEach(button => button.setAttribute('type', 'button'));
-  const title = (app.querySelector('h1') || {}).textContent || document.title || 'CoGo City';
+  const title = (app.querySelector('h1') || {}).textContent || document.title || 'Cogo City';
   announceToAssistiveTech(`${title} loaded`);
   if (route && !route.startsWith('#/reset-password') && !route.startsWith('#/verify-email')) {
     setTimeout(() => {
@@ -11770,6 +11822,7 @@ function refreshBrowseStudentResults(resetRows=false){
   if (resetRows) browseStudentVisibleRows = 4;
   const allCards = getHomepageOrderedServiceCards();
   const filteredCards = filterBrowseStudentCards(allCards);
+  ensureProfileRecordImagesLoaded(filteredCards.slice(0, getBrowseStudentVisibleCount()), { rerender:true });
   const grid = document.getElementById('browseStudentResults');
   if (grid) grid.innerHTML = renderBrowseStudentResults(filteredCards);
   const moreRow = document.getElementById('browseStudentMoreRow');
@@ -11855,7 +11908,7 @@ function renderHome(){
           ${homeBlock.body ? `<p>${esc(homeBlock.body)}</p>` : ''}
           <div class="home-hero-actions">
             ${!currentUser ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>` : ''}
-            <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Gigs</button>
+            <button class="btn btn-outline" style="${currentUser ? 'background:var(--color-primary);border-color:#F3CD45;color:var(--color-text-main)' : 'background:#fff'}" onclick="location.hash='#/community';renderPage()">Go to Community Gigs</button>
           </div>
         </div>
       </div>
@@ -11876,8 +11929,8 @@ function renderHome(){
           ${renderTestimonialsSection()}
           <div class="split" style="align-items:flex-end;margin-bottom:18px">
             <div>
-              <div class="section-title" style="margin:0 0 6px">From the CoGo City Blog</div>
-              <div class="small muted">Advice, interviews, safety tips, and student work insights from the current CoGo City site.</div>
+              <div class="section-title" style="margin:0 0 6px">From the Cogo City Blog</div>
+              <div class="small muted">Advice, interviews, safety tips, and student work insights from the current Cogo City site.</div>
             </div>
             <button class="btn btn-outline btn-sm" onclick="location.hash='#/blog';renderPage()">View All Articles</button>
           </div>
@@ -12000,14 +12053,14 @@ function getBlogPostSeoDescription(post={}){
       || post.meta_description
       || post.excerpt
       || post.content
-      || 'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
+      || 'Read Cogo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
     155
   );
 }
 function buildHomepageSeoMeta(){
   const path = '/';
-  const title = 'CoGo City | Local Student Services, Jobs and Community Opportunities';
-  const description = 'CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience.';
+  const title = 'Cogo City | Local Student Services, Jobs and Community Opportunities';
+  const description = 'Cogo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience.';
   return {
     type:'website',
     title,
@@ -12021,7 +12074,7 @@ function buildHomepageSeoMeta(){
       '@graph':[
         {
           '@type':'Organization',
-          name:'CoGo City',
+          name:'Cogo City',
           url:'https://cogocity.com/',
           logo:'https://cogocity.com/assets/cogocity-logo-blue.jpg',
           image:'https://cogocity.com/assets/cogocity-social-share.png',
@@ -12034,7 +12087,7 @@ function buildHomepageSeoMeta(){
         },
         {
           '@type':'WebSite',
-          name:'CoGo City',
+          name:'Cogo City',
           url:'https://cogocity.com/',
           description
         },
@@ -12043,26 +12096,26 @@ function buildHomepageSeoMeta(){
           mainEntity:[
             {
               '@type':'Question',
-              name:'What is CoGo City?',
+              name:'What is Cogo City?',
               acceptedAnswer:{
                 '@type':'Answer',
-                text:'CoGo City is a local platform that helps students, families, neighbors, and businesses connect for student services, community gigs, and direct hire opportunities.'
+                text:'Cogo City is a local platform that helps students, families, neighbors, and businesses connect for student services, community gigs, and direct hire opportunities.'
               }
             },
             {
               '@type':'Question',
-              name:'Who is CoGo City for?',
+              name:'Who is Cogo City for?',
               acceptedAnswer:{
                 '@type':'Answer',
-                text:'CoGo City is built for students looking for paid experience, families and neighbors looking for local help, and businesses that want to hire motivated student talent.'
+                text:'Cogo City is built for students looking for paid experience, families and neighbors looking for local help, and businesses that want to hire motivated student talent.'
               }
             },
             {
               '@type':'Question',
-              name:'What kinds of work can students do on CoGo City?',
+              name:'What kinds of work can students do on Cogo City?',
               acceptedAnswer:{
                 '@type':'Answer',
-                text:'Students can offer services like tutoring, babysitting, pet care, event help, office support, social media help, and other local skill-based work through CoGo City.'
+                text:'Students can offer services like tutoring, babysitting, pet care, event help, office support, social media help, and other local skill-based work through Cogo City.'
               }
             }
           ]
@@ -12074,25 +12127,23 @@ function buildHomepageSeoMeta(){
 function renderHomepageSeoContent(){
   return `
     <div class="homepage-seo-stack">
-      <section class="card homepage-seo-card" aria-labelledby="homepage-overview-title">
-        <h2 id="homepage-overview-title" class="section-title" style="margin-bottom:10px">What CoGo City Does</h2>
-        <p>CoGo City helps families, neighbors, and businesses connect with local students for trusted services, paid opportunities, and real-world work experience. It gives students a practical way to build skills, earn money, and grow confidence through work that starts in their own communities.</p>
-        <p>From tutoring and babysitting to event help, pet care, admin support, social media work, and local hiring, CoGo City is designed to make student talent easier to discover and safer to engage.</p>
-      </section>
       <section aria-labelledby="homepage-pathways-title">
-        <h2 id="homepage-pathways-title" class="section-title">Explore CoGo City</h2>
+        <h2 id="homepage-pathways-title" class="section-title">Explore Cogo City</h2>
         <div class="homepage-pillars">
           <article class="card homepage-pillar-card">
+            <div class="homepage-pillar-icon" aria-hidden="true">🎓</div>
             <h3>Student Services</h3>
             <p>Browse local student talent for tutoring, childcare, pet care, office help, creative work, sports coaching, and other skill-based services.</p>
             <a class="link-btn" href="/students" onclick="location.hash='#/students';renderPage();return false;">Browse student services</a>
           </article>
           <article class="card homepage-pillar-card">
+            <div class="homepage-pillar-icon" aria-hidden="true">🤝</div>
             <h3>Community Gigs</h3>
             <p>Discover short-term paid opportunities posted by neighbors, families, and community members who need local help.</p>
             <a class="link-btn" href="/community" onclick="location.hash='#/community';renderPage();return false;">Explore community gigs</a>
           </article>
           <article class="card homepage-pillar-card">
+            <div class="homepage-pillar-icon" aria-hidden="true">💼</div>
             <h3>Direct Hire</h3>
             <p>Support longer-term student hiring and employer demand for part-time work, internships, and early career opportunities.</p>
             <a class="link-btn" href="/jobs" onclick="location.hash='#/jobs';renderPage();return false;">View direct hire</a>
@@ -12100,38 +12151,49 @@ function renderHomepageSeoContent(){
         </div>
       </section>
       <section class="card homepage-seo-card" aria-labelledby="homepage-trust-title">
-        <h2 id="homepage-trust-title" class="section-title" style="margin-bottom:10px">Why Families and Businesses Use CoGo City</h2>
-        <ul>
-          <li>Trusted access to local student talent for real community needs</li>
-          <li>Clear pathways for students to build work experience before traditional employment</li>
-          <li>Safer, more community-centered connections than broad anonymous marketplaces</li>
-          <li>Strong fit for Tri-Valley, East Bay, and local-first hiring and service needs</li>
-        </ul>
-        <div class="homepage-links-row">
-          <a class="homepage-link-chip" href="/how-it-works" onclick="location.hash='#/how-it-works';renderPage();return false;">How It Works</a>
-          <a class="homepage-link-chip" href="/about-us" onclick="location.hash='#/about-us';renderPage();return false;">About Us</a>
-          <a class="homepage-link-chip" href="/faq-safety-legal" onclick="location.hash='#/faq-safety-legal';renderPage();return false;">Safety and FAQ</a>
-          <a class="homepage-link-chip" href="/blog" onclick="location.hash='#/blog';renderPage();return false;">Career Blog</a>
+        <h2 id="homepage-trust-title" class="section-title" style="margin-bottom:10px">Why Families and Businesses Use Cogo City</h2>
+        <div class="homepage-trust-layout">
+          <div>
+            <ul>
+              <li>Trusted access to local student talent for real community needs</li>
+              <li>Clear pathways for students to build work experience before traditional employment</li>
+              <li>Safer, more community-centered connections than broad anonymous marketplaces</li>
+              <li>Strong fit for Tri-Valley, East Bay, and local-first hiring and service needs</li>
+            </ul>
+            <div class="homepage-links-row">
+              <a class="homepage-link-chip" href="/how-it-works" onclick="location.hash='#/how-it-works';renderPage();return false;">How It Works</a>
+              <a class="homepage-link-chip" href="/about-us" onclick="location.hash='#/about-us';renderPage();return false;">About Us</a>
+              <a class="homepage-link-chip" href="/faq-safety-legal" onclick="location.hash='#/faq-safety-legal';renderPage();return false;">Safety and FAQ</a>
+              <a class="homepage-link-chip" href="/blog" onclick="location.hash='#/blog';renderPage();return false;">Career Blog</a>
+            </div>
+          </div>
+          <div class="homepage-trust-visual" role="img" aria-label="Placeholder image for a smiling student doing computer-based marketing or development work at a desk">
+            <div class="homepage-trust-placeholder-figure" aria-hidden="true">🧑‍💻</div>
+            <div class="homepage-trust-visual-label">
+              <strong>Placeholder image area</strong>
+              <span>Add a smiling student working at a desk on a computer here. Best replacement size: 1200 × 900 px.</span>
+            </div>
+          </div>
         </div>
       </section>
       <section aria-labelledby="homepage-faq-title">
         <h2 id="homepage-faq-title" class="section-title">Common Questions</h2>
         <div class="homepage-faq-grid">
           <article class="card homepage-faq-card homepage-seo-card">
-            <h3>What is CoGo City?</h3>
-            <p>CoGo City is a local marketplace connecting students, families, neighbors, and businesses for services, community gigs, and early work opportunities.</p>
-          </article>
-          <article class="card homepage-faq-card homepage-seo-card">
-            <h3>Who is CoGo City for?</h3>
-            <p>It is built for students who want paid experience, families and neighbors who need local help, and businesses that want motivated student talent.</p>
+            <h3>What is Cogo City?</h3>
+            <p>Cogo City is a local marketplace connecting students, families, neighbors, and businesses for services, community gigs, and early work opportunities.</p>
           </article>
           <article class="card homepage-faq-card homepage-seo-card">
             <h3>What kinds of student services are available?</h3>
             <p>Common services include tutoring, babysitting, pet sitting, event help, yard work, admin support, digital help, and creative services.</p>
           </article>
           <article class="card homepage-faq-card homepage-seo-card">
-            <h3>Why is CoGo City different?</h3>
-            <p>CoGo City focuses on local trust, real-world experience, and community-based student work instead of treating young people like anonymous listings on a generic gig platform.</p>
+            <h3>Who is Cogo City for?</h3>
+            <p>It is built for students who want paid experience, families and neighbors who need local help, and businesses that want motivated student talent.</p>
+          </article>
+          <article class="card homepage-faq-card homepage-seo-card">
+            <h3>Why is Cogo City different?</h3>
+            <p>Cogo City focuses on local trust, real-world experience, and community-based student work instead of treating young people like anonymous listings on a generic gig platform.</p>
           </article>
         </div>
       </section>
@@ -12142,8 +12204,8 @@ function buildBlogListSeoMeta(){
   const path = '/blog';
   return {
     type:'website',
-    title:'Student Work and Career Blog | CoGo City',
-    description:'Read CoGo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
+    title:'Student Work and Career Blog | Cogo City',
+    description:'Read Cogo City articles about student jobs, entrepreneurship, safety, and real-world work experience.',
     canonical:`https://cogocity.com${path}`,
     ogUrl:`https://cogocity.com${path}`,
     image:'https://cogocity.com/assets/cogocity-social-share.png',
@@ -12151,12 +12213,12 @@ function buildBlogListSeoMeta(){
     schema:{
       '@context':'https://schema.org',
       '@type':'Blog',
-      name:'CoGo City Blog',
+      name:'Cogo City Blog',
       url:`https://cogocity.com${path}`,
       description:'Articles about student jobs, entrepreneurship, safety, and real-world work experience.',
       publisher:{
         '@type':'Organization',
-        name:'CoGo City',
+        name:'Cogo City',
         logo:{
           '@type':'ImageObject',
           url:'https://cogocity.com/assets/cogocity-logo-blue.jpg'
@@ -12170,7 +12232,7 @@ function buildBlogPostSeoMeta(post={}){
   const path = `/blog/${slug}`;
   const description = getBlogPostSeoDescription(post);
   const image = getBlogPostSeoImageUrl(post);
-  const title = compactSeoText(`${post.seo_title || stripHtmlTags(post.title || 'CoGo City Blog')} | CoGo City`, 70);
+  const title = compactSeoText(`${post.seo_title || stripHtmlTags(post.title || 'Cogo City Blog')} | Cogo City`, 70);
   const publishedAt = post.date || post.createdAt || new Date().toISOString();
   const updatedAt = post.updatedAt || post.updated_at || publishedAt;
   return {
@@ -12184,7 +12246,7 @@ function buildBlogPostSeoMeta(post={}){
     schema:{
       '@context':'https://schema.org',
       '@type':'BlogPosting',
-      headline:compactSeoText(stripHtmlTags(post.title || post.seo_title || 'CoGo City Blog'), 110),
+      headline:compactSeoText(stripHtmlTags(post.title || post.seo_title || 'Cogo City Blog'), 110),
       description,
       image,
       datePublished:publishedAt,
@@ -12195,7 +12257,7 @@ function buildBlogPostSeoMeta(post={}){
       },
       publisher:{
         '@type':'Organization',
-        name:'CoGo City',
+        name:'Cogo City',
         logo:{
           '@type':'ImageObject',
           url:'https://cogocity.com/assets/cogocity-logo-blue.jpg'
@@ -12246,11 +12308,11 @@ function renderBlogCard(post){
   `;
 }
 const SEEDED_TESTIMONIALS = [
-  { id:'testimonial_ilya_l', user_email:'ilya@getcider.com', name:'Ilya L.', review:'CoGo City is an exceptional platform where I can find talented teens and students for both business and personal projects. It is truly refreshing to see the younger generation building their businesses from a young age. Through CoGo City, I found an excellent candidate for my business as well as a few tutors for my son. This platform is perfect for discovering young entrepreneurs for a wide range of projects. Highly recommended!', status:'approved', sort_order:10, createdAt:'2026-06-01T12:00:00.000Z', seeded:true },
+  { id:'testimonial_ilya_l', user_email:'ilya@getcider.com', name:'Ilya L.', review:'Cogo City is an exceptional platform where I can find talented teens and students for both business and personal projects. It is truly refreshing to see the younger generation building their businesses from a young age. Through Cogo City, I found an excellent candidate for my business as well as a few tutors for my son. This platform is perfect for discovering young entrepreneurs for a wide range of projects. Highly recommended!', status:'approved', sort_order:10, createdAt:'2026-06-01T12:00:00.000Z', seeded:true },
   { id:'testimonial_whitney_k', user_email:'whitlkay4', name:'Whitney K.', review:'I uploaded a babysitting profile on CoGo and found a job within a week! The platform is super user-friendly, and I loved that I could connect with employers directly through CoGo messaging. CoGo has been a game-changer for me!', status:'approved', sort_order:20, createdAt:'2026-06-01T12:05:00.000Z', seeded:true },
-  { id:'testimonial_caden_b', user_email:'cadenbanks1', name:'Caden B.', review:'I recently started using CoGo City, and it has quickly become an invaluable platform for me. In no time, I was able to connect with new clients quickly and effortlessly. CoGo City has given me the chance to build my own business and pursue my passion for teaching languages. If you are looking for new opportunities and a way to follow your passion, I highly recommend CoGo City.', status:'approved', sort_order:30, createdAt:'2026-06-01T12:10:00.000Z', seeded:true },
-  { id:'testimonial_remie_r', user_email:'remier2020', name:'Remie R.', review:'CoGo City helped me land my first photography gig and gave me the confidence to start promoting my services in the community. It is a great platform for students who want to gain real-world experience and earn money doing what they love. I look forward to finding more opportunities through CoGo City!', status:'approved', sort_order:40, createdAt:'2026-06-01T12:15:00.000Z', seeded:true },
-  { id:'testimonial_daniel_l', user_email:'dan.lipovich@gmail.com', name:'Daniel L.', review:'CoGo City helped me connect with people in my community who needed help. Through the platform, I repaired bikes for neighbors, built a website, and earned my own money doing things I enjoy. It has been a great way to gain experience, build confidence, and learn how to work with clients. I am excited to continue growing and finding new opportunities through CoGo City.', status:'approved', sort_order:50, createdAt:'2026-06-01T12:20:00.000Z', seeded:true }
+  { id:'testimonial_caden_b', user_email:'cadenbanks1', name:'Caden B.', review:'I recently started using Cogo City, and it has quickly become an invaluable platform for me. In no time, I was able to connect with new clients quickly and effortlessly. Cogo City has given me the chance to build my own business and pursue my passion for teaching languages. If you are looking for new opportunities and a way to follow your passion, I highly recommend Cogo City.', status:'approved', sort_order:30, createdAt:'2026-06-01T12:10:00.000Z', seeded:true },
+  { id:'testimonial_remie_r', user_email:'remier2020', name:'Remie R.', review:'Cogo City helped me land my first photography gig and gave me the confidence to start promoting my services in the community. It is a great platform for students who want to gain real-world experience and earn money doing what they love. I look forward to finding more opportunities through Cogo City!', status:'approved', sort_order:40, createdAt:'2026-06-01T12:15:00.000Z', seeded:true },
+  { id:'testimonial_daniel_l', user_email:'dan.lipovich@gmail.com', name:'Daniel L.', review:'Cogo City helped me connect with people in my community who needed help. Through the platform, I repaired bikes for neighbors, built a website, and earned my own money doing things I enjoy. It has been a great way to gain experience, build confidence, and learn how to work with clients. I am excited to continue growing and finding new opportunities through Cogo City.', status:'approved', sort_order:50, createdAt:'2026-06-01T12:20:00.000Z', seeded:true }
 ];
 function normalizeTestimonialRecord(item={}){
   const createdAt = item.createdAt || item.created_at || new Date().toISOString();
@@ -12322,7 +12384,7 @@ function getTestimonialStudentProfile(user=null, testimonial={}){
 function getTestimonialDisplay(testimonial={}){
   const user = getTestimonialUser(testimonial);
   const student = getTestimonialStudentProfile(user, testimonial);
-  const name = (user && (user.publicName || user.name)) || (student && student.name) || testimonial.name || 'CoGo City User';
+  const name = (user && (user.publicName || user.name)) || (student && student.name) || testimonial.name || 'Cogo City User';
   const imageId = (student && (student.profile_image_id || student.photo || (student.profileImages || [])[0]))
     || (user && (user.profile_image_id || user.photo || user.businessProfile?.image_id || user.businessProfile?.logo))
     || '';
@@ -12369,7 +12431,7 @@ function renderTestimonialCard(testimonial={}){
         ${renderTestimonialAvatar(testimonial)}
         <div>
           <div style="font-weight:900">${esc(display.name)}</div>
-          <div class="small muted">CoGo City member</div>
+          <div class="small muted">Cogo City member</div>
         </div>
       </div>
       <div class="testimonial-copy ${expanded ? '' : 'is-collapsed'}">${esc(testimonial.review)}</div>
@@ -12384,12 +12446,13 @@ function renderTestimonialsSection(){
   const maxStart = Math.max(0, items.length - visibleCount);
   testimonialCarouselIndex = Math.min(Math.max(0, testimonialCarouselIndex), maxStart);
   const visible = items.slice(testimonialCarouselIndex, testimonialCarouselIndex + visibleCount);
+  ensureTestimonialProfileImagesLoaded(visible, { rerender:true });
   return `
-    <section class="testimonial-section" aria-label="CoGo City testimonials">
+    <section class="testimonial-section" aria-label="Cogo City testimonials">
       <div class="testimonial-head">
         <div>
-          <div class="section-title" style="margin:0 0 6px">What CoGo City Members Say</div>
-          <div class="small muted">Real feedback from students, neighbors, and employers using CoGo City.</div>
+          <div class="section-title" style="margin:0 0 6px">What Cogo City Members Say</div>
+          <div class="small muted">Real feedback from students, neighbors, and employers using Cogo City.</div>
         </div>
       </div>
       <div class="testimonial-carousel">
@@ -12411,7 +12474,7 @@ function toggleTestimonialText(key=''){
 }
 function openLeaveReviewModal(){
   if (!currentUser) return openModal('Leave us a Review', `<div class="warning">You need to be signed in to leave us your review.</div>`, '520px');
-  if (testimonialAlreadySubmittedForCurrentUser()) return openModal('Leave us a Review', `<div class="warning">You already submitted a testimonial. Thank you for sharing your CoGo City experience.</div>`, '520px');
+  if (testimonialAlreadySubmittedForCurrentUser()) return openModal('Leave us a Review', `<div class="warning">You already submitted a testimonial. Thank you for sharing your Cogo City experience.</div>`, '520px');
   const draft = normalizeTestimonialRecord({ id:`testimonial_${currentUser.id}`, user_id:currentUser.id, user_email:currentUser.email || '', name:currentUser.publicName || currentUser.name || '', status:'pending' });
   const display = getTestimonialDisplay(draft);
   openModal('Leave us a Review', `
@@ -12419,7 +12482,7 @@ function openLeaveReviewModal(){
       ${renderTestimonialAvatar(draft)}
       <div><div class="small muted">Name</div><div style="font-weight:900">${esc(display.name)}</div></div>
     </div>
-    <div class="field"><label>Leave us your review</label><textarea id="testimonialReviewText" rows="6" placeholder="Share your experience with CoGo City"></textarea></div>
+    <div class="field"><label>Leave us your review</label><textarea id="testimonialReviewText" rows="6" placeholder="Share your experience with Cogo City"></textarea></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-blue" onclick="submitUserTestimonial()">Submit</button>
       <button class="btn btn-outline" onclick="closeModal(true)">Cancel</button>
@@ -12468,8 +12531,8 @@ function renderBlog(){
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <section class="hero community-hero">
-      <h1>CoGo City News & Updates</h1>
-      <p>Stay up to date with CoGo City news, student interviews, success stories, platform updates, and inspiring stories</p>
+      <h1>Cogo City News & Updates</h1>
+      <p>Stay up to date with Cogo City news, student interviews, success stories, platform updates, and inspiring stories</p>
     </section>
     <div class="container">
       ${featuredPost ? `
@@ -12634,10 +12697,10 @@ function getDirectJobShareUrl(jobId=''){
 async function shareDirectJob(jobId=''){
   const job = getDirectJobById(jobId);
   const url = getDirectJobShareUrl(jobId);
-  const title = job ? `${job.job_title} at ${job.company_name || 'CoGo City'}` : 'CoGo City job';
+  const title = job ? `${job.job_title} at ${job.company_name || 'Cogo City'}` : 'Cogo City job';
   try {
     if (navigator.share) {
-      await navigator.share({ title, text: `Check out this CoGo City job: ${title}`, url });
+      await navigator.share({ title, text: `Check out this Cogo City job: ${title}`, url });
       return;
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -13447,7 +13510,7 @@ function openWorkshopHostProfile(userId=''){
     <div class="card form-card">
       <div style="font-weight:800;font-size:1.1rem">${esc(user.publicName || user.name)}</div>
       <div class="small muted" style="margin-top:6px">${esc(user.city || extractCity(user.address || ''))}</div>
-      <div style="margin-top:10px">${renderFormattedLongText(user.about || 'Instructor on CoGo City', { small:true })}</div>
+      <div style="margin-top:10px">${renderFormattedLongText(user.about || 'Instructor on Cogo City', { small:true })}</div>
       ${currentUser && currentUser.id !== user.id ? `<button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="closeModal();activeThreadUserId='${esc(user.id)}';dashSection='messages';goDashboard()">Message Instructor</button>` : ''}
     </div>
   `, '560px');
@@ -13831,7 +13894,7 @@ function notifyWorkshopRefundParticipants(workshop, registration, refundAmount){
     queueSystemEmail(
       studentEmail,
       studentName,
-      `CoGo City Refund Processed: ${workshop.title}`,
+      `Cogo City Refund Processed: ${workshop.title}`,
       `Hi ${studentName},\n\nYour refund request has been approved.\nAmount refunded: ${refundText}\nWorkshop: ${workshop.title}\nReturned to card: ending in ${(student && student.paymentMethod && student.paymentMethod.last4) ? student.paymentMethod.last4 : '****'}\nStripe PaymentIntent: ${stripePaymentIntentId || 'pending'}\nStripe Refund ID: ${stripeRefundId || 'pending'}\n\nThank you,\nCoGo Team`,
       {
         type:'workshop_refund',
@@ -13846,7 +13909,7 @@ function notifyWorkshopRefundParticipants(workshop, registration, refundAmount){
     queueSystemEmail(
       admin.email || '',
       admin.publicName || admin.name || 'Admin',
-      `CoGo City Admin Alert: Workshop refund processed`,
+      `Cogo City Admin Alert: Workshop refund processed`,
       `Participant ${studentName} requested a refund for "${workshop.title}".\nRefunded amount: ${refundText}\nMoney was returned to ${studentName}.\nStripe PaymentIntent: ${stripePaymentIntentId || 'pending'}\nStripe Refund ID: ${stripeRefundId || 'pending'}.`,
       {
         type:'admin_workshop_refund_alert',
@@ -13903,7 +13966,7 @@ function addWorkshopToCalendar(workshopId=''){
   const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//CoGo City//Workshops//EN',
+    'PRODID:-//Cogo City//Workshops//EN',
     'BEGIN:VEVENT',
     `UID:${uidValue}`,
     `DTSTAMP:${toIcs(new Date())}`,
@@ -16283,7 +16346,7 @@ function togglePostComposer(){
           <div class="field"><label>Location</label><input id="jobLocation" placeholder="${esc(placeholders.location)}" value="${esc(draft.location || '')}" oninput="savePostComposerDraft()"></div>
         </div>
       ` : ''}
-      <div class="warning" style="margin:10px 0">For everyone’s safety, please keep all communication within CoGo City and avoid sharing personal contact information. Our secure messaging system helps protect both students and employers.</div>
+      <div class="warning" style="margin:10px 0">For everyone’s safety, please keep all communication within Cogo City and avoid sharing personal contact information. Our secure messaging system helps protect both students and employers.</div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-outline btn-sm" onclick="togglePostComposer()">Cancel</button>
         <button class="btn btn-blue btn-sm" onclick="submitPost()">Post to Feed</button>
@@ -16837,7 +16900,7 @@ async function sendDirectOffer(studentId, serviceId=''){
     if (notification?.syncPromise && (currentUser.role === 'admin' || String(currentUser.id) === String(s.userId))) {
       const syncResult = await notification.syncPromise;
       if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
-        toast('Offer saved, but student notification was not confirmed. Please contact CoGo City support.');
+        toast('Offer saved, but student notification was not confirmed. Please contact Cogo City support.');
         return;
       }
     }
@@ -17026,7 +17089,7 @@ function needsRequiredPayoutSetup(user=currentUser){
 }
 function platformReadyForEmployerAction(actionLabel='use hiring features'){
   if (needsMigrationOnboarding()) {
-    toast('Please update and confirm your profile before using CoGo City.');
+    toast('Please update and confirm your profile before using Cogo City.');
     dashSection = 'profile';
     goDashboard();
     return false;
@@ -17168,7 +17231,7 @@ function renderRequiredAccountChecklist(user=currentUser, options={}){
   if (!items.length) return '';
   return `
     <div class="card form-card" style="border:2px solid #fde68a;background:#fffbeb;margin-bottom:18px">
-      <div style="font-weight:900;font-size:1.1rem;margin-bottom:6px">Welcome back to CoGo City</div>
+      <div style="font-weight:900;font-size:1.1rem;margin-bottom:6px">Welcome back to Cogo City</div>
       <div class="small muted" style="margin-bottom:12px">To continue using this platform, please make sure all required information is provided. Check the items below and update anything missing.</div>
       <div style="display:grid;gap:8px">
         ${items.map(item => `
@@ -17320,11 +17383,11 @@ function renderMigrationOnboarding(el){
   const isEmployer = user.role === 'employer' && user.type !== 'neighbor';
   const title = isStudent ? 'Review your student profile' : isEmployer ? 'Complete your employer onboarding' : 'Review your neighbor profile';
   const intro = isStudent
-    ? 'We imported your old CoGo City information. Please review it, update anything that changed, and confirm before you apply, message, or publish services.'
+    ? 'We imported your old Cogo City information. Please review it, update anything that changed, and confirm before you apply, message, or publish services.'
     : isEmployer
-      ? 'We imported your old CoGo City account. Before you post jobs or contact students, please complete the new required business and contact fields.'
-      : 'Please review your account details before using the new CoGo City platform.';
-  const safetyTrustMessage = 'To help keep CoGo City safe and trustworthy, we ask all users to verify their profile information. Your information is securely stored and helps us protect students, families, and local businesses within our community.';
+      ? 'We imported your old Cogo City account. Before you post jobs or contact students, please complete the new required business and contact fields.'
+      : 'Please review your account details before using the new Cogo City platform.';
+  const safetyTrustMessage = 'To help keep Cogo City safe and trustworthy, we ask all users to verify their profile information. Your information is securely stored and helps us protect students, families, and local businesses within our community.';
   const business = user.businessProfile || {};
   const profile = currentStudentProfile();
   el.innerHTML = `
@@ -17446,7 +17509,7 @@ function renderEmployerMigrationOnboardingForm(user, business={}, isEmployer=fal
       <div class="field"><label>Business description *</label><textarea id="migBusinessAbout">${esc(business.about || '')}</textarea></div>
       <div class="field"><label>Business phone *</label><input id="migBusinessPhone" type="tel" placeholder="(555) 555-5555" value="${esc(business.phone || '')}" onblur="this.value=migrationFormatUsPhone(this.value)"></div>
       <div class="field"><label>Business address *</label><input id="migBusinessAddress" value="${esc(business.address || '')}" placeholder="Street, City, State ZIP — e.g. 456 Business Ave, Walnut Creek, CA 94596" onfocus="attachGoogleAddressAutocomplete('migBusinessAddress')" onblur="this.value=migrationFormatUsAddress(this.value)"><div class="small muted" style="margin-top:6px">Enter street address, city, state, and ZIP. We’ll clean up common formatting automatically.</div></div>
-      <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by CoGo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
+      <div class="warning" style="margin-top:8px">Tax ID / TIN is not collected by Cogo City. Stripe will collect required tax and identity details securely during payment onboarding.</div>
     </div>` : ''}
     <div style="margin-top:16px"><button class="btn btn-blue" onclick="submitEmployerMigrationOnboarding(${isEmployer ? 'true' : 'false'})">Confirm profile & continue</button></div>
   `;
@@ -17519,7 +17582,7 @@ function renderPaymentMethodRequired(el){
     ${renderRequiredAccountChecklist(currentUser, { hidePaymentMethod:true })}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
-      <div class="warning" style="margin:0 0 14px">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. CoGo City never stores card numbers.</div>
+      <div class="warning" style="margin:0 0 14px">Your profile review is complete. Before you can post jobs, message students, hire, or use other payer features, please add a credit card through Stripe. Cogo City never stores card numbers.</div>
       ${renderStripeOnboardingCard()}
     </div>
   `;
@@ -17530,8 +17593,8 @@ function renderProfileCompletionRequired(el){
     ${isEmployerLikeUser(currentUser) && needsRequiredPaymentMethod() ? `
       <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
         <div class="section-title" style="margin-bottom:8px">Add a payment method</div>
-        <div class="warning" style="margin:0 0 14px">You can add or update your payment method before finishing the remaining profile fields. CoGo City never stores card numbers.</div>
-        ${COGO_IS_PRODUCTION && !COGO_IS_TEMP_PRODUCTION_TEST ? `<div class="small muted" style="margin:0 0 12px">This is the live CoGo City site, so Stripe only accepts real payment cards here.</div>` : ''}
+        <div class="warning" style="margin:0 0 14px">You can add or update your payment method before finishing the remaining profile fields. Cogo City never stores card numbers.</div>
+        ${COGO_IS_PRODUCTION && !COGO_IS_TEMP_PRODUCTION_TEST ? `<div class="small muted" style="margin:0 0 12px">This is the live Cogo City site, so Stripe only accepts real payment cards here.</div>` : ''}
         ${renderStripeOnboardingCard()}
       </div>
     ` : ''}
@@ -17542,7 +17605,7 @@ function renderPayoutSetupRequired(el){
     ${renderRequiredAccountChecklist()}
     <div class="card form-card" style="border:2px solid #bfdbfe;background:#f8fbff;margin-bottom:18px">
       <div class="section-title" style="margin-bottom:8px">Set up payouts</div>
-      <div class="small muted">Before applying, messaging, or offering student services, please complete Stripe Connect so CoGo City can pay you. This is separate from adding a credit card for class registration.</div>
+      <div class="small muted">Before applying, messaging, or offering student services, please complete Stripe Connect so Cogo City can pay you. This is separate from adding a credit card for class registration.</div>
       ${renderStripeOnboardingCard()}
     </div>
   `;
@@ -18244,7 +18307,7 @@ function renderStudentDirectHire(el){
  el.innerHTML = `
    <div class="section-title">My Direct Hire</div>
    <div class="warning" style="margin-bottom:14px">
-     Direct Hire jobs are employment opportunities with the employer. If you are hired, the employer pays you directly through their payroll system. CoGo City does not collect or release student wages for Direct Hire jobs. When the job is complete, send your employer a message through CoGo City and ask them to leave a review. Reviews help build your reputation and support future opportunities.
+     Direct Hire jobs are employment opportunities with the employer. If you are hired, the employer pays you directly through their payroll system. Cogo City does not collect or release student wages for Direct Hire jobs. When the job is complete, send your employer a message through Cogo City and ask them to leave a review. Reviews help build your reputation and support future opportunities.
    </div>
    ${backendApplicationsLoading && !backendApplicationsLoaded
      ? `<div class="card form-card muted">Loading direct hire applications from the database...</div>`
@@ -18267,7 +18330,7 @@ function renderStudentDirectJobApplicationCard(app){
           <div class="muted small">Applied: ${esc(formatDirectJobCreatedDate(app.created_at))} \u00B7 Employer: ${renderBusinessNameLink(app.employer_id, company, true)}</div>
           <div class="small muted" style="margin-top:6px">Status: ${esc(status)}</div>
           <div class="warning" style="margin-top:10px">
-            If you are hired for this Direct Hire role, you will be hired and paid directly by the employer through the employer's payroll system, not through CoGo City payments. When the job is complete, send your employer a message through CoGo City and ask them to leave a review. Reviews help build your reputation and support future opportunities.
+            If you are hired for this Direct Hire role, you will be hired and paid directly by the employer through the employer's payroll system, not through Cogo City payments. When the job is complete, send your employer a message through Cogo City and ask them to leave a review. Reviews help build your reputation and support future opportunities.
           </div>
           ${app.message ? `<div class="small" style="margin-top:8px;line-height:1.6">${esc(app.message)}</div>` : ''}
         </div>
@@ -18427,7 +18490,7 @@ function renderStudentProjectCard(p, listIndex=0){
         ${collapsed ? '' : `
         <div class="card form-card" style="margin-top:10px;background:#fff">
           <div style="font-weight:800">Messages</div>
-          <div class="small muted" style="margin-top:6px">Please keep project messages inside CoGo City so everyone stays protected.</div>
+          <div class="small muted" style="margin-top:6px">Please keep project messages inside Cogo City so everyone stays protected.</div>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${actions.join('')}</div>
         </div>
         <div class="card form-card" style="margin-top:10px;background:#fff">
@@ -18461,7 +18524,7 @@ function openSubmitCompletion(projectId){
   const estimatedBreakdown = calculateCommissionBreakdown(currentHours || 0, projectBillingRate(p));
   openModal('Project Completion Form', `
     <div class="warning" style="margin-bottom:14px">
-      Once your work is complete, click \u201CProject Completed\u201D to notify the employer. After they review and approve it, CoGo City will release your payment. Do your best, great work leads to great reviews and helps you grow your skills.
+      Once your work is complete, click \u201CProject Completed\u201D to notify the employer. After they review and approve it, Cogo City will release your payment. Do your best, great work leads to great reviews and helps you grow your skills.
     </div>
     <div class="small muted" style="margin-bottom:14px">
       The contract included ${esc(p.estimatedHours)} hours. Enter the actual hours worked and your earnings preview will recalculate automatically before employer approval.
@@ -19379,7 +19442,7 @@ function renderEmployerMyJobs(el){
     ` : ''}
     ${(employerMyJobsTab === 'all' || employerMyJobsTab === 'applications') ? `
       <div style="font-weight:800;margin:12px 0 10px">Submitted Applications</div>
-      <div class="warning" style="margin-bottom:12px">Once you\u2019ve chosen a candidate, click \u201CHire\u201D to finalize your selection. Direct-hire payroll is handled directly by the employer outside CoGo City, so no additional CoGo payment is collected when hiring. When the job is complete, please return here to leave a review for the student. Your review is extremely important because it helps students build trust, confidence, and future opportunities.</div>
+      <div class="warning" style="margin-bottom:12px">Once you\u2019ve chosen a candidate, click \u201CHire\u201D to finalize your selection. Direct-hire payroll is handled directly by the employer outside Cogo City, so no additional CoGo payment is collected when hiring. When the job is complete, please return here to leave a review for the student. Your review is extremely important because it helps students build trust, confidence, and future opportunities.</div>
       ${filteredApps.length ? filteredApps.map(app => {
         const job = getDirectJobById(app.job_id);
         const student = getStudentByUserId(app.student_id);
@@ -19576,9 +19639,9 @@ function renderEmployerAppCard(a){
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Student service: ${esc(a.studentServiceTitle)}</div>` : ''}
           <div class="small" style="margin-top:8px">${renderCollapsibleLongText(a.jobDescription || a.message || '', `employer_app_description_${a.id}`, { small:true })}</div>
           ${a.rate ? `<div class="small muted" style="margin-top:8px">Proposed: $${esc(a.rate)}/hr \u00B7 ${esc(a.estimatedHours||'')} hours</div>` : ''}
-          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To help us keep CoGo City safe and running smoothly, a ${formatPercent(getPaymentSettings().employerCommissionPct)} platform support fee is added to the final work total for employers and neighbors.</div>` : ''}
+          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">To help us keep Cogo City safe and running smoothly, a ${formatPercent(getPaymentSettings().employerCommissionPct)} platform support fee is added to the final work total for employers and neighbors.</div>` : ''}
 
-          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">When you\u2019re ready for the student to begin, click \u201cStart Project\u201d. CoGo City will secure the project payment and notify the student that work can begin.<br><br>If your plans have changed and you no longer need help, please decline the project and, if possible, provide a short explanation so the student can continue looking for other opportunities.</div>` : ''}
+          ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">When you\u2019re ready for the student to begin, click \u201cStart Project\u201d. Cogo City will secure the project payment and notify the student that work can begin.<br><br>If your plans have changed and you no longer need help, please decline the project and, if possible, provide a short explanation so the student can continue looking for other opportunities.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(a.status)}
@@ -19695,7 +19758,7 @@ async function confirmSendOffer(appId){
     if (notification?.syncPromise) {
       const syncResult = await notification.syncPromise;
       if (!syncResult || Number(syncResult.created || 0) + Number(syncResult.skipped || 0) < 1) {
-        toast('Offer saved, but student notification was not confirmed. Please contact CoGo City support.');
+        toast('Offer saved, but student notification was not confirmed. Please contact Cogo City support.');
         return;
       }
     }
@@ -19982,7 +20045,7 @@ function openEmployerApproval(projectId){
       </div>
       <div class="small"><strong>Escrow held on start:</strong> $${esc(escrowHeld)}</div>
       <div style="margin-top:8px">${renderEmployerCommissionBreakdownHtml(breakdown, 'Actual')}</div>
-      <div class="small muted" style="margin-top:12px">Approving confirms the completed work and releases payment through CoGo City.</div>
+      <div class="small muted" style="margin-top:12px">Approving confirms the completed work and releases payment through Cogo City.</div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <button class="btn btn-green" onclick="this.disabled=true;this.textContent='Approving...';approveFinalInvoice('${esc(projectId)}', this)">Approve & Release Payment</button>
         <button class="btn btn-outline" onclick="openRequestChangesModal('${esc(projectId)}')">Request Changes</button>
@@ -20570,17 +20633,18 @@ function renderPublicStudentProfilePage(student){
   }
   applySeoMeta({
     title: requestedService
-      ? `${requestedService.title || 'Student Service'} | ${student.name || 'Student'} | CoGo City`
-      : `${student.name || 'Student'} | CoGo City`,
+      ? `${requestedService.title || 'Student Service'} | ${student.name || 'Student'} | Cogo City`
+      : `${student.name || 'Student'} | Cogo City`,
     description: compactSeoText(
       (requestedService && (requestedService.description || requestedService.location || requestedService.rate))
       || student.about
-      || `${student.name || 'Student'} offers local student services through CoGo City.`
+      || `${student.name || 'Student'} offers local student services through Cogo City.`
     ),
     canonical: `${window.location.origin}${desiredUrl}`,
     ogUrl: `${window.location.origin}${desiredUrl}`,
     robots: COGO_IS_STAGING ? 'noindex,nofollow' : 'index,follow'
   });
+  ensureProfileRecordImagesLoaded([student, user], { rerender:true });
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
     <div class="container" style="padding-top:28px;padding-bottom:42px">
@@ -20660,6 +20724,7 @@ function renderPublicProfilePage(){
   if (!user) return renderPublicProfileNotFound();
   const student = getStudentByUserId(user.id);
   if (student) return renderPublicStudentProfilePage(student);
+  ensureProfileRecordImagesLoaded([user], { rerender:true });
   const business = user.businessProfile || null;
   document.getElementById('app').innerHTML = `
     ${renderUserIdentityBanner()}
@@ -20897,8 +20962,8 @@ function renderMessages(el){
   if (!activeThreadUserId && threadList.length) activeThreadUserId = threadList[0].threadKey;
   if (activeThreadUserId && !threadList.some(t => t.threadKey === activeThreadUserId)) activeThreadUserId = threadList[0] ? threadList[0].threadKey : null;
   const messagingSafetyText = currentUser?.role === 'student'
-    ? 'For your safety, use CoGo City Messages whenever possible. If you share contact information or meet someone for a job, let a parent, family member, or trusted friend know who you are meeting and where.'
-    : 'Many CoGo City students are minors. Please be transparent when sharing contact information, job details, and meeting locations. Keep all interactions safe, professional, and respectful.';
+    ? 'For your safety, use Cogo City Messages whenever possible. If you share contact information or meet someone for a job, let a parent, family member, or trusted friend know who you are meeting and where.'
+    : 'Many Cogo City students are minors. Please be transparent when sharing contact information, job details, and meeting locations. Keep all interactions safe, professional, and respectful.';
 
   el.innerHTML = `
     <div class="section-title">Messages</div>
@@ -21190,7 +21255,7 @@ function renderAdminPanel(el){
         <div class="field"><label>Platform Support Fee Percentage for Employers/Neighbors</label><input id="adminEmployerCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.employerCommissionPct)}"></div>
       </div>
       ${WORKSHOPS_ENABLED ? `<div class="field"><label>Workshop/Class Platform Fee Percentage</label><input id="adminWorkshopCommissionPct" type="number" min="0" step="0.01" value="${esc(paymentSettings.workshopCommissionPct)}"></div>` : ''}
-      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, messaging, and payout calculations. Payments use configured provider records; no full card numbers are stored in CoGo City.</div>
+      <div class="small muted" style="margin-bottom:12px">These percentages control project, invoice, messaging, and payout calculations. Payments use configured provider records; no full card numbers are stored in Cogo City.</div>
       <button class="btn btn-blue" onclick="saveAdminPaymentSettings()">Save Payment Settings</button>
     </div>
     <div class="card form-card" style="margin-bottom:18px">
@@ -22498,7 +22563,7 @@ function renderAdminBlogEditorHtml(){
       </div>
       <div class="field"><label>Publish Date</label><input id="adminBlogDate" type="datetime-local" value="${esc(localDate)}"></div>
       <div class="field"><label>Excerpt / Summary</label><textarea id="adminBlogExcerpt" rows="4" placeholder="Short summary shown on the blog page">${esc(stripHtmlTags(post.excerpt || ''))}</textarea></div>
-      <div class="field"><label>SEO Title (optional)</label><input id="adminBlogSeoTitle" value="${esc(post.seo_title || '')}" placeholder="${esc(stripHtmlTags(post.title || 'Article title'))} | CoGo City"></div>
+      <div class="field"><label>SEO Title (optional)</label><input id="adminBlogSeoTitle" value="${esc(post.seo_title || '')}" placeholder="${esc(stripHtmlTags(post.title || 'Article title'))} | Cogo City"></div>
       <div class="field"><label>Meta Description (optional)</label><textarea id="adminBlogSeoDescription" rows="3" maxlength="170" placeholder="120-160 characters for Google search results">${esc(post.seo_description || '')}</textarea></div>
       <div class="small muted" style="margin-bottom:14px">Featured image is the blog thumbnail shown in the featured article card, latest article section, and smaller article cards.</div>
       <input id="adminBlogFeaturedImageValue" type="hidden" value="${esc(post.featured_image || post.image_id || post.featuredImage || '')}">

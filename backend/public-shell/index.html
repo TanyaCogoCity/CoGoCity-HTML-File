@@ -11855,7 +11855,7 @@ function renderHome(){
           ${homeBlock.body ? `<p>${esc(homeBlock.body)}</p>` : ''}
           <div class="home-hero-actions">
             ${!currentUser ? `<button class="btn btn-blue" onclick="openLoginModal()">Sign In / Sign Up</button>` : ''}
-            <button class="btn btn-outline" style="background:#fff" onclick="location.hash='#/community';renderPage()">Go to Community Gigs</button>
+            <button class="btn btn-outline" style="${currentUser ? 'background:var(--color-primary);border-color:#F3CD45;color:var(--color-text-main)' : 'background:#fff'}" onclick="location.hash='#/community';renderPage()">Go to Community Gigs</button>
           </div>
         </div>
       </div>
