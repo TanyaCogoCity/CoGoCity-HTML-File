@@ -5,7 +5,7 @@ const { requireAuth } = require('../middleware/auth');
 const { writeAuditLog } = require('../lib/audit');
 const { normalizeServicePayload, serializeReview, serializeService } = require('../lib/compat');
 const { userProfileMetadata } = require('../lib/onboardingGate');
-const { normalizeProfileMetadataMedia } = require('../lib/media');
+const { legacyWordPressProxyUrl, normalizeProfileMetadataMedia } = require('../lib/media');
 const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
 
 const router = express.Router();
@@ -13,12 +13,12 @@ const router = express.Router();
 function isBrokenPublicPhotoSource(source = '') {
   const value = String(source || '').trim();
   if (!value) return false;
-  return /^img_/i.test(value) || /^\/api\/sync\/legacy-wordpress-media\//i.test(value);
+  return /^img_/i.test(value);
 }
 
 function resolvePublicPhotoSource(metadataPhoto = '', avatar = '') {
   const photo = String(metadataPhoto || '').trim();
-  const avatarUrl = String(avatar || '').trim();
+  const avatarUrl = legacyWordPressProxyUrl(avatar || '');
   if (!photo) return avatarUrl || '';
   if (isBrokenPublicPhotoSource(photo) && /^https?:\/\//i.test(avatarUrl)) return avatarUrl;
   return photo;
@@ -35,7 +35,7 @@ function publicUserProfile(profile) {
     about: profile.about,
     school: profile.school,
     age: profile.age,
-    avatar: profile.avatar,
+    avatar: legacyWordPressProxyUrl(profile.avatar || ''),
     metadata: {
       photo: resolvedPhoto,
       profile_images: Array.isArray(metadata.profile_images) && metadata.profile_images.length
