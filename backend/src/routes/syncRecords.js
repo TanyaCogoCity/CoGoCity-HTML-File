@@ -1098,6 +1098,7 @@ function fetchLegacyWordPressUpload(url) {
       method: 'GET',
       headers: { Host: LEGACY_WORDPRESS_MEDIA_HOST },
       timeout: 12000,
+      rejectUnauthorized: false,
     }, (upstream) => {
       const chunks = [];
       upstream.on('data', (chunk) => chunks.push(chunk));
