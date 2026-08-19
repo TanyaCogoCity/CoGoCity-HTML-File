@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const path = require('path');
 
 const config = require('./config');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimit');
@@ -23,6 +24,7 @@ const syncRecordRoutes = require('./routes/syncRecords');
 const seoRoutes = require('./routes/seo');
 
 const app = express();
+const frontendAssetPath = path.resolve(__dirname, '../public-shell/assets');
 
 app.set('trust proxy', 1);
 
@@ -80,6 +82,8 @@ function healthPayload() {
 app.get(['/health', '/api/health'], (_req, res) => {
   res.json(healthPayload());
 });
+
+app.use('/assets', express.static(frontendAssetPath, { fallthrough: true, maxAge: '1h' }));
 
 app.get('/health/db', async (_req, res) => {
   const { prisma } = require('./lib/prisma');
