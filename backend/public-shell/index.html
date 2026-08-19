@@ -839,6 +839,14 @@
     .homepage-link-chip{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid var(--color-border);border-radius:999px;background:#fff;text-decoration:none;font-weight:800;color:var(--color-text-main)}
     .homepage-link-chip:hover{background:#FFFEF0;border-color:#FDE68A}
     .homepage-faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    .homepage-trust-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:22px;align-items:center}
+    .homepage-trust-visual{
+      min-height:320px;border-radius:22px;border:1px solid var(--color-border);overflow:hidden;
+      position:relative;background:#F3F4F6
+    }
+    .homepage-trust-visual img{
+      width:100%;height:100%;min-height:320px;display:block;object-fit:cover;object-position:center center
+    }
     .cogo-ad-sidebar{width:300px;justify-self:end;padding-top:45px}
     .cogo-ad-strip{margin:0;width:100%;max-width:300px}
     .cogo-mobile-extra-ads{display:none}
@@ -866,6 +874,8 @@
       .faq-sidebar{display:none}
       .faq-mobile-nav{display:flex}
       .faq-section{scroll-margin-top:74px}
+      .homepage-trust-layout{grid-template-columns:1fr}
+      .homepage-trust-visual,.homepage-trust-visual img{min-height:260px}
     }
     @media (max-width: 640px){
       .faq-hero .container{padding-top:32px;padding-bottom:26px}
@@ -12107,17 +12117,24 @@ function renderHomepageSeoContent(){
       </section>
       <section class="card homepage-seo-card" aria-labelledby="homepage-trust-title">
         <h2 id="homepage-trust-title" class="section-title" style="margin-bottom:10px">Why Families and Businesses Use CoGo City</h2>
-        <ul>
-          <li>Trusted access to local student talent for real community needs</li>
-          <li>Clear pathways for students to build work experience before traditional employment</li>
-          <li>Safer, more community-centered connections than broad anonymous marketplaces</li>
-          <li>Strong fit for Tri-Valley, East Bay, and local-first hiring and service needs</li>
-        </ul>
-        <div class="homepage-links-row">
-          <a class="homepage-link-chip" href="/how-it-works" onclick="location.hash='#/how-it-works';renderPage();return false;">How It Works</a>
-          <a class="homepage-link-chip" href="/about-us" onclick="location.hash='#/about-us';renderPage();return false;">About Us</a>
-          <a class="homepage-link-chip" href="/faq-safety-legal" onclick="location.hash='#/faq-safety-legal';renderPage();return false;">Safety and FAQ</a>
-          <a class="homepage-link-chip" href="/blog" onclick="location.hash='#/blog';renderPage();return false;">Career Blog</a>
+        <div class="homepage-trust-layout">
+          <div>
+            <ul>
+              <li>Trusted access to local student talent for real community needs</li>
+              <li>Clear pathways for students to build work experience before traditional employment</li>
+              <li>Safer, more community-centered connections than broad anonymous marketplaces</li>
+              <li>Strong fit for Tri-Valley, East Bay, and local-first hiring and service needs</li>
+            </ul>
+            <div class="homepage-links-row">
+              <a class="homepage-link-chip" href="/how-it-works" onclick="location.hash='#/how-it-works';renderPage();return false;">How It Works</a>
+              <a class="homepage-link-chip" href="/about-us" onclick="location.hash='#/about-us';renderPage();return false;">About Us</a>
+              <a class="homepage-link-chip" href="/faq-safety-legal" onclick="location.hash='#/faq-safety-legal';renderPage();return false;">Safety and FAQ</a>
+              <a class="homepage-link-chip" href="/blog" onclick="location.hash='#/blog';renderPage();return false;">Career Blog</a>
+            </div>
+          </div>
+          <div class="homepage-trust-visual">
+            <img src="assets/homepage-families-businesses.jpg" alt="Two students in conversation at a table during a collaborative work session" loading="lazy">
+          </div>
         </div>
       </section>
       <section aria-labelledby="homepage-faq-title">
