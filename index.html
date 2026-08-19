@@ -3672,7 +3672,8 @@ function mapBackendStudentProfile(row={}){
   const name = user.displayName || user.display_name || profile.displayName || 'Student';
   const avatarValue = String(profile.avatar || '').trim();
   const metadataPhoto = profile.metadata?.photo || profile.photo || profile.profile_photo || '';
-  const profilePhoto = metadataPhoto || (looksLikeImageSource(avatarValue) ? avatarValue : '');
+  const avatarImageUrl = looksLikeImageSource(avatarValue) ? avatarValue : '';
+  const profilePhoto = metadataPhoto || avatarImageUrl;
   const avatarEmoji = (looksLikeImageSource(avatarValue) || /^https?:\/\//i.test(avatarValue))
     ? '\u{1F393}'
     : (avatarValue || '\u{1F393}');
@@ -3709,6 +3710,7 @@ function mapBackendStudentProfile(row={}){
     address: profile.address || '',
     phone: user.phone || profile.phone || '',
     privateEmail: profile.metadata?.private_email || user.email || profile.email || '',
+    avatarImageUrl,
     photo: profilePhoto,
     profile_image_id: profilePhoto,
     profileImages: profile.metadata?.profile_images || [],
@@ -4778,6 +4780,7 @@ function normalizeStudentRecord(student){
   const normalized = Object.assign({
     profile_image_id: '',
     profileImages: [],
+    avatarImageUrl: '',
     video_url: '',
     video_type: '',
     video_id: '',
@@ -4789,9 +4792,12 @@ function normalizeStudentRecord(student){
   normalized.verified_at = normalized.verifiedAt;
   normalized.verifiedBy = normalized.verifiedBy || normalized.verified_by || '';
   normalized.verified_by = normalized.verifiedBy;
+  const avatarAsImage = looksLikeImageSource(normalized.avatar || '') ? String(normalized.avatar || '').trim() : '';
   const emojiAsImage = looksLikeImageSource(normalized.emoji || '') ? String(normalized.emoji || '').trim() : '';
+  if (!normalized.avatarImageUrl) normalized.avatarImageUrl = avatarAsImage || emojiAsImage || '';
   if (!normalized.profile_image_id && normalized.photo) normalized.profile_image_id = normalized.photo;
-  if (!normalized.profile_image_id && emojiAsImage) normalized.profile_image_id = emojiAsImage;
+  if (!normalized.profile_image_id && normalized.avatarImageUrl) normalized.profile_image_id = normalized.avatarImageUrl;
+  if (avatarAsImage) normalized.avatar = '\u{1F393}';
   if (emojiAsImage) normalized.emoji = '\u{1F393}';
   normalized.profile_image_id = upsertImageRecord(normalized.profile_image_id, { source:'profile', entity_type:'student', entity_id: normalized.id || '', owner_id: normalized.userId || '' });
   const rawProfileImages = Array.isArray(normalized.profileImages) && normalized.profileImages.length
@@ -12381,11 +12387,34 @@ function getTestimonialStudentProfile(user=null, testimonial={}){
     return testimonialNameMatchesProfile(testimonial.name, student.name || student.publicName || student.displayName || '');
   }) || null;
 }
+function isRenderableImageReference(reference=''){
+  const clean = String(reference || '').trim();
+  if (!clean) return false;
+  if (isImageRecordId(clean)) {
+    const image = getImageView(clean, 'thumb') || getImageView(clean, 'full') || getImageById(clean);
+    return !!(image && image.url);
+  }
+  if (/^\/api\/sync\/legacy-wordpress-media\//i.test(clean)) return false;
+  return looksLikeImageSource(clean);
+}
+function getStudentAvatarImageReference(student={}){
+  const avatarImageUrl = String(student.avatarImageUrl || (looksLikeImageSource(student.avatar || '') ? student.avatar : '')).trim();
+  const candidates = [
+    student.profile_image_id,
+    student.photo,
+    ...(Array.isArray(student.profileImages) ? student.profileImages : []),
+    avatarImageUrl
+  ];
+  for (const candidate of candidates) {
+    if (isRenderableImageReference(candidate)) return String(candidate || '').trim();
+  }
+  return '';
+}
 function getTestimonialDisplay(testimonial={}){
   const user = getTestimonialUser(testimonial);
   const student = getTestimonialStudentProfile(user, testimonial);
   const name = (user && (user.publicName || user.name)) || (student && student.name) || testimonial.name || 'Cogo City User';
-  const imageId = (student && (student.profile_image_id || student.photo || (student.profileImages || [])[0]))
+  const imageId = (student && getStudentAvatarImageReference(student))
     || (user && (user.profile_image_id || user.photo || user.businessProfile?.image_id || user.businessProfile?.logo))
     || '';
   const image = getImageView(imageId, 'thumb') || getImageView(imageId, 'full');
@@ -14584,7 +14613,7 @@ function processWorkshopPayouts(){
 }
 
 function renderStudentAvatar(student, size=54, extraStyle=''){
-  const image = student.profile_image_id || student.photo || (Array.isArray(student.profileImages) && student.profileImages[0]) || '';
+  const image = getStudentAvatarImageReference(student);
   const fallbackIcon = student.emoji || '\u{1F464}';
   const fallbackStyle = `width:${size}px;height:${size}px;${extraStyle}`;
   const fallbackHtml = `<div class="avatar" style="${fallbackStyle}">${esc(fallbackIcon)}</div>`;
@@ -14729,8 +14758,8 @@ function replaceWithSingleImage(imageId=''){
   return cleanId ? [cleanId] : [];
 }
 function getStudentProfileImageList(student={}){
-  const images = Array.isArray(student.profileImages) ? student.profileImages.filter(Boolean) : [];
-  const primary = student.profile_image_id || student.photo || '';
+  const images = Array.isArray(student.profileImages) ? student.profileImages.filter(isRenderableImageReference) : [];
+  const primary = getStudentAvatarImageReference(student);
   if (primary && !images.some(image => String(image) === String(primary))) images.unshift(primary);
   return images.slice(0, 1);
 }
