@@ -1130,16 +1130,17 @@ function sendLegacyWordPressImage(res, legacyImage, fallbackLastModified = null)
   return res.send(legacyImage.buffer);
 }
 
+function redirectLegacyWordPressImage(res, url, fallbackLastModified = null) {
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  if (fallbackLastModified) res.setHeader('Last-Modified', fallbackLastModified.toUTCString());
+  return res.redirect(302, url.toString());
+}
+
 router.get('/legacy-wordpress-media/*', async (req, res) => {
   const rawPath = String(req.params[0] || '').replace(/^\/+/, '');
   const legacyWordPressUrl = parseLegacyWordPressUploadUrl(`/${rawPath}`);
   if (!legacyWordPressUrl) return fail(res, 404, 'Image not found');
-  try {
-    const legacyImage = await fetchLegacyWordPressUpload(legacyWordPressUrl);
-    return sendLegacyWordPressImage(res, legacyImage);
-  } catch (error) {
-    return fail(res, 404, 'Image data not found');
-  }
+  return redirectLegacyWordPressImage(res, legacyWordPressUrl);
 });
 
 router.get('/images/:id/file', async (req, res) => {
@@ -1154,12 +1155,7 @@ router.get('/images/:id/file', async (req, res) => {
   const source = String(payload.url || payload.thumbnail_url || payload.thumb_url || '').trim();
   const legacyWordPressUrl = parseLegacyWordPressUploadUrl(source);
   if (legacyWordPressUrl) {
-    try {
-      const legacyImage = await fetchLegacyWordPressUpload(legacyWordPressUrl);
-      return sendLegacyWordPressImage(res, legacyImage, row.updatedAt);
-    } catch (error) {
-      return fail(res, 404, 'Image data not found');
-    }
+    return redirectLegacyWordPressImage(res, legacyWordPressUrl, row.updatedAt);
   }
   if (/^https?:\/\//i.test(source)) {
     try {

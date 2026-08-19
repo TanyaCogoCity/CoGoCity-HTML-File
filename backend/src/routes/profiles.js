@@ -10,9 +10,24 @@ const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
 
 const router = express.Router();
 
+function isBrokenPublicPhotoSource(source = '') {
+  const value = String(source || '').trim();
+  if (!value) return false;
+  return /^img_/i.test(value) || /^\/api\/sync\/legacy-wordpress-media\//i.test(value);
+}
+
+function resolvePublicPhotoSource(metadataPhoto = '', avatar = '') {
+  const photo = String(metadataPhoto || '').trim();
+  const avatarUrl = String(avatar || '').trim();
+  if (!photo) return avatarUrl || '';
+  if (isBrokenPublicPhotoSource(photo) && /^https?:\/\//i.test(avatarUrl)) return avatarUrl;
+  return photo;
+}
+
 function publicUserProfile(profile) {
   if (!profile) return null;
   const metadata = normalizeProfileMetadataMedia(userProfileMetadata(profile));
+  const resolvedPhoto = resolvePublicPhotoSource(metadata.photo, profile.avatar);
   return {
     id: profile.id,
     userId: profile.userId,
@@ -22,8 +37,10 @@ function publicUserProfile(profile) {
     age: profile.age,
     avatar: profile.avatar,
     metadata: {
-      photo: metadata.photo || '',
-      profile_images: Array.isArray(metadata.profile_images) ? metadata.profile_images : [],
+      photo: resolvedPhoto,
+      profile_images: Array.isArray(metadata.profile_images) && metadata.profile_images.length
+        ? metadata.profile_images.map((image, index) => index === 0 ? resolvePublicPhotoSource(image, profile.avatar) : image)
+        : (resolvedPhoto ? [resolvedPhoto] : []),
       video_url: metadata.video_url || '',
       video_type: metadata.video_type || '',
       video_id: metadata.video_id || '',
