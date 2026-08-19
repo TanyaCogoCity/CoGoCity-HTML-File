@@ -832,6 +832,18 @@
     .homepage-seo-card li{margin:6px 0}
     .homepage-pillars{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
     .homepage-pillar-card{padding:22px}
+    .homepage-pillar-media{
+      position:relative;overflow:hidden;border-radius:18px;margin-bottom:18px;aspect-ratio:16/10;
+      background:linear-gradient(135deg,#F3F4F6,#E5E7EB);border:1px solid rgba(15,23,42,.08)
+    }
+    .homepage-pillar-media img{
+      width:100%;height:100%;display:block;object-fit:cover;filter:saturate(.96) contrast(1.02)
+    }
+    .homepage-pillar-media::after{
+      content:"";position:absolute;inset:0;
+      background:linear-gradient(180deg,rgba(255,255,255,.10) 0%,rgba(15,23,42,.06) 100%);
+      pointer-events:none
+    }
     .homepage-pillar-card h3,.homepage-faq-card h3{margin:0 0 10px;font-size:1.06rem}
     .homepage-pillar-card p,.homepage-faq-card p{margin:0 0 12px;color:var(--color-text-secondary);line-height:1.65}
     .homepage-pillar-card p:last-child,.homepage-faq-card p:last-child{margin-bottom:0}
@@ -874,6 +886,7 @@
       .faq-sidebar{display:none}
       .faq-mobile-nav{display:flex}
       .faq-section{scroll-margin-top:74px}
+      .homepage-pillars{grid-template-columns:1fr}
       .homepage-trust-layout{grid-template-columns:1fr}
       .homepage-trust-visual,.homepage-trust-visual img{min-height:260px}
     }
@@ -12099,16 +12112,25 @@ function renderHomepageSeoContent(){
         <h2 id="homepage-pathways-title" class="section-title">Explore CoGo City</h2>
         <div class="homepage-pillars">
           <article class="card homepage-pillar-card">
+            <div class="homepage-pillar-media">
+              <img src="assets/homepage-pillar-student-services.jpg" alt="Students walking together outdoors with books and backpacks" loading="lazy">
+            </div>
             <h3>Student Services</h3>
             <p>Browse local student talent for tutoring, childcare, pet care, office help, creative work, sports coaching, and other skill-based services.</p>
             <a class="link-btn" href="/students" onclick="location.hash='#/students';renderPage();return false;">Browse student services</a>
           </article>
           <article class="card homepage-pillar-card">
+            <div class="homepage-pillar-media">
+              <img src="assets/homepage-pillar-community-gigs.jpg" alt="A multigenerational group smiling together in a community circle" loading="lazy">
+            </div>
             <h3>Community Gigs</h3>
             <p>Discover short-term paid opportunities posted by neighbors, families, and community members who need local help.</p>
             <a class="link-btn" href="/community" onclick="location.hash='#/community';renderPage();return false;">Explore community gigs</a>
           </article>
           <article class="card homepage-pillar-card">
+            <div class="homepage-pillar-media">
+              <img src="assets/homepage-pillar-direct-hire.jpg" alt="Job candidates seated with resumes during an interview or hiring process" loading="lazy">
+            </div>
             <h3>Direct Hire</h3>
             <p>Support longer-term student hiring and employer demand for part-time work, internships, and early career opportunities.</p>
             <a class="link-btn" href="/jobs" onclick="location.hash='#/jobs';renderPage();return false;">View direct hire</a>
