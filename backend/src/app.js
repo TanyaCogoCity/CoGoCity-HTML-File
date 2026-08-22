@@ -46,7 +46,8 @@ app.use(
         mediaSrc: imageSources,
         objectSrc: ["'none'"],
         // Public SEO shells currently boot the app from inline scripts in index.html.
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https:', 'blob:'],
+        scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
         connectSrc: ["'self'", 'https:'],
         frameSrc: [
