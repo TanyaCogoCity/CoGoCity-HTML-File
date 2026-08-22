@@ -1124,11 +1124,13 @@
       .section-title{font-size:1.18rem}
       .split{display:block}
       .split > * + *{margin-top:12px}
-      .subtabs,.workshop-tabs,.post-footer,.meta-row{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+      .subtabs,.workshop-tabs,.meta-row{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;-webkit-overflow-scrolling:touch}
       .pill,.workshop-chip,.meta-row > *{white-space:nowrap}
       .btn{width:100%;padding:10px 12px}
       .btn-sm{width:auto}
-      .post-footer .btn,.subtabs .pill,.workshop-tabs .pill{width:auto;flex:0 0 auto}
+      .post-footer{overflow:visible;flex-wrap:wrap;gap:10px}
+      .post-footer .btn{flex:1 1 calc(50% - 10px);min-width:140px}
+      .subtabs .pill,.workshop-tabs .pill{width:auto;flex:0 0 auto}
       .dashboard{min-height:auto}
       .sidebar{top:0;padding:8px 10px}
       .dash-main{padding:16px 14px}
