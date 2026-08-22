@@ -47,7 +47,6 @@ app.use(
         objectSrc: ["'none'"],
         // Public SEO shells currently boot the app from inline scripts in index.html.
         scriptSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
         connectSrc: ["'self'", 'https:'],
         frameSrc: [
