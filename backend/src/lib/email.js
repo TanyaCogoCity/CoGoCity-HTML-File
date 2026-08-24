@@ -62,6 +62,23 @@ function notificationHtml({ title, body, link }) {
   `;
 }
 
+function directMessageReminderHtml({ senderName, threadUrl }) {
+  const safeSenderName = escapeHtml(senderName || 'Someone');
+  const safeThreadUrl = escapeHtml(buildAppLink(threadUrl));
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#18212f;max-width:600px;margin:0 auto;padding:24px">
+      <h2 style="margin:0 0 12px;color:#18212f">${escapeHtml(`New message from ${senderName || 'Someone'} on CoGo City`)}</h2>
+      <p style="margin:0 0 20px">
+        You’ve got a message from <a href="${safeThreadUrl}" style="color:#2251ff;text-decoration:underline">${safeSenderName}</a>. Open My Messages to reply.
+      </p>
+      <p style="margin:0 0 24px">
+        <a href="${safeThreadUrl}" style="display:inline-block;background:#2251ff;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">Open My Messages</a>
+      </p>
+      <p style="font-size:12px;color:#667085;margin-top:28px">You received this because you have a CoGo City account.</p>
+    </div>
+  `;
+}
+
 async function sendEmail({ to, subject, htmlContent, textContent }) {
   if (!config.brevoApiKey || !config.emailNotificationsEnabled) return { skipped: true, reason: 'email_not_configured' };
   if (!to?.email) return { skipped: true, reason: 'missing_recipient' };
@@ -104,4 +121,14 @@ async function sendNotificationEmail({ user, title, body, link }) {
   });
 }
 
-module.exports = { sendEmail, sendNotificationEmail, buildAppLink };
+async function sendDirectMessageReminderEmail({ user, senderName, link }) {
+  const appLink = buildAppLink(link);
+  return sendEmail({
+    to: { email: user.email, name: user.displayName },
+    subject: `New message from ${senderName || 'Someone'} on CoGo City`,
+    htmlContent: directMessageReminderHtml({ senderName, threadUrl: link }),
+    textContent: `New message from ${senderName || 'Someone'} on CoGo City\n\nYou’ve got a message from ${senderName || 'Someone'}. Open My Messages to reply.\n\n${appLink}`,
+  });
+}
+
+module.exports = { sendEmail, sendNotificationEmail, sendDirectMessageReminderEmail, buildAppLink };

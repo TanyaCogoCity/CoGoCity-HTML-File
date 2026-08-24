@@ -84,22 +84,24 @@ async function recordNotificationReceipt({ userId, dedupeKey, notification, reus
   });
 }
 
-async function createNotificationRaw({ data, emailRequired = false }) {
+async function createNotificationRaw({ data, emailRequired = false, sendEmail = true }) {
   const payload = withDefaultLink(data);
   const notification = await prisma.notification.create({ data: payload });
-  const email = await emailNotification(payload, { required: emailRequired });
+  const email = sendEmail
+    ? await emailNotification(payload, { required: emailRequired })
+    : { skipped: true, reason: 'email_disabled_for_notification' };
   return Object.assign(notification, { email });
 }
 
-async function createNotification({ data, emailRequired = false }) {
+async function createNotification({ data, emailRequired = false, sendEmail = true }) {
   const key = String(data?.dedupeKey || data?.dedupe_key || '').trim();
-  if (key) return createNotificationOnce({ data, emailRequired, dedupeKey: key });
-  return createNotificationRaw({ data, emailRequired });
+  if (key) return createNotificationOnce({ data, emailRequired, sendEmail, dedupeKey: key });
+  return createNotificationRaw({ data, emailRequired, sendEmail });
 }
 
-async function createNotificationOnce({ data, emailRequired = false, dedupeKey = '' }) {
+async function createNotificationOnce({ data, emailRequired = false, sendEmail = true, dedupeKey = '' }) {
   const key = String(dedupeKey || data?.dedupeKey || data?.dedupe_key || '').trim();
-  if (!key) return createNotificationRaw({ data, emailRequired });
+  if (!key) return createNotificationRaw({ data, emailRequired, sendEmail });
 
   const payload = withDefaultLink(data);
   const receiptId = notificationReceiptId(payload.userId, key);
@@ -129,7 +131,7 @@ async function createNotificationOnce({ data, emailRequired = false, dedupeKey =
     return Object.assign(recentDuplicate, { email: { skipped: true, reason: 'duplicate_notification' } });
   }
 
-  const notification = await createNotificationRaw({ data: payload, emailRequired });
+  const notification = await createNotificationRaw({ data: payload, emailRequired, sendEmail });
   await recordNotificationReceipt({ userId: payload.userId, dedupeKey: key, notification });
   return notification;
 }

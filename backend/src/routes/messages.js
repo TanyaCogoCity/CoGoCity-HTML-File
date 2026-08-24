@@ -7,6 +7,10 @@ const { ensureConversationBetweenUsers } = require('../lib/messaging');
 const { writeAuditLog } = require('../lib/audit');
 const { requirePlatformReady } = require('../lib/onboardingGate');
 const { createNotifications } = require('../lib/notifications');
+const {
+  scheduleDirectMessageReminder,
+  cancelPendingDirectMessageReminderForReply,
+} = require('../lib/directMessageNotifications');
 
 const router = express.Router();
 
@@ -203,6 +207,11 @@ router.post('/', requireAuth, async (req, res) => {
 
     const recipients = await prisma.conversationParticipant.findMany({
       where: { conversationId, userId: { not: req.user.id } },
+      include: {
+        user: {
+          select: { id: true, email: true, displayName: true, role: true },
+        },
+      },
     });
 
     if (isSystem && recipients.length) {
@@ -219,6 +228,27 @@ router.post('/', requireAuth, async (req, res) => {
         notificationRows.push(row);
       }
       if (notificationRows.length) await createNotifications({ data: notificationRows });
+    }
+
+    if (!isSystem && recipients.length) {
+      for (const recipient of recipients) {
+        const recipientUser = recipient.user || null;
+        if (!recipientUser || recipientUser.role === 'admin') continue;
+        // eslint-disable-next-line no-await-in-loop
+        await cancelPendingDirectMessageReminderForReply({
+          conversationId,
+          replierId: req.user.id,
+          partnerId: recipientUser.id,
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await scheduleDirectMessageReminder({
+          conversationId,
+          messageId: msg.id,
+          messageCreatedAt: msg.createdAt,
+          sender: req.user,
+          recipient: recipientUser,
+        });
+      }
     }
 
     await writeAuditLog({ userId: req.user.id, action: 'message.send', entityType: 'message', entityId: msg.id, payload: req.body });
