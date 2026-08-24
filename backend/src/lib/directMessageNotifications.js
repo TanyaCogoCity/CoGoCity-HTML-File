@@ -15,6 +15,12 @@ function isPendingDirectMessageEmailPayload(payload = {}) {
   return payload && typeof payload === 'object' && !Array.isArray(payload);
 }
 
+function pendingPayloadFromRecord(record = null) {
+  if (!record || typeof record !== 'object') return null;
+  const rawPayload = record.payload;
+  return isPendingDirectMessageEmailPayload(rawPayload) ? rawPayload : null;
+}
+
 function validDate(value) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -85,7 +91,7 @@ async function cancelPendingDirectMessageReminderForReply({
   const existing = await prisma.syncRecord.findUnique({
     where: { entity_recordId: { entity: DIRECT_MESSAGE_EMAIL_ENTITY, recordId } },
   });
-  const payload = isPendingDirectMessageEmailPayload(existing?.payload) ? existing.payload : null;
+  const payload = pendingPayloadFromRecord(existing);
   if (!payload || payload.status !== 'pending') return false;
   if (String(payload.sender_id || '') !== nextPartnerId) return false;
 
@@ -134,7 +140,7 @@ async function recipientRepliedBeforeDeadline(payload = {}) {
 }
 
 async function processDirectMessageReminderRecord(record = null) {
-  const payload = isPendingDirectMessageEmailPayload(record?.payload) ? record.payload : null;
+  const payload = pendingPayloadFromRecord(record);
   if (!record || !payload || payload.status !== 'pending') return { checked: false, sent: false };
 
   const now = Date.now();

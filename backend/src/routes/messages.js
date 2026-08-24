@@ -234,20 +234,31 @@ router.post('/', requireAuth, async (req, res) => {
       for (const recipient of recipients) {
         const recipientUser = recipient.user || null;
         if (!recipientUser || recipientUser.role === 'admin') continue;
-        // eslint-disable-next-line no-await-in-loop
-        await cancelPendingDirectMessageReminderForReply({
-          conversationId,
-          replierId: req.user.id,
-          partnerId: recipientUser.id,
-        });
-        // eslint-disable-next-line no-await-in-loop
-        await scheduleDirectMessageReminder({
-          conversationId,
-          messageId: msg.id,
-          messageCreatedAt: msg.createdAt,
-          sender: req.user,
-          recipient: recipientUser,
-        });
+        try {
+          // Reminder failures should never block the actual DM from being sent.
+          // eslint-disable-next-line no-await-in-loop
+          await cancelPendingDirectMessageReminderForReply({
+            conversationId,
+            replierId: req.user.id,
+            partnerId: recipientUser.id,
+          });
+          // eslint-disable-next-line no-await-in-loop
+          await scheduleDirectMessageReminder({
+            conversationId,
+            messageId: msg.id,
+            messageCreatedAt: msg.createdAt,
+            sender: req.user,
+            recipient: recipientUser,
+          });
+        } catch (reminderError) {
+          console.error('direct_message_reminder_schedule_failed', {
+            conversationId,
+            messageId: msg.id,
+            senderId: req.user.id,
+            recipientId: recipientUser.id,
+            error: reminderError.message,
+          });
+        }
       }
     }
 
