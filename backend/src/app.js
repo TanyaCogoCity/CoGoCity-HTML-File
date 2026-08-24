@@ -76,7 +76,13 @@ app.use(morgan('dev'));
 app.use(apiLimiter);
 
 function healthPayload() {
-  return { ok: true, service: 'cogocity-backend', environment: config.nodeEnv, time: new Date().toISOString() };
+  return {
+    ok: true,
+    service: 'cogocity-backend',
+    environment: config.nodeEnv,
+    dm_email_backend_version: '2026-08-24b',
+    time: new Date().toISOString(),
+  };
 }
 
 app.get(['/health', '/api/health'], (_req, res) => {
