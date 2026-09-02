@@ -3977,13 +3977,15 @@ function mapBackendUser(apiUser={}, fallback={}){
   const reviewRequired = Boolean(apiUser.onboarding_requirements?.profile_review_required || apiUser.onboardingRequirements?.profile_review_required);
   const rawFirst = apiUser.first_name || apiUser.firstName || fallback.firstName || '';
   const rawLast = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
-  const canonicalDisplay = sanitizeDisplayText(apiUser.display_name || apiUser.displayName || '');
-  const rawDisplay = canonicalDisplay || fallback.name || '';
+  const canonicalDisplay = sanitizeDisplayText(apiUser.display_name || apiUser.displayName || apiUser.name || '');
+  const fallbackDisplay = sanitizeDisplayText(fallback.displayName || fallback.display_name || fallback.publicName || fallback.name || '');
   const deletedPlaceholder = /^(deleted\s+user|deleted)$/i.test(String(rawDisplay || '').trim())
     || (/^deleted$/i.test(String(rawFirst || '').trim()) && /^user$/i.test(String(rawLast || '').trim()));
   const first = deletedPlaceholder && reviewRequired ? '' : rawFirst;
   const last = deletedPlaceholder && reviewRequired ? '' : rawLast;
-  const display = deletedPlaceholder && reviewRequired ? 'Review Profile' : (rawDisplay || [first, last].filter(Boolean).join(' ').trim() || apiUser.email || fallback.email || 'User');
+  const joinedCanonicalName = [first, last].filter(Boolean).join(' ').trim();
+  const rawDisplay = canonicalDisplay || joinedCanonicalName || fallbackDisplay || '';
+  const display = deletedPlaceholder && reviewRequired ? 'Review Profile' : (rawDisplay || apiUser.email || fallback.email || 'User');
   const role = apiUser.role || fallback.role || 'student';
   const isBusinessRole = role === 'employer' || profile.type === 'business';
   const resolvedPhoto = getPreferredImageReference(metadata.photo || '', fallback.photo || '');
@@ -4003,8 +4005,8 @@ function mapBackendUser(apiUser={}, fallback={}){
     firstName: first,
     lastName: last,
     name: display,
-    publicName: canonicalDisplay || fallback.publicName || display,
-    displayName: canonicalDisplay || display,
+    publicName: canonicalDisplay || joinedCanonicalName || sanitizeDisplayText(fallback.publicName || '') || display,
+    displayName: canonicalDisplay || joinedCanonicalName || sanitizeDisplayText(fallback.displayName || fallback.display_name || '') || display,
     role,
     type: role === 'neighbor' ? 'neighbor' : (role === 'employer' ? 'business' : (profile.type || fallback.type)),
     status: apiUser.status || fallback.status || 'active',
