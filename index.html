@@ -3978,7 +3978,8 @@ function mapBackendUser(apiUser={}, fallback={}){
   const reviewRequired = Boolean(apiUser.onboarding_requirements?.profile_review_required || apiUser.onboardingRequirements?.profile_review_required);
   const rawFirst = apiUser.first_name || apiUser.firstName || fallback.firstName || '';
   const rawLast = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
-  const rawDisplay = apiUser.display_name || apiUser.displayName || fallback.name || '';
+  const canonicalDisplay = sanitizeDisplayText(apiUser.display_name || apiUser.displayName || '');
+  const rawDisplay = canonicalDisplay || fallback.name || '';
   const deletedPlaceholder = /^(deleted\s+user|deleted)$/i.test(String(rawDisplay || '').trim())
     || (/^deleted$/i.test(String(rawFirst || '').trim()) && /^user$/i.test(String(rawLast || '').trim()));
   const first = deletedPlaceholder && reviewRequired ? '' : rawFirst;
@@ -4003,7 +4004,8 @@ function mapBackendUser(apiUser={}, fallback={}){
     firstName: first,
     lastName: last,
     name: display,
-    publicName: fallback.publicName || display,
+    publicName: canonicalDisplay || fallback.publicName || display,
+    displayName: canonicalDisplay || display,
     role,
     type: role === 'neighbor' ? 'neighbor' : (role === 'employer' ? 'business' : (profile.type || fallback.type)),
     status: apiUser.status || fallback.status || 'active',
@@ -7520,11 +7522,11 @@ function syncCurrentUserRecord(){
         image_id: resolvedBusinessLogo
       })
     : null;
-  currentUser = Object.assign({}, latest, currentUser, {
-    phone: currentUser.phone || latest.phone || '',
-    address: currentUser.address || latest.address || '',
-    about: currentUser.about || latest.about || '',
-    email: (!String(currentUser.email || '').includes('@placeholder.cogocity.local') && currentUser.email) ? currentUser.email : (latest.email || currentUser.email || ''),
+  currentUser = Object.assign({}, currentUser, latest, {
+    phone: latest.phone || currentUser.phone || '',
+    address: latest.address || currentUser.address || '',
+    about: latest.about || currentUser.about || '',
+    email: (!String(latest.email || '').includes('@placeholder.cogocity.local') && latest.email) ? latest.email : (currentUser.email || latest.email || ''),
     photo: resolvedPhoto,
     profile_image_id: resolvedPhoto,
     businessProfile: mergedBusinessProfile
@@ -8073,6 +8075,12 @@ function setCurrentUser(u){
 }
 function loadCurrentUser(){
   currentUser = ls('cogo_current_user');
+  if (!currentUser) return;
+  const impersonation = getAdminImpersonation();
+  if (impersonation && String(currentUser.id || '') !== String(impersonation.userId || '')) {
+    localStorage.removeItem('cogo_admin_impersonation');
+  }
+  syncCurrentUserRecord();
 }
 
 // ---------- Modal ----------
