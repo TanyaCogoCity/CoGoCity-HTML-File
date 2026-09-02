@@ -8032,7 +8032,40 @@ function pushAdminCommissionNotification(project){
   });
   saveNotifications('cogo_admin', items.slice(0, 50));
 }
+function resetUserScopedSessionState(previousUser=null, nextUser=null){
+  const previousId = previousUser && previousUser.id ? previousUser.id : null;
+  const nextId = nextUser && nextUser.id ? nextUser.id : null;
+  if (previousId === nextId) return;
+  dashSection = nextUser && nextUser.role === 'admin' ? 'admin' : 'profile';
+  studentJobsTab = 'all';
+  employerTab = 'all';
+  myPostsTab = 'all';
+  activeThreadUserId = null;
+  settingsTransactionQuery = '';
+  adminSelectedUserId = '';
+  adminPendingUserAction = '';
+  adminUserEditDraft = null;
+  adminModalImageLibraryTarget = null;
+  studentProfileTab = 'all';
+  studentProfileQuery = '';
+  employerProfileTab = 'all';
+  mediaCarouselState = {};
+  studentProfileImagesBuffer = [];
+  studentServiceImagesBuffer = [];
+  activeStudentProfileFormId = '';
+  activeStudentServiceFormIndex = '';
+  studentProfileDraft = null;
+  studentServiceDraft = null;
+  activeRoutedModalRoute = '';
+  localStorage.removeItem('cogo_active_student_profile');
+  if (typeof document !== 'undefined') {
+    const modalRoot = document.getElementById('modal-root');
+    if (modalRoot) modalRoot.innerHTML = '';
+  }
+  activeModalDraftKey = null;
+}
 function setCurrentUser(u){
+  resetUserScopedSessionState(currentUser, u);
   currentUser = u;
   avatarMenuOpen = false;
   ls('cogo_current_user', u);
