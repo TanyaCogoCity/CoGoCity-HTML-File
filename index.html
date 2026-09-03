@@ -3980,12 +3980,12 @@ function mapBackendUser(apiUser={}, fallback={}){
   const rawLast = apiUser.last_name || apiUser.lastName || fallback.lastName || '';
   const canonicalDisplay = sanitizeDisplayText(apiUser.display_name || apiUser.displayName || apiUser.name || '');
   const fallbackDisplay = sanitizeDisplayText(fallback.displayName || fallback.display_name || fallback.publicName || fallback.name || '');
+  const joinedCanonicalName = [rawFirst, rawLast].filter(Boolean).join(' ').trim();
+  const rawDisplay = canonicalDisplay || joinedCanonicalName || fallbackDisplay || '';
   const deletedPlaceholder = /^(deleted\s+user|deleted)$/i.test(String(rawDisplay || '').trim())
     || (/^deleted$/i.test(String(rawFirst || '').trim()) && /^user$/i.test(String(rawLast || '').trim()));
   const first = deletedPlaceholder && reviewRequired ? '' : rawFirst;
   const last = deletedPlaceholder && reviewRequired ? '' : rawLast;
-  const joinedCanonicalName = [first, last].filter(Boolean).join(' ').trim();
-  const rawDisplay = canonicalDisplay || joinedCanonicalName || fallbackDisplay || '';
   const display = deletedPlaceholder && reviewRequired ? 'Review Profile' : (rawDisplay || apiUser.email || fallback.email || 'User');
   const role = apiUser.role || fallback.role || 'student';
   const isBusinessRole = role === 'employer' || profile.type === 'business';
