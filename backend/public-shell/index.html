@@ -7532,8 +7532,12 @@ function stopAdminImpersonation(silent=false){
   const session = getAdminImpersonation();
   if (!session) return;
   const adminUser = getUserById(session.adminId);
+  const adminSnapshot = session.adminSnapshot && typeof session.adminSnapshot === 'object' ? normalizeUserRecord(session.adminSnapshot) : null;
+  const restoredAdmin = adminSnapshot
+    ? normalizeUserRecord(Object.assign({}, adminUser || {}, adminSnapshot))
+    : adminUser;
   localStorage.removeItem('cogo_admin_impersonation');
-  if (adminUser) setCurrentUser(adminUser);
+  if (restoredAdmin) setCurrentUser(restoredAdmin);
   restoreAdminReturnContext(session.returnContext);
   if (!silent) toast('Returned to Admin view.');
   renderPage();
@@ -7544,6 +7548,7 @@ async function startAdminImpersonation(userId){
   if (!target || target.archived) return toast('User not found.');
   ls('cogo_admin_impersonation', {
     adminId: currentUser.id,
+    adminSnapshot: JSON.parse(JSON.stringify(currentUser)),
     userId: target.id,
     startedAt: new Date().toISOString(),
     returnContext: getAdminReturnContext()
