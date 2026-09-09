@@ -7381,7 +7381,7 @@ function canExchangeProjectContactInfo(partnerId='', threadId='', project=null){
   }
   const apps = getApplications();
   return apps.some(app => {
-    const employerId = String(app.employerId || app.employer_id || '');
+    const employerId = String(resolveApplicationEmployerId(app) || '');
     const studentId = String(app.studentUserId || app.student_id || '');
     const betweenUsers = (employerId === currentId && studentId === otherId) || (employerId === otherId && studentId === currentId);
     return betweenUsers && ['accepted','project_started','in_progress'].includes(String(app.status || ''));
@@ -18494,6 +18494,8 @@ async function withdrawStudentDirectJobApplication(applicationId=''){
 }
 function renderStudentAppCard(a){
   const actions = [];
+  const employerId = resolveApplicationEmployerId(a);
+  const employerName = resolveApplicationEmployerName(a);
   const displayDescription = a.source === 'community_feed' ? (a.jobDescription || a.message || '') : (a.message || '');
   if (a.status === 'offer_sent'){
     actions.push(`<button class="btn btn-green btn-sm" onclick="acceptOffer('${esc(a.id)}')">Accept</button>`);
@@ -18505,12 +18507,12 @@ function renderStudentAppCard(a){
       <div class="split">
         <div>
           <div style="font-weight:800">${esc(a.jobTitle)}</div>
-          <div class="muted small">Employer: ${renderUserNameLink(a.employerId || a.employer_id, a.employerName)} \u00B7 ${timeAgo(a.createdAt)}</div>
+          <div class="muted small">Employer: ${renderUserNameLink(employerId, employerName)} \u00B7 ${timeAgo(a.createdAt)}</div>
           ${a.rate ? `<div class="muted small">Rate: $${esc(a.rate)}/hr \u00B7 Estimated hours: ${esc(a.estimatedHours || '')}</div>` : ''}
           ${a.studentServiceTitle ? `<div class="small muted" style="margin-top:6px">Service: ${esc(a.studentServiceTitle)}</div>` : ''}
           <div class="small" style="margin-top:8px">${renderCollapsibleLongText(displayDescription, `student_app_description_${a.id}`, { small:true })}</div>
-        ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, ${esc(a.employerName)} can review it and start the project.</div>` : ''}
-        ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">You can\u2019t start this project yet. ${esc(a.employerName)} must confirm and start the project. Your status will change to \u201CIn Progress\u201D once confirmed.</div>` : ''}
+        ${a.status === 'offer_sent' ? `<div class="warning" style="margin-top:10px">You have an offer. If you accept, ${esc(employerName)} can review it and start the project.</div>` : ''}
+        ${a.status === 'accepted' ? `<div class="warning" style="margin-top:10px">You can\u2019t start this project yet. ${esc(employerName)} must confirm and start the project. Your status will change to \u201CIn Progress\u201D once confirmed.</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
           ${badge(a.status)}
@@ -19608,6 +19610,17 @@ async function closeCommunityJob(postId=''){
 function getApplicationJobPost(application){
   return application && application.postId ? getPosts().find(post => post.id === application.postId) : null;
 }
+function resolveApplicationEmployerId(application={}){
+  const job = getApplicationJobPost(application);
+  const jobOwnerId = job ? (resolveBackendNotificationUserId(job.authorId) || job.authorId || job.author_id || '') : '';
+  return String(jobOwnerId || application.employerId || application.employer_id || '').trim();
+}
+function resolveApplicationEmployerName(application={}){
+  const employerId = resolveApplicationEmployerId(application);
+  const user = employerId ? getUserById(employerId) : null;
+  const job = getApplicationJobPost(application);
+  return String(user?.publicName || user?.name || job?.authorName || application.employerName || application.employer_name || 'Employer').trim();
+}
 function hasStartedProjectForApplication(application={}){
   if (!application) return false;
   const status = String(application.status || '').toLowerCase();
@@ -19646,6 +19659,7 @@ function currentUserOwnsCommunityApplication(application={}){
     String(resolveBackendNotificationUserId(currentUser.id) || ''),
   ].filter(Boolean));
   const employerIds = [
+    resolveApplicationEmployerId(application),
     application.employerId,
     application.employer_id,
     application.ownerId,
@@ -19832,6 +19846,8 @@ async function confirmSendOffer(appId){
     rate,
     estimatedHours:hours,
     location,
+    employerId: resolveBackendNotificationUserId(currentUser.id) || currentUser.id,
+    employerName: currentUser.publicName || currentUser.name || a.employerName,
     status:'offer_sent'
   });
   if (!await persistApplicationsPermanently(apps, 'Backend offer send failed. Please try again so the offer is saved for everyone.')) return;
@@ -20608,8 +20624,12 @@ function openThread(userId, name=''){
 function openApplicationThread(applicationId=''){
   const application = getApplications().find(item => item.id === applicationId);
   if (!application) return;
-  const partnerId = currentUser.id === application.studentUserId ? application.employerId : application.studentUserId;
+  const employerId = resolveApplicationEmployerId(application);
+  const employerName = resolveApplicationEmployerName(application);
+  const partnerId = String(currentUser.id) === String(application.studentUserId) ? employerId : application.studentUserId;
   if (!partnerId) return;
+  if (String(partnerId) === String(employerId)) messagePartnerNameHints[String(partnerId)] = employerName;
+  else if (application.studentName) messagePartnerNameHints[String(partnerId)] = application.studentName;
   dashSection = 'messages';
   activeThreadUserId = `${partnerId}::application:${application.id}`;
   renderDashboard();
