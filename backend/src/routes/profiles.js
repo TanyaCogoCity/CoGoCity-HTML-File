@@ -10,6 +10,14 @@ const { maybeSendOnboardingWelcomeEmail } = require('../lib/welcomeEmails');
 
 const router = express.Router();
 
+function normalizeEmail(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEmail(value = '') {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
 function isBrokenPublicPhotoSource(source = '') {
   const value = String(source || '').trim();
   if (!value) return false;
@@ -226,6 +234,13 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
   if (hasBusinessField('logo') || hasBusinessField('business_logo') || hasProfileField('business_logo')) {
     metadata.business_logo = businessPayload.logo || businessPayload.business_logo || profilePayload.business_logo || '';
   }
+  const nextEmail = payload.email !== undefined ? normalizeEmail(payload.email) : '';
+  const emailChanging = Boolean(nextEmail && nextEmail !== normalizeEmail(req.user.email));
+  if (payload.email !== undefined && !isValidEmail(nextEmail)) return fail(res, 400, 'Please enter a valid email address.');
+  if (emailChanging) {
+    const existingEmailUser = await prisma.user.findFirst({ where: { email: nextEmail, deletedAt: null } });
+    if (existingEmailUser && existingEmailUser.id !== req.user.id) return fail(res, 409, 'That email is already used by another account.');
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const existingProfile = await tx.userProfile.findUnique({ where: { userId: req.user.id } });
@@ -237,6 +252,11 @@ router.patch('/user-profile/me', requireAuth, async (req, res) => {
     if (payload.firstName !== undefined) userUpdates.firstName = String(payload.firstName || '').trim();
     if (payload.lastName !== undefined) userUpdates.lastName = String(payload.lastName || '').trim();
     if (payload.displayName !== undefined) userUpdates.displayName = String(payload.displayName || '').trim();
+    if (emailChanging) {
+      userUpdates.email = nextEmail;
+      userUpdates.emailVerifiedAt = null;
+      userUpdates.emailVerificationStatus = 'pending';
+    }
     if (payload.phone !== undefined) userUpdates.phone = String(payload.phone || '').trim();
     if (payload.city !== undefined) userUpdates.city = String(payload.city || '').trim();
     if (Object.keys(userUpdates).length) await tx.user.update({ where: { id: req.user.id }, data: userUpdates });

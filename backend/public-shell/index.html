@@ -21284,8 +21284,17 @@ function renderAdminPanel(el){
   const archivedProfiles = getStudents().filter(s => s.status === 'archived');
   const paymentSettings = getPaymentSettings();
   const directJobPackages = getDirectJobPackages();
+  const adminFirstName = currentUser.firstName || firstName(currentUser.name || currentUser.displayName || '');
   el.innerHTML = `
     <div class="section-title">Admin Panel</div>
+    <div class="card form-card" style="margin-bottom:18px">
+      <div style="font-weight:800;margin-bottom:12px">Admin Account</div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px">
+        <div><div class="small muted">First Name</div><div style="font-weight:800">${esc(adminFirstName || '')}</div></div>
+        <div><div class="small muted">Email</div><div style="font-weight:800">${esc(currentUser.email || '')}</div></div>
+      </div>
+      <button class="btn btn-outline" onclick="dashSection='settings';renderDashboard()">Edit First Name & Email</button>
+    </div>
     <div class="card form-card" style="margin-bottom:18px">
       <div style="font-weight:800;margin-bottom:12px">Payments</div>
       <div class="row">
@@ -24371,8 +24380,17 @@ function renderSettings(el){
     ? 'Stripe payment method saved'
     : (localPaymentMethod && !backendAuthEnabled() ? `${localPaymentMethod.brand || 'Card'} \u2022\u2022\u2022\u2022 ${localPaymentMethod.last4 || 'saved'}` : 'No live payment method on file');
   const paymentButtonLabel = payerStatus.ready ? 'Update Payment Method' : 'Add Payment Method';
+  const accountFirstName = currentUser.firstName || firstName(currentUser.name || currentUser.displayName || '');
   el.innerHTML = `
     <div class="section-title">Settings</div>
+    <div class="card form-card" style="margin-top:18px;max-width:720px">
+      <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Account</div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+        <div class="field"><label>First Name</label><input id="settingsFirstName" value="${esc(accountFirstName || '')}" autocomplete="given-name"></div>
+        <div class="field"><label>Email</label><input id="settingsEmail" type="email" value="${esc(currentUser.email || '')}" autocomplete="email"></div>
+      </div>
+      <button class="btn btn-blue" onclick="saveAccountSettings()">Save Account</button>
+    </div>
     <div class="card form-card" style="margin-top:18px;max-width:720px">
       <div style="font-weight:800;font-size:1.05rem;margin-bottom:12px">My Password</div>
       ${renderPasswordField('Current Password', 'currentPassword', { placeholder:'Current password', autocomplete:'current-password' })}
@@ -24390,6 +24408,50 @@ function renderSettings(el){
       ` : `<div class="warning">Billing details are hidden while Admin is viewing as this user.</div>`) : ''}
     </div>
   `;
+}
+async function saveAccountSettings(){
+  if (!currentUser) return openLoginModal();
+  const first = String(document.getElementById('settingsFirstName')?.value || '').trim();
+  const email = String(document.getElementById('settingsEmail')?.value || '').trim().toLowerCase();
+  if (toastRequiredFields({ 'First name':first, Email:email }, 'Account settings')) return;
+  if (!validateEmail(email)) return toast('Please enter a valid email address.');
+  const previousEmail = currentUser.email || '';
+  const last = currentUser.lastName || '';
+  const displayName = [first, last].filter(Boolean).join(' ').trim() || first;
+  if (backendAuthEnabled()) {
+    if (!getBackendAccessToken()) return toast('Please sign in again before updating your account.');
+    try {
+      await backendAuthRequest('/user-profile/me', {
+        method:'PATCH',
+        body: JSON.stringify({ firstName:first, displayName, email })
+      });
+      const apiUser = await backendAuthRequest('/auth/me');
+      const user = cacheBackendAuthUser(apiUser) || Object.assign({}, currentUser, { firstName:first, name:displayName, displayName, publicName:displayName, email });
+      currentUser = user;
+      ls('cogo_current_user', currentUser);
+      renderNav();
+      renderSettings(document.getElementById('dash-main'));
+      toast(email !== previousEmail ? 'Account saved. Please verify the new email address.' : 'Account saved.');
+      return;
+    } catch (error) {
+      toast(error.message || 'Could not save account settings.');
+      return;
+    }
+  }
+  const users = getUsers();
+  const duplicate = users.find(user => String(user.id) !== String(currentUser.id) && String(user.email || '').toLowerCase() === email);
+  if (duplicate) return toast('That email is already used by another account.');
+  const updatedUser = normalizeUserRecord(Object.assign({}, currentUser, {
+    firstName:first,
+    name:displayName,
+    displayName,
+    publicName:displayName,
+    email
+  }));
+  saveUsers(users.map(user => String(user.id) === String(currentUser.id) ? updatedUser : user));
+  setCurrentUser(updatedUser);
+  renderSettings(document.getElementById('dash-main'));
+  toast('Account saved.');
 }
 async function changePassword(){
   const currentPassword = document.getElementById('currentPassword').value || '';
