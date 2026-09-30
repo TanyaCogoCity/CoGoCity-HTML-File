@@ -64,6 +64,7 @@ function publicStudentUser(user) {
     displayName: user.displayName,
     city: user.city,
     role: user.role,
+    status: user.status,
     co_go_verified: Boolean(user.coGoVerified),
     coGoVerified: Boolean(user.coGoVerified),
     verified_at: user.verifiedAt || null,
@@ -183,7 +184,7 @@ function mergeSyncedProjectReviews(profileRows = [], syncedRows = []) {
 
 router.get('/student-profiles', async (req, res) => {
   const userId = String(req.query.user_id || req.query.userId || '').trim();
-  const where = { deletedAt: null, isActive: true };
+  const where = { deletedAt: null, isActive: true, user: { status: 'active', deletedAt: null } };
   if (userId) where.userId = userId;
 
   const rows = await prisma.studentProfile.findMany({
@@ -194,7 +195,7 @@ router.get('/student-profiles', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         include: { reviews: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } },
       },
-      user: { select: { id: true, displayName: true, city: true, role: true, coGoVerified: true, verifiedAt: true, verifiedBy: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
+      user: { select: { id: true, displayName: true, city: true, role: true, status: true, coGoVerified: true, verifiedAt: true, verifiedBy: true, userProfile: true, reviewsReceived: { include: { reviewer: { select: { id: true, displayName: true } } }, orderBy: { createdAt: 'desc' } } } },
     },
     orderBy: { createdAt: 'desc' },
   });

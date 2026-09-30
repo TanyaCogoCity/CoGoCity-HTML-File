@@ -3955,6 +3955,7 @@ async function refreshBackendBrowseStudents(options={}){
     const users = list.map(row => mapBackendUser({
       id: row.userId || row.user_id || row.user?.id,
       display_name: row.user?.displayName,
+      status: row.user?.status || row.user_status || row.userStatus || row.status,
       role: row.user?.role || 'student',
       city: row.user?.city || '',
       profile: row.profile || row.user?.userProfile || null
@@ -7439,6 +7440,14 @@ function getUserById(id){
   return getUsers().find(u => String(u.id) === key)
     || adminBackendUsers.find(u => String(u.id) === key)
     || getBackendBrowseUsers().find(u => String(u.id) === key);
+}
+function isPublicBrowseStudentProfile(student){
+  if (!student || student.status !== 'live') return false;
+  const user = getUserById(student.userId);
+  return Boolean(user
+    && user.role === 'student'
+    && user.status !== 'suspended'
+    && !user.archived);
 }
 function getUserRoleLabel(user){
   if (!user) return 'User';
@@ -15212,14 +15221,9 @@ function isHomepageServiceNew(card){
   return Number(card.service.review_count || 0) === 0 || daysSince(card.service.created_at || card.service.createdAt) <= 7;
 }
 function getEligibleHomepageServiceCards(){
-  const students = getStudents().filter(student => student.status === 'live');
+  const students = getStudents().filter(isPublicBrowseStudentProfile);
   return students.flatMap(student => getRenderableStudentServices(student).map((service, index) => ({ student, service, index }))).filter(card => {
-    const user = getUserById(card.student.userId);
-    return user
-      && user.role === 'student'
-      && user.status !== 'suspended'
-      && !user.archived
-      && card.service.status === 'active'
+    return card.service.status === 'active'
       && card.service.is_approved === true
       && card.service.is_visible === true;
   });
