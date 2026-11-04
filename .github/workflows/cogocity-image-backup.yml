@@ -1,0 +1,67 @@
+
+name: Weekly CoGo City Image Backup
+
+on:
+  schedule:
+    - cron: '0 10 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install AWS CLI
+        run: |
+          aws --version
+
+      - name: Copy images to dated backup folder
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_BACKUP_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_BACKUP_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          set -euo pipefail
+
+          DATE=$(date -u +%Y-%m-%d)
+          DEST="s3://cogocity-private-backups/weekly-images/$DATE/"
+
+          aws s3 sync \
+            s3://cogocity-images/ \
+            "$DEST" \
+            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            --no-progress \
+            --only-show-errors
+
+          echo "Backup completed: $DEST"
+
+      - name: Verify backup object count
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_BACKUP_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_BACKUP_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          set -euo pipefail
+
+          DATE=$(date -u +%Y-%m-%d)
+          SOURCE_COUNT=$(aws s3 ls \
+            s3://cogocity-images/ \
+            --recursive \
+            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            | wc -l)
+
+          BACKUP_COUNT=$(aws s3 ls \
+            "s3://cogocity-private-backups/weekly-images/$DATE/" \
+            --recursive \
+            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            | wc -l)
+
+          echo "Source objects: $SOURCE_COUNT"
+          echo "Backup objects: $BACKUP_COUNT"
+
+          test "$SOURCE_COUNT" -eq "$BACKUP_COUNT"
+          test "$SOURCE_COUNT" -gt 0
