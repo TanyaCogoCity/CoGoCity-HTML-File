@@ -14,54 +14,56 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    steps:
-      - name: Install AWS CLI
-        run: |
-          aws --version
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_BACKUP_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_BACKUP_SECRET }}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+      ENDPOINT: https://sfo3.digitaloceanspaces.com
 
-      - name: Copy images to dated backup folder
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_BACKUP_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_BACKUP_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
+    steps:
+      - name: Check AWS CLI
+        run: aws --version
+
+      - name: Download images to temporary storage
         run: |
           set -euo pipefail
-
-          DATE=$(date -u +%Y-%m-%d)
-          DEST="s3://cogocity-private-backups/weekly-images/$DATE/"
-
+          mkdir -p /tmp/cogocity-images
           aws s3 sync \
             s3://cogocity-images/ \
-            "$DEST" \
-            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            /tmp/cogocity-images/ \
+            --endpoint-url "$ENDPOINT" \
             --no-progress \
             --only-show-errors
 
-          echo "Backup completed: $DEST"
-
-      - name: Verify backup object count
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_BACKUP_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_BACKUP_SECRET }}
-          AWS_DEFAULT_REGION: us-east-1
+      - name: Upload images to private backup
         run: |
           set -euo pipefail
-
           DATE=$(date -u +%Y-%m-%d)
-          SOURCE_COUNT=$(aws s3 ls \
-            s3://cogocity-images/ \
-            --recursive \
-            --endpoint-url https://sfo3.digitaloceanspaces.com \
-            | wc -l)
+          aws s3 sync \
+            /tmp/cogocity-images/ \
+            "s3://cogocity-private-backups/weekly-images/$DATE/" \
+            --endpoint-url "$ENDPOINT" \
+            --no-progress \
+            --only-show-errors
+
+      - name: Verify backup object count
+        run: |
+          set -euo pipefail
+          DATE=$(date -u +%Y-%m-%d)
+
+          SOURCE_COUNT=$(find /tmp/cogocity-images -type f | wc -l)
 
           BACKUP_COUNT=$(aws s3 ls \
             "s3://cogocity-private-backups/weekly-images/$DATE/" \
             --recursive \
-            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            --endpoint-url "$ENDPOINT" \
             | wc -l)
 
-          echo "Source objects: $SOURCE_COUNT"
-          echo "Backup objects: $BACKUP_COUNT"
+          echo "Source files: $SOURCE_COUNT"
+          echo "Backup files: $BACKUP_COUNT"
 
-          test "$SOURCE_COUNT" -eq "$BACKUP_COUNT"
           test "$SOURCE_COUNT" -gt 0
+          test "$SOURCE_COUNT" -eq "$BACKUP_COUNT"
+
+          echo "Backup verification passed."
