@@ -26,6 +26,9 @@ module.exports = {
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || '15m',
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || '30d',
 
+  // Fail closed: credentials alone never activate Stripe. Restoring payment
+  // processing requires an explicit STRIPE_ENABLED=true deployment change.
+  stripeEnabled: process.env.STRIPE_ENABLED === 'true',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.COGO_STRIPE_PUBLISHABLE_KEY || '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',

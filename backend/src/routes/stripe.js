@@ -13,11 +13,26 @@ const { payoutSafetyRequirementsForUser, validateProjectPayoutSafety } = require
 const { requirePlatformReady, stripeConnectReady } = require('../lib/onboardingGate');
 const { notifyAdminProjectCommission, notifyAdminWorkshopCommission } = require('../lib/adminEmails');
 
-const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' }) : null;
+// Do not even construct an API client while the integration is disconnected.
+const stripe = config.stripeEnabled && config.stripeSecretKey
+  ? new Stripe(config.stripeSecretKey, { apiVersion: '2024-06-20' })
+  : null;
 const router = express.Router();
 const WORKSHOP_PLATFORM_FEE_PERCENT = 30;
 const WORKSHOP_CANCEL_CUTOFF_HOURS = 72;
 const WORKSHOP_REFUND_CUTOFF_HOURS = 24;
+
+router.use((req, res, next) => {
+  if (config.stripeEnabled) return next();
+  res.set('Cache-Control', 'no-store');
+  if (req.path === '/config' && req.method === 'GET') {
+    return res.status(200).json({ ok: true, data: { enabled: false, publishable_key: '' } });
+  }
+  return res.status(503).json({
+    ok: false,
+    error: { message: 'Payments are temporarily unavailable' },
+  });
+});
 
 function toCents(amount) {
   return Math.max(1, Math.round(Number(amount || 0) * 100));

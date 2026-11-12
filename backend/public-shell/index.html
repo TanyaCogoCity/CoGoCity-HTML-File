@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://js.stripe.com https://hooks.stripe.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; script-src 'self' 'unsafe-inline' https: blob:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; connect-src 'self' data: blob: https:;" />
   <meta name="description" content="CoGo City connects local students, families, and businesses for trusted student services, paid opportunities, community gigs, and real-world work experience." />
   <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#FFE600" />
@@ -1694,11 +1694,12 @@ const COGO_IS_LOCAL_DEV = ['localhost', '127.0.0.1'].includes(COGO_HOSTNAME);
 const COGO_BACKEND_ENABLED = COGO_IS_STAGING || COGO_IS_PRODUCTION;
 const COGO_DEMO_MODE = typeof window !== 'undefined' && COGO_IS_LOCAL_DEV && window.COGO_ENABLE_DEMO_DATA === true;
 const PAYMENT_PROVIDER_MODE = COGO_IS_STAGING ? 'mock_stripe_ready' : 'stripe_manual_capture';
-const STRIPE_STAGING_PUBLISHABLE_KEY = 'pk_test_51TCSvbIGDb9LYiIhFx8UwBFDVG4riDKKJwiqejiGzjrtDzc7lWzIiQGJ6tBczfPGQzBPKqJMwlDEJW9Wer2Piv5L00apSTPPNZ';
+// Stripe is disconnected. Keep the integration code, but never ship a key.
+const STRIPE_STAGING_PUBLISHABLE_KEY = '';
 let STRIPE_PUBLISHABLE_KEY = (COGO_IS_STAGING || COGO_IS_TEMP_PRODUCTION_TEST)
   ? STRIPE_STAGING_PUBLISHABLE_KEY
   : ((typeof window !== 'undefined' && (window.COGO_STRIPE_PUBLISHABLE_KEY || localStorage.getItem('cogo_stripe_publishable_key'))) || '');
-let STRIPE_ENABLED = COGO_IS_STAGING || (COGO_IS_PRODUCTION && !!STRIPE_PUBLISHABLE_KEY);
+let STRIPE_ENABLED = false;
 const TEST_ENV_PAYMENT_ALWAYS_SUCCEEDS = COGO_IS_STAGING || COGO_IS_LOCAL_DEV;
 const BACKEND_MIGRATION = {
   enabled: COGO_BACKEND_ENABLED,
@@ -1713,7 +1714,8 @@ const BACKEND_AUTH = {
 function applyStripePublicConfig(publishableKey=''){
   const normalizedKey = String(publishableKey || '').trim();
   if (normalizedKey) STRIPE_PUBLISHABLE_KEY = normalizedKey;
-  STRIPE_ENABLED = COGO_IS_STAGING || (COGO_IS_PRODUCTION && !!STRIPE_PUBLISHABLE_KEY);
+  // Fail closed while Stripe is disconnected; backend code is preserved.
+  STRIPE_ENABLED = false;
   if (stripeClient && normalizedKey) stripeClient = null;
 }
 async function loadStripePublicConfig(){
@@ -3231,6 +3233,7 @@ async function refreshStripeOnboardingStatus(options={}){
   }
 }
 function loadStripeJs(){
+  if (!STRIPE_ENABLED) return Promise.reject(new Error('Payments are temporarily unavailable.'));
   if (!STRIPE_PUBLISHABLE_KEY) return Promise.reject(new Error('Stripe publishable key is not configured.'));
   if (window.Stripe) return Promise.resolve(window.Stripe);
   if (!stripeJsPromise) {

@@ -54,14 +54,9 @@ services:
       - key: JWT_REFRESH_TTL
         value: 30d
         scope: RUN_TIME
-      - key: STRIPE_SECRET_KEY
-        value: ""
+      - key: STRIPE_ENABLED
+        value: "false"
         scope: RUN_TIME
-        type: SECRET
-      - key: STRIPE_WEBHOOK_SECRET
-        value: ""
-        scope: RUN_TIME
-        type: SECRET
       - key: STRIPE_PLATFORM_FEE_BPS
         value: "1000"
         scope: RUN_TIME
